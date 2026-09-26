@@ -8,8 +8,8 @@ move breaks nothing.
 
 ## Status
 
-Proposed — 2026-08-25. To be accepted at Gate 2 of the `workspace-board-tree-single-selection`
-chain.
+Accepted — dated 2026-08-25; landed on `main` via PR #106 (merge `f110cdd`,
+2026-08-26).
 
 **Supersedes ADR-0022 §D9** in full. §D9 introduced `@State private var selectedFolder: String?` in
 `WorkspaceBrowser` as the toolbar's target, deliberately *separate* from the open board, with the

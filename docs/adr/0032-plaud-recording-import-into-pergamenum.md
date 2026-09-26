@@ -1,6 +1,6 @@
 # ADR-0032: A recording reaches the vault over a socket that never leaves the machine
 
-- Status: proposed
+- Status: accepted. Landed on `main` via PR #170 (merge `07badd5`, 2026-09-06).
 - Date: 2026-09-05. Every external fact below was **measured live on this machine on this date**,
   against the running `plaud-service`, not recalled and not read off the contract document:
   `/health`, `/recordings?days=14` (eight recordings), `/proposals/{id}` for three of them,

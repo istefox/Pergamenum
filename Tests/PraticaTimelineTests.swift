@@ -5,12 +5,6 @@ import Testing
 // ADR-0036 (A pratica is a folder that fills itself from a copy of Mail's index, and
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 6 -
 // R-23, R-24, R-25, R-26, R-32, R-33, R-39.
-//
-// Every declaration under test here (`PraticaTimelineModel`, `PraticheSidebarGrouping`,
-// the three `ColorToken` cases) is a tester-declared boundary (ADR-0155): the coder
-// fills the bodies. The pure functions are stubbed to wrong-but-safe pass-throughs or
-// constants, never `fatalError`, so a test that calls one exercises a real (failing)
-// assertion instead of crashing the whole xctest process.
 
 @Suite struct PraticaTimelineModelTests {
     // MARK: - R-23: ordering, with the received-date fallback

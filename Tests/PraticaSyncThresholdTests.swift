@@ -5,11 +5,6 @@ import Testing
 // ADR-0036 (A pratica is a folder that fills itself from a copy of Mail's index, and
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 4 -
 // R-09, R-10, R-11, R-15, R-16, §D15.
-//
-// `PraticaSyncPlan.workItems` and every `PraticaSyncEngine` method are declared-but-
-// stubbed by this batch's tester (ADR-0155 §D1) - every test below is red because the
-// stub does nothing, not because a symbol is missing. The coder fills in the bodies;
-// these tests, unedited, are what proves the fill-in is correct.
 
 @Suite struct PraticaSyncThresholdTests {
     private typealias Fixtures = PraticaSyncFixtures
@@ -103,11 +98,8 @@ import Testing
     // instruction - NOT weakened, NOT omitted. It needs more than Task 5 alone
     // provides: `prepare`'s existing-file guard (`:356-364`) only lets a file be
     // rewritten when it is `.pending` (or an explicit «Rigenera») - a `.complete`
-    // message with only a pending *attachment* (this case, per R-04's own rule) is not
-    // revisited by that guard until Task 6 adds its clause (ADR-0040 §D5). Expect this
-    // test to stay red after Task 5 alone and to go green only once Task 6 lands - if
-    // it is still red after Task 6 too, that is a real defect, not this test being
-    // wrong.
+    // message with only a pending *attachment* (this case, per R-04's own rule) is
+    // revisited through Task 6's clause (ADR-0040 §D5).
     @Test func anOverThresholdAttachmentThatLaterBecomesValidGetsAStoreReferenceAndLosesItsPendingEntry() async throws {
         let badBytes = Data(repeating: 0x41, count: 2 * 1024 * 1024)
         let firstMessage = EmailFixtureCorpus.singleAttachmentMessageRFC822(

@@ -1,6 +1,6 @@
 # ADR-0029: One editor, always editable, and a table is a grid
 
-- Status: proposed
+- Status: accepted. Landed on `main` via PR #164 (merge `b171a90`, 2026-09-03).
 - Date: 2026-09-02. Written after reading every file it names, at the line, on the working tree
   at `bbe09a9`. The mechanisms below are the ones already in this repository plus two SDK hooks
   it has never called; both are quoted from `MacOSX26.5.sdk` rather than recalled, and the

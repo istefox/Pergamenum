@@ -7,7 +7,7 @@ import Foundation
 /// Every one of these reaches a buffer through a door that stayed behind with the stored
 /// `columns` - `updateTabs(showing:_:)` for the catch-up after a write, which every tab showing
 /// the path needs (ADR-0058), and `replaceOpenNote` or `updateFocusedTab` for settling the
-/// banner the person clicked (`closeTabs(_:ofVanishedNote:)` when it was a deletion, ADR-0061
+/// banner the person clicked (`closeTabs(_:ofVanishedNote:)` when it was a deletion, ADR-0064
 /// §D5) - so the rule that a view cannot swap the buffer under the editor survives the move.
 extension VaultController {
     /// Writes the open note.
@@ -122,7 +122,7 @@ extension VaultController {
     }
 
     /// Resolves the focused tab's pending external change the way the disk has it - the
-    /// banner's first button, «Ricarica da disco» or «Scarta ed elimina» (ADR-0061 §D5).
+    /// banner's first button, «Ricarica da disco» or «Scarta ed elimina» (ADR-0064 §D5).
     ///
     /// - `.text`: the buffer takes the incoming text, which also becomes its saved text.
     /// - `.deleted`: the unsaved text is discarded and the focused tab closes through
@@ -143,7 +143,7 @@ extension VaultController {
     }
 
     /// Keeps the in-app version and clears the prompt - the banner's second button, «Tieni la
-    /// mia versione» (ADR-0061 §D5).
+    /// mia versione» (ADR-0064 §D5).
     ///
     /// - `.text`: the buffer is untouched; the next save overwrites the disk.
     /// - `.deleted`: `savedText` also becomes `""`, the honest answer to «what the disk last

@@ -1,6 +1,6 @@
 # ADR-0040: An attachment Mail has not finished writing is a state, not a file
 
-- Status: proposed
+- Status: accepted. Landed on `main` via PR #199 (merge `9f6ff14`, 2026-09-11).
 - Date: 2026-09-11. Written after reading every file it names, at the line, on the working tree at
   `7381877` (`main`, marketing version 1.4). Every claim below about this repo's code was read out
   of `Sources/` and `Tests/`, not out of the SPEC; the two fixture collisions in §"What was read"
@@ -37,8 +37,9 @@
   prefixed key is how this repo extends a closed schema — cited here only to say the precedent is
   *not* spent again), **ADR-0022 §D6** (a deletion in this repo goes to the Trash through
   `FileManager.trashItem`, never `removeItem`), **ADR-0053** (protected interfaces are proposed by
-  the architect and created by the operator), **ADR-0155** (on a compiled language the tester owns
-  the declaration, the coder owns the body).
+  the architect and created by the operator), **ADR-0155** (the retired concept-to-code workflow's
+  ADR, not a Pergamenum one: on a compiled language the tester owns the declaration, the coder owns
+  the body).
 
 ---
 

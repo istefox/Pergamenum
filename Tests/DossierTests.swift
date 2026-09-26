@@ -6,8 +6,7 @@ import Testing
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 3 - R-01,
 // R-37, §D11, §D12 (C4).
 //
-// `Dossier.parse`/`.render`/`.merging` are tester-declared stubs (ADR-0155): the coder
-// fills the bodies. No test here touches `~/Library/Mail`.
+// No test here touches `~/Library/Mail`.
 
 @Suite struct DossierTests {
     // MARK: - R-01: recognition

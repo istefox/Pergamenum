@@ -5,19 +5,11 @@ import Testing
 // ADR-0036 (A pratica is a folder that fills itself from a copy of Mail's index, and
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 4 -
 // R-09, R-10, R-11, R-15, R-16, §D15.
-//
-// `PraticaSyncPlan.workItems` and every `PraticaSyncEngine` method are declared-but-
-// stubbed by this batch's tester (ADR-0155 §D1) - every test below is red because the
-// stub does nothing, not because a symbol is missing. The coder fills in the bodies;
-// these tests, unedited, are what proves the fill-in is correct.
 
 // MARK: - §D21 - «Rigenera» acquires the replacement before it destroys anything
 
 // ADR §D21, plan docs/superpowers/plans/2026-09-10-pratiche-pg105-pg108.md, Task 5 -
-// `regenerationPreview`/`commitRegeneration` are declared-but-stubbed by this batch's
-// tester (ADR-0155 §D1): both always throw `RegenerationFailure.rowNotFound`
-// unconditionally, so every test below is red because the stub never resolves a row or
-// writes anything, not because a symbol is missing.
+// `regenerationPreview`/`commitRegeneration`.
 @Suite struct PraticaRegenerationTests {
     private typealias Fixtures = PraticaSyncFixtures
 
@@ -169,10 +161,9 @@ import Testing
 
     // ADR §D4/§D21: the `.emlx` is genuinely gone - the acquisition must fail with
     // `.notInStore` specifically (never a bug, R-16's own case), and touch no file. A
-    // test that only asserted "throws" would already pass against the stub for the
-    // wrong reason, since the stub always throws unconditionally
-    // (`RegenerationFailure.rowNotFound`); asserting the exact case is what keeps this
-    // one red until the coder distinguishes "no row" from "row found, no .emlx".
+    // test that only asserted "throws" could pass for the wrong reason (for instance on
+    // `RegenerationFailure.rowNotFound`); asserting the exact case is what tells "no row"
+    // from "row found, no .emlx".
     @Test func regenerationPreviewFailsWithNotInStoreWhenTheEmlxIsGoneAndTheFileOnDiskIsUntouched() async throws {
         let synced = try await Self.syncedFixtureAndVault()
         let (notePath, originalText) = try Self.writtenNote(under: synced.vaultRoot)

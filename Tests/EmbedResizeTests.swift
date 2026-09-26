@@ -8,11 +8,6 @@ import Testing
 // the whole size grammar and the whole handle geometry, pure - no `NSTextView`, no
 // delegate, matching `EmbedNavigationTests`'s own split from the wiring that reaches it.
 //
-// `Sources/Features/Editor/EmbedResize.swift` is a signature-only stub as of this file
-// (ADR-0155 §D1): every test below is expected to fail red, not to fail to compile - the
-// coder's Task 2 work fills in each body against ADR-0019 §D1, §D3, §D5 and §D7, which
-// this file already encodes as assertions.
-//
 // One fixture aspect ratio throughout the resolving and writing sections: `natural =
 // CGSize(width: 200, height: 100)`, a clean 2:1 landscape thumbnail, so a proportional
 // height is always exactly half the width and every clamp lands on a value with no

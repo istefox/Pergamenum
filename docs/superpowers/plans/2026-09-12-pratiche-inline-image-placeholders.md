@@ -146,7 +146,7 @@ for the file's shape and comment style.
 Budget: `Sources/Core/Pratiche/MessageInlineImage.swift`, `Tests/MessageInlineImageTests.swift`
 (~230 lines)
 
-**Tester declares** (ADR-0155 — the declaration is the tester's, the body is the coder's):
+**Tester declares** (ADR-0155 of the retired concept-to-code workflow, not a Pergamenum ADR — the declaration is the tester's, the body is the coder's):
 
 ```swift
 enum MessageInlineImage {

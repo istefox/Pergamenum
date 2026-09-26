@@ -8,9 +8,6 @@ import Foundation
 // `VaultSession.write`, same as the heading - reading the day's note
 // (`VaultSession.dailyNote(for:)`), composing this line onto it, and skipping the
 // write entirely when it returns `nil`, are the coder's.
-//
-// Every declaration below is a tester-declared boundary (ADR-0155 §D1): stubbed to a
-// wrong-but-safe constant, never `fatalError`.
 enum DailyNoteMirror {
     struct Entry: Equatable, Sendable {
         var praticaTitle: String

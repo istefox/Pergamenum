@@ -1,7 +1,6 @@
 # ADR-0057: The diary proves what it writes over, one write at a time
 
-- Status: proposed, on the branch `kepler/fix-262-readdiary-writediary-race`. Accepted when that
-  branch merges to `main`.
+- Status: accepted. Landed on `main` via PR #488 (merge `242b907`, 2026-09-24).
 - Date: 2026-09-24. Written on the worktree `Pergamenum-fix-262-readdiary-writediary-race-c08eafa6`
   at `e61dbe2b` (clean tree). Every signature, line number and call-site list below was read or
   grepped in that tree, not recalled.

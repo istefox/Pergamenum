@@ -4,10 +4,6 @@ import Testing
 
 // ADR-0036 (Pratiche), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 8 -
 // R-20, R-21; screens 1d, 1e.
-//
-// `WizardState` and `AddToPraticaOrdering` are tester-declared boundaries
-// (ADR-0155 §D1): `makeDossier()` and `recentFirst(_:)` are stubbed to a
-// wrong-but-safe constant, never `fatalError`.
 
 @Suite struct WizardStateTests {
     // MARK: - Step 1's gate (R-20)

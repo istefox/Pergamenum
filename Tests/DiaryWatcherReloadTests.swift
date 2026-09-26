@@ -45,7 +45,7 @@ private func diaryExternalText(_ body: String) -> String {
     controller.close()
 }
 
-/// ADR-0061, plan `docs/plans/pg-234-external-deletion.md` Task 2, test 19 (R-01). Red on
+/// ADR-0064, plan `docs/plans/pg-234-external-deletion.md` Task 2, test 19 (R-01). Red on
 /// today's code: `VaultDisk.reconcile`'s missing-path branch reports `change: nil`, so
 /// `didChangeExternally` never fires for a deletion and the pane keeps showing the stale text.
 @MainActor

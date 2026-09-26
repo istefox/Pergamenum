@@ -1,6 +1,6 @@
 # ADR-0033: A view renders in the editor, in an attachment that hosts the renderer it already had
 
-- Status: proposed
+- Status: accepted. Landed on `main` via PR #178 (merge `0bec334`, 2026-09-07).
 - Date: 2026-09-06. Written after reading every file it names, at the line, on the working tree
   at `dfcccb8`. Two claims that could not be read out of the source or the SDK are named as
   probes in D16.

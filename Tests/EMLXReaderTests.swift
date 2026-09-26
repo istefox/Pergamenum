@@ -5,9 +5,8 @@ import Testing
 // ADR-0036 (A pratica is a folder that fills itself from a copy of Mail's index, and
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 2 - R-04.
 //
-// `EMLXReader.parse(_:)` always throws today (tester stub, ADR-0155): the coder fills
-// the body. Every fixture is synthetic, built by `Tests/EmailFixtureCorpus.swift` - no
-// test here reads `~/Library/Mail`.
+// Every fixture is synthetic, built by `Tests/EmailFixtureCorpus.swift` - no test here
+// reads `~/Library/Mail`.
 
 @Suite struct EMLXReaderTests {
     @Test func stripsTheByteCountLineAndReturnsTheRFC822Bytes() throws {

@@ -8,7 +8,8 @@ path, so the move breaks nothing.
 
 ## Status
 
-Proposed — 2026-08-27. To be accepted at Gate 2 of the `workspace-folder-board-separation` chain.
+Accepted — dated 2026-08-27; landed on `main` via PR #109 (merge `a6648d1`,
+2026-08-28).
 
 **Supersedes ADR-0024 §D3 in full**, and **§D2 in the two respects that made a board a property of
 a folder**. Details in *What is superseded, and why* below, before the Context — because a reader

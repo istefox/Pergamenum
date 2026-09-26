@@ -80,7 +80,7 @@ struct AttachmentChip: View {
         }
     }
 
-    /// Injected into `AttachmentChipModel` rather than read there directly (ADR-0155):
+    /// Injected into `AttachmentChipModel` rather than read there directly:
     /// keeps the pure decision testable with an arbitrary filesystem state. Reads a
     /// prefix and a suffix only (`AttachmentIntegrity.verdict(ofFileAt:named:)`), never
     /// the whole file (ADR-0040 §D8, R-07, R-09).

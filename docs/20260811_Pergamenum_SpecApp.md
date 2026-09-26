@@ -393,7 +393,7 @@ Registrato via `CFBundleURLTypes`; gestito in `onOpenURL`. Route idempotenti, ap
 | Route | Azione |
 |---|---|
 | `pergamenum://note?file=<path-relativo-urlencoded>` | Apre la nota nell'editor |
-| `pergamenum://note?id=<uuid>` | Apre la nota per ID stabile (registrato nell'indice, non nel frontmatter: lo schema chiuso F-02 non ammette una chiave `id`; l'ID è quindi stabile finché il file non viene rinominato fuori dall'app) |
+| `pergamenum://note?id=<uuid>` | Apre la nota per ID stabile (registrato nell'indice, non nel frontmatter: lo schema chiuso F-02 non ammette una chiave `id`; l'ID è quindi stabile finché il file non viene rinominato fuori dall'app) — *Emendato 2026-09-25 (ADR-0059): l'ID è registrato nel file di registro degli ID del vault, `.pergamenum/note-ids.json`, non nel frontmatter né nell'indice; segue ogni rinomina e spostamento fatti dall'app ed è stabile finché il file non viene rinominato fuori dall'app.* |
 | `pergamenum://canvas?file=<path>` | Apre il canvas |
 | `pergamenum://canvas?file=<path>&node=<nodeId>` | Apre il canvas e centra/seleziona la card |
 | `pergamenum://day/20260811` | Apre la daily note (creandola se assente); data in formato `YYYYMMDD`, coerente col nome file |
@@ -509,7 +509,7 @@ Ordine vincolante M0→M6: ogni milestone produce un'app usabile. Non si inizia 
 | Live preview completa | Esclusa in v1, voce ritirata il 2026-09-02 (ADR-0029) | L'esclusione valeva finché il meccanismo non esisteva. ADR-0018 lo ha costruito per tre costrutti, ADR-0029 lo ha esteso a tutti gli altri e alla tabella GFM: non resta una voce di costo da escludere. Vedi §5 |
 | Formato canvas | JSON Canvas 1.0 puro | Interoperabilità Obsidian — *Emendato 2026-09-16 (ADR-0047): il formato resta JSON Canvas 1.0 per sé; l'obbligo di interoperabilità con Obsidian non è più il motivo della scelta.* |
 | Tassonomia | Convenzioni harness applicate come schema nativo | Un solo sistema di regole in tutto l'ecosistema; la repo harness-system resta la fonte di verità (§4.8) |
-| Frontmatter | Schema chiuso a 4 chiavi, niente chiavi app | Conformità F-02/F-05; l'ID per gli URL vive nell'indice, non nei file |
+| Frontmatter | Schema chiuso a 4 chiavi, niente chiavi app | Conformità F-02/F-05; l'ID per gli URL vive nell'indice, non nei file — *Emendato 2026-09-25 (ADR-0059): l'ID per gli URL è registrato in `.pergamenum/note-ids.json`, il registro degli ID del vault, non nel frontmatter né nell'indice; segue ogni rinomina e spostamento fatti dall'app ed è stabile finché il file non viene rinominato fuori dall'app.* |
 | Temi | Design token JSON (DTCG), no CSS/WKWebView; dal 2026-09-04 i token personalizzabili dall'utente comprendono anche la tipografia del corpo nota, non più i soli colori (ADR-0030) | Il CSS richiederebbe webview; i token danno lo stesso risultato in nativo e restano interoperabili con gli strumenti web di design. La scelta del carattere resta un file di tema nel vault, mai una preferenza dell'app: stesso meccanismo, una classe di token in più |
 | Ricorrenze infinite | Delegate a Promemoria Apple | Evita un motore di ricorrenze completo |
 | Sync | iCloud Drive sulla cartella vault | Nessun server; pattern validato da VisualOS e NotePlan |

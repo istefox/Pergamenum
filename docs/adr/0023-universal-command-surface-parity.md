@@ -8,7 +8,8 @@ so the move breaks nothing.
 
 ## Status
 
-Proposed — 2026-08-25. Supersedes **ADR-0022 §D8** on one point only: the entry point for
+Accepted — dated 2026-08-25; landed on `main` via PR #105 (merge `71e45ad`,
+2026-08-25). Supersedes **ADR-0022 §D8** on one point only: the entry point for
 the Workspace folder verbs. §D8's accessibility reasoning is untouched and is reaffirmed
 below (§D2).
 

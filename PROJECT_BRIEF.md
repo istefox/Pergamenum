@@ -52,7 +52,8 @@ Electron; macOS 27 baseline with no fallbacks (raised from macOS 26 Tahoe on
 2026-09-18, see CLAUDE.md); no email body rendering; no full
 live preview in v1; pure JSON Canvas 1.0 for the canvas format; harness conventions
 as native schema; closed 4-key frontmatter with note IDs living in the index rather
-than in files; (the "no live preview" ruling is about the editor hiding syntax while
+than in files *(amended 2026-09-25, ADR-0059: the ids live in the vault's registry
+`.pergamenum/note-ids.json`, not in the index nor in the frontmatter)*; (the "no live preview" ruling is about the editor hiding syntax while
 typing - the Diario pane's rendering sits *beside* an unchanged source editor, see
 ADR-0005); DTCG design tokens instead of CSS or a webview; infinite recurrences
 delegated to Apple Reminders; sync delegated to iCloud Drive; Quick Look not used as
@@ -1196,6 +1197,9 @@ Binding order, each yielding a usable app (SPEC §13):
   the control moved rather than being duplicated. "Verifica conformità" became a real
   menu command in the process: a toolbar button with no menu equivalent has no
   shortcut and cannot be given one.
+  *Note (2026-09-26): the Conformità pane and its «Verifica conformità» command were removed on
+  2026-09-11 by ADR-0038 (PR #195, `6a89a9a`); `perg lint` and the MCP `lint_note`/`lint_vault`
+  tools remain.*
 - 2026-08-13: **Builds are numbered.** Every notarized build until now shipped as
   `1.0 (1)`, so two copies of the app were indistinguishable from the outside and
   there was no way to tell which one was installed. `CFBundleVersion` is now the

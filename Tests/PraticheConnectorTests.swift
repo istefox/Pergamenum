@@ -6,16 +6,8 @@ import Testing
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 9 - R-35,
 // R-36.
 //
-// `VaultAPI.pratiche(_:)`/`.pratica(_:_:)` and their two payload shapes
-// (`PraticaSummary`/`PraticaTimelinePayload`, `Sources/Connector/VaultPayloads.swift`,
-// `Sources/Connector/VaultPratiche.swift`) are tester-declared boundaries (ADR-0155
-// §D1): the coder fills the bodies. `pratiche(_:)` always answers `[]` and
-// `pratica(_:_:)` always throws today - wrong-but-compiling, never a `fatalError`, so
-// every positive assertion below is genuinely red rather than a crash.
-//
 // The fixture pratica folder is built entirely from already-real Task 3/6 machinery
-// (`Dossier`, `MessageDocument`, `PraticaLedger`) - only the connector functions
-// themselves are stubs. No test here touches `~/Library/Mail` or
+// (`Dossier`, `MessageDocument`, `PraticaLedger`). No test here touches `~/Library/Mail` or
 // `MailStoreReader`/`MailStoreConnection`/`SQLite3` in any form (R-36's own
 // structural half, already checked by `SharedSourcesPurityTests`).
 
@@ -96,8 +88,6 @@ private func openVaultWithOnePratica(_ vault: borrowing TemporaryVault) async th
 
         let summaries = VaultAPI.pratiche(session)
 
-        // RED until the coder fills `VaultAPI.pratiche(_:)`'s body: the stub answers
-        // `[]` unconditionally.
         let summary = try #require(summaries.first)
         #expect(summaries.count == 1)
         #expect(summary.path == praticaFolder)
@@ -128,8 +118,6 @@ private func openVaultWithOnePratica(_ vault: borrowing TemporaryVault) async th
         let vault = try TemporaryVault()
         let session = try await openVaultWithOnePratica(vault)
 
-        // RED until the coder fills `VaultAPI.pratica(_:_:)`'s body: the stub always
-        // throws.
         let payload = try VaultAPI.pratica(session, "Offerta")
         #expect(payload.path == praticaFolder)
         #expect(payload.title == "Offerta")

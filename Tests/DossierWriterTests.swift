@@ -5,11 +5,7 @@ import Testing
 // ADR-0036 §D22.4 (PG-117), plan
 // docs/superpowers/plans/2026-09-10-pratiche-pg105-pg108.md, Task 4.
 //
-// `DossierWriter.update` is a tester-declared stub (ADR-0155): the coder extracts the
-// real read-modify-write body from `PraticaCommandActions.updateDossier`. This test is
-// written against the contract - call `update`, then read the file back - so it stays
-// red until the coder's implementation lands, rather than against the stub's own
-// (empty) behaviour.
+// This test is written against the contract - call `update`, then read the file back.
 
 private let praticaNoteWithForeignKey = """
 ---
@@ -38,8 +34,7 @@ Corpo della pratica, non toccato.
     // position - this is `Dossier.merging`'s own already-tested guarantee, exercised
     // here through the higher-level read-modify-write `DossierWriter` wraps.
     #expect(text.contains("obsidian-icon: 📁"))
-    // The actual change asked for: this is what is red against today's stub, which
-    // always returns `nil` and writes nothing.
+    // The actual change asked for.
     #expect(text.contains("<new@rossi-spa.it>"))
     #expect(text.contains("<already-excluded@rossi-spa.it>"))
 }

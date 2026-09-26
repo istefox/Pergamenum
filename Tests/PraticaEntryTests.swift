@@ -4,10 +4,6 @@ import Testing
 
 // ADR-0036 (Pratiche), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 7 -
 // R-28, R-29; ADR §D5.
-//
-// `PraticaEntry.insert(kind:at:in:)` and `DailyNoteMirror.line(for:)`/`.appending` are
-// tester-declared boundaries (ADR-0155 §D1), stubbed to a wrong-but-safe constant so
-// every assertion below fails on the assertion, never by crashing the process.
 
 @Suite struct PraticaEntryTests {
     private static func date(_ iso: String) -> Date {

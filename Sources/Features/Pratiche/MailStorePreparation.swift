@@ -52,7 +52,7 @@ enum MailStorePreparation {
         var snapshot: MembershipStoreSnapshot
         /// §D23.3/§D23.4: `old → new` for every followed conversation `prepare` found
         /// renumbered this run - defaulted empty so every existing construction site
-        /// keeps compiling (ADR-0155 §D1; the coder fills the detection in `prepare`).
+        /// keeps compiling.
         var conversationRemap: [Int: Int] = [:]
         /// §D23.5: followed conversations whose every known member has vanished from
         /// the store - reported through `controller.report(_:)`, never removed from

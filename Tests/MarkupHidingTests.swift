@@ -520,13 +520,12 @@ private func firstParagraphLength(of note: String, at location: Int = 0) -> Int 
         #expect(clamped.firstLineHeadIndent == 20 * 1.5 * 6)
     }
 
-    /// **Red on purpose.** The Task 4 stub (`ListMarkerRendering.swift`) accepts `basedOn` but
-    /// does not yet compose it, so a style already carrying `lineHeightMultiple` 1.4 - the value
+    /// A style already carrying `lineHeightMultiple` 1.4 - the value
     /// `ProseTypography.paragraphStyle(_:basedOn:)` would have set on the paragraph before this
-    /// function ever sees it (ADR-0030 §D6) - is dropped the moment the paragraph also becomes a
-    /// list item. `ProseTypography.paragraphStyle(_:basedOn:)` already performs exactly this
-    /// composition for its own case (`style.setParagraphStyle(basedOn)`); this is the same rule
-    /// applied to the list-indent side, which the coder's job for this task is to add.
+    /// function ever sees it (ADR-0030 §D6) - must survive the paragraph also becoming a list
+    /// item. `ProseTypography.paragraphStyle(_:basedOn:)` performs exactly this composition for
+    /// its own case (`style.setParagraphStyle(basedOn)`); this is the same rule applied to the
+    /// list-indent side.
     @Test func paragraphStyleComposesOntoAnIncomingLineHeightWithoutDroppingItOrTheIndent() {
         let base = NSMutableParagraphStyle()
         base.lineHeightMultiple = 1.4
@@ -542,11 +541,9 @@ private func firstParagraphLength(of note: String, at location: Int = 0) -> Int 
 
 // MARK: - Faces pushed onto the decoration delegate and the fold badge (ADR-0030 §D1/§D5)
 //
-// Task 4 of `2026-09-04-editor-page-typography-noteplan`. Both properties are declared as plain
-// stored values with system-face defaults (tester stubs, ADR-0155 §D1): the coder wires
-// `applyStyling`/`textLayoutManager(_:textLayoutFragmentFor:in:)` to push `ProseTypography`
-// values into them next. What is asserted here is the interface itself - default and settable -
-// not a drawn pixel, which is out of reach without a pixel-level harness this repo does not have
+// Task 4 of `2026-09-04-editor-page-typography-noteplan`. Both properties are plain stored
+// values with system-face defaults. What is asserted here is the interface itself - default
+// and settable - not a drawn pixel, which is out of reach without a pixel-level harness this repo does not have
 // for either type.
 
 @Suite struct EditorDecorationDelegateProseFaces {
@@ -1055,11 +1052,10 @@ private final class NotificationCounter: @unchecked Sendable {
 // `EditorDecorationDelegate.collapsing(among:paragraphIsRevealed:revealedSpans:)` is
 // exercised directly, as a pure static function, rather than through a full layout pass -
 // the same reason the ADR itself gives for making it one: it is testable without a text
-// view. The hook's own last guard is not yet wired to call it (tester half of Task 3; the
-// coder half rewires it per the TODO left beside that guard), so
-// `theHookReturnsNilForARevealedParagraph` above stays green **unedited**, and R-07 is
-// pinned again below through the public `displayedParagraph` helper, extended with the two
-// new, defaulted `spans:`/`revealsInlineSpans:` parameters rather than replaced.
+// view. The hook's own last guard calls it. R-07, which
+// `theHookReturnsNilForARevealedParagraph` above pins, is pinned again below through the
+// public `displayedParagraph` helper, extended with the two new, defaulted
+// `spans:`/`revealsInlineSpans:` parameters rather than replaced.
 @MainActor
 @Suite struct MarkupHidingInlineSpans {
     // "**uno** e **due**\n" - two whole bold runs in one paragraph (R-01).

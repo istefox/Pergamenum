@@ -712,8 +712,8 @@ extension PraticheController {
     /// `memberMessageIDs(forConversation:)` answers nothing for the new id and the
     /// pratica silently loses its recovery data one renumbering later.
     ///
-    /// Declared here (ADR-0155 §D1); the coder wires the body (§D23.4's repointing,
-    /// called from `PraticaLiveSync.runExclusive` before candidates are evaluated).
+    /// Called, through `applyConversationRemap`, from `PraticaLiveSync.runExclusive`
+    /// before candidates are evaluated (§D23.4).
     ///
     /// Takes the run's own `session` and an `isCurrentVault` flag, like `recordSyncOutcome`
     /// (ADR-0052 §D7), and not the `VaultController` it used to: it runs after an `await

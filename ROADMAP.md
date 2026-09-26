@@ -720,7 +720,7 @@ fourth instance)
    does not resolve symlinks; FSEvents delivers canonical paths). `VaultWalk` already uses
    `.canonicalPathKey` for the measured `/var` vs `/private/var` case.
    What: external edits never reach the open tab; spurious `.deleted` events close tabs
-   post-ADR-0061.
+   post-ADR-0064.
    Fix: canonicalise the root once and compare against canonical event paths.
 
 ---

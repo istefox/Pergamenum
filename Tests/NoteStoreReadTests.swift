@@ -10,14 +10,7 @@ import Testing
 // derivation), `perf-NoteStore.swift-bf6` (frontmatter parsed twice per read),
 // `perf-VaultSession+Journal.swift-462` (a moved file read twice).
 //
-// **Tester-only stub (ADR-0155), declared in `Sources/Vault/NoteStore+ReadSurface.swift`.**
-// `text(_:)`, `linkTargets(in document:)` and `record(from:attributes:at:)` exist only as
-// placeholders that let this file and Task 8's actor compile - none of them yet do the
-// single-parse, boundary-checked, no-hash work the ADR describes. Every test below that
-// exercises one of them is red until the coder replaces the stub; `read` itself is
-// untouched, so the tests that characterise its current output are green from the start
-// and exist to catch a regression once the coder re-expresses it in terms of the new
-// members.
+// The tests that characterise `read`'s output exist to catch a regression.
 //
 // `Tests/TransclusionTests.swift:182` (`aTranscludedNoteIsALinkAndAnEmbeddedFileIsNot`) and
 // `:221` (`aTranscludedSectionCountsAsALinkToItsNoteOnce`) exercise the unchanged
@@ -129,7 +122,7 @@ private func diskFacts(for url: URL) throws -> (attributes: [FileAttributeKey: A
     #expect(fromDocument == ["Vera"])
 }
 
-// MARK: - `text(_:)` (coder implements: boundary, `Data(contentsOf:)`, UTF-8 decode only)
+// MARK: - `text(_:)` (boundary, `Data(contentsOf:)`, UTF-8 decode only)
 
 @Test func textReturnsTheSameStringReadReturns() throws {
     let vault = try TemporaryVault()

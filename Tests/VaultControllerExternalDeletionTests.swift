@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0061 (external deletion reaches the editor tabs and the Diario pane), plan
+// ADR-0064 (external deletion reaches the editor tabs and the Diario pane), plan
 // `docs/plans/pg-234-external-deletion.md` Task 2, tests 9-18. R-03 (a clean tab closes, in
 // every column), R-04/§D3 (a dirty tab is asked, newest wins), R-05/R-06 (the two verbs), the
 // banner's copy (R-04), and §D6's move/trash ordering guards (R-09).
@@ -166,7 +166,7 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
 }
 
 /// Red on today's code: today's `keepLocalVersion()` only clears the pending value, it never
-/// sets `savedText = ""` (ADR-0061 §D5), so a buffer undone back to its original text reads
+/// sets `savedText = ""` (ADR-0064 §D5), so a buffer undone back to its original text reads
 /// clean both before and after the call - there is nothing left for a save to recreate from.
 @MainActor
 @Test func aBufferUndoneToCleanCanStillBeKeptAndSaved() async throws {

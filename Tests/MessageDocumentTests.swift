@@ -240,9 +240,7 @@ import Testing
     // MARK: - R-04 (ADR-0040 §D3): the pending-attachment codec
     //
     // `attachmentEntry(linking:)`/`attachmentEntry(pending:)`/`isPendingAttachmentEntry`
-    // and `MailFrontmatter.linkedAttachmentNames`/`pendingAttachmentNames` are the
-    // tester-declared boundary (ADR-0155 §D1); the coder's bodies do not exist yet, so
-    // every assertion below is expected to fail to compile/run until Task 3 lands.
+    // and `MailFrontmatter.linkedAttachmentNames`/`pendingAttachmentNames`.
 
     @Test func attachmentEntryLinkingWrapsTheNameInDoubleBrackets() {
         #expect(MessageDocument.attachmentEntry(linking: "20260610_a.pdf") == "[[20260610_a.pdf]]")

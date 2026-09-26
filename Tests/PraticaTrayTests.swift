@@ -7,11 +7,6 @@ import Testing
 // «Aggiungi» follows and imports, «Ignora» writes the conversation into
 // `pergamenum-dossier-ignored` for this pratica only, and the strip is hidden when
 // empty".
-//
-// `PraticaTrayModel.proposals(from:)`, `.ignoring(conversationID:in:)` and
-// `.following(conversationID:in:)` are tester-declared boundaries (ADR-0155 §D1),
-// stubbed to a wrong-but-safe constant so every assertion below fails on the
-// assertion, never by crashing the process.
 
 @Suite struct PraticaTrayModelTests {
     private static func row(

@@ -5,11 +5,6 @@ import Testing
 // ADR-0036 (A pratica is a folder that fills itself from a copy of Mail's index, and
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 4 -
 // R-09, R-10, R-11, R-15, R-16, §D15.
-//
-// `PraticaSyncPlan.workItems` and every `PraticaSyncEngine` method are declared-but-
-// stubbed by this batch's tester (ADR-0155 §D1) - every test below is red because the
-// stub does nothing, not because a symbol is missing. The coder fills in the bodies;
-// these tests, unedited, are what proves the fill-in is correct.
 
 @Suite struct PraticaSyncRepairTests {
     private typealias Fixtures = PraticaSyncFixtures
@@ -137,13 +132,6 @@ import Testing
 
     // MARK: Task 7 (ADR-0040 §D7) - a corrupt file already in the vault is trashed and
     // its message re-enters the cycle (R-10, R-11, R-12)
-    //
-    // `PraticaSyncEngine.FolderContext.corruptAttachmentNames` does not exist yet
-    // (tester scope for this dispatch is `Tests/PraticaSyncTests.swift` only - no
-    // stub is declared in `Sources/`, unlike this batch's usual ADR-0155 §D1
-    // convention). Every test below is expected to fail to COMPILE against the
-    // current `PraticaSyncEngine.swift`, not merely to assert something false; the
-    // coder both declares the field and fills in the repair-and-resolve step.
     //
     // Every scenario seeds its "already in the vault" state directly through
     // `seedExistingMessage`/`seedAllegatiFile`, never through a first `engine.sync(_:)`

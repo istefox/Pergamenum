@@ -9,12 +9,6 @@ import Foundation
 // the strip draws (subject, counterpart, date range, count), plus the two actions the
 // strip's own buttons perform on the pratica's `Dossier` - «Aggiungi» (follow) and
 // «Ignora» (dismiss, this pratica only).
-//
-// Every function below is a tester-declared boundary (ADR-0155 §D1): `proposals(from:)`,
-// `ignoring(conversationID:in:)` and `following(conversationID:in:)` are stubbed to a
-// wrong-but-safe constant, never `fatalError`. `isHidden(_:)` is real: it is exactly
-// `.isEmpty`, the same kind of trivial deterministic mapping `WizardState`'s gates
-// already ship as real logic rather than stubbed.
 enum PraticaTrayModel {
     /// One tray row - what `PraticaTrayStrip` actually draws, reduced from
     /// `MembershipRule.TrayEntry`'s raw `[MailMessageRow]`.
@@ -76,8 +70,7 @@ enum PraticaTrayModel {
         row.dateSent ?? row.dateReceived ?? .distantPast
     }
 
-    /// R-30: "the strip is hidden when empty" - real logic, not a stub, since it is
-    /// exactly `.isEmpty` and pins down nothing the coder still has to build.
+    /// R-30: "the strip is hidden when empty" - exactly `.isEmpty`.
     static func isHidden(_ proposals: [PraticaTrayProposal]) -> Bool {
         proposals.isEmpty
     }

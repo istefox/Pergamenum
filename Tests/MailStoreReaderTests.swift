@@ -6,13 +6,8 @@ import Testing
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 1 - R-02,
 // R-03, R-19.
 //
-// Every declaration under test here (`MailStoreLocation`, `MailStoreCopy`,
-// `MailStoreConnection`, `MailStoreReader`, the value types) is a tester-declared
-// boundary (ADR-0155): the coder fills the bodies. `MailStoreConnection.open` always
-// throws today, which is what keeps every `MailStoreReader` query red rather than
-// crashing the process on a `fatalError` - construction fails before any query body
-// ever runs. `MailStoreFixture` (`Tests/MailStoreFixture.swift`) builds every fixture;
-// no test here touches `~/Library/Mail`.
+// `MailStoreFixture` (`Tests/MailStoreFixture.swift`) builds every fixture; no test here
+// touches `~/Library/Mail`.
 
 @Suite(.serialized) struct MailStoreReaderTests {
     // MARK: - R-19: MailStoreLocation
@@ -20,8 +15,7 @@ import Testing
     @Test func resolveNeverPointsAtTheRealMailLibraryUnderTest() async {
         // Real behaviour (ADR §D7): under xctest, with no override, `resolve()`
         // returns a per-process temporary fixture root - never
-        // `~/Library/Mail/V10`. The stub returns a fixed placeholder outside the
-        // temporary directory, so this fails until the coder implements §D7.
+        // `~/Library/Mail/V10`.
         //
         // `MailStoreLocation.overrideKey` is process-global (PG-208) - a concurrent
         // suite's override must not leak into this "no override" assertion, so this
@@ -38,9 +32,8 @@ import Testing
         // Real behaviour (ADR §D7, mirroring `VaultState.testProcessBase`): the same
         // per-process fixture root is returned on every call within one process, or
         // a session that calls `resolve()` twice loses state written by the first
-        // call. This is expected to already hold for the current constant stub -
-        // kept as a guard against a future implementation that resolves a *new*
-        // temporary directory per call.
+        // call. A guard against an implementation that resolves a *new* temporary
+        // directory per call.
         await MailStoreOverride.acquireWithoutOverride()
         defer { MailStoreOverride.release() }
 
@@ -128,9 +121,7 @@ import Testing
             return
         }
         // Real behaviour (ADR §D2): the published generation actually holds a copy
-        // of `Envelope Index`. The stub answers `.published` at a placeholder URL
-        // with no file ever written, so this fails until the coder implements the
-        // staging/copy/rename sequence.
+        // of `Envelope Index`, through the staging/copy/rename sequence.
         let copiedIndex = publishedURL.appending(path: "Envelope Index", directoryHint: .notDirectory)
         #expect(FileManager.default.fileExists(atPath: copiedIndex.path(percentEncoded: false)))
     }
@@ -148,10 +139,9 @@ import Testing
             return
         }
 
-        // R-02: "skipping the copy when the source mtime is unchanged". The stub
-        // always answers `.published`, never `.unchanged`, so this fails until the
-        // coder compares the source's modification date against the published
-        // generation's own stamp (ADR §D2).
+        // R-02: "skipping the copy when the source mtime is unchanged": the source's
+        // modification date is compared against the published generation's own stamp
+        // (ADR §D2).
         let second = MailStoreCopy.publish(from: fixture.root, into: stateDirectory)
         #expect(second == .unchanged(firstURL))
     }
@@ -177,9 +167,7 @@ import Testing
         let second = MailStoreCopy.publish(from: fixture.root, into: stateDirectory)
         // Real behaviour: a changed source republishes into a *new* generation,
         // distinct from the first (ADR §D2: one directory per generation, oldest
-        // ones deleted afterwards). The stub answers the exact same fixed
-        // placeholder every time for the same `stateDirectory`, so this fails until
-        // the coder compares modification dates and mints a fresh generation.
+        // ones deleted afterwards).
         guard case let .published(secondURL) = second else {
             Issue.record("expected .published again after the source changed, got \(second)")
             return
@@ -199,9 +187,8 @@ import Testing
         let stateDirectory = try Self.freshStateDirectory()
 
         // R-02 / ADR §D2 step 3: a torn copy is retried once, then reported as
-        // `.mailIsWriting`, never surfaced as a half-populated reader. The stub
-        // always answers `.published`, so this fails until the coder implements
-        // `PRAGMA quick_check` + the one retry.
+        // `.mailIsWriting`, never surfaced as a half-populated reader
+        // (`PRAGMA quick_check` + the one retry).
         let result = MailStoreCopy.publish(from: fixture.root, into: stateDirectory)
 
         // PG-120 (#204): this test failed once inside a full-suite run and never again in
@@ -227,9 +214,7 @@ import Testing
 
         // R-02 / ADR §D1: `SQLITE_OPEN_CREATE` is never passed, so a source with no
         // `Envelope Index` must answer `.storeMissing`, never mint an empty,
-        // permanently-"nessun messaggio" database. The stub always answers
-        // `.published`, so this fails until the coder checks for the source file
-        // before ever opening anything.
+        // permanently-"nessun messaggio" database.
         let result = MailStoreCopy.publish(from: emptySource, into: stateDirectory)
         #expect(result == .storeMissing)
     }
@@ -242,9 +227,7 @@ import Testing
             messages: [Self.firstMessage, Self.secondMessageSameConversation, Self.thirdMessageOtherConversation]
         )
 
-        // R-03: "messages by conversation id". `init(storeURL:)` throws until the
-        // coder implements `MailStoreConnection.open`, so this is red at
-        // construction - the query body itself is dead code until then.
+        // R-03: "messages by conversation id".
         let reader = try MailStoreReader(storeURL: fixture.indexURL)
         let messages = reader.messages(inConversation: Self.sharedConversationID)
         #expect(Set(messages.map(\.rowID)) == [Self.firstMessage.rowID, Self.secondMessageSameConversation.rowID])
@@ -269,8 +252,7 @@ import Testing
 
         // R-03 / ADR §D3: given PROBE 1's answer (C9: `message_id` is an opaque
         // `INTEGER` hash), the honest result is always `.notResolvableFromIndex` -
-        // the real `Message-ID` lookup is the ledger's job (Task 3). This is still
-        // red today because construction itself throws.
+        // the real `Message-ID` lookup is the ledger's job (Task 3).
         let reader = try MailStoreReader(storeURL: fixture.indexURL)
         let lookup = reader.row(forMessageID: "<abc@rossi-spa.it>")
         #expect(lookup == .notResolvableFromIndex)
@@ -332,9 +314,7 @@ import Testing
         )
 
         // §D24.1/§D24.2: `messages(inConversation:)` must fold the `recipients` join
-        // onto each row, lower-cased. The reader's own `rows(_:bind:)` still builds
-        // every `MailMessageRow` with the field at its default (`[]`), so this is red
-        // until the coder wires the join in.
+        // onto each row, lower-cased.
         let reader = try MailStoreReader(storeURL: fixture.indexURL)
         let messages = reader.messages(inConversation: Self.recipientsConversationID)
 
@@ -352,9 +332,8 @@ import Testing
         let fixture = try MailStoreFixture.build(mailboxes: [Self.inboxMailbox], messages: [Self.firstMessage])
         let reader = try MailStoreReader(storeURL: fixture.indexURL)
 
-        // §D24.4: a store whose schema includes `recipients` must answer true - the
-        // tester's stub always answers false, so this is red until the coder
-        // implements `SELECT 1 FROM recipients LIMIT 1`.
+        // §D24.4: a store whose schema includes `recipients` must answer true
+        // (`SELECT 1 FROM recipients LIMIT 1`).
         #expect(reader.supportsRecipients())
     }
 
@@ -364,10 +343,7 @@ import Testing
 
         // §D24.4/F5: a schema with no `recipients` table must fail closed - every row
         // still comes back with `recipients == []`, `supportsRecipients()` answers
-        // false, and the pre-existing sender-only case is unaffected. This already
-        // holds against the tester's stub (recipients defaults to `[]`,
-        // `supportsRecipients()` defaults to `false`); it stays true once the coder
-        // wires the real join and query in, which is what this test guards.
+        // false, and the pre-existing sender-only case is unaffected.
         let reader = try MailStoreReader(storeURL: fixture.indexURL)
         let messages = reader.messages(inConversation: Self.sharedConversationID)
         #expect(messages.allSatisfy { $0.recipients.isEmpty })

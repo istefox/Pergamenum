@@ -11,9 +11,6 @@ import Foundation
 // app-sidebar row "Pratiche sits in LAVORO before Registrazioni" is a placement
 // claim, not a grouping one) - see this batch's report for why that placement is
 // deferred rather than declared here.
-//
-// Tester-declared boundary (ADR-0155 §D1): `grouped(_:)` is stubbed to a
-// wrong-but-safe constant, never `fatalError`.
 
 /// One pratica as the sidebar list needs it (SPEC "Sidebar"): enough to group, order,
 /// badge and dim it, never the full timeline.

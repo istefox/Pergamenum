@@ -34,8 +34,9 @@ CODER-MODEL CANDIDATE: opus
 > `@Observable` class awaits on its hottest path, passes a `Sendable` outcome back across that
 > boundary, and turns ~35 production call sites `async` — including four SwiftUI callbacks that
 > must wrap in `Task { }`. It also closes a path-traversal hole and makes a widely-called
-> accessor (`NoteStore.url(for:)`, 31 call sites) throwing. Every one of ADR-0155's
-> compiled-language hazards is present. Not a Sonnet job.
+> accessor (`NoteStore.url(for:)`, 31 call sites) throwing. Every one of the compiled-language
+> hazards of ADR-0155 (the retired concept-to-code workflow's ADR, not a Pergamenum one) is
+> present. Not a Sonnet job.
 
 ---
 

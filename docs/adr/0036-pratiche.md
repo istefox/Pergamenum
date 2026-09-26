@@ -1,6 +1,6 @@
 # ADR-0036: A pratica is a folder that fills itself from a copy of Mail's index, and never from Mail
 
-- Status: proposed
+- Status: accepted. Landed on `main` via PR #196 (merge `ab36722`, 2026-09-11).
 - Date: 2026-09-09. Written after reading every file it names, at the line, on the working tree at
   `76ac529` (`main`, ADR-0035 merged through PR #181/#183). Every claim below about this repo's
   code was read out of `Sources/`, not out of the SPEC; every claim about SQLite was measured with
@@ -593,7 +593,8 @@ paths were read. Four measured facts amend the decisions above; none reverses on
 - **§D7 / SPEC message frontmatter, open point:** the `MessageDocument` declaration carries no
   `subject` field, so `pergamenum-mail-subject` is not written yet; the subject survives only in the
   file name's slug. Task 4's sync needs it, and the tester of that batch adds the field to the
-  declaration (tester owns the signature, ADR-0155).
+  declaration (tester owns the signature, ADR-0155 of the retired concept-to-code workflow, not a
+  Pergamenum ADR).
 - **Deliberate divergences from the SPEC's worked examples:** an empty `pergamenum-mail-*` list is
   omitted rather than written as `[]`, matching what `FrontmatterSerializer` already does for
   `related`/`aliases`; the dossier codec reads both the block and the inline `[a, b]` list forms

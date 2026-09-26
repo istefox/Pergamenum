@@ -1,6 +1,6 @@
 # ADR-0042: An inline image Mail has not sent yet is a hole in the prose, not an attachment
 
-- Status: proposed
+- Status: accepted. Landed on `main` via PR #250 (merge `f9dc424`, 2026-09-12).
 - Date: 2026-09-12. Written after reading every file it names, at the line, on the working tree at
   `71f6664` (`main`, marketing version 1.4). Every claim below about this repo's code was read out
   of `Sources/`, `Tests/` and `UITests/`, not out of an ADR.
@@ -49,8 +49,9 @@
   (§"Protected-interface proposal").
 - Depends on: **ADR-0036** in full, **ADR-0040** in full (this is a defect fix inside that fix),
   **ADR-0020** (a prefixed key is how this repo extends a closed schema), **ADR-0053** (protected
-  interfaces are proposed by the architect and created by the operator), **ADR-0155** (on a
-  compiled language the tester owns the declaration, the coder owns the body).
+  interfaces are proposed by the architect and created by the operator), **ADR-0155** (the
+  retired concept-to-code workflow's ADR, not a Pergamenum one: on a compiled language the tester
+  owns the declaration, the coder owns the body).
 
 ---
 
