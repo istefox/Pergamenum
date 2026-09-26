@@ -244,7 +244,7 @@ private let beforeReminders = EventKitStore.date(CalendarDate(iso: "2026-08-10")
 
 @Test func theNotificationNamesItsSourceNoteAndCarriesAPathRouteWithNoIDMinted() throws {
     // No `noteIDs` entry for the source note - the fallback route (PG-237), used when
-    // no vault is open or the task is `.canvas`-sourced.
+    // no vault is open. A `.canvas`-sourced task gets the board route instead (PG-243).
     let requests = ReminderScheduler.requests(
         for: [task("- [ ] Richiamare @remind(2026-08-15 09:00)")], after: beforeReminders
     )

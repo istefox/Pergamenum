@@ -112,7 +112,8 @@ enum PergamenumRoute: Equatable, Sendable {
 /// Builds `pergamenum://` links (SPEC §9), in two forms for a note. The stable id form
 /// (`note(id:)`) is what «Copia link Pergamenum» copies (ADR-0059 §D8); the path form
 /// (`note(path:)`) stays where a path is the point - `perg app open note`, the MCP note
-/// resources, reminder notifications - and is the fallback when no id can be minted.
+/// resources - and is the fallback when no id can be minted, reminder notifications
+/// included (a board task's reminder carries `canvas(path:nodeID:)` instead).
 enum PergamenumLink {
     /// Percent-encodes a path so a note whose name contains `&`, `?`, `#` or a space
     /// survives the round-trip through a URL.

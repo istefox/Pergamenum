@@ -198,6 +198,9 @@ final class VaultController {
             Self.log.fault("impossibile risolvere Application Support: apertura del vault annullata")
             return
         }
+        // Holds every route until the tabs are restored (PG-243); cleared before the replay,
+        // never after it, since the replay goes back through the same guard.
+        routeState.isOpeningVault = true
 
         // The session reads settings and vocabulary as it is built, which is why this
         // is one statement rather than the four it replaced.
@@ -224,6 +227,7 @@ final class VaultController {
         startWatching(url)
         restoreTabs()
         pinnedTags = pinnedTagsStore.tags(for: url)
+        routeState.isOpeningVault = false
 
         if let route = routeState.pending {
             routeState.pending = nil

@@ -1,6 +1,15 @@
 import Foundation
 import Observation
+import OSLog
 import UserNotifications
+
+/// What a tap on a delivered notification asks the app to do.
+enum ReminderTap: Equatable, Sendable {
+    case open(PergamenumRoute)
+    case notDefaultAction   // dismissed, or a custom action: not a request to open anything
+    case noRoute            // no route key, or an empty one - the test notification's shape
+    case unreadableRoute    // not a String, not a URL, or not a route this app answers
+}
 
 /// Local notifications for `@remind(...)` markers (SPEC §7.1).
 ///
@@ -15,6 +24,16 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     private(set) var scheduledIDs: Set<String> = []
 
     private let center = UNUserNotificationCenter.current()
+
+    /// Where a tapped notification's route goes. Wired once by `PergamenumApp.init` to
+    /// `VaultController.handle(_:)`, the app's one route door; `nil` in tests, where a tap
+    /// is classified by `tap(actionIdentifier:userInfo:)` and delivered nowhere.
+    @ObservationIgnored var openRoute: (@MainActor (PergamenumRoute) async -> Void)?
+
+    /// The `userInfo` key a scheduled notification carries its route under.
+    nonisolated static let routeKey = "route"
+
+    private static let log = Logger(subsystem: AppInfo.bundleIdentifier, category: "reminders")
 
     override init() {
         super.init()
@@ -32,6 +51,62 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
         [.banner, .sound, .list]
+    }
+
+    /// Opens the note a tapped reminder came from (PG-243).
+    ///
+    /// The non-Sendable `response` is read here, on the nonisolated side, and only the
+    /// `Sendable` classification crosses to the main actor. Awaited rather than spawned,
+    /// so the system's completion fires after the route has been handled.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        let tap = Self.tap(
+            actionIdentifier: response.actionIdentifier,
+            userInfo: response.notification.request.content.userInfo
+        )
+        await deliver(tap)
+    }
+
+    /// Hands an opened route to the app and logs every other outcome (R-03: a log line,
+    /// never a problem banner). The raw route string is never logged: it carries note
+    /// paths (PG-125). No `NSApp.activate`: a default-action tap already brings the app
+    /// forward.
+    private func deliver(_ tap: ReminderTap) async {
+        switch tap {
+        case .open(let route):
+            Self.log.notice("tap su notifica: \(route.kind, privacy: .public)")
+            guard let openRoute else {
+                Self.log.notice("tap su notifica: nessun destinatario per la route")
+                return
+            }
+            await openRoute(route)
+        case .notDefaultAction:
+            Self.log.notice("tap su notifica: notDefaultAction")
+        case .noRoute:
+            Self.log.notice("tap su notifica: noRoute")
+        case .unreadableRoute:
+            Self.log.notice("tap su notifica: unreadableRoute")
+        }
+    }
+
+    /// What a notification response asks for, as a pure function of the two values the
+    /// response carries - testable without `UNUserNotificationCenter` (R-04).
+    ///
+    /// A route naming a `.canvas` file through `note?file=` becomes the board route: a
+    /// notification scheduled before board tasks carried their own route must not open
+    /// the board's JSON in a note tab.
+    nonisolated static func tap(actionIdentifier: String, userInfo: [AnyHashable: Any]) -> ReminderTap {
+        guard actionIdentifier == UNNotificationDefaultActionIdentifier else { return .notDefaultAction }
+        guard let value = userInfo[routeKey] else { return .noRoute }
+        if let text = value as? String, text.isEmpty { return .noRoute }
+        guard let text = value as? String, let url = URL(string: text),
+              let route = PergamenumRoute(url) else { return .unreadableRoute }
+        if case .note(let path) = route, (path as NSString).pathExtension.lowercased() == "canvas" {
+            return .open(.canvas(path: path, nodeID: nil))
+        }
+        return .open(route)
     }
 
     /// Whether an authorised notification will actually be seen.
@@ -88,8 +163,8 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     /// before the route is built, the same id-first-then-path pattern
     /// `VaultController.pergamenumLink(toNoteAt:)` already uses - so a note renamed
     /// in-app between scheduling and firing is still found (PG-237). `nil` (no vault
-    /// open, or a `.canvas`-sourced task, which `mintNoteID` always refuses) falls
-    /// back to the path route unchanged.
+    /// open) falls back to the path route unchanged; a board task gets the board route,
+    /// whatever `mintNoteID` answers for it (PG-243).
     func reschedule(for tasks: [TaskItem], session: VaultSession?, now: Date = Date()) async {
         guard access.isGranted else { return }
 
@@ -180,10 +255,14 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
             // Carries the route so tapping the notification opens the note it came
             // from rather than just the app. The id route (PG-237) survives a rename
             // between scheduling and firing; the path route is the fallback when no
-            // id was minted (no vault open, or a `.canvas`-sourced task).
-            let route = noteIDs[task.sourcePath].flatMap(PergamenumLink.note(id:))
-                ?? PergamenumLink.note(path: task.sourcePath)
-            content.userInfo = ["route": route?.absoluteString ?? ""]
+            // id was minted (no vault open). A board task gets the board route, never
+            // an id or a note route: a note route would open the board's JSON in a tab.
+            let isBoard = (task.sourcePath as NSString).pathExtension.lowercased() == "canvas"
+            let route = isBoard
+                ? PergamenumLink.canvas(path: task.sourcePath, nodeID: task.nodeID)
+                : noteIDs[task.sourcePath].flatMap(PergamenumLink.note(id:))
+                    ?? PergamenumLink.note(path: task.sourcePath)
+            content.userInfo = [Self.routeKey: route?.absoluteString ?? ""]
 
             let components = Calendar.current.dateComponents(
                 [.year, .month, .day, .hour, .minute], from: fireDate

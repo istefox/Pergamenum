@@ -1,5 +1,7 @@
 import AppKit
+import OSLog
 import SwiftUI
+import UserNotifications
 
 /// Handles `pergamenum://` links at the application level.
 ///
@@ -13,6 +15,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var vault: VaultController?
     /// Set beside `vault`, for the same reason: the quit path below waits on it.
     weak var diary: DiaryController?
+
+    /// Logs who holds the notification delegate once launch finishes, so a cold-launch tap
+    /// reaching `ReminderScheduler` is a fact read in the log, not an inference (PG-243).
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let delegate = UNUserNotificationCenter.current().delegate.map { String(describing: type(of: $0)) }
+        Logger(subsystem: AppInfo.bundleIdentifier, category: "reminders")
+            .notice("delegate notifiche al lancio: \(delegate ?? "nessuno", privacy: .public)")
+    }
 
     /// Holds quit until the Diario's owed writes have landed (ADR-0057 §D8, #497).
     /// `willTerminateNotification` fires after the decision to exit, so a flush started
@@ -81,8 +91,9 @@ struct PergamenumApp: App {
     @State private var shortcuts = ShortcutStore()
     /// Local notifications for `@remind(...)` (SPEC §7.1). Held here so it outlives
     /// any one view: it was written, unit-tested and never instantiated, so the
-    /// markers parsed correctly and no notification was ever scheduled.
-    @State private var reminders = ReminderScheduler()
+    /// markers parsed correctly and no notification was ever scheduled. Built in `init`,
+    /// where its tap sink is wired (PG-243).
+    @State private var reminders: ReminderScheduler
     /// Sparkle (ADR-0031). A plain inline default, unlike `navigation`/`history`: nothing in
     /// `init` needs it, and `init` is precisely where the updater must not be touched - the
     /// object is allocated here but only `start()`, called from `armCapture()`, builds and
@@ -160,6 +171,14 @@ struct PergamenumApp: App {
         // reload it rather than wait to be reopened - `weak` since the controller, not
         // this closure, owns the lifetime.
         vault.didChangeExternally = { [weak diary] path in diary?.externalChange(at: path) }
+
+        // PG-243. Here and not in `armCapture()`: Apple requires the notification delegate
+        // (set by this constructor) before launch finishes, and a tap that cold-launches the
+        // app is delivered then. Wired to `vault`, not `appDelegate.vault`, which stays nil
+        // until the window appears; `handle` holds the route until the vault is open.
+        let reminders = ReminderScheduler()
+        reminders.openRoute = { route in await vault.handle(route) }
+        _reminders = State(initialValue: reminders)
 
         let pratiche = PraticheController.live(vault: vault)
         // ADR-0026 §D7: the choke point for every folder move and rename, forward and
