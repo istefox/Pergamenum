@@ -1,7 +1,7 @@
 # ADR-0068: Pratiche sync integrity — every note operation through the session, nineteen edges closed
 
-- Status: **accepted**. Merged to `main` via PR #609 (`519668ac`, 2026-09-27), closing
-  `PG-257`/#571.
+- Status: **accepted**. Merged to `main` via PR #609 (`519668ac`, 2026-09-27), closing `PG-257`/#571
+  (Audit Fable chain 4).
 - Date: 2026-09-26. Written before the implementation, against `3fcde6f0` (tree clean apart from
   `SPEC.md`). `origin/main` is `1e09448e`, and its net difference from this tree is `TODO.md` alone.
   Every line number below was read from `3fcde6f0`. None is recalled from the ROADMAP, whose line
