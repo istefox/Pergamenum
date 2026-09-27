@@ -145,6 +145,8 @@ scripts/uitests.sh                                                              
 scripts/check-merge-integrity.py --self-test                                                    # ADR-0061's and ADR-0062's own assertions, offline, touches no repository
 scripts/check-merge-integrity.py --landings "$(git rev-list --max-parents=0 origin/main)..origin/main"  # ADR-0062's landing audit over main's history (exits 1 on the six known historical landings)
 scripts/install-git-hooks.sh                                                                    # once per machine: installs the pre-push guard from ADR-0061/0062; rerun with --force after a hook change
+scripts/check-adr-references.py                                                                 # docs/adr/README.md's three rules on the working tree, against origin/main (git fetch first)
+scripts/check-adr-references.py --self-test                                                     # its own scenarios, offline, in throwaway repositories, touches no repository
 ```
 
 ## AI connector
