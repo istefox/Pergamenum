@@ -64,7 +64,9 @@
       "green": { "$value": "#DFEBD4" },
       "blue": { "$value": "#D8E5F0" },
       "pink": { "$value": "#F6DEE0" },
-      "grey": { "$value": "#E8E5DF" }
+      "grey": { "$value": "#E8E5DF" },
+      "orange": { "$value": "#F9E3CC" },
+      "purple": { "$value": "#E6DDF0" }
     },
     "category": {
       "yellow": { "$value": "#D99A00" },

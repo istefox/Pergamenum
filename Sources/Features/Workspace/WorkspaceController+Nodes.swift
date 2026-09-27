@@ -131,6 +131,23 @@ extension WorkspaceController {
     }
 
     func delete(nodeIDs: Set<String>) {
+        // A session on a card being deleted is dropped, not committed (ADR-0066, PG-255 #569
+        // point 3): its commit would aim a write at a node this `mutate` removes, and an id
+        // left pointing at nothing kept the tool keys suspended and a stale draft waiting.
+        if let id = croppingNodeID, nodeIDs.contains(id) { endCrop(confirm: false) }
+        if let id = editingTextNodeID, nodeIDs.contains(id) {
+            editingTextNodeID = nil
+            editingTextDraft = ""
+        }
+        if let id = editingTitleNodeID, nodeIDs.contains(id) {
+            editingTitleNodeID = nil
+            editingTitleDraft = ""
+        }
+        // The ink being edited belongs to the card that is going, so it goes with it.
+        if let id = editingDrawingNodeID, nodeIDs.contains(id) {
+            editingDrawingNodeID = nil
+            activeDrawing = .empty
+        }
         mutate { document in
             document.nodes.removeAll { nodeIDs.contains($0.id) }
             // An edge to a node that no longer exists is unrenderable and would be

@@ -26,7 +26,9 @@ struct DesignSystemSettings: View {
         ("Accento", [.accentPrimary, .accentMuted, .onAccent]),
         ("Workspace", [.canvasBackground, .canvasGrid, .canvasSelection]),
         ("Task", [.taskOpen, .taskScheduled, .taskOverdue, .taskDone, .taskCancelled]),
-        ("Note adesive", [.stickyYellow, .stickyGreen, .stickyBlue, .stickyPink, .stickyGrey]),
+        ("Note adesive", [
+            .stickyYellow, .stickyGreen, .stickyBlue, .stickyPink, .stickyOrange, .stickyPurple, .stickyGrey,
+        ]),
         ("Categorie", [.categoryYellow, .categoryGreen, .categoryBlue, .categoryPink, .categoryGrey]),
     ]
 
