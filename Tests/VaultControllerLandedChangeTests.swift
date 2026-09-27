@@ -4,7 +4,7 @@ import Testing
 
 private typealias VaultTag = Pergamenum.Tag
 
-// ADR-0066 (one door onto the editor after a landed change), plan
+// ADR-0067 (one door onto the editor after a landed change), plan
 // docs/plans/pg-257-pratiche-sync-integrity-and-post-write-door.md, Task 1 - R-01, R-02,
 // R-03, R-05, R-06.
 //
@@ -269,7 +269,7 @@ private func bareSession(_ vault: borrowing TemporaryVault) async -> VaultSessio
     #expect(session.landedGeneration(at: "A2.md") == before, "una prova a vuoto non avanza nulla")
 }
 
-// MARK: - Cross-vault isolation (ADR-0066 §D4)
+// MARK: - Cross-vault isolation (ADR-0067 §D4)
 
 /// Guard: with no subscriber wired to anything yet, a write on the first vault's session can
 /// never reach the second vault's tabs today, and must still never reach them once the door

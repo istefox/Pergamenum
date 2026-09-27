@@ -65,7 +65,7 @@ extension VaultController {
     var tagSuggestions: [String] { session?.tagSuggestions ?? [] }
 
     /// Creates a structural link in both directions (wikilink.md W-05). Each write that lands
-    /// catches up every tab showing its note, in every column, on its own (ADR-0066 §D1): a
+    /// catches up every tab showing its note, in every column, on its own (ADR-0067 §D1): a
     /// dirty buffer gets the prompt rather than being replaced, since the link is built from
     /// the text on disk and the unsaved edits are the person's to keep or drop. The session's
     /// `written` list still reports which writes landed (ADR-0058 §D5); this caller no longer

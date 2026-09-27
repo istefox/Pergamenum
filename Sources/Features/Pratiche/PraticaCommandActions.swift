@@ -46,7 +46,7 @@ struct PraticaCommandActions {
     }
 
     /// The commands a message row offers - `.previewAttachment` exactly when
-    /// `previewURL(for:state:)` has something to open (ADR-0067 §D17): a message whose
+    /// `previewURL(for:state:)` has something to open (ADR-0068 §D17): a message whose
     /// only attachments are over-threshold store references, or whose copies are missing
     /// or damaged, no longer offers a command that does nothing.
     func commands(for detail: PraticaRowDetail?) -> [MessageCommand] {
@@ -54,7 +54,7 @@ struct PraticaCommandActions {
         return MessageCommand.available(hasAttachments: canPreview, hasLinkedNote: detail?.linkedNote != nil)
     }
 
-    /// Item 16 (ADR-0067 §D17): the first attachment Quick Look can show, by the chip's
+    /// Item 16 (ADR-0068 §D17): the first attachment Quick Look can show, by the chip's
     /// own rule (`AttachmentChipModel.previewURL`) - `nil` when there is none. The one
     /// predicate behind both offering «Anteprima allegato» and what it opens.
     static func previewURL(
@@ -191,7 +191,7 @@ struct PraticaCommandActions {
     /// a file in `allegati/` is very often somebody else's attachment too, and trashing
     /// it would break a message nobody asked to touch.
     ///
-    /// The exclusion is recorded first and the files trashed second (ADR-0067 §D12): a
+    /// The exclusion is recorded first and the files trashed second (ADR-0068 §D12): a
     /// dossier that cannot be parsed or written trashes nothing, and its problem is already
     /// on screen. If the exclusion landed but no file could be trashed, it is written back
     /// out and no undo is registered, so the dossier never claims an exclusion the files
@@ -390,7 +390,7 @@ struct PraticaCommandActions {
     /// `follow(_:)` just below: "follows and imports, in that order, because the import
     /// reads the dossier from disk". A wrapper that returned before its write landed would
     /// let the sync read the file the follow had not written yet.
-    /// `Bool` (Task 3 declaration, ADR-0067 §D12): `true` once the write (or the
+    /// `Bool` (Task 3 declaration, ADR-0068 §D12): `true` once the write (or the
     /// no-op it decided was unnecessary) went through, `false` on a reported
     /// failure - `exclude(_:detail:)`'s own «write first, trash second, write back
     /// on nothing trashed» needs to know which happened.
@@ -404,7 +404,7 @@ struct PraticaCommandActions {
         return true
     }
 
-    /// ADR-0067 §D13 item 18: the add-to-pratica tail, pulled out of
+    /// ADR-0068 §D13 item 18: the add-to-pratica tail, pulled out of
     /// `AddToPraticaSheet.add()`. Writes the inclusion, then re-reads the target through
     /// `liveTarget(of:)` on this side of the write's `await` - the choice the sheet made
     /// before it is a filter, not a guard. Returns the path to select and refresh, or
@@ -420,7 +420,7 @@ struct PraticaCommandActions {
     /// `praticaPath`, re-checked: still in `pratiche.pratiche` and its own
     /// `pratica.md` still on disk. `nil` when either has moved on - the caller must
     /// not select or refresh a pane for a pratica that relocated or closed during an
-    /// `await` (ADR-0067 §D13 item 18).
+    /// `await` (ADR-0068 §D13 item 18).
     func liveTarget(of praticaPath: String) -> String? {
         guard pratiche.pratiche.contains(where: { $0.id == praticaPath }) else { return nil }
         guard vault.session?.exists(PraticaNaming.praticaNotePath(of: praticaPath)) == true else { return nil }

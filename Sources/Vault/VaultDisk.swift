@@ -395,7 +395,7 @@ extension VaultDisk {
     /// path's clock (§D1) - the removal and the insertion are two different rows and must
     /// be orderable against a concurrent write to either one independently.
     ///
-    /// `requiringExistingFolder` (ADR-0067 §D2, PG-168): with `true` the destination's parent
+    /// `requiringExistingFolder` (ADR-0068 §D2, PG-168): with `true` the destination's parent
     /// is never created, so a missing folder makes `moveItem` throw and the file stays where
     /// it is. An undo of «Sposta in…» passes it, so undoing a move can never recreate a
     /// pratica folder the person moved or trashed since.
@@ -432,7 +432,7 @@ extension VaultDisk {
     }
 
     /// Moves a file to the Finder's trash and returns the removal beside the Trash URL
-    /// (§D1, ADR-0067 §D3 - the restore door needs where the file landed).
+    /// (§D1, ADR-0068 §D3 - the restore door needs where the file landed).
     ///
     /// `trashURL` is where the Finder's trash put the file, `nil` only when `FileManager`
     /// did not say.
@@ -444,7 +444,7 @@ extension VaultDisk {
         return (mutation, landed as URL?)
     }
 
-    /// Restores a file from outside the vault to a path inside it (ADR-0067 §D3).
+    /// Restores a file from outside the vault to a path inside it (ADR-0068 §D3).
     ///
     /// Refuses a destination that is taken or whose folder is missing, and creates no
     /// directory (PG-168). Then it moves the file, reads it once and stamps the mutation from

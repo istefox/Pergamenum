@@ -30,7 +30,7 @@ actor PraticaSyncEngine {
     /// patches below (`repairCorruptAttachments`, `commit`'s row-4 branch) read before
     /// composing their patch, or `nil` for a full render composed from Mail rather than
     /// from the file on disk (§D8 excludes that case by name).
-    /// `quarantine` (ADR-0067 §D10): defaulted to the real `AttachmentQuarantine
+    /// `quarantine` (ADR-0068 §D10): defaulted to the real `AttachmentQuarantine
     /// .apply(to:)`, so every existing call site keeps compiling and behaving
     /// unchanged. `commit` stamps every attachment and `.eml` through it, and records
     /// a failure as a problem sentence rather than aborting the run - which is what
@@ -219,7 +219,7 @@ actor PraticaSyncEngine {
     /// messages already subtracted does not turn every message it ever imported into
     /// «non più in Mail».
     ///
-    /// ADR-0067 §D6: an id the index cannot resolve by `Message-ID` falls back to the
+    /// ADR-0068 §D6: an id the index cannot resolve by `Message-ID` falls back to the
     /// ledger's recorded ROWID, the fallback `regeneratePending` already uses. Only an
     /// id neither answers for is gone. Every other id on disk is `seen` - surfaced as a
     /// candidate or found by either lookup - which is what lets `recordSyncOutcome`

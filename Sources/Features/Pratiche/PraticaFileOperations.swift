@@ -36,7 +36,7 @@ struct PraticaFileOperations {
     /// why the attachments stay where they are.
     ///
     /// The `.md` goes through the session's trash door, keeping its note id because this
-    /// trash is undoable to the same path (ADR-0067 §D1/§D3, ADR-0059 §D6); the `.eml` is
+    /// trash is undoable to the same path (ADR-0068 §D1/§D3, ADR-0059 §D6); the `.eml` is
     /// trashed raw, since the session has no byte door and the index does not hold it.
     ///
     /// Not `private`: `PraticaCommandActions.swift`'s `exclude(_:detail:)` and
@@ -90,7 +90,7 @@ struct PraticaFileOperations {
     /// `confirmRegeneration(_:)` are in a separate file, and both call this.
     ///
     /// The `.md` comes back through `session.restoreFromOutside(_:to:)`, which refuses a taken
-    /// path or a missing folder the same way (ADR-0067 §D1/§D3); the `.eml` through a raw
+    /// path or a missing folder the same way (ADR-0068 §D1/§D3); the `.eml` through a raw
     /// `moveItem`, which creates nothing either.
     @discardableResult
     static func restore(_ files: [TrashedFile], session: VaultSession) async -> [TrashedFile] {
@@ -155,7 +155,7 @@ struct PraticaFileOperations {
     /// The `.md` moves through `session.moveFile`, which carries its note id and its star
     /// along (ADR-0059 §D5) and lets an open tab follow it; the `.eml` moves raw. The sidecar
     /// reference and every attachment rename are then composed into one text and written
-    /// once through the session (ADR-0067 §D1/§D4).
+    /// once through the session (ADR-0068 §D1/§D4).
     ///
     /// Not `private`: `PraticaCommandActions.swift`'s `move(_:detail:to:)` is in a
     /// separate file, and is this member's only caller.
@@ -215,7 +215,7 @@ struct PraticaFileOperations {
 
     /// The inverse of `moveFiles`'s `rewrites`: put the moved `.md`'s OWN text back
     /// to what it said before the transfer, once `moveBack` has put the files back
-    /// at their original paths - one composed text, one guarded write (ADR-0067 §D4).
+    /// at their original paths - one composed text, one guarded write (ADR-0068 §D4).
     ///
     /// Every inverted rename (`to → from`) goes into ONE call, never one call per rename:
     /// with `q.pdf → q-2.pdf` and `q-2.pdf → q-3.pdf`, a second pass would catch the first
@@ -235,7 +235,7 @@ struct PraticaFileOperations {
     /// Reads `notePath` through the session, applies the sidecar reference and the attachment
     /// renames to that one text, and writes it once, `expecting:` the hash just read - only
     /// when the text changed. A refusal or a failure is reported: the file operation landed,
-    /// its references were not updated (ADR-0067 §D1).
+    /// its references were not updated (ADR-0068 §D1).
     private func rewrite(
         _ notePath: String, session: VaultSession, landed: String,
         emlFileName: String?, renames: [AttachmentRename]
@@ -258,7 +258,7 @@ struct PraticaFileOperations {
     /// The `.eml` and the attachments are copied raw. The `.md` is never `copyItem`'d: its
     /// text is read through the session, composed with the sidecar reference and the
     /// attachment renames, and written as a new note with `expectingAbsent: true`, so a name
-    /// taken meanwhile is refused and reported rather than overwritten (ADR-0067 §D1). The
+    /// taken meanwhile is refused and reported rather than overwritten (ADR-0068 §D1). The
     /// copy gets no note id until a link asks for one (ADR-0059 §D2).
     ///
     /// Not `private`: `PraticaCommandActions.swift`'s `alsoAdd(_:detail:to:)` is in a
@@ -340,7 +340,7 @@ struct PraticaFileOperations {
     /// `related`/`aliases` this function never had a reason to load.
     ///
     /// Pure, over text rather than a file, so a transfer composes it with the attachment
-    /// renames and writes the result once through the session (ADR-0067 §D1/§D4).
+    /// renames and writes the result once through the session (ADR-0068 §D1/§D4).
     static func updatingOriginalReference(in text: String, to emlFileName: String) -> String {
         guard let range = text.range(
             of: #"pergamenum-mail-original:\s*"[^"]*""#, options: .regularExpression
@@ -356,7 +356,7 @@ struct PraticaFileOperations {
     ///
     /// The `.md` goes back through `session.moveFile(…requiringExistingFolder: true)`, which
     /// carries the id home with it (ADR-0059 §D5) and never recreates a pratica folder moved
-    /// or trashed since (ADR-0067 §D2, PG-168); the `.eml` through a raw `moveItem`, which
+    /// or trashed since (ADR-0068 §D2, PG-168); the `.eml` through a raw `moveItem`, which
     /// creates nothing either.
     ///
     /// Not `private`: `PraticaCommandActions.swift`'s `move(_:detail:to:)` is in a
@@ -392,7 +392,7 @@ struct PraticaFileOperations {
     }
 
     /// Whether a message file is the note, which goes through the session, rather than the
-    /// `.eml` sidecar, which the session has no door for (ADR-0067 §D1).
+    /// `.eml` sidecar, which the session has no door for (ADR-0068 §D1).
     private static func isNote(_ path: String) -> Bool {
         (path as NSString).pathExtension == "md"
     }

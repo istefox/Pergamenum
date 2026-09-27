@@ -57,7 +57,7 @@ struct AttachmentChip: View {
                 .themedText(.body)
                 .padding(theme.spacing(.s))
         }
-        // ADR-0067 §D10: `presenting:` hands each button the refusal it was raised with
+        // ADR-0068 §D10: `presenting:` hands each button the refusal it was raised with
         // (the confirmation-dialog rule in CLAUDE.md), never `openRefusal` read back after
         // the alert's own dismissal has cleared it.
         .alert(
@@ -101,7 +101,7 @@ struct AttachmentChip: View {
     }
 
     /// The chip's file-state function, shared with `PraticaCommandActions` so «Anteprima
-    /// allegato» asks the same question the chip does (ADR-0067 §D17).
+    /// allegato» asks the same question the chip does (ADR-0068 §D17).
     static func fileState(of url: URL, named name: String) -> AttachmentChipModel.FileState {
         guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { return .missing }
         return AttachmentIntegrity.verdict(ofFileAt: url, named: name) == .usable ? .usable : .unusable
@@ -185,7 +185,7 @@ struct AttachmentChip: View {
     /// «Apri» and double-click. A usable file `AttachmentChipModel.refusesToOpen`
     /// rejects (PG-123: executable, bundle, disk image, script) has no `openURL` and is
     /// revealed in the Finder instead, where Gatekeeper's own prompt applies. A copied
-    /// file opens only once it carries the quarantine attribute (ADR-0067 §D10); when the
+    /// file opens only once it carries the quarantine attribute (ADR-0068 §D10); when the
     /// volume refuses it, the alert offers the Finder instead.
     private func openWithDefaultApp() {
         switch AttachmentChipModel.openDecision(

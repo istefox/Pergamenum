@@ -83,7 +83,7 @@ extension VaultController {
     private func handle(_ outcome: VaultSession.WriteOutcome) -> Bool {
         switch outcome {
         case .written:
-            // The write already caught every open copy up (ADR-0066 §D1).
+            // The write already caught every open copy up (ADR-0067 §D1).
             return true
         case .unchanged:
             return true

@@ -172,7 +172,7 @@ extension VaultController {
                 destination ?? "today", folder: nil
             )
             // The editor may be holding the note that just grew: the capture's own write
-            // catches it up (ADR-0066 §D1), or the next keystroke would save the version
+            // catches it up (ADR-0067 §D1), or the next keystroke would save the version
             // without the capture in it.
             _ = try await VaultAPI.capture(
                 session, to: target, text: text, scheduled: scheduled, due: due

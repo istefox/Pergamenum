@@ -21,7 +21,7 @@ extension VaultController {
     ///
     /// Asks of every column, like `canOperate(on:)` (`VaultController+Files.swift`) already
     /// does — not only `openNote` (ADR-0056 §D7): `renameFolder`/`trashFolder` reach a note
-    /// in any column through the `.moved`/`.trashed` changes the session announces (ADR-0066
+    /// in any column through the `.moved`/`.trashed` changes the session announces (ADR-0067
     /// §D1), so a dirty tab this check missed in another column would have its file moved or
     /// trashed under it with no dialogue beforehand.
     func canOperateOnFolder(_ relativePath: String) -> Bool {
@@ -61,7 +61,7 @@ extension VaultController {
                 recordProblem(VaultWriteRefusal.movedOn(refusal).description)
             }
             // The tabs already followed every carried note: the session announced each one
-            // (ADR-0066 §D1).
+            // (ADR-0067 §D1).
             // Covers renaming an *ancestor* folder (e.g. `01 Progetti` itself), which
             // orphans a descendant pratica the same way a move does (ADR-0026 §D7) -
             // `moveItems`' own `follow(_:)` hook does not run for a rename.
@@ -83,7 +83,7 @@ extension VaultController {
     func trashFolder(at relativePath: String) -> Bool {
         guard let session, canOperateOnFolder(relativePath) else { return false }
         do {
-            // The session announced each trashed note, which closed its tabs (ADR-0066 §D1).
+            // The session announced each trashed note, which closed its tabs (ADR-0067 §D1).
             _ = try session.trashFolder(at: relativePath)
             // The deletion twin of `renameFolder`'s `didRelocateFolders` call (ADR-0026 §D7,
             // 2026-09-19 amendment, PG-169). Trimmed the way `canOperateOnFolder` trims one

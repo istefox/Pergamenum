@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0067 §D7/§D19 (Task 3): the fallback walk's own third outcome - `.indeterminate` -
+// ADR-0068 §D7/§D19 (Task 3): the fallback walk's own third outcome - `.indeterminate` -
 // distinguished from a genuine miss (`.notInStore`) and a drifted rule (`.ruleFailed`).
 
 @Suite struct EMLXLocatorTests {

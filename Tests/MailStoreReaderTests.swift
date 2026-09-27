@@ -372,7 +372,7 @@ import Testing
         #expect(offending.isEmpty, "sqlite3_ found outside MailStoreConnection.swift: \(offending)")
     }
 
-    // MARK: - Item 12, copy half (ADR-0067 §D11, R-18): a permission failure is named, not retried
+    // MARK: - Item 12, copy half (ADR-0068 §D11, R-18): a permission failure is named, not retried
 
     /// An unreadable source `Envelope Index` (EPERM) must be classified as
     /// `.permissionDenied` at once - never retried, unlike a torn copy. Red until

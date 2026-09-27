@@ -25,7 +25,7 @@ enum MailStoreCopy {
         case storeMissing
         /// A source copy failed with a permission error (`CocoaError
         /// .fileReadNoPermission`, POSIX `EPERM`/`EACCES`) - never retried, unlike
-        /// `.mailIsWriting`, since a second copy fails the same way (ADR-0067 §D11).
+        /// `.mailIsWriting`, since a second copy fails the same way (ADR-0068 §D11).
         case permissionDenied
     }
 
@@ -97,7 +97,7 @@ enum MailStoreCopy {
                 deleteOtherGenerations(keeping: generation, in: stateDirectory, fileManager: fileManager)
                 return .published(generation)
             case .permissionDenied:
-                // ADR-0067 §D11: a second copy two seconds later fails the same way, so
+                // ADR-0068 §D11: a second copy two seconds later fails the same way, so
                 // the retry that waits out Mail's write burst is never paid for this.
                 return .permissionDenied
             case .failed:
@@ -122,7 +122,7 @@ enum MailStoreCopy {
 
     /// Copies, recovers, checks and publishes; on any failure, leaves the previously
     /// published generation (if any) untouched. A failure to copy the source index or
-    /// its `-wal` for want of permission is `.permissionDenied` (ADR-0067 §D11).
+    /// its `-wal` for want of permission is `.permissionDenied` (ADR-0068 §D11).
     private static func attemptPublish(
         sourceIndex: URL, generation: URL, fileManager: FileManager
     ) -> Attempt {
@@ -174,7 +174,7 @@ enum MailStoreCopy {
     }
 
     /// `CocoaError.fileReadNoPermission`, or a POSIX `EPERM`/`EACCES` either as the
-    /// error itself or as its underlying error (ADR-0067 §D11).
+    /// error itself or as its underlying error (ADR-0068 §D11).
     private static func isPermissionDenied(_ error: Error) -> Bool {
         let nsError = error as NSError
         if nsError.domain == NSCocoaErrorDomain, nsError.code == CocoaError.fileReadNoPermission.rawValue {

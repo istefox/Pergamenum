@@ -155,7 +155,7 @@ extension VaultSession {
                         // The folder's own pair, not `folder.movedNotes` (ADR-0059 §D4): it
                         // also reaches an id whose note is only an iCloud placeholder.
                         relocateNoteIDs([MovedNote(old: move.item.path, new: folder.newPath)])
-                        // ADR-0066 §D1: `folderOperations` moves with `FileManager`, not
+                        // ADR-0067 §D1: `folderOperations` moves with `FileManager`, not
                         // through `moveFile`, so each carried note is announced here. The
                         // `.note` case above needs nothing: `moveNote` goes through `moveFile`.
                         for moved in folder.movedNotes {

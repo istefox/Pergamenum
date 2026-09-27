@@ -215,7 +215,7 @@ final class VaultController {
             stateBase: stateBase,
             bundledVocabulary: Bundle.pergamenumResources.url(forResource: "vocabolari", withExtension: "json")
         )
-        // ADR-0066 §D4: the handler follows this controller's session and only it. The
+        // ADR-0067 §D4: the handler follows this controller's session and only it. The
         // outgoing session loses it first, so a write still completing there can never reach
         // the next vault's tabs; the closure also re-checks identity at delivery time.
         session?.landedChangeSubscriber = nil
@@ -252,7 +252,7 @@ final class VaultController {
     func close() {
         watcher?.stop()
         watcher = nil
-        // ADR-0066 §D4: a session somebody else still holds must not keep calling back here.
+        // ADR-0067 §D4: a session somebody else still holds must not keep calling back here.
         session?.landedChangeSubscriber = nil
         session = nil
         thumbnails = nil

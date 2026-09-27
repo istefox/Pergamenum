@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0067 §D1/§D2/§D3/§D4 (Pratiche sync integrity), plan
+// ADR-0068 §D1/§D2/§D3/§D4 (Pratiche sync integrity), plan
 // docs/plans/pg-257-pratiche-sync-integrity-and-post-write-door.md, Task 3 - R-08, R-09.
 //
 // Today `PraticaFileOperations`' `.md` operations still go straight through
@@ -21,10 +21,10 @@ import Testing
 // runs synchronously, in-process, immediately before the write it guards - there is
 // no way for a test to insert a colliding file between that check and the write
 // without either racing (impossible in-process, single-threaded Swift Testing) or
-// bypassing `reservedBaseName` entirely, which neither SPEC R-08/R-09 nor ADR-0067
+// bypassing `reservedBaseName` entirely, which neither SPEC R-08/R-09 nor ADR-0068
 // §D1 describes as a way to reach this scenario. R-08's own governing sentence is
 // "a failure reported (never swallowed)" (not "a name collision forces a refusal"),
-// and ADR-0067 §D1 says only "Every failure is reported through `pratiche.report(_:)`
+// and ADR-0068 §D1 says only "Every failure is reported through `pratiche.report(_:)`
 // with the file's name, never swallowed" - neither sentence privileges the
 // `expectingAbsent` refusal over any other write failure as the one this sub-bullet
 // must exercise. Writing a test that forces the refusal through some other means
@@ -62,7 +62,7 @@ private func praticaDetail(notePath: String) -> PraticaRowDetail {
     /// Red: today's raw `FileManager.moveItem` leaves the destination unrecognised as
     /// a self-write, so `session.reconcile` reports it as an external change - and the
     /// source path's disappearance closes the open tab instead of the door following
-    /// it to its new home (ADR-0064/ADR-0066).
+    /// it to its new home (ADR-0064/ADR-0067).
     @Test func moveFilesIsSelfWrittenAndAnOpenTabFollowsIt() async throws {
         let vault = try TemporaryVault()
         try vault.write(noteWithAttachmentTokens, to: "Rossi/email/msg.md")
@@ -89,7 +89,7 @@ private func praticaDetail(notePath: String) -> PraticaRowDetail {
 
     /// ADR-0064 §D6: an in-app trash stays visible to the watcher on purpose - no absence
     /// marker is recorded for a trash, unlike a move (`ExternalDeletionReconcileTests
-    /// .aTrashedPathIsStillReportedDeleted`). What must be true instead, per ADR-0067's
+    /// .aTrashedPathIsStillReportedDeleted`). What must be true instead, per ADR-0068's
     /// amended acceptance bullet, is that the trash actually went *through the session*:
     /// the index no longer holds the note, and the session announced `.trashed` for the
     /// vacated path - not that reconciling the path reports nothing.

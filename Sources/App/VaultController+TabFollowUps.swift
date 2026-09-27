@@ -1,12 +1,12 @@
 import Foundation
 
 /// What the tabs do after the session landed a change to their note: a write, a move or a
-/// trash (ADR-0066).
+/// trash (ADR-0067).
 ///
 /// Moved out of `VaultController+Tabs.swift` when ADR-0064 §D4's door took that file past
 /// SwiftLint's 400 lines (ADR-0045's shape: a pure move into an extension of the same type).
 extension VaultController {
-    /// ADR-0066 §D3: the one handler the session's `landedChangeSubscriber` calls for every
+    /// ADR-0067 §D3: the one handler the session's `landedChangeSubscriber` calls for every
     /// change it lands, installed by `open(_:)` and cleared by `close()` (§D4). No writer calls
     /// a catch-up step of its own any more (§D5): a step a caller can forget is the failure
     /// `CLAUDE.md`'s working agreement names, and a writer that remembered it would now deliver

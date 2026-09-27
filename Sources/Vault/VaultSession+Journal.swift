@@ -66,10 +66,10 @@ extension VaultSession {
     ///
     /// The source path goes into `selfWrittenHashes` under `absenceMarker` (ADR-0064 §D6), so
     /// the watcher's reconciliation of the path this move vacated is this session's own and
-    /// reports nothing; the `.moved` change this door announces last (ADR-0066 §D1) is the
+    /// reports nothing; the `.moved` change this door announces last (ADR-0067 §D1) is the
     /// tab's follow-up. `trashFile` below records no such
     /// marker on purpose: an in-app trash still reaches the watcher as `.deleted` (R-09).
-    /// `requiringExistingFolder` (ADR-0067 §D2, PG-168): forwarded to `VaultDisk.moveFile`,
+    /// `requiringExistingFolder` (ADR-0068 §D2, PG-168): forwarded to `VaultDisk.moveFile`,
     /// which then skips the parent-folder creation, so a missing folder fails the move rather
     /// than coming back. The undo of Pratiche «Sposta in…» passes `true`.
     func moveFile(
@@ -131,7 +131,7 @@ extension VaultSession {
             kind: .move,
             pathBefore: oldPath
         ))
-        // ADR-0066 §D1: last, once the move is real and recorded - every tab showing the
+        // ADR-0067 §D1: last, once the move is real and recorded - every tab showing the
         // note follows it before this door returns.
         announce(.moved(from: oldPath, to: newPath))
     }
@@ -150,7 +150,7 @@ extension VaultSession {
     /// succeeded (ADR-0059 §D5/§D6), so a later note created at this path never inherits an
     /// old link. The forgotten id travels in the entry's `idBefore`, and an undo puts it back.
     ///
-    /// `forgettingNoteID` (ADR-0067 §D3): defaulted `true`, the behaviour above. A Pratiche
+    /// `forgettingNoteID` (ADR-0068 §D3): defaulted `true`, the behaviour above. A Pratiche
     /// trash («Escludi», «Rigenera») passes `false`: it is undoable to the same path, so the id
     /// is neither read nor forgotten and the entry's `idBefore` is `nil` (ADR-0059 §D6).
     ///
@@ -196,7 +196,7 @@ extension VaultSession {
             kind: .removal,
             idBefore: idBefore
         ))
-        // ADR-0066 §D1: last, once the trash is real and recorded. The watcher still reports
+        // ADR-0067 §D1: last, once the trash is real and recorded. The watcher still reports
         // the path `.deleted` afterwards (no absence marker, R-09); it finds the tabs settled.
         announce(.trashed(relativePath))
         return trashed.trashURL

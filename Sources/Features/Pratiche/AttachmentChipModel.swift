@@ -55,7 +55,7 @@ enum AttachmentChipModel {
         return reference.url
     }
 
-    /// Item 11's «Apri» half (ADR-0067 §D10): what `openWithDefaultApp` does - open,
+    /// Item 11's «Apri» half (ADR-0068 §D10): what `openWithDefaultApp` does - open,
     /// refuse with a file to reveal in the Finder, or nothing at all (`openURL == nil`).
     enum OpenDecision: Equatable {
         case open(URL)
@@ -82,7 +82,7 @@ enum AttachmentChipModel {
         }
     }
 
-    /// ADR-0067 §D10's refusal, exact wording.
+    /// ADR-0068 §D10's refusal, exact wording.
     static func quarantineRefusal(named name: String) -> String {
         "Impossibile aprire «\(name)» in sicurezza: il volume non accetta l'attributo di quarantena."
     }

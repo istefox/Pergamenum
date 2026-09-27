@@ -191,7 +191,7 @@ struct AddToPraticaSheet: View {
         // One hop for the whole tail rather than one per write (ADR-0043 §D2): the order
         // here is the point, since the sync asked for at the end reads from disk the
         // dossier key written at the start. The target is the one `addToPratica` re-read
-        // after its write (ADR-0067 §D13 item 18): a pratica that moved away meanwhile is
+        // after its write (ADR-0068 §D13 item 18): a pratica that moved away meanwhile is
         // neither selected nor refreshed, and a failed write has already reported itself.
         Task { @MainActor in
             let target = await actions.addToPratica(messageID: messageID, praticaPath: praticaPath)

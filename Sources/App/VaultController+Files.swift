@@ -50,7 +50,7 @@ extension VaultController {
                 recordProblem(VaultWriteRefusal.movedOn(refusal).description)
             }
             // The tabs already followed the note: `moveFile` announced the move once the index
-            // held the new path (ADR-0066 §D5), so this rescan no longer gates that.
+            // held the new path (ADR-0067 §D5), so this rescan no longer gates that.
             Task { await rescan() }
             return true
         } catch {
@@ -73,7 +73,7 @@ extension VaultController {
             for refusal in outcome.refusals {
                 recordProblem(VaultWriteRefusal.movedOn(refusal).description)
             }
-            // The tabs already followed the note through `moveFile`'s announcement (ADR-0066).
+            // The tabs already followed the note through `moveFile`'s announcement (ADR-0067).
             Task { await rescan() }
             return true
         } catch {
@@ -100,7 +100,7 @@ extension VaultController {
                 )
                 recordProblem("\(dangling.count) note linkavano «\(title)»: ora il link non risolve")
             }
-            // The tabs showing the note were closed by `trashFile`'s announcement (ADR-0066).
+            // The tabs showing the note were closed by `trashFile`'s announcement (ADR-0067).
             await rescan()
             return true
         } catch {

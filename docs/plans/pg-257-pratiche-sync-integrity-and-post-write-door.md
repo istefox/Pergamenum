@@ -2,8 +2,8 @@
 
 - SPEC: `SPEC.md` (Approved 2026-09-26). The authority for scope, decisions and R-01..R-26.
 - ADRs (both `proposed`, numbers rechecked before merge):
-  - `docs/adr/0066-one-door-onto-the-editor-after-a-landed-change.md`: the post-write door.
-  - `docs/adr/0067-pratiche-sync-integrity.md`: the nineteen Pratiche items and the note operations
+  - `docs/adr/0067-one-door-onto-the-editor-after-a-landed-change.md`: the post-write door.
+  - `docs/adr/0068-pratiche-sync-integrity.md`: the nineteen Pratiche items and the note operations
     routed through the session.
 - Base: `3fcde6f0`. `origin/main` at `1e09448e` differs by `TODO.md` only. Every line number below
   was read from `3fcde6f0`.
@@ -38,21 +38,21 @@ These are settled in SPEC §Decisions and carried into the ADRs as they stand:
 
 1. **ADR-0059 §D6 vs "trash through the session door".** `VaultSession.trashFile` forgets the note
    id. ADR-0059 §D6 says a Pratiche trash must not, because «Escludi» is undoable to the same path.
-   Resolved in ADR-0067 §D3 with `trashFile(at:forgettingNoteID: Bool = true)`, which Pratiche
+   Resolved in ADR-0068 §D3 with `trashFile(at:forgettingNoteID: Bool = true)`, which Pratiche
    calls with `false`.
 2. **PG-168 vs `moveFile`.** `VaultDisk.moveFile` (`VaultDisk.swift:397`) creates intermediate
    directories. The undo of «Sposta in…» must never recreate a vacated pratica folder. Resolved in
-   ADR-0067 §D2 with `moveFile(…requiringExistingFolder: Bool = false)`, which the undo calls with
+   ADR-0068 §D2 with `moveFile(…requiringExistingFolder: Bool = false)`, which the undo calls with
    `true`.
 3. **Item 12's release point.** `confirmRegeneration` closes the sheet (`regeneration = nil`)
    *before* `commitRegeneration` runs, and the commit needs the engine. Release happens on dismiss
-   and at every exit of the commit, guarded by `regenerationEngine === engine` (ADR-0067 §D11).
+   and at every exit of the commit, guarded by `regenerationEngine === engine` (ADR-0068 §D11).
 4. **Item 6.** A file that reads but does not parse already reserves its name
    (`PraticaSyncEngine+Folder.swift:63`). Only the failed read at `:61` skips the reservation.
-5. **`.vaultOpen` becomes unfired by the app** (ADR-0067 §D15). The case stays, because
+5. **`.vaultOpen` becomes unfired by the app** (ADR-0068 §D15). The case stays, because
    `PraticaWatcher` and its tests name it.
 6. **Item 4's ROWID fallback** can answer "still in Mail" for a ROWID Mail reused after an index
-   rebuild. This is the conservative failure, and it is accepted (ADR-0067 §D6).
+   rebuild. This is the conservative failure, and it is accepted (ADR-0068 §D6).
 7. **A test premise changes under a synchronous door.** The test is
    `composerHandOffPreservesEditsMadeAfterTheWriteReturned`
    (`Tests/VaultWriteOrderingBatch3Tests.swift:155`). Text typed after the write returned is now
@@ -85,7 +85,7 @@ These are settled in SPEC §Decisions and carried into the ADRs as they stand:
 
 ## Task 1 — (tester) Declare the post-write door and write its red suite (R-01, R-02, R-03, R-05, R-06)
 
-**Declarations** (ADR-0066 §D1, §D2, §D3, §D6):
+**Declarations** (ADR-0067 §D1, §D2, §D3, §D6):
 
 - `Sources/Vault/VaultSession.swift`:
   - in the class body, `@ObservationIgnored var landedChangeSubscriber: (@MainActor
@@ -124,9 +124,9 @@ on `TemporaryVault`, with both columns where the case needs it. Reuse the helper
   - a dry-run write, move and trash announce nothing;
   - a refused write (stale `expecting:`) announces nothing;
   - `landedGeneration(at:)` advances on a write, on both ends of a move and on a trash, and not
-    on a rehearsal (R-05, ADR-0066 §D6).
+    on a rehearsal (R-05, ADR-0067 §D6).
 - After `open(_:)` onto a second vault, a write on the first session reaches no tab of the second
-  (ADR-0066 §D4).
+  (ADR-0067 §D4).
 - **One test per ADR-0058 §D7 writer family, plus a Pratiche link write.** Each has the note open
   in a clean tab, performs the write through the writer's own entry point, and expects the tab
   caught up with no explicit call (R-06):
@@ -146,7 +146,7 @@ the rest of `PergamenumTests` is green.
 
 ## Task 2 — (coder) Implement the door and the handler, delete the eighteen sites, update the tests that asserted them (R-01, R-02, R-03, R-04, R-05, R-06)
 
-**Session** (ADR-0066 §D1):
+**Session** (ADR-0067 §D1):
 
 - `announce(_:)` bumps `landedGenerations` for every path the change touches, then calls
   `landedChangeSubscriber`.
@@ -160,7 +160,7 @@ the rest of `PergamenumTests` is green.
   - `VaultSession+Move.swift:144` (`moveItems`' folder case), `.moved` per `folder.movedNotes`.
 - `writeFile` (the `.canvas` door) is not touched.
 
-**Controller** (ADR-0066 §D3, §D4, §D5):
+**Controller** (ADR-0067 §D3, §D4, §D5):
 
 - `landed(_:)`'s three branches:
   - `.written`: the writer by origin gets `savedText` only and its prompt cleared; every other tab
@@ -243,7 +243,7 @@ Grepped at `3fcde6f0`. Every one moves to the new door; none is deleted.
 
 ## Task 3 — (tester) Declare the Pratiche seams and write their red suites (R-07, R-08, R-09, R-10, R-11, R-12, R-13, R-14, R-15, R-16, R-17, R-18, R-19, R-20, R-21, R-22, R-23, R-24, R-25)
 
-Declarations follow ADR-0067. Bodies preserve today's behaviour. Existing callers get only the
+Declarations follow ADR-0068. Bodies preserve today's behaviour. Existing callers get only the
 edits needed to compile.
 
 **Session and disk (shared files):**
@@ -409,13 +409,13 @@ the rest of `PergamenumTests` is green.
   - `moveFile` honours `requiringExistingFolder`, skipping `createDirectory`;
   - `trashFile` passes `resultingItemURL` and returns it;
   - `restoreFile(from:to:)` refuses an existing destination or a missing parent, moves, reads the
-    file once, and stamps the mutation from the path's clock (ADR-0067 §D3).
+    file once, and stamps the mutation from the path's clock (ADR-0068 §D3).
 - `VaultSession+Journal.swift`: `moveFile` passes the flag through. `trashFile` skips
   `existingNoteID`/`forgetNoteIDs` when `forgettingNoteID == false` and returns the Trash URL.
 - `VaultSession+LandedChanges.swift`: `restoreFromOutside`. It runs checks, the rehearsal return,
   source bytes hashed before the hop as a provisional self-write, the hop, reconcile, `apply`, then
   announces `.written(…, origin: nil)`. No journal, no note-id change.
-- `PraticaFileOperations.swift` and `+Attachments.swift` follow ADR-0067 §D1 and §D4 exactly:
+- `PraticaFileOperations.swift` and `+Attachments.swift` follow ADR-0068 §D1 and §D4 exactly:
   - The `.md` goes through `moveFile`/`trashFile(forgettingNoteID: false)`/`restoreFromOutside`/
     `write(expectingAbsent: true)`. The `.eml` and attachments stay raw.
   - `copyAttachments` returns renames without patching.
@@ -429,7 +429,7 @@ the rest of `PergamenumTests` is green.
 - `PraticaCommandActions.swift`:
   - `updateDossier` returns `Bool`.
   - `exclude` writes the exclusion first, trashes second. If nothing could be trashed, it writes
-    the exclusion back out and registers no undo (ADR-0067 §D12).
+    the exclusion back out and registers no undo (ADR-0068 §D12).
   - The undo restores through `restore(_:session:)`.
 
 ### Update tests and call-sites asserting the old behaviour (Task 4)
@@ -441,7 +441,7 @@ the rest of `PergamenumTests` is green.
 - `Tests/DossierWriterTests.swift:30` and `Tests/PraticaLinksWriterTests.swift:58` expect `nil` on
   a parseable dossier. They stay green; confirm.
 - `PraticaRegenerationTests` and `PraticaLedgerFolderTrash*Tests` exercise «Rigenera» and the
-  trash. Run them. A clean tab on the regenerated note now closes (ADR-0067 §D1). An assertion
+  trash. Run them. A clean tab on the regenerated note now closes (ADR-0068 §D1). An assertion
   that relied on the old silent staleness is explained in chat before it changes.
 - `rg -n "trashItem|moveItem|copyItem|\.write\(to:" Sources/Features/Pratiche/PraticaFileOperations*.swift`
   may list only `.eml`/attachment operations afterwards.
@@ -450,7 +450,7 @@ the rest of `PergamenumTests` is green.
 
 - **Item 1** (`PraticaSyncEngine+Messages.swift` `commit`, `:777`): apply `carryingOverLinkedNote(from:
   existingOnDisk.text, into:)` on every full render with an existing file and
-  `!isRequestedRegeneration` (ADR-0067 §D5). Record the carried document in `folder.messagesByID`.
+  `!isRequestedRegeneration` (ADR-0068 §D5). Record the carried document in `folder.messagesByID`.
 - **Item 4** (`PraticaSyncEngine.swift:206`): add the ledger ROWID fallback. The same computation
   fills `outcome.seenInMail`. `PraticheController+Ledger.swift:321`'s `recordSyncOutcome` also
   subtracts `seenInMail`.
@@ -462,7 +462,7 @@ the rest of `PergamenumTests` is green.
   - `regenerationPreview` (`:721`) throws `.lookupIndeterminate`, with its own sentence in
     `regenerationFailureMessage`.
   - The pane sentence for a non-empty `indeterminateLookups` is joined into the same report as
-    `attachmentProblems` (ADR-0067 §D7, §D19).
+    `attachmentProblems` (ADR-0068 §D7, §D19).
 - **Item 6** (`PraticaSyncEngine+Folder.swift:61`): append `(name, "")` to `takenNoteNames` before
   the `continue` on a failed read.
 - **Item 10** (`commit` row 4, `:832-875`): append the bridge on entry, before the early returns at
@@ -472,7 +472,7 @@ the rest of `PergamenumTests` is green.
 - **Item 12, copy half** (`MailStoreCopy.swift:90-145`): `attemptPublish` returns a three-way
   result. Classify `CocoaError.fileReadNoPermission`, POSIX `EPERM` and POSIX `EACCES` on the
   source copies as permission-denied. Return `.permissionDenied` with no retry.
-  `MailStorePreparation.reader` gets the Full Disk Access sentence from ADR-0067 §D11.
+  `MailStorePreparation.reader` gets the Full Disk Access sentence from ADR-0068 §D11.
 
 ### Update tests and call-sites asserting the old behaviour (Task 5)
 
@@ -496,7 +496,7 @@ the rest of `PergamenumTests` is green.
   to «“X” esiste già.». `NuovaPraticaWizard+Actions.swift:159-183` keeps its `exists` filter and
   calls the helper.
 - **Item 8** (`PraticheController+Triggers.swift:117`): re-read `pratiche.first(where:)` before each
-  trigger and use the current eligibility (ADR-0067 §D13).
+  trigger and use the current eligibility (ADR-0068 §D13).
 - **Item 9** (`PraticaLiveSync.swift:148`, `+Run.swift:60-107`):
   - `cancel()` sets `stopRequested`;
   - `runExclusive` clears it on entry, runs the injectable preparation, and checks it beside the
@@ -511,7 +511,7 @@ the rest of `PergamenumTests` is green.
   - `startWatching`'s two closures capture `[weak vault]`;
   - `resetVaultScopedState()` (`PraticheController.swift:594`) removes the activation observer and
     nils it. Rewrite that function's "deliberately NOT cleared" doc bullet (`:586-590`) to match
-    ADR-0067 §D15.
+    ADR-0068 §D15.
 - **Item 15:** `inspectorKey(for:)` reads `session.landedGeneration(at: praticaNotePath(of:
   selection))`. `PratichePane.swift:85` becomes `.task(id: pratiche.inspectorKey(for:
   vault.session)) { loadInspector() }`.
@@ -523,7 +523,7 @@ the rest of `PergamenumTests` is green.
   «OK». Token-styled; no hardcoded colours.
 - **Item 17:** `relativeRootFolder` goes through `VaultBoundary.contains` with both sides resolved.
   `chooseRootFolder()` (`PraticheSettingsTab.swift:95`) stores only a non-`nil` result and
-  otherwise shows the refusal line from ADR-0067 §D18. The setting is unchanged.
+  otherwise shows the refusal line from ADR-0068 §D18. The setting is unchanged.
 - **Item 18:** `AddToPraticaSheet.add()` (`:184-202`) calls `actions.addToPratica(…)` and only on a
   non-`nil` result sets the pane, selects and refreshes. `onClose()` always runs.
 - **Item 19:** `reportPreparationProblems` (`+Run.swift:229`) reports
@@ -559,20 +559,20 @@ the rest of `PergamenumTests` is green.
 **Documentation** (R-26, `(no-test: documentation obligation)`):
 
 - `ROADMAP.md` §Chain 4 (`:314-439`):
-  - Mark items 1–19 absorbed by ADR-0067 / #571.
+  - Mark items 1–19 absorbed by ADR-0068 / #571.
   - Correct item 9's fix line: the engine already has its own cancellation flag, and the gap is
     the publication phase only.
   - Correct item 18: the correctly fixed twin is `PraticaCommandActions.follow`/`ignore`, not a
     line of `AddToPraticaSheet.swift`.
-- `ROADMAP.md` Chain 16 item 1 (`:982-986`): mark it absorbed by ADR-0066 / #571.
-- `CLAUDE.md` "Chain decision index": add ADR-0066 and ADR-0067 entries after ADR-0065's, in the
+- `ROADMAP.md` Chain 16 item 1 (`:982-986`): mark it absorbed by ADR-0067 / #571.
+- `CLAUDE.md` "Chain decision index": add ADR-0067 and ADR-0068 entries after ADR-0065's, in the
   existing one-paragraph style.
 - One dated line under the status line of each partly amended ADR, bodies untouched (ADR-0047's
   precedent):
   - `docs/adr/0058-in-process-writes-reach-every-tab.md`: §D6's `syncOpenNote` clause is retired
-    and §D7 is closed by ADR-0066.
+    and §D7 is closed by ADR-0067.
   - `docs/adr/0052-pratiche-ledger-marker-and-one-write-door.md`: §D5's `windowKeyObserver` bullet
-    is amended by ADR-0067 §D15.
+    is amended by ADR-0068 §D15.
 - Recheck the ADR numbers against `origin/main` immediately before the merge. If they are taken,
   `git mv` both files and add a register entry in `docs/adr/README.md`.
 - After the merge, the first docs change flips both ADRs to `accepted` with the PR number, the
@@ -619,7 +619,7 @@ The order is 1 → 2 → 3 → 4 → 5 → 6 → 7.
   The index already holds the new path after `moveFile`'s `apply`. Watch `NoteTabGestureTests` and
   `VaultSessionFileOperationsTests`.
 - **Synchronous delivery.** A slow subscriber would slow every write. The handler is O(open tabs)
-  (ADR-0066 Negative).
+  (ADR-0067 Negative).
 - **The weak-vault test (R-20)** may find another strong reference to `VaultController` (a `Task`
   from `open(_:)`). If so, the tester reports the retainer. The test is never weakened to pass.
 - **`MailStoreEventStream` in tests.** `startWatching` arms it. `MailStoreLocation.resolve()` is
@@ -627,7 +627,7 @@ The order is 1 → 2 → 3 → 4 → 5 → 6 → 7.
   `PergamenumTests`.
 - **chmod-based tests** (unreadable `.md`, unreadable directory, unreadable index) must restore
   permissions in a `defer`, or the temporary directory cannot be cleaned.
-- **Item 4's ROWID reuse** (finding 6) and **«Rigenera» closing a clean tab** (ADR-0066/0067
+- **Item 4's ROWID reuse** (finding 6) and **«Rigenera» closing a clean tab** (ADR-0067/0067
   Negative) are accepted consequences, recorded in the ADRs.
 
 **Dependencies:** no new package, no new external resource, no env var, no port. Full Disk Access
@@ -635,7 +635,7 @@ is not needed for any unit test, which all run on `MailStoreFixture`.
 
 **HITL gates:**
 
-- **G1 — ADR-0066 §D7.** "Many dirty tabs, one banner each" answers the product question ADR-0058
+- **G1 — ADR-0067 §D7.** "Many dirty tabs, one banner each" answers the product question ADR-0058
   §D7 left open. The SPEC's edge case implies it. Stefano confirms or overrides at review.
 - **G2 — `Project.swift` edit** (`sharedSources` gains one file) and the `tuist generate` that
   follows. Config change.

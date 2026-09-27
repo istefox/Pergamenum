@@ -10,7 +10,7 @@ import Testing
 // background tab or in the other column (ADR-0012 §D4) stayed stale - a clean one reverted the
 // write on its next save, a dirty one was never asked (ADR-0001 §D3.4).
 //
-// ADR-0066 §D5 deleted `syncOpenNote(with:)`/`syncOpenNote(with:savedBy:)`: the session now
+// ADR-0067 §D5 deleted `syncOpenNote(with:)`/`syncOpenNote(with:savedBy:)`: the session now
 // announces every landed write to `VaultController.landed(_:)` itself. The tests below that
 // hand-build a result drive that handler directly, `landed(.written(result, origin:))`, with
 // `origin: nil` for an ordinary writer and the writer tab's id for a save.
@@ -100,7 +100,7 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     #expect(buffer.externalChangePending == nil)
 }
 
-// MARK: §D2 - a landed write (`landed(.written(_, origin: nil))`, ADR-0066) reaches every tab showing the path
+// MARK: §D2 - a landed write (`landed(.written(_, origin: nil))`, ADR-0067) reaches every tab showing the path
 
 @MainActor
 @Test func syncOpenNoteRaisesThePromptOnADirtyTabInTheOtherColumn() async throws {

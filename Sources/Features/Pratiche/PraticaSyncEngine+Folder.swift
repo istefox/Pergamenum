@@ -59,7 +59,7 @@ extension PraticaSyncEngine {
         for name in Self.fileNames(in: emailDirectory) where name.hasSuffix(".md") {
             let url = emailDirectory.appending(path: name, directoryHint: .notDirectory)
             guard let text = try? String(contentsOf: url, encoding: .utf8) else {
-                // ADR-0067 §D8: the name comes from the listing, not from a read, so an
+                // ADR-0068 §D8: the name comes from the listing, not from a read, so an
                 // evicted or unreadable note still reserves it - a fresh import never
                 // takes it, and the file's bytes are never touched.
                 context.takenNoteNames.append((name, ""))

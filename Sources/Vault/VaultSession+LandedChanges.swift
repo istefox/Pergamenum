@@ -1,6 +1,6 @@
 import Foundation
 
-/// ADR-0066: one door onto the editor after a landed change.
+/// ADR-0067: one door onto the editor after a landed change.
 ///
 /// A write this app makes itself is self-hashed, so `VaultSession.reconcile` drops it when
 /// FSEvents reports it back (ADR-0043 §D3.3), and the caller's catch-up used to be a tab's
@@ -13,7 +13,7 @@ import Foundation
 /// self-write bookkeeping reconciled): `write` (`VaultSession.swift`), `moveFile` and
 /// `trashFile` (`VaultSession+Journal.swift`), and the three app-only folder doors -
 /// `renameFolder`, `trashFolder` (`VaultSession+Folders.swift`) and `moveItems`' folder case
-/// (`VaultSession+Move.swift`), plus `restoreFromOutside` below (ADR-0067 §D3). A rehearsal,
+/// (`VaultSession+Move.swift`), plus `restoreFromOutside` below (ADR-0068 §D3). A rehearsal,
 /// a refusal or a failed disk operation returns or
 /// throws before reaching it. The `.canvas` door, `writeFile`, never announces (§D1).
 extension VaultSession {
@@ -56,7 +56,7 @@ extension VaultSession {
         landedChangeSubscriber?(change)
     }
 
-    /// ADR-0066 §D6: how many times a landed change has touched `path`, for the one reader
+    /// ADR-0067 §D6: how many times a landed change has touched `path`, for the one reader
     /// that needs it - the Pratiche inspector, keying its reload on the selected
     /// `pratica.md`'s own generation. Not an ordering authority: `VaultDisk`'s per-path
     /// sequence (ADR-0043 §D1) stays that. 0 for a path never touched.
@@ -64,7 +64,7 @@ extension VaultSession {
         landedGenerations[path] ?? 0
     }
 
-    /// Restores a file from outside the vault to `relativePath` (ADR-0067 §D3) - the
+    /// Restores a file from outside the vault to `relativePath` (ADR-0068 §D3) - the
     /// «Escludi» undo's counterpart to `trashFile(forgettingNoteID: false)`.
     ///
     /// Refuses a destination the boundary rejects, one that is taken, and one whose folder is
@@ -106,7 +106,7 @@ extension VaultSession {
         }
         reconcileProvisionalSequence(at: relativePath, provisional: provisional, actual: mutation.sequence)
         apply([mutation])
-        // ADR-0066 §D1: last, once the restore is real. A file that is not UTF-8 is no note a
+        // ADR-0067 §D1: last, once the restore is real. A file that is not UTF-8 is no note a
         // tab could show, so there is no text to announce for it.
         if let text = NoteStore.decodedText(data) {
             announce(.written(WriteResult(path: relativePath, text: text), origin: nil))

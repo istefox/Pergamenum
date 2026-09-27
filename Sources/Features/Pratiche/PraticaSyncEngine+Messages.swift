@@ -436,7 +436,7 @@ extension PraticaSyncEngine {
         return prepare(row, request: request, reader: reader, folder: folder, indeterminateLookups: &discarded)
     }
 
-    /// ADR-0067 §D7: a lookup that could not answer appends the message to
+    /// ADR-0068 §D7: a lookup that could not answer appends the message to
     /// `indeterminateLookups` (the run's `outcome`) and is skipped like any other miss.
     private func prepare(
         _ row: MailMessageRow,
@@ -595,7 +595,7 @@ extension PraticaSyncEngine {
         case notInStore
         case notDecodable
         case fileMissing
-        /// ADR-0067 §D7: the fallback walk could not answer either way (budget
+        /// ADR-0068 §D7: the fallback walk could not answer either way (budget
         /// exhausted or a directory unreadable) - never reported as `.notInStore`.
         case lookupIndeterminate
     }
@@ -660,7 +660,7 @@ extension PraticaSyncEngine {
         case .ruleFailed:
             throw RegenerationFailure.notDecodable
         case .indeterminate:
-            // ADR-0067 §D7: the walk could not answer, so this is never `.notInStore`.
+            // ADR-0068 §D7: the walk could not answer, so this is never `.notInStore`.
             throw RegenerationFailure.lookupIndeterminate
         }
 
@@ -717,7 +717,7 @@ extension PraticaSyncEngine {
         folder: inout FolderContext,
         outcome: inout SyncOutcome
     ) async throws {
-        // ADR-0067 §D10: a file the quarantine could not be stamped on stays where it is,
+        // ADR-0068 §D10: a file the quarantine could not be stamped on stays where it is,
         // and the run goes on. Every such file of this message is named in ONE sentence,
         // added on whichever exit this function takes.
         var unquarantined: [String] = []
@@ -782,7 +782,7 @@ extension PraticaSyncEngine {
             // `pergamenum-mail-inline-pending` line may change (ADR-0042 §D8). The `.eml`
             // sidecar is never rewritten in this mode: its bytes have not changed (§D18).
             //
-            // ADR-0067 §D9: the bridge depends only on the resolved row, so it is recorded
+            // ADR-0068 §D9: the bridge depends only on the resolved row, so it is recorded
             // on entry, before any early return below - "patch equals disk" is the normal
             // path for an attachment that keeps failing, and it must still correct a
             // ROWID a Mail index rebuild made stale.
@@ -825,7 +825,7 @@ extension PraticaSyncEngine {
             return
         }
 
-        // ADR-0067 §D5: a full render over a file that already exists - a `pending` body
+        // ADR-0068 §D5: a full render over a file that already exists - a `pending` body
         // that arrived, a `storeReferences` change - is composed from Mail alone, so the
         // person's `pergamenum-mail-note` link is carried over from the file on disk. A
         // requested regeneration is excluded on purpose: `regenerationPreview` already
@@ -949,7 +949,7 @@ extension PraticaSyncEngine {
         try data.write(to: url, options: .atomic)
     }
 
-    /// PG-123/PG-155 through the injected `quarantine` (ADR-0067 §D10): `false` when the
+    /// PG-123/PG-155 through the injected `quarantine` (ADR-0068 §D10): `false` when the
     /// attribute could not be stamped. The file stays where it is either way - «Apri»
     /// refuses it later if the attribute is still missing.
     private func stampQuarantine(on url: URL) -> Bool {

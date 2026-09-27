@@ -224,7 +224,7 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
 /// closed and simply follows the move. §D6's fix keeps this true on purpose, by suppressing the
 /// deletion signal for a session's own move rather than by this gap.
 ///
-/// ADR-0066 §D5: the follow-up is no longer an explicit `movedNote` call made after the
+/// ADR-0067 §D5: the follow-up is no longer an explicit `movedNote` call made after the
 /// reconcile - `moveFile` announces the move itself, before it returns. What this still pins is
 /// that the watcher's reconcile of the vacated source, arriving afterwards, closes nothing.
 @MainActor
@@ -245,7 +245,7 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
 
 /// Green today: `trashNote(at:)` already closes its tabs synchronously before the watcher's own
 /// `reconcile` could, and a bare `session.trashFile` closes them just as well through the
-/// `.trashed` change it announces (ADR-0066 §D1; before §D5 this was an explicit `trashedNote`
+/// `.trashed` change it announces (ADR-0067 §D1; before §D5 this was an explicit `trashedNote`
 /// call) - the R-09 ordering argument the SPEC registers, not independently mechanized, but
 /// true in both orders already.
 @MainActor

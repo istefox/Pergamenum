@@ -142,12 +142,12 @@ final class PraticaLiveSync {
     /// `dismissRegeneration` already ended.
     private var regenerationEngine: PraticaSyncEngine?
 
-    /// Whether a regeneration engine is currently held (item 12, ADR-0067 §D11): the
+    /// Whether a regeneration engine is currently held (item 12, ADR-0068 §D11): the
     /// one thing `PraticheController.releaseRegeneration` needs to know without
     /// reaching into a private property.
     var holdsRegenerationEngine: Bool { regenerationEngine != nil }
 
-    /// Releases the held regeneration engine (item 12, ADR-0067 §D11), wired as
+    /// Releases the held regeneration engine (item 12, ADR-0068 §D11), wired as
     /// `controller.releaseRegeneration` in `PraticaLiveSync.live` and called by
     /// `dismissRegeneration` («Annulla»/«Chiudi» on the sheet). The engine holds the
     /// published store copy's reader, about 355 MB on this Mac, for as long as it lives.
@@ -157,14 +157,14 @@ final class PraticaLiveSync {
         regenerationEngine = nil
     }
 
-    /// «Annulla» reaching the preparation phase (item 9, ADR-0067 §D14): set by `cancel()`,
+    /// «Annulla» reaching the preparation phase (item 9, ADR-0068 §D14): set by `cancel()`,
     /// cleared by `runExclusive` on entry, and checked by it right after the preparation
     /// returns - before any engine exists, which is the window `running` cannot cover.
     ///
     /// Not `private`: `PraticaLiveSync+Run.swift`'s `runExclusive` reads and clears it.
     var stopRequested = false
 
-    /// The preparation step `runExclusive` awaits (item 9, ADR-0067 §D14), injectable so a
+    /// The preparation step `runExclusive` awaits (item 9, ADR-0068 §D14), injectable so a
     /// test can hold a run inside the phase behind a gate. Defaulted to the detached
     /// `MailStorePreparation.prepare(...)`, which is never interrupted: it is a synchronous
     /// copy with no checkpoint, and `MailStoreCopy` already discards its staging directory.
@@ -185,7 +185,7 @@ final class PraticaLiveSync {
     /// Also drops every queued request: an interrupted sync should not be silently
     /// followed by the ones a burst of triggers left waiting behind it.
     ///
-    /// Sets `stopRequested` first (ADR-0067 §D14): during the preparation phase no engine
+    /// Sets `stopRequested` first (ADR-0068 §D14): during the preparation phase no engine
     /// exists yet, so the `guard let running` below has nothing to cancel.
     func cancel() {
         stopRequested = true
@@ -443,7 +443,7 @@ final class PraticaLiveSync {
             controller?.endRegeneration(plan.praticaFolder)
             return .failed
         }
-        // ADR-0067 §D11: the sheet closed on «Conferma» before this ran, so nothing else will
+        // ADR-0068 §D11: the sheet closed on «Conferma» before this ran, so nothing else will
         // release the engine. Released on every exit below, and only while it is still this
         // attempt's own - an abandoned attempt never releases a newer one (round 3).
         defer {
@@ -507,7 +507,7 @@ final class PraticaLiveSync {
         case .fileMissing:
             return "Il file della nota non è stato trovato nel vault."
         case .lookupIndeterminate:
-            // ADR-0067 §D7: not «non più in Mail» - the search could not finish.
+            // ADR-0068 §D7: not «non più in Mail» - the search could not finish.
             return "Il file del messaggio non è stato trovato nell'archivio di Mail questa volta: riprova più tardi."
         }
     }

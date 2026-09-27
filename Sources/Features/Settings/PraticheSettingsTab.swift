@@ -30,7 +30,7 @@ struct PraticheSettingsTab: View {
     @State private var newAddress = ""
     @State private var fullDiskAccessState = FullDiskAccessProbe.state()
     @State private var syncProblem: String?
-    /// The last «Scegli…» picked the vault itself or a folder outside it (ADR-0067 §D18).
+    /// The last «Scegli…» picked the vault itself or a folder outside it (ADR-0068 §D18).
     @State private var rootFolderRefused = false
 
     var body: some View {
@@ -101,7 +101,7 @@ struct PraticheSettingsTab: View {
 
     /// `NSOpenPanel` scoped to the open vault: a root folder outside it would name a
     /// folder no `VaultSession.write` can ever reach. Only a strict subfolder is stored
-    /// (ADR-0067 §D18); anything else leaves the setting as it was and says why.
+    /// (ADR-0068 §D18); anything else leaves the setting as it was and says why.
     private func chooseRootFolder() {
         guard let root = vault.root else { return }
         let panel = NSOpenPanel()
@@ -118,7 +118,7 @@ struct PraticheSettingsTab: View {
         vault.updateSettings { $0.pratiche.rootFolder = relative }
     }
 
-    /// Item 17 (ADR-0067 §D18): `chosen` relative to the vault, or `nil` for the vault
+    /// Item 17 (ADR-0068 §D18): `chosen` relative to the vault, or `nil` for the vault
     /// root itself and for anything outside it. Answers through `VaultBoundary.contains`,
     /// with `chosen` resolved the same way the boundary resolves its root, so `/var` and
     /// `/private/var` agree.

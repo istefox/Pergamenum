@@ -5,7 +5,7 @@ import Foundation
 
 extension PraticaFileOperations {
     /// Copies the attachments and returns the renames a collision forced, patching no file:
-    /// the caller composes them into the note's one session write (ADR-0067 §D1/§D4).
+    /// the caller composes them into the note's one session write (ADR-0068 §D1/§D4).
     ///
     /// Not `private`: `PraticaFileOperations.swift`'s `moveFiles(of:to:)` and
     /// `copyFiles(of:to:)` are in a separate file, and both call this.
@@ -77,7 +77,7 @@ extension PraticaFileOperations {
     /// Renames every `[[oldName]]`/`![[oldName]]` reference inside the transferred message -
     /// the other half of resolving a same-name, different-bytes collision (the file itself
     /// already got the new name). Pure, over text, so the caller writes the result once
-    /// through the session (ADR-0067 §D1/§D4).
+    /// through the session (ADR-0068 §D1/§D4).
     ///
     /// Every rename applied in ONE pass over the ORIGINAL text, keyed by the bracketed name
     /// each `[[...]]` token actually names - never as a sequence of `replacingOccurrences`

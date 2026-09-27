@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0067 (Pratiche sync integrity), plan
+// ADR-0068 (Pratiche sync integrity), plan
 // docs/plans/pg-257-pratiche-sync-integrity-and-post-write-door.md, Task 3 -
 // R-10, R-12, R-16, R-17 (engine half).
 //
@@ -16,7 +16,7 @@ import Testing
 
     /// A message this pratica already imported, whose literal `Message-ID` no longer
     /// matches any row (Mail rewrote the header, keeping the same ROWID - the
-    /// "ROWID reused" shape ADR-0067 §D6 names), must not be marked «Non più in
+    /// "ROWID reused" shape ADR-0068 §D6 names), must not be marked «Non più in
     /// Mail» when the ledger's own recorded ROWID still resolves. Red until Task 5:
     /// `noLongerInMail(request:reader:)` (`PraticaSyncEngine.swift:206`) checks only
     /// `reader.row(forMessageID:)` today, with no ledger fallback.
@@ -40,7 +40,7 @@ import Testing
         _ = try await engine.sync(firstRequest)
 
         // Mail rewrites the header at the same ROWID (an index rebuild's own
-        // pathology, ADR-0067 §D6's "known limit"): the literal string
+        // pathology, ADR-0068 §D6's "known limit"): the literal string
         // `<abc123@rossi-spa.it>` is no longer stored anywhere in the index.
         try await Task.sleep(for: .milliseconds(50))
         _ = try MailStoreFixture.build(

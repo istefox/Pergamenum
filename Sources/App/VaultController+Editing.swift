@@ -6,7 +6,7 @@ import Foundation
 /// Split out of `VaultController.swift` when tabs pushed that file past SwiftLint's 400 lines.
 /// Every one of these reaches a buffer through a door that stayed behind with the stored
 /// `columns` - the catch-up after a write is `landed(_:)`'s, which the session calls itself
-/// (ADR-0066, `VaultController+TabFollowUps.swift`), and `replaceOpenNote` or
+/// (ADR-0067, `VaultController+TabFollowUps.swift`), and `replaceOpenNote` or
 /// `updateFocusedTab` for settling the banner the person clicked (`closeTabs(_:ofVanishedNote:)` when it was a deletion, ADR-0064
 /// §D5) - so the rule that a view cannot swap the buffer under the editor survives the move.
 extension VaultController {
@@ -25,7 +25,7 @@ extension VaultController {
     /// The *target* is the focused buffer, as every caller means it; the *effects* reach every
     /// tab showing the path (ADR-0058 §D3). The writer tab's id is taken before the `await`,
     /// because the focused tab when the write resumes may no longer be the one that saved, and
-    /// handed to the write as its `origin` (ADR-0066 §D2): the session echoes it back through
+    /// handed to the write as its `origin` (ADR-0067 §D2): the session echoes it back through
     /// `landed(_:)`, which gives that tab its saved text and every other copy the prompt rule.
     /// Nothing is called after the write - the door already delivered it.
     func saveOpenNote() async {
@@ -55,7 +55,7 @@ extension VaultController {
     ///
     /// The path is read **before** the save, not after it: a re-read of `openNote` once the
     /// save resumes finds whichever tab has the focus then, and would write one note's past
-    /// version over another (ADR-0058 §D4). The restore passes no `origin` (ADR-0066 §D2), so
+    /// version over another (ADR-0058 §D4). The restore passes no `origin` (ADR-0067 §D2), so
     /// the catch-up `landed(_:)` performs reaches every tab showing the path, the writer's own
     /// included; a buffer still dirty after the save - a failed save, or text typed during
     /// either `await` - gets the prompt rather than being overwritten.

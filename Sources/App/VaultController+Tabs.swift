@@ -256,7 +256,7 @@ extension VaultController {
 
     /// Applies `change` to every tab showing `relativePath`, in every column - not only in
     /// the focused one. An external change, and an in-process write, rename or trash the
-    /// session announces (`landed(_:)`, ADR-0066), do not know which tab, if any, has the focus: `canOperate(on:)`
+    /// session announces (`landed(_:)`, ADR-0067), do not know which tab, if any, has the focus: `canOperate(on:)`
     /// (`VaultController+Files.swift`) already asks the question of every column, and these
     /// four used to ask it of the first one only.
     func updateTabs(showing relativePath: String, _ change: (inout NoteTab) -> Void) {

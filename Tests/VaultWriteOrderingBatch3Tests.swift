@@ -6,7 +6,7 @@ import Testing
 // Required production contracts (the coder implements these, never test-side stubs):
 // selfWrittenHashes: [String: [(sequence: UInt64, hash: String)]]
 // write(_:to:expecting: String? = nil), throwing WriteRefusal.movedOn(path)
-// Internal PraticaEntryComposer.handOff(_:notePath:) - since ADR-0066 §D5 it takes no
+// Internal PraticaEntryComposer.handOff(_:notePath:) - since ADR-0067 §D5 it takes no
 // WriteResult: `session.write` catches every open tab up itself, through
 // `VaultController.landed(_:)`, before `handOff` runs.
 // Earlier batches supply IndexMutation, apply([mutation]) and async reconcile.
@@ -155,7 +155,7 @@ private func batch3Controller(_ vault: borrowing TemporaryVault) async -> VaultC
 // R-08, R-09, R-14: recreate insert's write/handOff boundary with the actual write.
 // Calling handOff directly is the forcing mechanism requested by Task 8, not a sleep.
 //
-// ADR-0066 §D5 changed this test's premise, not its intent. The door is synchronous: the
+// ADR-0067 §D5 changed this test's premise, not its intent. The door is synchronous: the
 // tab is caught up inside `session.write`, before it returns. A buffer the person dirtied
 // while the write was in flight is therefore dirty *before the write lands*, and that is
 // the case that owes the prompt - asserted here. Text typed after the write returned is
@@ -187,7 +187,7 @@ private func batch3Controller(_ vault: borrowing TemporaryVault) async -> VaultC
     #expect(controller.openNote?.text == buffer)
 }
 
-// ADR-0066 §D5: the sibling of the test above - edits typed after the write returned are
+// ADR-0067 §D5: the sibling of the test above - edits typed after the write returned are
 // kept, and they are the person's own unsaved edits over the caught-up text, not a conflict.
 @MainActor
 @Test func composerHandOffKeepsEditsMadeAfterTheWriteReturnedAsOrdinaryUnsavedEdits() async throws {
@@ -234,7 +234,7 @@ private func batch3Controller(_ vault: borrowing TemporaryVault) async -> VaultC
         vault: controller, navigation: Navigation()
     )
     // No await follows this external write, so the watcher cannot race the assertion. The
-    // tab was caught up to `result` inside `session.write` (ADR-0066 §D1); `handOff` must
+    // tab was caught up to `result` inside `session.write` (ADR-0067 §D1); `handOff` must
     // not re-read the disk that has since moved on.
     try vault.write(batch3Text("Later writer"), to: "N.md")
     composer.handOff(insertion, notePath: "N.md")

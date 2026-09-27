@@ -213,7 +213,7 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     controller.openNoteInNewTab(at: "Progetti/Sospensione.md")
 
     // Renaming the note in the tab that is *not* focused, which is the case a single open
-    // note could never produce. A hand-built change (ADR-0066 §D3): no real move happens here.
+    // note could never produce. A hand-built change (ADR-0067 §D3): no real move happens here.
     controller.landed(.moved(from: "Nexion.md", to: "Progetti/Sospensione.md"))
 
     #expect(controller.tabs.first?.note.relativePath == "Progetti/Sospensione.md")

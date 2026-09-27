@@ -17,7 +17,7 @@ extension VaultController {
         guard let session else { return false }
         switch await session.apply(change, to: task) {
         case .written:
-            // The open tabs heard of the write from the write itself (ADR-0066 §D1).
+            // The open tabs heard of the write from the write itself (ADR-0067 §D1).
             recordTaskWrite()
             return true
         case .stale:
@@ -62,7 +62,7 @@ extension VaultController {
     /// creating the inbox note if it is not there yet.
     @discardableResult
     func captureTask(_ draft: TaskDraft) async -> Bool {
-        // The write catches the destination note's open tabs up itself (ADR-0066 §D1).
+        // The write catches the destination note's open tabs up itself (ADR-0067 §D1).
         guard let session, await session.captureTask(draft) != nil else { return false }
 
         // The block comes after the task line is safely written: a block for a task

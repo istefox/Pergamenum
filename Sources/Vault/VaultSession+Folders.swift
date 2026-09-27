@@ -33,7 +33,7 @@ extension VaultSession {
         // The folder's own pair, not `movedNotes` (ADR-0059 §D4): the prefix rule also
         // reaches an entry whose note is only an iCloud placeholder, in no index.
         relocateNoteIDs([MovedNote(old: relativePath, new: outcome.newPath)])
-        // ADR-0066 §D1: a folder is not something a tab shows, its notes are - one `.moved`
+        // ADR-0067 §D1: a folder is not something a tab shows, its notes are - one `.moved`
         // per note the folder carried, since no `moveFile` ran here to announce it.
         for moved in outcome.movedNotes {
             announce(.moved(from: moved.old, to: moved.new))
@@ -50,7 +50,7 @@ extension VaultSession {
             forgetStar(path)
         }
         forgetNoteIDs([relativePath])
-        // ADR-0066 §D1: one `.trashed` per note the folder took with it.
+        // ADR-0067 §D1: one `.trashed` per note the folder took with it.
         for path in result.trashedNotePaths {
             announce(.trashed(path))
         }

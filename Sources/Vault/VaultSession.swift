@@ -92,7 +92,7 @@ final class VaultSession {
     /// parse, a vocabulary that could not be loaded.
     private(set) var problems: [String] = []
 
-    /// ADR-0066 §D1: the one subscriber told about every change this session lands -
+    /// ADR-0067 §D1: the one subscriber told about every change this session lands -
     /// `VaultController.landed(_:)`, installed and cleared by `VaultController.open(_:)`/
     /// `close()` so it only ever follows the controller's own session (§D4). `perg` and
     /// `pergamenum-mcp` never install one, so `announce(_:)` is a nil-check there.
@@ -100,7 +100,7 @@ final class VaultSession {
     /// `@ObservationIgnored`: this is a delivery channel, not state a view reads.
     @ObservationIgnored var landedChangeSubscriber: (@MainActor (LandedChange) -> Void)?
 
-    /// ADR-0066 §D6: a per-path counter, bumped by `announce(_:)` for every path a landed
+    /// ADR-0067 §D6: a per-path counter, bumped by `announce(_:)` for every path a landed
     /// change touches. Not persisted, and not an ordering authority - `VaultDisk`'s own
     /// per-path sequence (ADR-0043 §D1) stays that. This exists for one reader, the
     /// Pratiche inspector, so it is observed rather than `@ObservationIgnored`: a view
@@ -603,7 +603,7 @@ extension VaultSession {
     /// with a non-nil `expecting` is a contradiction: asserted against in Debug, and
     /// `expecting` wins in Release. The refusal goes through the same `catch` below.
     ///
-    /// **ADR-0066 §D2:** `origin`, when not nil, is the id of the editor tab whose own save
+    /// **ADR-0067 §D2:** `origin`, when not nil, is the id of the editor tab whose own save
     /// this is. The session never interprets it - it only echoes the value back in the
     /// `.written` change `announce(_:)` hands to `landedChangeSubscriber`, so the controller
     /// can tell its own writer apart from every other tab showing the same path. `nil` (the
@@ -664,7 +664,7 @@ extension VaultSession {
             // than pretending otherwise.
             if let problem = outcome.journalProblem { recordProblem(problem) }
             let result = WriteResult(path: relativePath, text: text)
-            // ADR-0066 §D1: the change is real - index applied, self-write reconciled - so
+            // ADR-0067 §D1: the change is real - index applied, self-write reconciled - so
             // every open copy of the note hears of it before this door returns.
             announce(.written(result, origin: origin))
             return result

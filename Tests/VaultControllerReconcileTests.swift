@@ -149,7 +149,7 @@ private func controller(
 
 // MARK: 5. A landed move/trash reaches a tab in the second column - RED before the fix
 //
-// These used to call `movedNote`/`trashedNote` directly; ADR-0066 §D5 folded both into
+// These used to call `movedNote`/`trashedNote` directly; ADR-0067 §D5 folded both into
 // `landed(_:)`, so the hand-built `.moved`/`.trashed` change is the faithful replacement - no
 // real move or trash happens here either.
 

@@ -20,7 +20,7 @@ enum EMLXLocator {
         /// bounded enumeration this case triggers found nothing either - a rule that
         /// has drifted, reported as a diagnostic rather than shown as R-16's caption.
         case ruleFailed(candidatesTried: [String])
-        /// The fallback walk could not answer either way (ADR-0067 §D7): the budget
+        /// The fallback walk could not answer either way (ADR-0068 §D7): the budget
         /// ran out before covering the tree, or a
         /// subdirectory could not be read. Neither `.notInStore` (R-16's «non più in
         /// Mail») nor `.ruleFailed` (a drifted rule) is honest here - the caller
@@ -42,7 +42,7 @@ enum EMLXLocator {
     /// mailbox for the caller's lifetime (ADR §D4) - the cache itself is the coder's
     /// concern; this signature takes the one predicted candidate a unit test can
     /// build without a live store.
-    /// `enumerationBudget` (ADR-0067 §D7): defaulted to `defaultEnumerationBudget`, so
+    /// `enumerationBudget` (ADR-0068 §D7): defaulted to `defaultEnumerationBudget`, so
     /// every existing call compiles unchanged and a test can exhaust it with a tiny
     /// tree. A walk that exhausts it, or that met a directory it could not read and
     /// found nothing, is `.indeterminate`; only a complete walk of a readable `Data/`
@@ -90,7 +90,7 @@ enum EMLXLocator {
             // state R-16's caption is allowed to describe.
             return .notInStore
         case .indeterminate(let reason):
-            // ADR-0067 §D7: a walk cut short by its budget, or one that met a directory
+            // ADR-0068 §D7: a walk cut short by its budget, or one that met a directory
             // it could not read, cannot tell "gone" from "somewhere it did not look".
             return .indeterminate(reason)
         }
@@ -125,7 +125,7 @@ enum EMLXLocator {
     /// through that parameter instead of touching this constant.
     static let defaultEnumerationBudget = 20_000
 
-    /// What one fallback walk can honestly say (ADR-0067 §D7): it found the file, it
+    /// What one fallback walk can honestly say (ADR-0068 §D7): it found the file, it
     /// walked everything readable and found nothing, or it could not finish the job.
     private enum Walk {
         case hit(URL)

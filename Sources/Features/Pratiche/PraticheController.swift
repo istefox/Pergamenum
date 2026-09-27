@@ -60,7 +60,7 @@ final class PraticheController {
     /// The chosen pratica's folder path, which is also its list row's `.tag`.
     var selection: String?
 
-    /// Item 15 (ADR-0067 §D16): the key `.task(id:)` reloads the inspector on - the
+    /// Item 15 (ADR-0068 §D16): the key `.task(id:)` reloads the inspector on - the
     /// selected pratica's path plus its `pratica.md`'s own landed generation, so a write
     /// that lands while the pane is already open (no selection change) still triggers a
     /// reload. With nothing selected the generation is always 0, which is what makes
@@ -70,9 +70,9 @@ final class PraticheController {
         var generation: UInt64
     }
 
-    /// Only landed writes through the session advance the generation (ADR-0066 §D6): a
+    /// Only landed writes through the session advance the generation (ADR-0067 §D6): a
     /// «Nota» or «Chiudi»/«Riapri» write does, an external edit to `pratica.md` does not
-    /// (ADR-0067 §D20).
+    /// (ADR-0068 §D20).
     func inspectorKey(for session: VaultSession?) -> InspectorKey {
         guard let selection, let session else { return InspectorKey(praticaPath: selection, generation: 0) }
         return InspectorKey(
@@ -254,7 +254,7 @@ final class PraticheController {
     /// `PraticheController.live` to `PraticaLiveSync.commitRegeneration`.
     @ObservationIgnored var commitRegeneration: (@MainActor (_ plan: PraticaSyncEngine.RegenerationPlan) async -> PraticaRegenerationCommit)?
 
-    /// Item 12 (Task 3 declaration, ADR-0067 §D11): wired by `PraticheController.live`
+    /// Item 12 (Task 3 declaration, ADR-0068 §D11): wired by `PraticheController.live`
     /// to `PraticaLiveSync.releaseRegenerationEngine` (Task 6). `nil` means nothing is
     /// wired, the same shape as `prepareRegeneration`/`commitRegeneration` above.
     @ObservationIgnored var releaseRegeneration: (() -> Void)?
@@ -614,7 +614,7 @@ extension PraticheController {
     ///   `watchersByPraticaPath` holds is pure throttle bookkeeping (`PraticaWatcher` is a struct of
     ///   dates), so emptying it IS stopping those watchers.
     ///
-    /// `windowKeyObserver` IS removed here (ADR-0067 §D15, amending ADR-0052 §D5 for this one
+    /// `windowKeyObserver` IS removed here (ADR-0068 §D15, amending ADR-0052 §D5 for this one
     /// property). The pane's appearance task is keyed on the vault (`.task(id: vault.root)`), so a
     /// switch while the pane is visible re-arms it at once; a switch while it is not visible leaves
     /// the window-key trigger disarmed until the pane is next opened - the rule the app already

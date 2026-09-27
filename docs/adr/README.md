@@ -37,3 +37,4 @@ trustworthy. Each one answers a defect found on 2026-09-26 (issue #581).
 | Old | New | Date | Reason |
 |---|---|---|---|
 | 0061 (`0061-external-deletion-reaches-the-tabs-and-the-diary.md`) | 0064 | 2026-09-26 | Two ADRs took 0061 on 2026-09-25. The merge-integrity guard (PR #529) landed first and keeps 0061, which `scripts/check-merge-integrity.py`, the pre-push hook, `merge-integrity.yml` and ADR-0062 cite. The external-deletion record (PR #530) moved to the next free number; 0063 was already ADR-0063. Issue #581. |
+| 0066 (`0066-one-door-onto-the-editor-after-a-landed-change.md`), 0067 (`0067-pratiche-sync-integrity.md`) | 0067, 0068 | 2026-09-27 | Both written for `PG-257`/#571 and committed on `kepler/task-fb693389` (`34346cda`) before PR #598 landed a different ADR-0066 (Workspace board lifecycle) on `main`. Main's 0066 keeps its number; the two unmerged records moved to the next free numbers before their own merge. |

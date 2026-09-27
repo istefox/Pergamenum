@@ -320,7 +320,7 @@ extension PraticheController {
             var gone = Set(state.notInStore)
             gone.formUnion(outcome.noLongerInMail)
             gone.subtract(outcome.importedMessageIDs)
-            // ADR-0067 §D6: a message merely seen again loses the marker too - one
+            // ADR-0068 §D6: a message merely seen again loses the marker too - one
             // already on disk is never re-imported, so the line above alone never
             // cleared it.
             gone.subtract(outcome.seenInMail)
@@ -340,7 +340,7 @@ extension PraticheController {
         if isCurrentVault {
             // ADR-0040 §D10/§D7.3: what this run's attachment repair pass could not
             // fix - a file it could not trash, a downgrade it could not write. Empty
-            // on every healthy run. ADR-0067 §D7/§D19: a lookup that could not answer
+            // on every healthy run. ADR-0068 §D7/§D19: a lookup that could not answer
             // joins the same single report, never a second one.
             var sentences = outcome.attachmentProblems
             if let indeterminate = Self.indeterminateLookupSentence(count: outcome.indeterminateLookups.count) {
@@ -354,7 +354,7 @@ extension PraticheController {
         }
     }
 
-    /// ADR-0067 §D7: distinct from «Non più in Mail» - these messages were skipped, not
+    /// ADR-0068 §D7: distinct from «Non più in Mail» - these messages were skipped, not
     /// judged gone, and stay candidates for the next sync. `nil` for zero.
     nonisolated static func indeterminateLookupSentence(count: Int) -> String? {
         switch count {
@@ -702,7 +702,7 @@ extension PraticheController {
         case nil: break
         }
         regeneration = nil
-        // ADR-0067 §D11: the engine a preview held is released with the sheet.
+        // ADR-0068 §D11: the engine a preview held is released with the sheet.
         releaseRegeneration?()
     }
 

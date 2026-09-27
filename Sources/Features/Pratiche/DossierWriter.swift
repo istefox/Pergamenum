@@ -30,7 +30,7 @@ enum DossierWriter {
             let (record, text) = try session.read(notePath)
             var document = NoteDocument.parse(text)
             let before = document
-            // ADR-0067 §D12: a dossier that does not parse is a failure, not a success with
+            // ADR-0068 §D12: a dossier that does not parse is a failure, not a success with
             // nothing to do - «Escludi» records first and must not trash on this.
             guard var dossier = Dossier.parse(document.frontmatter.foreignKeys) else {
                 let name = (praticaPath as NSString).lastPathComponent

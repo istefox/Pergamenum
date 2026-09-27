@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0067 (Task 3): declarations for items 12 ("Engine release", R-18), 18 ("Live
+// ADR-0068 (Task 3): declarations for items 12 ("Engine release", R-18), 18 ("Live
 // target", R-24) and 19 ("Preparation sentence", R-25). `PraticaLiveSync` built
 // directly rather than through `.live(vault:)`, per the plan's own instruction, so
 // `regenerationEngine`'s own private state is reachable through the two Task 3

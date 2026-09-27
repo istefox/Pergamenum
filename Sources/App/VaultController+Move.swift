@@ -179,7 +179,7 @@ extension VaultController {
 
     /// Relocates what follows a moved folder, then rebuilds the index - `renameFolder`'s
     /// follow-ups, for a batch. The tabs and RECENTI already followed every carried note:
-    /// the session announced each move as it landed (ADR-0066 §D1), forward and on
+    /// the session announced each move as it landed (ADR-0067 §D1), forward and on
     /// `performInverse`'s undo/redo alike.
     private func follow(_ outcome: VaultSession.MoveBatchOutcome) {
         // The single choke point for both directions (§D8's own claim): this runs for

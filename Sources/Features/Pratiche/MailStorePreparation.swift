@@ -34,7 +34,7 @@ enum MailStorePreparation {
         case .storeMissing:
             return .failed("Nessun archivio di Mail trovato in \(mailRoot.path(percentEncoded: false)).")
         case .permissionDenied:
-            // ADR-0067 §D11: waiting does not help here, the permission does.
+            // ADR-0068 §D11: waiting does not help here, the permission does.
             return .failed(
                 "Pergamenum non può leggere l'archivio di Mail: concedi l'Accesso completo al disco "
                     + "in Impostazioni di Sistema › Privacy e sicurezza."

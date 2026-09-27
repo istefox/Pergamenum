@@ -222,7 +222,7 @@ import Testing
         )
     }
 
-    // MARK: - Item 11 "Apri" half (ADR-0067 §D10, R-17): `openDecision`'s four cases
+    // MARK: - Item 11 "Apri" half (ADR-0068 §D10, R-17): `openDecision`'s four cases
 
     /// Already-quarantined file: opens without ever trying to apply anything.
     /// Guard - the stub already maps `openURL` to `.open` regardless of the

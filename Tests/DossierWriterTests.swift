@@ -39,7 +39,7 @@ Corpo della pratica, non toccato.
     #expect(text.contains("<already-excluded@rossi-spa.it>"))
 }
 
-/// R-19's writer half (ADR-0067 §D12): today `Dossier.parse` failing returns `nil` from
+/// R-19's writer half (ADR-0068 §D12): today `Dossier.parse` failing returns `nil` from
 /// `update`, silently reporting success. Red until Task 4's fix (`DossierWriter.swift:33`)
 /// returns a sentence instead.
 @MainActor

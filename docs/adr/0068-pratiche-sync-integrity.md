@@ -1,4 +1,4 @@
-# ADR-0067: Pratiche sync integrity — every note operation through the session, nineteen edges closed
+# ADR-0068: Pratiche sync integrity — every note operation through the session, nineteen edges closed
 
 - Status: **proposed**. Not on `main`. It flips to `accepted` with the merge PR and its
   first-parent merge hash (`docs/adr/README.md` rule 2).
@@ -6,17 +6,20 @@
   `SPEC.md`). `origin/main` is `1e09448e`, and its net difference from this tree is `TODO.md` alone.
   Every line number below was read from `3fcde6f0`. None is recalled from the ROADMAP, whose line
   numbers were taken at `0d6f34a` and have drifted by up to five lines.
-- **Numbering note.** This ADR is the companion of ADR-0066 and takes the next number. The same
+- **Numbering note.** This ADR is the companion of ADR-0067 and takes the next number. The same
   recheck applies before the merge, and so does the same `git mv` plus register entry if either
   number is taken first (`docs/adr/README.md` rule 1).
-- **Path note.** The ADR lives at `docs/adr/`, not `docs/architecture/` (see ADR-0066's path note).
+- **Renumbering note (2026-09-27).** Written and committed as ADR-0067 (`34346cda`), with its
+  companion as ADR-0066. PR #598 took ADR-0066 on `main` first, so the companion moved to 0067 and
+  this record to 0068 before this branch merged.
+- **Path note.** The ADR lives at `docs/adr/`, not `docs/architecture/` (see ADR-0067's path note).
 - Source: `SPEC.md` (Approved 2026-09-26), issue **#571** (`PG-257`, Audit Fable chain 4),
   ROADMAP §Chain 4 items 1–19. Every item was re-verified present at `3fcde6f0`.
 - **What this extends.** ADR-0036 §D3/§D4/§D6/§D10/§D21, ADR-0040 §D4/§D7, ADR-0049 §D7,
   ADR-0052 §D1/§D3 and ADR-0059 §D5/§D6.
 - **What this amends.** One bullet of ADR-0052 §D5: `windowKeyObserver` is now cleared with the
   vault-scoped state (§D15).
-- **Rests on ADR-0066.** Every move, trash, restore and write this ADR routes through the session
+- **Rests on ADR-0067.** Every move, trash, restore and write this ADR routes through the session
   reaches the editor through that ADR's one door. Without it, each would need a manual follow-up.
 - **Reopens nothing else.** Principles 1 and 3 hold. There is no new on-disk format, no new
   frontmatter key, and `IndexCache.schemaVersion` stays 5. These are untouched:
@@ -102,7 +105,7 @@ inside the `Task` it already opens. `restore` stays `static`, taking the session
 so its suite still needs no `VaultController`.
 
 **Consequence.** «Rigenera» now closes a clean tab showing the message note it regenerates:
-ADR-0066 announces the trash, and the rewrite then lands on a path no tab shows. A dirty tab is
+ADR-0067 announces the trash, and the rewrite then lands on a path no tab shows. A dirty tab is
 asked instead. This is a change from today, where the tab silently kept the pre-regeneration
 text. The old behaviour was worse, because that tab's next save would revert the regeneration.
 
@@ -133,7 +136,7 @@ rewrites the same path in the same gesture. Every other caller keeps the default
 today. The connectors' `@discardableResult` call sites compile unchanged.
 
 **The restore door.** `VaultSession.restoreFromOutside(_ source: URL, to relativePath: String) async
-throws` lives in `VaultSession+LandedChanges.swift` (ADR-0066 §D1). It works in this order:
+throws` lives in `VaultSession+LandedChanges.swift` (ADR-0067 §D1). It works in this order:
 
 1. **Checks.** It refuses a destination the boundary rejects, a destination that exists, and a
    destination whose parent folder is missing. No directory is created, so PG-168 holds.
@@ -387,7 +390,7 @@ applies at launch (ADR-0036 §D10, "nothing reads Mail until the pane was opened
 
 `PratichePane`'s inspector task (`:85`) is keyed on a new `PraticheController.InspectorKey`
 (selection, generation). The generation is `session.landedGeneration(at:
-PraticaNaming.praticaNotePath(of: selection))` (ADR-0066 §D6). `inspectorKey(for:)` builds the
+PraticaNaming.praticaNotePath(of: selection))` (ADR-0067 §D6). `inspectorKey(for:)` builds the
 key, so a test checks that a «Nota» or a «Chiudi»/«Riapri» write advances it without rendering
 a view. Only landed writes through the session advance it. An external edit to `pratica.md` does
 not (§D20).
@@ -432,7 +435,7 @@ run's `attachmentProblems` sentence in the same single report, never a second ca
 - **The timeline.** It still skips an unreadable `.md` silently
   (`PraticheController+TimelineRead.swift:129`, `:135`).
 - **External edits.** The inspector does not reload on an external edit to `pratica.md`. The
-  watcher does not announce (ADR-0066 §D1).
+  watcher does not announce (ADR-0067 §D1).
 - **The full-render write** keeps `expecting: nil` while carrying a link read before the run's
   first `await` (§D5). A link written between the folder read and the render is lost. The window
   is narrow, and ADR-0043 §D8 excluded the full render by name.
@@ -514,7 +517,7 @@ Every test is in `PergamenumTests`.
     recorded as self-written. The watcher's reconciliation of it reports nothing.
   - «Escludi» leaves the index without the note and announces `.trashed`. The watcher's
     reconciliation of the vacated path still reports `.deleted`: an in-app trash stays visible to
-    the watcher (ADR-0064 §D6, R-09 there), which ADR-0066 §D3's "a trash reaches a tab twice"
+    the watcher (ADR-0064 §D6, R-09 there), which ADR-0067 §D3's "a trash reaches a tab twice"
     already assumes. No absence marker is recorded for a trash.
   - A refused or failed rewrite is reported.
   - An open tab follows the move.
@@ -554,6 +557,6 @@ Every test is in `PergamenumTests`.
 - `SPEC.md` (Approved 2026-09-26); issue #571 / `PG-257`; ROADMAP §Chain 4 items 1–19.
 - ADR-0001 §D3.4; ADR-0022 §D7; ADR-0023 §D8; ADR-0036 §D3/§D4/§D6/§D10/§D21; ADR-0040
   §D4/§D7/§D10; ADR-0041 §D10; ADR-0043 §D8/§D9; ADR-0049 §D7; ADR-0052 §D1/§D3/§D5; ADR-0059
-  §D2/§D5/§D6; ADR-0064 §D6; ADR-0065; ADR-0066 (companion).
+  §D2/§D5/§D6; ADR-0064 §D6; ADR-0065; ADR-0067 (companion).
 - `CLAUDE.md` working agreements: "a precondition evaluated before an `await` is a filter"; "a
   ledger … must record which file it was read from"; PG-168's no-recreate rule.

@@ -313,11 +313,11 @@ few lines; the chain exists so they ship together with tests in `scripts/mcp-smo
 
 ### Chain 4 — Pratiche sync integrity (P1/P2)
 
-**Absorbed** by ADR-0067 (`docs/adr/0067-pratiche-sync-integrity.md`), issue #571 (`PG-257`), in
-the same PR as ADR-0066, which ships Chain 16 item 1 with it. It closes all 19 items below. Item 2
+**Absorbed** by ADR-0068 (`docs/adr/0068-pratiche-sync-integrity.md`), issue #571 (`PG-257`), in
+the same PR as ADR-0067, which ships Chain 16 item 1 with it. It closes all 19 items below. Item 2
 is widened to every raw note operation in `PraticaFileOperations` (move, copy, trash, restore, not
 only the two `try? text.write` calls). Items 9 and 18 are corrected inline against the code at
-`3fcde6f0`. The residuals the chain found and did not fix are in ADR-0067 §D20.
+`3fcde6f0`. The residuals the chain found and did not fix are in ADR-0068 §D20.
 
 Root cause: three writers in the Pratiche feature go around `VaultSession` or around the
 carry-over that keeps ADR-0049 links alive, and several ledger/outcome paths throw away state on
@@ -388,7 +388,7 @@ their early exits. Extends ADR-0036/0040/0049/0052.
    What: `running` is assigned only inside `runEngine`, after the `Task.detached` that copies the
    Envelope Index (plus a `Thread.sleep(2)` on a torn copy). `cancel()` finds `nil`.
    `PraticaSyncEngine.sync` never consults `Task.isCancelled`.
-   Fix (corrected by ADR-0067 §D14): the engine already has its own cancellation flag, so the
+   Fix (corrected by ADR-0068 §D14): the engine already has its own cancellation flag, so the
    gap is the publication phase only, before the engine exists. A run-level `stopRequested` flag
    set by `cancel()` and checked once the preparation returns stops the run before `runEngine`;
    no `Task.isCancelled` check is added.
@@ -442,7 +442,7 @@ their early exits. Extends ADR-0036/0040/0049/0052.
     Fix: compute the relative path with `VaultBoundary`, refuse anything outside.
 
 18. **`AddToPraticaSheet.swift:184-202` uses `praticaPath` captured before the `await`**. `suspected`.
-    Correction (ADR-0067 §D13): the correctly fixed twin is `PraticaCommandActions.follow`/`ignore`
+    Correction (ADR-0068 §D13): the correctly fixed twin is `PraticaCommandActions.follow`/`ignore`
     (`PraticaCommandActions.swift:309-340`), not a line of `AddToPraticaSheet.swift`. The tail moves
     into `PraticaCommandActions.addToPratica(messageID:praticaPath:)`, which re-reads its target
     through `liveTarget(of:)` after the write.
@@ -992,7 +992,7 @@ verified as live and excluded.
 ### Chain 16 — New features (what would make the app more complete), in recommended order
 
 1. **Post-write notification from `VaultSession.write`** (extends PG-232/#512). **Absorbed** by
-   ADR-0066 (`docs/adr/0066-one-door-onto-the-editor-after-a-landed-change.md`) / #571, pulled
+   ADR-0067 (`docs/adr/0067-one-door-onto-the-editor-after-a-landed-change.md`) / #571, pulled
    forward into Chain 4's PR: the session announces every landed write, move and trash to one
    subscriber, and `syncOpenNote`, `movedNote` and `trashedNote` are deleted. Seven writers never
    catch the editor up (note-rename link rewrite, `renameTag`, `undoJournalledWrites`,

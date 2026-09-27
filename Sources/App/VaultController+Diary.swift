@@ -31,7 +31,7 @@ extension VaultController {
         prose: String, entries: [DiaryEntry], on day: CalendarDate, over disk: VaultSession.DiaryDiskState
     ) async -> VaultSession.WriteOutcome {
         guard let session else { return .failed }
-        // An editor tab showing the daily note is caught up by the write itself (ADR-0066 §D1).
+        // An editor tab showing the daily note is caught up by the write itself (ADR-0067 §D1).
         return await session.writeDiary(prose: prose, entries: entries, on: day, over: disk)
     }
 }

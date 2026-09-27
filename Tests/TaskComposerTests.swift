@@ -339,7 +339,7 @@ private let anOrdinaryToday = CalendarDate(iso: "2026-08-11")!
 // `VaultController.selectedTask` (`Sources/Vault/VaultController.swift:267`) is a value
 // snapshot. `captureTask`/`captureSubtask` (`Sources/Vault/VaultController+Tasks.swift`,
 // `Sources/Vault/VaultSession+Tasks.swift:169-190`) write through `VaultSession.write`, whose
-// announcement (`VaultController.landed(_:)`, ADR-0066) only keeps an *open editor tab* in
+// announcement (`VaultController.landed(_:)`, ADR-0067) only keeps an *open editor tab* in
 // step - nothing re-resolves `selectedTask` the way
 // `rescheduleSelectedTask` does (`Sources/Vault/VaultController+Tasks.swift:36-48`).
 //

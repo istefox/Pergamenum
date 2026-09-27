@@ -56,7 +56,7 @@ struct PraticaEntryComposer {
         let notePath = PraticaNaming.praticaNotePath(of: praticaPath)
         // The same refusal every file operation makes (`VaultController+Files`): a
         // tab holding unsaved edits to this note is asked to save first, never
-        // merged with and never discarded - the write below catches that tab up (ADR-0066).
+        // merged with and never discarded - the write below catches that tab up (ADR-0067).
         guard vault.canOperate(on: notePath) else { return }
         let counterpart = counterpart(of: praticaPath, fallback: pratica.client)
         do {
@@ -119,7 +119,7 @@ struct PraticaEntryComposer {
     /// `openNote(at:)` focuses a tab that already holds the note rather than re-reading
     /// it - and after the first entry it always does, since this very hand-off opened
     /// it. That buffer was caught up by the write in `insert` itself, before this runs
-    /// (ADR-0066 §D1, §D5): to the write's own result, never a fresh read - the file, after
+    /// (ADR-0067 §D1, §D5): to the write's own result, never a fresh read - the file, after
     /// `await`, may already have moved on again (`insert`'s own race, closed by
     /// `expecting:` above, is exactly why an un-preconditioned re-read would be wrong) - and
     /// asking rather than silently replacing a buffer the user was editing when the write

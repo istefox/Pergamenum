@@ -1,7 +1,7 @@
 import Foundation
 
 // ADR-0045 §D4's convention, applied once more (PG-257): `prepare`'s context block moved
-// out of `PraticaSyncEngine+Messages.swift` when ADR-0067 took that file past the
+// out of `PraticaSyncEngine+Messages.swift` when ADR-0068 took that file past the
 // 1000-line file_length error threshold. Nothing here names `PreparedMessage`,
 // `PreparedAttachment` or `RegenerationPlan.prepared`, so the ADR-0036 §D21 cluster stays
 // whole and `fileprivate` in that file. Bodies unchanged.
@@ -95,7 +95,7 @@ extension PraticaSyncEngine {
     /// that - both are skipped here, and R-16's caption is decided by
     /// `noLongerInMail(request:reader:)` against the index instead.
     ///
-    /// ADR-0067 §D7: `.indeterminate` is skipped too - never imported this run, so it
+    /// ADR-0068 §D7: `.indeterminate` is skipped too - never imported this run, so it
     /// stays a candidate and is looked for again next sync - but it is recorded in
     /// `indeterminateLookups`, so the pane can say so. No marker is ever set from it.
     private func locate(

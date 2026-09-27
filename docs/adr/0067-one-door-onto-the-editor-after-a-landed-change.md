@@ -1,4 +1,4 @@
-# ADR-0066: One door onto the editor after a landed change
+# ADR-0067: One door onto the editor after a landed change
 
 - Status: **proposed**. Not on `main`; it flips to `accepted` with the merge PR and its
   first-parent merge hash (`docs/adr/README.md` rule 2).
@@ -10,6 +10,10 @@
   holds a `docs/adr/0066*` or `docs/adr/0067*` today (`git log --all` is empty for both). Both
   numbers are rechecked immediately before the merge. If another chain lands 0066 or 0067
   first, both files are renumbered with `git mv` and entered in the register, per the README.
+- **Renumbering note (2026-09-27).** Written and committed as ADR-0066 (`34346cda`). PR #598 landed
+  ADR-0066 (Workspace board lifecycle) on `main` first, so this record moved to 0067 and its
+  companion to 0068 before this branch merged. Every citation of this decision in the branch
+  follows it; main's ADR-0066 is untouched.
 - **Path note.** The architect's write scope names `docs/architecture/**`. That directory does not
   exist in this repo. Every ADR lives at `docs/adr/NNNN-<slug>.md`, the path `CLAUDE.md`'s chain
   index links. ADR-0054, 0055, 0058 and 0064 recorded the same deviation.
@@ -63,7 +67,7 @@ Measured at `3fcde6f0`:
   - `+Folders.swift:64`, `:89`
   - `+Move.swift:184` (`follow`)
 - **Nine Pratiche writers go around the session entirely.** Raw `FileManager` moves, copies,
-  trashes, restores and two `try? text.write` calls. ADR-0067 routes them through the session.
+  trashes, restores and two `try? text.write` calls. ADR-0068 routes them through the session.
   Once routed, they need exactly the catch-up this ADR makes automatic. Since ADR-0064, the
   watcher reads a raw move as an external deletion and closes the tab.
 
@@ -105,7 +109,7 @@ during delivery therefore finds both agreeing with the change.
 | `renameFolder` | `VaultSession+Folders.swift` (app-only) | one `.moved` per carried note | after the note-id relocation |
 | `trashFolder` | `VaultSession+Folders.swift` (app-only) | one `.trashed` per trashed note path | after the note-id forget |
 | `moveItems`, folder case | `VaultSession+Move.swift` (app-only) | one `.moved` per carried note | after `folderOperations.moveFolder` |
-| `restoreFromOutside(_:to:)` (ADR-0067 §D3) | `VaultSession+LandedChanges.swift` | `.written(result, origin: nil)` | after `apply` |
+| `restoreFromOutside(_:to:)` (ADR-0068 §D3) | `VaultSession+LandedChanges.swift` | `.written(result, origin: nil)` | after `apply` |
 
 The three folder doors move or trash with raw `FileManager` calls through `FolderFileOperations`,
 not through `moveFile`/`trashFile`. They already return `movedNotes`/`trashedNotePaths`, which is
@@ -122,7 +126,7 @@ follows both directions (`VaultController+Move.swift:186`).
 - **The `.canvas` door, `writeFile`.** No editor tab shows a `.canvas` file, and boards have
   their own origin and conflict model (ADR-0054).
 - **The `.eml` sidecars and attachment bytes.** These never pass through the session
-  (ADR-0067 §D1, SPEC Out of scope).
+  (ADR-0068 §D1, SPEC Out of scope).
 
 **Delivery is synchronous.** The subscriber runs on the main actor, inside the door, before the
 door returns to its caller. No keystroke can land between the write and the catch-up. That is
@@ -160,7 +164,7 @@ it with a hand-built change. That is the same reason ADR-0058 §D3 gave for
 
   This is a deliberate widening. Before, `movedNote` replaced a dirty buffer with the disk
   read, and that was safe only because every app move refuses a dirty note first
-  (`canOperate(on:)`). The Pratiche moves ADR-0067 routes through `moveFile` have no such
+  (`canOperate(on:)`). The Pratiche moves ADR-0068 routes through `moveFile` have no such
   refusal. Discarding a dirty buffer is what ADR-0001 §D3.4 forbids. The app's own move verbs
   keep their refusal, so for them nothing observable changes.
 - **`.trashed(path)`.** ADR-0064's rule, the one `reconcile(_:)` already applies to a `.deleted`
@@ -220,7 +224,7 @@ reports which writes landed when the second one fails.
 `announce` bumps it for every path a change touches: the written path, both ends of a move, or
 the trashed path. It lives with the session and is never persisted.
 
-It exists for one reader today, the Pratiche inspector (ADR-0067 §D16, SPEC item 15), which keys
+It exists for one reader today, the Pratiche inspector (ADR-0068 §D16, SPEC item 15), which keys
 its reload on the selected `pratica.md`'s generation. It is a UI signal, not a clock. The
 per-path sequence ADR-0043 §D1 stamps inside `VaultDisk` stays the only ordering authority. That
 sequence is actor-isolated and advances on every read the watcher makes. Neither property suits a
@@ -281,7 +285,7 @@ question.
 ### Positive
 
 - Every writer that goes through the session catches the editor up, including the seven ADR-0058
-  §D7 named and the Pratiche writers ADR-0067 routes through the session. A new writer is covered
+  §D7 named and the Pratiche writers ADR-0068 routes through the session. A new writer is covered
   by construction.
 - Eighteen hand-kept call sites and four public steps disappear.
 - A move or trash made from Pratiche now follows or closes the tab. Before, the watcher saw an
@@ -303,7 +307,7 @@ question.
   the write returned is typed on a buffer already caught up. It is an ordinary unsaved edit and
   no prompt is owed. The prompt case is re-expressed as "dirty before the write lands". The plan
   names the change so the test is rewritten, never disabled.
-- **«Rigenera» now closes a clean tab showing the message note it regenerates** (ADR-0067 §D1).
+- **«Rigenera» now closes a clean tab showing the message note it regenerates** (ADR-0068 §D1).
   The trash is announced, then the rewrite lands on a path no tab shows any more. A dirty tab is
   asked instead, and the rewrite then turns its question into «Ricarica da disco».
 
@@ -343,6 +347,6 @@ Zero GUI tests (SPEC Constraints). Every test is in `PergamenumTests`, most of t
 
 - `SPEC.md` (Approved 2026-09-26), issue #571 / `PG-257`; ROADMAP Chain 16 item 1, Chain 4 item 2.
 - ADR-0001 §D3.4; ADR-0041 §D10; ADR-0043 §D1/§D3; ADR-0050; ADR-0052; ADR-0054; ADR-0057;
-  ADR-0058 §D1–§D7; ADR-0064 §D3/§D4/§D6; ADR-0067 (companion).
+  ADR-0058 §D1–§D7; ADR-0064 §D3/§D4/§D6; ADR-0068 (companion).
 - `CLAUDE.md` working agreements: "a security or invariant check exposed as a separately-callable
   assertion gets skipped"; "a precondition evaluated before an `await` is a filter".

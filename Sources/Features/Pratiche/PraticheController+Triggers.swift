@@ -32,7 +32,7 @@ extension PraticheController {
         await performSync(praticaPath, kind)
     }
 
-    /// The pane's appearance (ADR-0067 §D15, item 14): `PratichePane` runs this from
+    /// The pane's appearance (ADR-0068 §D15, item 14): `PratichePane` runs this from
     /// `.task(id: vault.root)`, so switching vault while the pane is visible runs it again
     /// and re-arms what `resetVaultScopedState` tore down.
     ///
@@ -57,7 +57,7 @@ extension PraticheController {
     /// session, and the plan's budget for `PergamenumApp.swift` is one `@State` plus
     /// two `.environment` injections.
     ///
-    /// Both closures hold the vault weakly (ADR-0067 §D15): they outlive any one pane
+    /// Both closures hold the vault weakly (ADR-0068 §D15): they outlive any one pane
     /// appearance, and must never be what keeps a switched-away vault alive.
     func startWatching(_ vault: VaultController) {
         if windowKeyObserver == nil {
@@ -135,7 +135,7 @@ extension PraticheController {
     /// ones are told `.manualOnly`, which is also what teaches their watcher to refuse
     /// a later FSEvents pulse.
     ///
-    /// ADR-0067 §D13 item 8: the loop's own `pratica` is a snapshot taken before the first
+    /// ADR-0068 §D13 item 8: the loop's own `pratica` is a snapshot taken before the first
     /// `await`, so each iteration re-reads the list first - `fireDueFSEventsPulses`' shape
     /// above. A pratica gone from the list is skipped; one closed during the pass is
     /// triggered with its current `.manualOnly`, so it is not synced and gains no sync mark.

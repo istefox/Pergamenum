@@ -31,7 +31,7 @@ extension VaultController {
         guard outcome.didWrite else { return outcome }
 
         // A write the app made itself does not come back through the watcher (ADR-0001): the
-        // open tabs already heard of it from the write (ADR-0066 §D1), and the views that count
+        // open tabs already heard of it from the write (ADR-0067 §D1), and the views that count
         // tasks are told here. Without it the row stays on the day it left.
         recordTaskWrite()
         Task { await rescan() }
