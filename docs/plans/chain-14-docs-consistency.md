@@ -96,11 +96,14 @@ grep -rl "ADR-0155" docs | grep -v chain-14 | wc -l     # 11 files (14 lines)
   measured scope (R-07 and R-08 name ADR-0155 only). After this chain, the Objective sentence «No
   comment and no document cites an ADR this repository does not hold without saying where it lives»
   holds for ADR-0155 only. Measured:
-  - ADR-0073 in `Tests/CardTextViewTests.swift:122`, `Tests/MarkupHidingTests.swift:501`,
+  - ADR-0073 of the retired concept-to-code workflow in `Tests/CardTextViewTests.swift:122`,
+    `Tests/MarkupHidingTests.swift:501`,
     `Tests/ProseTypographyTests.swift:15`, `Tests/MarkdownAttributedTextTests.swift:15`;
-  - ADR-0068 in 37 files under `docs/manifests/`;
-  - ADR-0138, ADR-0154, ADR-0158 in `docs/superpowers/plans/*` and `docs/specs/pg-066-*`;
-  - ADR-0159 at `PROJECT_BRIEF.md:329`, ADR-0066 at `TODO.md:789`;
+  - ADR-0068 of the retired concept-to-code workflow in 37 files under `docs/manifests/`;
+  - ADR-0138, ADR-0154, ADR-0158, all three of the retired concept-to-code workflow, in
+    `docs/superpowers/plans/*` and `docs/specs/pg-066-*`;
+  - ADR-0159 at `PROJECT_BRIEF.md:329`, ADR-0066 at `TODO.md:789`, both of the retired
+    concept-to-code workflow;
   - one **collision** a resolve-only check cannot see. `docs/adr/0040-…:39`, `:653` and
     `docs/adr/0042-…:51`, `:628` cite the retired workflow's ADR-0053 («protected interfaces are
     proposed by the architect and created by the operator»). In this directory 0053 is

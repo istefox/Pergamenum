@@ -1,0 +1,65 @@
+name: ADR references
+
+# docs/adr/README.md's three rules (one number per file, a status line that says what landed, a
+# citation that says where the ADR lives), checked by scripts/check-adr-references.py. PG-273, the
+# follow-up of chain 14 (issue #581).
+#
+# A workflow of its own with no paths-ignore: ci.yml skips docs-only changes, and a docs-only PR is
+# exactly the one that adds or edits an ADR. Same shape as merge-integrity.yml (ADR-0061 §D2).
+#
+# Advisory, never a required check (ADR-0044 §D11): main stays unprotected. Unlike the merge guard,
+# nothing blocks locally either: this check reads prose, and a comment citation should not stop a
+# push.
+#
+# The PR's base is resolved in the job as refs/remotes/origin/<base.ref> after a full-history
+# checkout, never taken from pull_request.base.sha (ADR-0062 §D3): the 0061 collision of 2026-09-25
+# was two branches that each looked clean against a base the other had not reached yet. A base that
+# does not resolve is reported by the script, which then runs the in-tree checks only.
+#
+# The check runs even when the self-test is red (!cancelled()): one failure must not hide another.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: adr-references-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Self-test
+        run: python3 scripts/check-adr-references.py --self-test
+
+      - name: Check (pull_request)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          base="refs/remotes/origin/$BASE_REF"
+          echo "event base.sha: $PR_BASE_SHA"
+          if resolved="$(git rev-parse --verify --quiet "$base^{commit}")"; then
+            echo "resolved base ($base): $resolved"
+          else
+            echo "::warning::$base is not available in the job; base checks skipped"
+          fi
+          python3 scripts/check-adr-references.py --base "$base" --verbose
+
+      - name: Check (push to main, manual dispatch)
+        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+        run: |
+          set -euo pipefail
+          python3 scripts/check-adr-references.py --base refs/remotes/origin/main --verbose

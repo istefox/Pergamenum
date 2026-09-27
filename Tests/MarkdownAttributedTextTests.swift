@@ -12,7 +12,8 @@ import Testing
 // before writing this suite (`Sources/Features/Editor/MarkdownAttributedText.swift`), not
 // against the plan's paraphrase of it.
 //
-// PLAN DEVIATION (ADR-0073 §D2): the plan's Task 3 cell says "a `.code` span inside a heading
+// PLAN DEVIATION (ADR-0073 §D2 of the retired concept-to-code workflow): the plan's Task 3 cell
+// says "a `.code` span inside a heading
 // keeps the mono face at the heading's size (SPEC §8)". `docs/20260811_Pergamenum_SpecApp.md`
 // §8 is "Calendario e integrazione Apple" - unrelated - and the roadmap document ADR-0030
 // itself cites for this feature, `docs/20260904_Editor_Page_Roadmap.md`, does not exist in

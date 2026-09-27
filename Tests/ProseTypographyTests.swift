@@ -12,7 +12,8 @@ import Testing
 // crash the run, not merely fail an assertion, until then - the same TDD shape
 // `Tests/CardTextViewTests.swift` documents for the card's own attribute table.
 //
-// PLAN DEVIATION (ADR-0073 §D2): both the dispatch brief and this plan's Task 2 cell claim
+// PLAN DEVIATION (ADR-0073 §D2 of the retired concept-to-code workflow): both the dispatch brief
+// and this plan's Task 2 cell claim
 // `Tests/CardTextViewTests.swift`'s italic assertion is the regression guard for R-06. As of this
 // dispatch that file (read in full before writing this suite) has no italic test at all - its
 // two `@Test`s cover only `.bold` (the monospace regression) and the To-Do-prefix independence

@@ -120,7 +120,8 @@ enum ImportNaming {
     // else's job (`uniqueFileName`, above); (4) the date is `recordedAt`'s own **local**
     // calendar date, never today's.
     //
-    // Also `.claude/protected-interfaces` (ADR-0053): a silent signature/behavior change
+    // Also `.claude/protected-interfaces` (ADR-0053 of the retired concept-to-code workflow): a
+    // silent signature/behavior change
     // here orphans every note already imported, since re-import matches an existing
     // transcript note by the name this function derives.
     //
