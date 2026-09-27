@@ -9,7 +9,8 @@
 - Does not reopen **CLAUDE.md Principle 5** ("Harness conformance"): the schema is still the
   app's native shape, enforced at write time (closed tag/frontmatter vocabularies, blocking
   entry outside the table). This ADR is about the retrospective review surface only.
-- Does not touch the protected interface **`VaultAPI.LintFinding`** (ADR-0053).
+- Does not touch the protected interface **`VaultAPI.LintFinding`** (ADR-0053 of the retired
+  concept-to-code workflow).
 
 ## Context
 

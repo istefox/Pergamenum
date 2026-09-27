@@ -10,11 +10,13 @@
 - **Requirement ids.** `SPEC.md`, this chain: `R-01`…`R-20`. Every one is cited by at least one
   task below, and no id outside that set is cited. `R-18`–`R-20` carry `(no-test: …)` in the SPEC,
   which exempts them from the *test* axis only — they are cited by Task 10 like any other id
-  (ADR-0138). `PG-150` is a `TODO.md` ledger id, `#259` a GitHub issue number and `§D*` an ADR
+  (ADR-0138 of the retired concept-to-code workflow). `PG-150` is a `TODO.md` ledger id, `#259` a
+  GitHub issue number and `§D*` an ADR
   cross-reference; none of the three is ever used as a requirement id.
 - **Harness:** **one created, in Task 10** — `scripts/adr-0043-interleaving-check.sh`. Its header
   names this plan's basename (`2026-09-13-vault-write-ordering-adr-0043.md`) and `ADR-0043`, so the
-  anchor scan resolves to this feature and not to a precedent citation (ADR-0154). It exists
+  anchor scan resolves to this feature and not to a precedent citation (ADR-0154 of the retired
+  concept-to-code workflow). It exists
   because ADR-0043 §D9 makes the five interleaving tests the acceptance criterion and a green suite
   explicitly *not* one: the script asserts the five `@Test` functions exist and ran, and greps the
   three structural invariants (`index.update` reachable only from `apply`, no `writeSynchronously`,

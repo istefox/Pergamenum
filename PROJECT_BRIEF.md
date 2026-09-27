@@ -327,7 +327,8 @@ Binding order, each yielding a usable app (SPEC §13):
   (`bumpingGenerationChangesTheComposedTaskID` e le due gemelle in `ViewBlockQuerySourceTests.swift`).
   `scripts/uitests.sh` (R-14/R-15's UI leg) rimandato: una sessione parallela aveva un run
   `xcodebuild ... PergamenumUITests` già in corso sulla stessa DerivedData condivisa al momento del
-  tentativo — non eseguito per evitare la stessa race ADR-0159 già documentata, non per un problema
+  tentativo — non eseguito per evitare la stessa race ADR-0159 del concept-to-code workflow ritirato
+  già documentata, non per un problema
   di questa chain. **Il Task 8 e il R-14 hand-check restano entrambi in attesa di Stefano**: il primo
   sul verdetto manuale drag-and-drop SwiftUI-in-attachment del 2026-09-06, il secondo è named come
   acceptance gate della chain e non può essere automatizzato (blind spot XCUITest documentato).

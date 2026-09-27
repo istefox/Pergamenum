@@ -952,7 +952,8 @@ verified as live and excluded.
 2. **Two ADRs numbered 0061** (`0061-external-deletion-reaches-the-tabs-and-the-diary.md`,
    `0061-merge-integrity-guard.md`), both listed in CLAUDE.md's index. Renumber one (0063) and
    fix every cross-reference.
-3. **18 source files cite "ADR-0155 §D1"**, which does not exist in `docs/adr/`.
+3. **18 source files cite "ADR-0155 §D1"**, an ADR of the retired concept-to-code workflow, which
+   does not exist in `docs/adr/`.
 4. **16 implemented and merged ADRs still read `Status: proposed`**: 0017, 0029, 0030, 0031,
    0032, 0033, 0034, 0036, 0040, 0042, 0044 ("decided, not implemented" — CI exists), 0050, 0056,
    0057, 0058, 0059.

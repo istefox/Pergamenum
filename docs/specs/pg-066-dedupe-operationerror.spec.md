@@ -143,7 +143,7 @@ payload.
 - [ ] R-05 — `tuist generate --no-open` succeeds with no `Project.swift` edit, confirming
       `Sources/Core/**`'s existing glob picks up the new file (no-test: this is a build-tooling
       confirmation step, not an assertion a unit test can make — verified by running the command
-      and observing its exit code, ADR-0138).
+      and observing its exit code, ADR-0138 of the retired concept-to-code workflow).
 - [ ] R-06 — `xcodebuild ... -only-testing:PergamenumTests test` passes 100%, with zero behavior
       change to any existing assertion beyond the type name referenced.
 - [ ] R-07 — `RenamePlan`/`RenameOutcome`-shaped types across the three files remain untouched,

@@ -34,7 +34,7 @@ step5_mode: null
 # Recovery-readiness pre-flight (ADR-0050) — HEAD sha recorded once at Step 5 entry
 recovery_baseline_sha: "572e2f8c9bf8e2572d96a0ee63b50ed58e5bc054"
 
-# Worktree isolation contract (ADR-0068 §D1, §D11). worktree_baseref_verified is boolean,
+# Worktree isolation contract (ADR-0068 §D1, §D11 of the retired concept-to-code workflow). worktree_baseref_verified is boolean,
 # set true by Step 5.0.4 via manifest-set-flag.sh once worktree.baseRef == "head" is
 # confirmed in the effective settings.json; it is NOT named worktree_hook_verified — no hook
 # is verified, and that name would collide with ADR-0016's unrelated hook_verified.

@@ -498,7 +498,8 @@ private func firstParagraphLength(of note: String, at location: Int = 0) -> Int 
     /// Formula pinned from `ListMarkerRendering.swift`'s own doc comments: `stepInEms = 1.5`,
     /// `glyphInEms = 0.75`, `depth` clamped to 1...6.
     ///
-    /// PLAN DEVIATION (ADR-0073 §D2): the dispatch brief asks to "reuse the exact font/depth
+    /// PLAN DEVIATION (ADR-0073 §D2 of the retired concept-to-code workflow): the dispatch brief
+    /// asks to "reuse the exact font/depth
     /// fixtures [of] the existing `ListMarkerRendering` test file" - grepped for
     /// `ListMarkerRendering` across `Tests/` before writing this suite and found no such file.
     /// The only existing coverage of this arithmetic is `MarkupHidingLists`'s relative

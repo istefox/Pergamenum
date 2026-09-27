@@ -80,7 +80,8 @@ suite after each task, not just the touched file's tests.**
   which is an XCTest bundle and stays one.
 - **Every new source, test and script file's header cites both `ADR-0031` and this plan's
   basename** (`2026-09-04-sparkle-auto-update-integration`). That includes
-  `scripts/appcast.py` and `scripts/fetch-sparkle-tools.sh` (ADR-0154: a harness that names
+  `scripts/appcast.py` and `scripts/fetch-sparkle-tools.sh` (ADR-0154 of the retired
+  concept-to-code workflow: a harness that names
   neither is descoped).
 - **One principal type per file** (`~/.claude/rules/swift.md`).
 - **`import Sparkle` appears in exactly one file**, `Sources/App/SparkleUpdateController.swift`.
@@ -435,7 +436,8 @@ suite after each task, not just the touched file's tests.**
   of the `perg` and `pergamenum-mcp` schemes, plus `scripts/mcp-smoke.py` if any connector file
   was touched (it must not have been). `interface-check.sh` must be silent.
 
-**Deviation, recorded at Gate 5.06 (specialized review), applied post-snapshot per ADR-0158:**
+**Deviation, recorded at Gate 5.06 (specialized review), applied post-snapshot per ADR-0158 of the
+retired concept-to-code workflow:**
 - `SparkleUpdateController.controller` was `internal` in the Task 3 implementation, defeating
   ADR-0031 §D2's single-entry-point promise (any file in the module could reach `SPUUpdater`
   without `import Sparkle`, bypassing `isIsolated`). Made `private`; no call site existed outside
@@ -468,7 +470,8 @@ suite after each task, not just the touched file's tests.**
 | R-10 | 10 |
 
 R-05, R-08, R-09 and R-10 carry `(no-test: …)` in the SPEC. Each still has a citing task: the
-marker exempts the *test* axis, never the *plan* axis (ADR-0138).
+marker exempts the *test* axis, never the *plan* axis (ADR-0138 of the retired
+concept-to-code workflow).
 
 ---
 

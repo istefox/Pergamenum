@@ -48,7 +48,8 @@
   attachments. One *new* protected-interface entry is proposed to the operator, not written
   (§"Protected-interface proposal").
 - Depends on: **ADR-0036** in full, **ADR-0040** in full (this is a defect fix inside that fix),
-  **ADR-0020** (a prefixed key is how this repo extends a closed schema), **ADR-0053** (protected
+  **ADR-0020** (a prefixed key is how this repo extends a closed schema), **ADR-0053** (the retired
+  concept-to-code workflow's ADR, not a Pergamenum one: protected
   interfaces are proposed by the architect and created by the operator), **ADR-0155** (the
   retired concept-to-code workflow's ADR, not a Pergamenum one: on a compiled language the tester
   owns the declaration, the coder owns the body).
