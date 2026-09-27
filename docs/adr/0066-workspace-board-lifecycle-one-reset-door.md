@@ -2,8 +2,8 @@
 
 ## Status
 
-Proposed. Implementation on `kepler/fix-pg-255-workspace-lifecycle`, closing `PG-255`/#569
-(Audit Fable chain 2) and #506. Flips to accepted with the merge commit that lands it.
+**Accepted**. Merged to `main` via PR #598 (`1ec9d558`, 2026-09-27), closing `PG-255`/#569
+(Audit Fable chain 2) and #506.
 
 ## Context
 
