@@ -206,11 +206,15 @@ struct BoardDragPayload {
         self.column = column
     }
 
+    /// Nil for any text this board did not write: the separator is required (PG-255, #569
+    /// point 11). Without it the whole string became `path`, so a word dragged in from
+    /// Safari reached `queries.move(<text>, nil, …)`. `text` above always writes it, even
+    /// for a card in *Senza stato*.
     init?(text: String) {
         let parts = text.split(separator: Self.separator, maxSplits: 1, omittingEmptySubsequences: false)
-        guard let path = parts.first, !path.isEmpty else { return nil }
-        self.path = String(path)
-        let column = parts.count > 1 ? String(parts[1]) : ""
+        guard parts.count == 2, !parts[0].isEmpty else { return nil }
+        self.path = String(parts[0])
+        let column = String(parts[1])
         self.column = column.isEmpty ? nil : column
     }
 }

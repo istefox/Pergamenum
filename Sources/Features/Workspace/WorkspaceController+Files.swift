@@ -91,13 +91,36 @@ extension WorkspaceController {
     /// how many times the board reloads. The move itself already repoints the card's stored
     /// path correctly (`FolderFileOperations.repointBoardsPlan`); what was wrong was asking
     /// the wrong question about the result.
+    ///
+    /// Through the store's boundary like `fileURL(for:)` above (ADR-0041 §D2, #569 point 5):
+    /// a hand-written `file: ../../altro` resolved outside the vault here, and the drawing
+    /// SVG under it was read and written there. A path escaping the vault is no folder; the
+    /// empty path is still the vault root's folder card (ADR-0053 §D3).
     func subfolder(for node: CanvasNode) -> String? {
-        guard case .file(let path, _) = node.kind, let store else { return nil }
+        guard case .file(let path, _) = node.kind, let store,
+              let url = try? Self.folderURL(path, in: store)
+        else { return nil }
         var isDirectory: ObjCBool = false
-        let url = store.root.appending(path: path, directoryHint: .isDirectory)
         let exists = FileManager.default.fileExists(
             atPath: url.path(percentEncoded: false), isDirectory: &isDirectory
         )
         return exists && isDirectory.boolValue ? path : nil
+    }
+
+    /// The directory the open board sits in, through the store's boundary (ADR-0041 §D2) -
+    /// the one place a new drawing (`+Drawing`) and an import (`+Import`) learn where to
+    /// write. `folder` is read off a board path the store already resolved, so this refuses
+    /// only what should never have been opened; it is here so no write door in this type
+    /// spells a vault path by hand.
+    func boardFolderURL(in store: CanvasStore) throws -> URL {
+        try Self.folderURL(folder, in: store)
+    }
+
+    /// A vault-relative folder path as a `URL`, through the boundary. `""` is the vault root
+    /// itself, which `VaultBoundary.url(for:)` refuses by design (it answers files inside the
+    /// vault, and the root is not one) but which is a folder a board can sit in and a card
+    /// can point at (ADR-0053 §D3).
+    private static func folderURL(_ path: String, in store: CanvasStore) throws -> URL {
+        path.isEmpty ? store.root : try store.boundary.url(for: path)
     }
 }

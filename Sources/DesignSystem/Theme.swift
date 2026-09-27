@@ -284,6 +284,9 @@ extension Theme {
             .stickyBlue: RGBA(hex: "#D8E5F0")!,
             .stickyPink: RGBA(hex: "#F6DEE0")!,
             .stickyGrey: RGBA(hex: "#E8E8E8")!,
+            // Values mirror `pergamenum-light.json` (#569 point 10).
+            .stickyOrange: RGBA(hex: "#F9E3CC")!,
+            .stickyPurple: RGBA(hex: "#E6DDF0")!,
             .categoryYellow: RGBA(hex: "#D99A00")!,
             .categoryGreen: RGBA(hex: "#2E9E4F")!,
             .categoryBlue: RGBA(hex: "#1F6FEB")!,

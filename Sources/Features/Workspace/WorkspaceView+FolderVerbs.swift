@@ -39,6 +39,10 @@ extension WorkspaceView {
     private func moveItems(_ items: [VaultItemRef], into destination: String) async -> [String] {
         flushBoard()
         guard workspace.canLeaveOpenBoardForVerb() else { return [] }
+        // Read before the suspension, the board the flush above was aimed at (ADR-0043 §D7,
+        // #569 point 9): the person can open another board while the move runs, and the
+        // landing rule below must follow the board that moved, not whichever is open now.
+        let openBefore = workspace.board
         // `undoManager` is the **window's**, read from the environment and handed down as
         // an argument (ADR-0026 §D8) - the same stack `NSTextView` registers text edits
         // on, so Cmd+Z means "undo the last thing I did in this window" whatever had
@@ -47,13 +51,15 @@ extension WorkspaceView {
         let outcome = await vault.moveItems(items, into: destination, undo: undoManager)
         guard outcome.didMove else { return outcome.refusals + outcome.failures }
         // Landing somewhere only means something if a board is actually open - moving a
-        // row that is merely selected in the tree moves no document on screen.
-        guard workspace.isShowingBoard else { return [] }
+        // row that is merely selected in the tree moves no document on screen - and if it
+        // is still the one open before the `await`: navigated elsewhere meanwhile, the
+        // person is left where they went.
+        guard workspace.isShowingBoard, workspace.board == openBefore else { return [] }
 
         // `outcome.moves`, not a separately-planned list: an item that failed on disk
         // mid-batch is not in it, so the open board does not chase a path nothing wrote.
-        let landed = WorkspaceFolderNavigation.boardAfterMove(open: workspace.board, moves: outcome.moves)
-        guard landed != workspace.board else { return [] }
+        let landed = WorkspaceFolderNavigation.boardAfterMove(open: openBefore, moves: outcome.moves)
+        guard landed != openBefore else { return [] }
         // Reopened rather than left alone: the document on screen was read from a file
         // that has moved, and `open(board:)` is what re-reads it, refreshes the folder's
         // contents and redraws the breadcrumb - so the board never flickers closed (R-13).
@@ -255,8 +261,12 @@ extension WorkspaceView {
     /// after the folder has moved is a write to a path that is no longer there - the
     /// autosave problem of §F10 arriving through the other door. Ended here, its write
     /// goes to the folder that still exists.
+    ///
+    /// Every session, not only the crop, since `open(board:)` now settles text, title and
+    /// ink on the way out too (ADR-0066): a draft committed there, after the move, would
+    /// be flushed to the path the board just left.
     private func flushBoard() {
-        workspace.endCrop(confirm: true)
+        workspace.settleBoardEditing()
         workspace.flushPendingSave()
     }
 }
