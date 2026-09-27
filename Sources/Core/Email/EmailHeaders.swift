@@ -16,10 +16,14 @@ struct EmailHeaders: Equatable, Sendable {
     var messageID: String?
     /// Every field as it appeared, unfolded, for anything this app does not model.
     var all: [(name: String, value: String)]
+    /// The sender's zone offset in seconds east of UTC, read from the raw `Date` field
+    /// (ADR-0065 §D8.2, R-15). `nil` when the field carries none a reader can trust:
+    /// `-0000`, a military letter, an unknown name, or no `Date` at all.
+    var dateOffset: Int?
 
     static func == (lhs: EmailHeaders, rhs: EmailHeaders) -> Bool {
         lhs.from == rhs.from && lhs.to == rhs.to && lhs.subject == rhs.subject
-            && lhs.date == rhs.date && lhs.messageID == rhs.messageID
+            && lhs.date == rhs.date && lhs.dateOffset == rhs.dateOffset && lhs.messageID == rhs.messageID
             && lhs.all.map(\.name) == rhs.all.map(\.name)
             && lhs.all.map(\.value) == rhs.all.map(\.value)
     }
@@ -65,7 +69,11 @@ enum EmailHeaderParser {
             currentValue = ""
         }
 
-        for line in text.components(separatedBy: .newlines) {
+        // A CRLF pair is one line break. Split on `.newlines` alone, it leaves an empty line
+        // between the two halves, which reads as the blank line that ends the header block: an
+        // `.eml` imported with CRLF endings kept only its first field. The sync already hands
+        // this LF text (`PraticaSyncEngine.headerText`); the import doors did not.
+        for line in text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: .newlines) {
             // The blank line ends the header block.
             if line.trimmingCharacters(in: .whitespaces).isEmpty { break }
 
@@ -84,6 +92,7 @@ enum EmailHeaderParser {
         flush()
 
         let decoded = fields.map { ($0.0, EncodedWord.decode($0.1)) }
+        let rawDate = fields.first { $0.0.lowercased() == "date" }?.1
 
         return EmailHeaders(
             from: decoded.first { $0.0.lowercased() == "from" }.flatMap { parseAddress($0.1) },
@@ -92,7 +101,8 @@ enum EmailHeaderParser {
             date: decoded.first { $0.0.lowercased() == "date" }.flatMap { RFC5322Date.parse($0.1) },
             messageID: decoded.first { $0.0.lowercased() == "message-id" }
                 .map { $0.1.trimmingCharacters(in: CharacterSet(charactersIn: "<> ")) },
-            all: decoded.map { (name: $0.0, value: $0.1) }
+            all: decoded.map { (name: $0.0, value: $0.1) },
+            dateOffset: rawDate.flatMap(RFC5322Date.offset(of:))
         )
     }
 
@@ -145,26 +155,48 @@ enum EmailHeaderParser {
 /// Not optional in practice: any Italian correspondent's subject line with an accent
 /// arrives encoded, and showing the raw form on a card is worse than showing nothing.
 enum EncodedWord {
+    /// RFC 2047 §6.2 (ADR-0065 §D7.3): linear whitespace between two encoded-words is dropped
+    /// when both decode - a folded subject's unfold puts exactly that whitespace between the two
+    /// halves of a word. Whitespace next to plain text stays, and so does whitespace next to a
+    /// word that fails and is shown raw.
     static func decode(_ text: String) -> String {
         guard text.contains("=?") else { return text }
 
         var result = ""
         var remainder = Substring(text)
+        var previousDecoded = false
 
         while let start = remainder.range(of: "=?") {
-            result += remainder[remainder.startIndex..<start.lowerBound]
+            let between = remainder[remainder.startIndex..<start.lowerBound]
             let afterStart = remainder[start.upperBound...]
 
-            guard let end = afterStart.range(of: "?=") else {
-                result += remainder[start.lowerBound...]
+            guard let end = tokenEnd(in: afterStart) else {
+                result += remainder
                 return result
             }
             let token = afterStart[afterStart.startIndex..<end.lowerBound]
-            result += decodeToken(String(token)) ?? "=?\(token)?="
+            if let decoded = decodeToken(String(token)) {
+                let onlyWhitespace = between.allSatisfy { $0 == " " || $0 == "\t" || $0.isNewline }
+                if !(previousDecoded && onlyWhitespace) { result += between }
+                result += decoded
+                previousDecoded = true
+            } else {
+                result += between + "=?\(token)?="
+                previousDecoded = false
+            }
             remainder = afterStart[end.upperBound...]
         }
         result += remainder
         return result
+    }
+
+    /// The `?=` that closes a word, searched for only after `charset?encoding?`, so a Q payload
+    /// that starts with an escape (`=?UTF-8?Q?=C3=A8?=`) is not cut at its own `?=C3`.
+    private static func tokenEnd(in afterStart: Substring) -> Range<Substring.Index>? {
+        guard let charsetEnd = afterStart.firstIndex(of: "?"),
+              let encodingEnd = afterStart[afterStart.index(after: charsetEnd)...].firstIndex(of: "?")
+        else { return afterStart.range(of: "?=") }
+        return afterStart[afterStart.index(after: encodingEnd)...].range(of: "?=")
     }
 
     /// `charset?encoding?text`
@@ -179,14 +211,19 @@ enum EncodedWord {
         let data: Data?
         switch encoding {
         case "B":
-            data = Data(base64Encoded: payload)
+            // ADR-0065 §D7.3: padding is normalised before decoding - every `=` removed, the
+            // payload re-padded to a multiple of four - so a sender that drops or misplaces it
+            // still decodes.
+            let unpadded = payload.replacingOccurrences(of: "=", with: "")
+            let padded = unpadded + String(repeating: "=", count: (4 - unpadded.count % 4) % 4)
+            data = Data(base64Encoded: padded, options: .ignoreUnknownCharacters)
         case "Q":
             data = quotedPrintable(payload)
         default:
             return nil
         }
         guard let data else { return nil }
-        return String(data: data, encoding: stringEncoding(for: charset))
+        return String(data: data, encoding: MailCharset.encoding(for: charset))
     }
 
     /// Quoted-printable as used inside an encoded word, where `_` means a space.
@@ -209,17 +246,6 @@ enum EncodedWord {
             index = text.index(after: index)
         }
         return Data(bytes)
-    }
-
-    private static func stringEncoding(for charset: String) -> String.Encoding {
-        switch charset {
-        case "UTF-8", "UTF8": .utf8
-        case "ISO-8859-1", "LATIN1": .isoLatin1
-        case "ISO-8859-15": .isoLatin2
-        case "WINDOWS-1252", "CP1252": .windowsCP1252
-        case "US-ASCII", "ASCII": .ascii
-        default: .utf8
-        }
     }
 }
 
@@ -253,6 +279,32 @@ enum RFC5322Date {
         "EEE, d MMM yyyy HH:mm:ss zzz",
         "d MMM yyyy HH:mm:ss zzz",
     ]
+
+    /// The zone of a `Date` field in seconds east of UTC (ADR-0065 §D8.2, R-15): `±hhmm` as
+    /// written, `UT`/`GMT`/`Z` as 0, the eight US names of RFC 5322 §4.3 by their value. `-0000`
+    /// means "zone unknown" (RFC 5322 §3.3), and a military letter or any other name is not one
+    /// a reader can trust, so all of those are `nil`.
+    static func offset(of raw: String) -> Int? {
+        guard let zone = cleaned(raw).split(separator: " ").last.map(String.init) else { return nil }
+        if let sign = zone.first, sign == "+" || sign == "-" {
+            let digits = zone.dropFirst()
+            guard digits.count == 4, digits.allSatisfy({ $0.isASCII && $0.isNumber }), let value = Int(digits),
+                  zone != "-0000"
+            else { return nil }
+            let minutes = value / 100 * 60 + value % 100
+            return (sign == "-" ? -1 : 1) * minutes * 60
+        }
+        let hours: Int? = switch zone.uppercased() {
+        case "UT", "GMT", "Z": 0
+        case "EDT": -4
+        case "EST", "CDT": -5
+        case "CST", "MDT": -6
+        case "MST", "PDT": -7
+        case "PST": -8
+        default: nil
+        }
+        return hours.map { $0 * 3600 }
+    }
 
     /// Strips the trailing `(CEST)` comment some senders append after the offset.
     private static func cleaned(_ raw: String) -> String {

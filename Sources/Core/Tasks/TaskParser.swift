@@ -228,8 +228,13 @@ enum TaskParser {
     }
 
     private static func tags(in body: String) -> [Tag] {
-        var found: [Tag] = []
-        let characters = Array(body)
+        tagMatches(in: Array(body)).map(\.tag)
+    }
+
+    /// Every tag with the character range it was read from, so `displayText` can remove the
+    /// tag it found rather than every occurrence of its text (ADR-0065 §D9.1, R-16).
+    private static func tagMatches(in characters: [Character]) -> [(range: Range<Int>, tag: Tag)] {
+        var found: [(range: Range<Int>, tag: Tag)] = []
         var index = 0
 
         while index < characters.count {
@@ -244,7 +249,7 @@ enum TaskParser {
                   characters[end].isLetter || characters[end].isNumber || characters[end] == "-" {
                 end += 1
             }
-            if let tag = Tag(String(characters[index..<end])) { found.append(tag) }
+            if let tag = Tag(String(characters[index..<end])) { found.append((index..<end, tag)) }
             index = end
         }
         return found
@@ -257,10 +262,14 @@ enum TaskParser {
     /// for every wikilink to be clickable, which a link chip satisfies; leaving the
     /// `[[…]]` in the sentence as well would show the same link twice.
     static func displayText(from body: String) -> String {
-        var text = body
-        for tag in tags(in: body) {
-            text = text.replacingOccurrences(of: "#\(tag.description)", with: "")
+        // Each tag leaves by the range the scan read it from, last first so the earlier ranges
+        // stay valid: replacing its text everywhere cut `#topic-forni` out of the middle of
+        // `#topic-forni-tunnel` and left `-tunnel` behind (ADR-0065 §D9.1, R-16).
+        var characters = Array(body)
+        for match in tagMatches(in: characters).reversed() {
+            characters.removeSubrange(match.range)
         }
+        var text = String(characters)
         // The Workspace markers go first, caret included: removing `[[X.canvas]]` on
         // its own would strand a `^` mid-sentence (ADR-0021 D1).
         let annotated = annotatedLinks(in: body)

@@ -37,6 +37,34 @@ enum Transclusion {
         return .note(reference: reference, section: section)
     }
 
+    /// The extensions that name a note: how a note is named on disk.
+    static let noteExtensions: Set<String> = ["md"]
+
+    /// The extensions that name a file, never a note (ADR-0065 §D9.5): the attachment types the
+    /// app renders or previews, plus `canvas`. Lowercase; `isNoteReference` lowercases before
+    /// asking.
+    static let fileExtensions: Set<String> = [
+        // images
+        "png", "jpg", "jpeg", "gif", "webp", "heic", "heif", "tif", "tiff", "bmp", "svg", "avif",
+        // documents
+        "pdf",
+        // audio
+        "mp3", "m4a", "wav", "aac", "flac", "ogg",
+        // video
+        "mp4", "mov", "m4v", "webm", "mkv", "avi",
+        // office and data
+        "doc", "docx", "xls", "xlsx", "ppt", "pptx", "key", "pages", "numbers", "odt", "ods", "odp",
+        "rtf", "txt", "csv", "tsv", "json", "xml", "html", "htm",
+        // archives
+        "zip", "gz", "tar", "7z", "rar", "dmg",
+        // mail and calendar
+        "eml", "emlx", "msg", "ics", "vcf",
+        // boards
+        "canvas",
+        // other apps' formats
+        "drawio", "excalidraw", "sketch", "webarchive",
+    ]
+
     /// Whether a target names a note rather than a file.
     ///
     /// The extension decides, and "extension" is read strictly: one to five ASCII
@@ -49,10 +77,17 @@ enum Transclusion {
     ///
     /// `.md` is the one extension that still means a note: it is how a note is named on
     /// disk, so `![[Progetti/Forno.md]]` is a note written as a path.
+    ///
+    /// Every extension the app knows is decided by name first (ADR-0065 §D9.5, R-20): the shape
+    /// rule answered `true` for anything longer than five characters, which made `Q4.canvas` a
+    /// note. The shape rule stays only for the long tail, so an attachment with an unlisted short
+    /// extension does not become a phantom note.
     static func isNoteReference(_ target: String) -> Bool {
         guard !Attachment.isRemote(target) else { return false }
         let name = split(target).reference
         let ext = (name as NSString).pathExtension
+        if noteExtensions.contains(ext.lowercased()) { return true }
+        if fileExtensions.contains(ext.lowercased()) { return false }
         guard !ext.isEmpty, ext.count <= 5,
               ext.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }),
               ext.contains(where: { $0.isLetter })

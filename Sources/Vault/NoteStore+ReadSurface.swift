@@ -13,7 +13,7 @@ extension NoteStore {
     func text(_ relativePath: String) throws -> String {
         let fileURL = try url(for: relativePath)
         let data = try Data(contentsOf: fileURL)
-        guard let text = String(data: data, encoding: .utf8) else {
+        guard let text = NoteStore.decodedText(data) else {
             throw StoreError.notUTF8(relativePath)
         }
         return text
@@ -24,11 +24,16 @@ extension NoteStore {
     /// the other way round, which is what stops `read` from parsing `NoteDocument` twice
     /// (ADR-0041 §D7). Moved here unchanged from what `linkTargets(in text:)` used to
     /// compute inline.
+    ///
+    /// A board is not a note: a `.canvas` target - a task's `^[[Q4.canvas]]` marker, or a plain
+    /// `[[Q4.canvas]]` - is never a link target, so it is no backlink, unresolved link, graph
+    /// neighbour or `links` value (ADR-0065 §D9.5, R-20).
     static func linkTargets(in document: NoteDocument) -> [String] {
         var seen = Set<String>()
         var ordered: [String] = []
         for link in WikilinkParser.links(in: document.body)
-        where !link.isEmbed || Transclusion.isNoteReference(link.target) {
+        where (!link.isEmbed || Transclusion.isNoteReference(link.target))
+            && (link.target as NSString).pathExtension.lowercased() != "canvas" {
             if seen.insert(link.target).inserted { ordered.append(link.target) }
         }
         return ordered
@@ -41,10 +46,12 @@ extension NoteStore {
     /// field-building code `read` uses via `NoteStore.makeRecord` (`NoteStore.swift`) - the
     /// two never build a `NoteRecord` two different ways.
     func record(from data: Data, attributes: [FileAttributeKey: Any], at relativePath: String) throws -> NoteRecord {
-        guard let text = String(data: data, encoding: .utf8) else {
+        guard let text = NoteStore.decodedText(data) else {
             throw StoreError.notUTF8(relativePath)
         }
         let document = NoteDocument.parse(text)
-        return NoteStore.makeRecord(from: data, text: text, document: document, attributes: attributes, at: relativePath)
+        return NoteStore.makeRecord(
+            from: data, text: text, document: document, attributes: attributes, at: relativePath
+        )
     }
 }

@@ -153,4 +153,59 @@ import Testing
         #expect(outcome.writtenFiles.contains { $0.hasSuffix(".md") }, "the pending .md itself must still be written")
         #expect(!outcome.writtenFiles.contains { $0.hasSuffix(".eml") }, "§D18: no complete RFC 822 bytes exist yet")
     }
+
+    // MARK: ADR-0065 §D8.2 (R-15) - the date is written in the sender's offset
+
+    /// A `Date` carrying `+0900` writes `+09:00` on any machine, whatever its own zone; a message
+    /// with no `Date` header falls back to the Envelope Index's epoch, which has no zone, so `Z`.
+    @Test func aSyncedMessageCarriesTheHeaderOffset() async throws {
+        let original = "Date: Wed, 10 Jun 2026 14:06:10 +0200\r\n"
+        let tokyo = EmailFixtureCorpus.completeMessageRFC822
+            .replacingOccurrences(of: original, with: "Date: Wed, 10 Jun 2026 14:06:10 +0900\r\n")
+        let undated = EmailFixtureCorpus.completeMessageRFC822
+            .replacingOccurrences(of: original, with: "")
+            .replacingOccurrences(of: "abc123@rossi-spa.it", with: "def456@rossi-spa.it")
+        #expect(tokyo != EmailFixtureCorpus.completeMessageRFC822, "the fixture's Date line was not found")
+        #expect(!undated.contains("Date:"))
+
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [
+                .init(
+                    rowID: 1, subject: "Tokyo", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                    conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1000),
+                    dateReceived: Date(timeIntervalSince1970: 1000), emlxBody: tokyo
+                ),
+                .init(
+                    rowID: 2, subject: "Senza data", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                    conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 2000),
+                    dateReceived: Date(timeIntervalSince1970: 2000), emlxBody: undated
+                ),
+            ]
+        )
+        let vaultRoot = try Fixtures.makeVaultRoot()
+        let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Fixtures.praticaFolder, dossier: Fixtures.sampleDossier(),
+            candidates: [
+                Fixtures.row(rowID: 1, messageID: "<abc123@rossi-spa.it>", date: Date(timeIntervalSince1970: 1000)),
+                Fixtures.row(rowID: 2, messageID: "<def456@rossi-spa.it>", date: Date(timeIntervalSince1970: 2000)),
+            ],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(request)
+
+        let emailDir = vaultRoot.appending(path: "\(Fixtures.praticaFolder)/email", directoryHint: .isDirectory)
+        var dateLines: [String: String] = [:]
+        for name in Fixtures.mdFiles(under: vaultRoot) {
+            let text = try String(contentsOf: emailDir.appending(path: name), encoding: .utf8)
+            let lines = text.components(separatedBy: "\n")
+            let id = lines.first { $0.hasPrefix("pergamenum-mail-message-id:") } ?? ""
+            dateLines[id] = lines.first { $0.hasPrefix("pergamenum-mail-date:") }
+        }
+        let tokyoLine = try #require(dateLines[#"pergamenum-mail-message-id: "<abc123@rossi-spa.it>""#])
+        let undatedLine = try #require(dateLines[#"pergamenum-mail-message-id: "<def456@rossi-spa.it>""#])
+        #expect(tokyoLine == "pergamenum-mail-date: 2026-06-10T14:06:10+09:00")
+        #expect(undatedLine.hasSuffix("Z"))
+    }
 }

@@ -142,6 +142,9 @@ struct StickyTextCard: View {
             case 6: theme.color(.stickyPurple)
             default: theme.color(.stickyGrey)
             }
+        case .unrecognised:
+            // A colour this app cannot read (ADR-0065 §D5.2): still a Nota, drawn neutral.
+            return theme.color(.stickyGrey)
         }
     }
 }

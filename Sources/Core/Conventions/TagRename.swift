@@ -16,11 +16,7 @@ enum TagRename {
     /// a caller skips a note without writing an identical file.
     static func apply(_ old: Tag, to new: Tag, in text: String) -> String? {
         let lines = text.components(separatedBy: "\n")
-        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---",
-              let closing = lines.dropFirst().firstIndex(where: {
-                  $0.trimmingCharacters(in: .whitespaces) == "---"
-              })
-        else { return nil }
+        guard let closing = frontmatterEnd(of: lines) else { return nil }
 
         var result = lines
         var changed = false
@@ -121,15 +117,17 @@ enum TagRename {
         guard let closing = frontmatterEnd(of: lines) else { return nil }
         let indices = tagLineIndices(in: lines, upTo: closing)
 
+        // A line this writes ends in the document's line break (ADR-0065 §D3).
+        let suffix = LineBreak.detected(in: text).lineSuffix
         guard let header = indices.first else {
             // No `tags:` key at all: open one after `date:`, or at the top of the block.
             let dateLine = lines[1...closing].firstIndex { $0.hasPrefix("date:") }
             var result = lines
-            result.insert(contentsOf: ["tags:", "  - \(tag)"], at: (dateLine ?? 0) + 1)
+            result.insert(contentsOf: ["tags:" + suffix, "  - \(tag)" + suffix], at: (dateLine ?? 0) + 1)
             return result.joined(separator: "\n")
         }
         // Anything written on the `tags:` line itself is the inline form.
-        guard lines[header].dropFirst("tags:".count).trimmingCharacters(in: .whitespaces).isEmpty
+        guard lines[header].dropFirst("tags:".count).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return nil }
 
         let items = Array(indices.dropFirst())
@@ -140,7 +138,7 @@ enum TagRename {
             return tag < existing
         }
         var result = lines
-        result.insert("  - \(tag)", at: successor ?? (items.last.map { $0 + 1 } ?? header + 1))
+        result.insert("  - \(tag)" + suffix, at: successor ?? (items.last.map { $0 + 1 } ?? header + 1))
         return result.joined(separator: "\n")
     }
 
@@ -164,14 +162,18 @@ enum TagRename {
         return result.joined(separator: "\n")
     }
 
+    /// The closing delimiter's index. The test tolerates one trailing `\r` and a leading U+FEFF, the
+    /// way `NoteDocument.parse` reads them, so a CRLF note is not skipped (ADR-0065 §D3, G1.3).
     private static func frontmatterEnd(of lines: [String]) -> Int? {
-        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else { return nil }
-        return lines.dropFirst().firstIndex { $0.trimmingCharacters(in: .whitespaces) == "---" }
+        guard let first = lines.first,
+              FrontmatterSource.isDelimiter(FrontmatterSource.interpreted(first, isFirst: true))
+        else { return nil }
+        return lines.dropFirst().firstIndex { FrontmatterSource.isDelimiter(FrontmatterSource.interpreted($0)) }
     }
 
     /// `  - client-vibrofer` without its bullet, or an empty string for a line that is not one.
     private static func listItemValue(_ line: String) -> String {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let trimmed = FrontmatterSource.interpreted(line).trimmingCharacters(in: .whitespaces)
         guard trimmed.hasPrefix("- ") else { return "" }
         return String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
     }

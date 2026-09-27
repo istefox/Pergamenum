@@ -545,6 +545,11 @@ extension PraticaSyncEngine {
                 conversationID: row.conversationID,
                 direction: context.direction,
                 date: context.date,
+                // ADR-0065 §D8.2: the sender's offset only when the date is the header's own
+                // (an Envelope Index fallback has no zone), and never a zero one, which writes
+                // `Z` and would read back as `nil`.
+                dateOffset: context.headers.date == nil
+                    ? nil : context.headers.dateOffset.flatMap { $0 == 0 ? nil : $0 },
                 received: row.dateReceived,
                 from: context.headers.from.map(Self.headerForm) ?? row.sender ?? "",
                 to: context.headers.to.map(Self.headerForm),

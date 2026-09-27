@@ -300,3 +300,18 @@ func omitsSourceMeetingForAnyOtherKind(_ kind: PlaudRecordingKind) {
     let violations = try #require(session.violations(forRecordAt: path))
     #expect(violations.isEmpty, "\(violations)")
 }
+
+// MARK: - A person's comment survives a re-import (ADR-0065 §D1.8, R-04)
+
+@Test func aTranscriptReimportKeepsAComment() {
+    let existing = "---\n# importato da Plaud\ndate: 2026-09-04\ntags:\n  - type-note\n  - topic-trascrizione\n---\n\n## Trascrizione\n\nSpeaker 1: vecchio.\n"
+    let text = TranscriptNote.render(
+        proposal: makeProposal(themes: []), acceptedTaskIDs: [], speakerRenames: [:],
+        ledgerFingerprints: [], existingNoteText: existing
+    )
+
+    let lines = text.components(separatedBy: "\n")
+    #expect(lines[0] == "---")
+    #expect(lines[1] == "# importato da Plaud")
+    #expect(NoteDocument.parse(text).frontmatter.foreignKeys.map(\.name).contains("pergamenum-plaud-id"))
+}

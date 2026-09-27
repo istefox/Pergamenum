@@ -1,280 +1,228 @@
 Status: Approved (2026-09-26)
 
-# SPEC — Documentation consistency: the record says what the tree does
+# SPEC — Format-edge hardening: every on-disk format round-trips faithfully or is refused
 
 ## Destination
 
-A SPEC handed to `/workplan`. Closes issue #581 (Audit Fable chain 14, promoted from `PG-267`)
-in one docs-only PR: the app spec, the ADRs, the brief, the task ledger and the code comments
-stop contradicting the tree and each other. No behaviour changes: no Swift statement, no script,
-no workflow is edited, and the unit suite builds and passes untouched.
+A SPEC handed to `/workplan`. Closes issue #568 (Audit Fable chain 1, promoted from `PG-254`) in
+one chain with one ADR: "the round-trip of every on-disk format is faithful or refused". The
+parsers for notes, frontmatter, JSON Canvas, mail and task text stop losing or corrupting data on
+inputs that are legitimate in this vault's own life, and a new advisory lint rule points at the
+notes an earlier version of the app already damaged.
 
 ## Objectives
 
-- The app spec, ADR-0001 and the brief no longer say that a note's id lives in the index. ADR-0059
-  §D10 listed exactly these amendments on 2026-09-25 and none of them was applied.
-- One ADR number names one document. The second ADR-0061 becomes ADR-0064 and every reference to
-  it follows, while every reference to the merge guard keeps saying 0061.
-- No comment and no document cites an ADR this repository does not hold without saying where it
-  lives. Today 65 files cite «ADR-0155 §D1», an ADR of the retired concept-to-code workflow, and
-  most of those comments still describe a batch that was red weeks ago.
-- Every ADR's status line tells the truth about its implementation. Today 24 read `proposed`
-  (19 in a bulleted line, five in a «Status» section the first measurement missed), and two
-  status lines say the implementation is pending or missing while it is on `main`.
-- The task ledger stops carrying `PG-156`, a finding ADR-0033 closed on 2026-09-07.
-- The brief's 2026-08-13 changelog entry says, beside its own text, that the Conformità pane it
-  describes was removed by ADR-0038.
-- The three conventions that would have prevented the duplicate number, the phantom citation and
-  the stale status lines are written down where the ADRs live, so the next chain cannot repeat
-  them by accident.
+- A file written by another tool or another platform (a note synced from Windows, a `.canvas`
+  written by another editor, an Exchange mail) survives an in-app write unchanged outside the part
+  the app meant to change. Today 16 distinct paths drop or corrupt data silently: no error, no
+  report.
+- Principle 1 (file over app) holds for real on the formats the app writes: what the app does not
+  understand, it carries through untouched; where carrying it through is impossible, it refuses
+  visibly instead of guessing.
+- Notes already damaged by the frontmatter defects are findable: `perg lint`, the MCP `lint` tool
+  and the rule engine report them.
 
 ## Scope and non-goals
 
-In: the six items of issue #581 as measured on this tree (widened where the audit undercounted,
-see Decisions), a short README for the ADR directory, and one new ledger entry proposing the
-reference-check script as a follow-up.
+In: the 17 items of `ROADMAP.md` §Chain 1, as verified against HEAD `43ca911` on 2026-09-26
+(15 reproduce as written, item 5 reproduces under a narrower condition, item 17 does not
+reproduce and is pinned by a test only); one advisory lint rule over frontmatter damage.
 
-Out, one line each, detail in Out of scope: the reference-check script itself; the truthfulness
-of comments that do not cite ADR-0155; the ADR-0038 residues in the interface (chain 13 item 5);
-normalising the form of every status line; the «to be moved by the operator» boilerplate at the
-head of three ADRs; the brief's Status section; the closure of `PG-267` itself and the ledger's
-header counts; the app spec's §4.1 tree; tracking the «board surface» idea as a ledger entry; the
-ROADMAP's own chain 14 text.
+Out (detail in *Out of scope*): repairing already-damaged files; renaming existing Pratiche
+message files; a fixture directory of real files; GUI tests; the other chains of the audit.
 
 ## Decisions
 
-- **Renumber the external-deletion ADR, not the merge guard** — the two ADR-0061 landed the same
-  day, the merge guard first (PR #529) and the external-deletion one second (PR #530), whose own
-  head already records that it was written when no 0061 existed. The merge guard's number is
-  baked into the operational tooling (the integrity script, the pre-push hook, the workflow, the
-  45 references in ADR-0062, a CLAUDE.md working agreement); the external-deletion number lives
-  in comments, one plan, one index label and two ledger lines. Rejected: renumbering the merge
-  guard — it landed first and the cost is an order of magnitude higher. Rejected: no
-  renumbering, a disambiguating note only — the defect the issue names stays.
-- **The new number is 0064, the next free one** — the issue proposed 0063, which chain 3 took on
-  2026-09-26 (ADR-0063 is cited by its own SPEC, plan, CLAUDE.md and the ledger). Rejected:
-  shifting 0063 to 0064 to keep the sequence chronological — two renumberings instead of one; the
-  chronology is recorded in the renumbering note instead.
-- **The rename keeps history and both heads record it** — the file is renamed with git so its
-  history follows; each of the two ADRs gets one dated renumbering note at its head naming the
-  other, and no other line of either body changes. The external-deletion ADR's existing
-  «Numbering note» stays verbatim; the new note sits beside it. Rejected: rewriting the existing
-  note — it is the record of what was known when it was written.
-- **Every reference follows, plans and closed ledger entries included** — a pointer that resolves
-  to the wrong document is the defect itself, not history. The plan that implemented the
-  external-deletion ADR gets its references updated plus one head line recording the change; the
-  closed `PG-234` entry's marker and the ROADMAP line that says «post-ADR-0061» about spurious
-  deletions follow too. Rejected: leaving plans and ledger untouched as history — they would
-  point at the merge guard.
-- **ADR-0155: rewrite all 65 citations, with two rules** — Stefano's choice. In Swift files
-  (18 under Sources, 36 under Tests) the reference and the now-false claim («stubbed to a
-  wrong-but-safe constant», «every test below is red because…», «the coder fills the bodies»)
-  go; a fact that still holds (a signature the tests were written against, a dependency injected
-  rather than read) keeps its sentence, phrased without the number. In the 11 documents (three
-  ADR bodies, eight superpowers plans) the first mention per file is qualified as the retired
-  concept-to-code workflow's ADR, not a Pergamenum one, and the narrative is not rewritten.
-  Rejected: the 18 Sources files only, the issue's letter — 36 test files keep telling a reader
-  the suite is red. Rejected: one central explanation with the citations intact — resolves the
-  reference, leaves 65 false sentences.
-- **Status lines: the whole class, not the audit's 16** — 19 ADRs read `proposed` (the audit
-  missed 0022, 0054 and 0055), 0026 says «implementation pending» and 0044, one of the 19,
-  «decided, not implemented» while CI exists, and 0023, 0024, 0025, 0027, 0028 read «Proposed»
-  under a «Status» heading the first measurement missed (corrected at the plan gate, 2026-09-26).
-  All 25 get a status statement that says accepted and names the landing evidence read from git:
-  the merging PR when there is one, otherwise the first-parent commit that brought the file to
-  `main`, with its date; where the record's PR did not carry the implementation, the implementing
-  PR is named too. Each file keeps the status form it already uses (a bulleted `Status:` line or
-  a `## Status` heading), rewritten in place. Rejected:
-  the issue's 16 — three ADRs and two qualifiers keep lying. Rejected: normalising all 64 files
-  to one form — diff noise carrying no information.
-- **`PG-156` is closed, not narrowed** — ADR-0033 (PR #178, 2026-09-07) put `pergamenum-view`
-  fences back in the editor, so the entry's claim is false. The «board surface outside the text
-  flow» idea already lives in the ROADMAP's chain 16 item 2 and needs no second home. Rejected:
-  narrowing the entry to that idea — the id's history is about a defect that is closed.
-- **The conventions live in a README in the ADR directory** — a reader browsing the ADRs finds
-  them there; CLAUDE.md gets one pointer line. Rejected: a CLAUDE.md working agreement — the
-  file is already long and these rules are needed when writing an ADR, not on every turn.
-  Rejected: nowhere — the next chain can repeat the same errors.
-- **Verification by grep; the check script is a follow-up** — the mandate is docs only. The
-  checks a reviewer runs are listed under Test seams; a new ledger entry, filed in this same PR
-  the way the 2026-09-26 entries were, proposes the script. Rejected: shipping the script in this
-  chain — it would make the criteria repeatable but breaks the mandate.
-- **Amendment notes follow the forms already prescribed** — the app spec's §9 route row and §14
-  frontmatter row get the inline «Emendato 2026-09-25 (ADR-0059)» note ADR-0059 §D10 spells out,
-  in Italian like the rows around them, and the original sentence stays readable; ADR-0001 §D2's
-  last paragraph is amended inline and the ADR's head gets a scope note in the form the eleven
-  ADRs amended by ADR-0047 §D12 carry, exactly as ADR-0059 §D10 asks; the brief's summary of
-  §14 gets the same inline amendment; the brief's 2026-08-13 changelog entry gets one note at its
-  end and none of its own sentences change. Rejected: rewriting the rows or the changelog
-  sentence — «add a note beside, never edit history» is the issue's own rule.
-- **Ledger edits by hand, in the ledger's own format** — `PG-156` gets the checkbox, a closing
-  sentence naming ADR-0033 and PR #178, and the closed marker the other closed entries carry; the
-  follow-up gets the next free id and the header's last-id counter rises with it. The header's
-  open counts and `PG-267`'s own closure are left to the post-merge ledger sync that follows every
-  merge. Rejected: leaving `PG-156` to that sync — the issue names it as this chain's deliverable.
+- **One SPEC and one ADR for all 17 items** — the principle is one and the test harness is shared
+  (a corpus plus table-driven round-trip tests). Rejected: three SPECs (notes and text, Canvas,
+  mail) — three ADRs or one ADR amended twice for a single rule.
+- **CRLF line endings and a UTF-8 BOM are preserved on write** — the file keeps its bytes outside
+  the part the app changed, consistent with file over app and with a vault synced from Windows.
+  Rejected: normalising to LF without a BOM — the first write would rewrite every line, an
+  enormous diff that iCloud and other tools see as a full modification.
+- **Default for what a parser does not understand: keep it opaque and re-emit it verbatim; refuse
+  only where keeping it cannot be made consistent** — covers frontmatter lines without a colon
+  (including YAML comments), duplicate keys, tags outside the vocabulary, Canvas nodes of an
+  unknown type with every payload key, unknown colours kept as raw strings, nodes or edges
+  missing `id`/`type`. Rejected: refusing every save on anything unknown — no loss, but the app
+  stops working on legitimate files from other tools.
+- **A Canvas with duplicate node or edge ids opens normally; a reconciliation that meets
+  duplicate ids diverges into the existing `conflicted` board state and records a problem, never a
+  crash** — reuses ADR-0054's non-modal «Mantieni le mie modifiche» / «Ricarica dal disco».
+  Rejected: refusing the board at open — makes a legitimate foreign file unusable.
+- **`pergamenum-mail-date` is written with the sender's own UTC offset, taken from the raw `Date`
+  header; UTC when only the Envelope Index date is available** — matches the documented intent
+  ("the zone the message was sent in") and removes the dependency on the machine's zone, which is
+  what broke ADR-0036 §D21's diff stability across a DST change. Rejected: always UTC — uniform,
+  but a 10:00 Italian mail reads 08:00Z in the file.
+- **ISO-8859-15 (Latin-9) decodes as Latin-9** — today it is mapped to Latin-2, which decodes
+  cleanly and wrongly (`€` becomes `¤`). No alternative was on the table.
+- **RFC 2047: linear whitespace between two adjacent encoded-words is dropped (§6.2); a B-word
+  with non-canonical padding still decodes; RFC 2231 extended and continued parameters are
+  honoured and a `;` inside quotes does not split a parameter.** No alternative discussed.
+- **Rename matches a wikilink on its resolved title (emphasis stripped), the same rule navigation
+  and backlinks already use, and rewrites the title inside the emphasis markers** —
+  `[[**Forno tunnel**]]` becomes `[[**Nuovo nome**]]`. No alternative discussed.
+- **A `.canvas` target is never a note link target; the transclusion "is this a note" test names
+  its extensions explicitly** — a board stops appearing as a backlink target. No alternative
+  discussed.
+- **Item 17 (Unicode normalisation in resolvers) gets a regression test and no code change** —
+  verified 2026-09-26: Swift `String` equality and hashing already use canonical equivalence, so
+  NFD and NFC compare equal in every cited fold. Rejected: dropping it with no test — the
+  guarantee would rest on nobody changing a comparison to a byte or `NSString` one.
+- **A new advisory lint rule reports frontmatter damage: a note carrying two frontmatter blocks
+  (the prepend defect's trace), duplicate frontmatter keys, and frontmatter lines without a
+  colon** — surfaced through the existing `frontmatter` findings, so the protected
+  `VaultAPI.LintFinding` JSON shape does not change. Rejected: leaving existing damage out of
+  scope with no detection (the recommended option, overruled by Stefano); reporting only the
+  double block (less noise, overruled for completeness).
+- **The corpus lives in a Swift source file of byte-exact strings, following
+  `EmailFixtureCorpus`'s convention; no fixture directory** — no manifest change, `\r\n` and the
+  BOM are explicit in the source. Rejected: a `Tests/Fixtures` directory of real files — more
+  faithful to "a file from another tool" but needs a `Project.swift` resource change.
 
 ## Constraints
 
-- **Docs only, no behaviour change** — origin: user mandate (#581, ROADMAP chain 14). Every hunk
-  in a Swift file is a comment; nothing under scripts, workflows, the Tuist manifest or the
-  package list changes.
-- **App-spec edits are a HITL gate** — origin: ADR-0059 §D10. Satisfied by this SPEC's approval
-  and by the commit gate of `/ship`, which shows the diff.
-- **History is annotated, never rewritten** — origin: issue #581 item 6 and ADR-0047 §D12's
-  scope-note precedent.
-- **One number, one file; a renumbering is recorded at both heads** — origin: this SPEC, becoming
-  the README's first rule.
-- **The landing check applies to this PR** — origin: ADR-0062. A renamed ADR is a new path with a
-  blob that path never held, so it passes; nothing is restored.
-- **The ledger's format belongs to the task tool** — origin: the existing ledger conventions, which
-  hand-filed entries already follow.
-- **Language** — origin: CLAUDE.md. The app spec's notes are Italian, like the rows they sit in;
-  the brief's notes follow the language of the passage; ADRs, README, comments and the ledger
-  stay English.
+- **Note frontmatter schema is closed (`date`, `tags`, `related`, `aliases`) and tags match the
+  namespaced regex** — origin: SPEC §4.3/§4.4, CLAUDE.md. Preserving an unknown line verbatim is
+  not extending the schema: the app never interprets or writes it.
+- **A Pratiche regeneration's diff shows exactly the bytes written** — origin: ADR-0036 §D21.
+- **Protected interfaces unchanged**: `VaultAPI.LintFinding`, `PraticaNaming.messageFileName`,
+  `Dossier.render`, `ImportNaming.recordingNoteTitle`, `MessageDocument.isPendingAttachmentEntry`
+  — origin: `.claude/protected-interfaces`.
+- **`Sources/Core` stays Foundation-only** — origin: ADR-0001 §D1; `perg` and `pergamenum-mcp`
+  compile it.
+- **A board conflict uses ADR-0054's existing `conflicted` state and its two actions** — origin:
+  ADR-0054 §D5/§D7.
+- **The new lint findings are advisory and never block a write or tag entry** — origin: user
+  mandate in this interview ("segnala"), and ADR-0038 keeps the rule engine behind tag-entry
+  blocking, which these findings must not reach.
+- **No GUI test** — origin: CLAUDE.md merge-gate rule; nothing here is reachable only through the
+  interface.
 
 ## Stack
 
-Markdown, Swift doc comments, one git rename. No tooling change.
+Swift 6, Swift Testing, Foundation string encodings (Latin-9 through the Core Foundation encoding
+table). No new dependency.
 
 ## Data model
 
-Not applicable. The README's renumbering register is a list of entries, each with the old
-number, the new number, the date and the reason; the first entry is 0061 to 0064.
+- **Frontmatter document**: besides the four schema keys and the foreign `pergamenum-*` keys it
+  already keeps, it carries the raw lines it did not interpret, in their original position, the
+  tags that failed validation, and the file's line-ending style and BOM presence, so rendering
+  can reproduce them.
+- **Canvas node / edge**: an unknown-type node keeps its whole raw object; an unrecognised colour
+  is kept as its raw string; a node or edge without `id`/`type` is kept as an opaque raw object and
+  written back in place. Whether a card is a "Nota" depends on a colour being present, not on the
+  colour being valid, so an unknown colour does not turn a note into plain text.
+- **Message document**: the date carries the sender's offset; escaping and unescaping are exact
+  inverses.
 
 ## API / interfaces
 
-None. No protected interface is touched.
+- No connector JSON shape changes. `lint` gains new strings inside the existing `frontmatter`
+  findings array.
+- No change to any protected interface signature.
 
 ## Edge cases
 
-- **A reference is followed by meaning, not by string.** «ADR-0061» meaning the merge guard
-  (ADR-0062, the tooling, the CLAUDE.md working agreement, the closed `PG-240`, `PG-241` and
-  `PG-251` entries) stays. The discriminators are the section numbers and the topic: deletion,
-  tabs, diary, absence marker and `PG-234` name the external-deletion ADR; merge, landing,
-  override, side-pick and `PG-240` name the merge guard.
-- **An ADR-0155 comment that carries a still-true fact** keeps the fact. Two known shapes: a
-  signature the tests were written against, which widening would break; a dependency injected
-  into a model rather than read there. The sentence stays, the number goes.
-- **ADR-0044's status line points at a section that says the CI is not yet built.** The line is
-  replaced; the section stays as the record of the decision, and the line names the workflow's
-  landing on `main`.
-- **ADR-0022's line says it will be accepted at a gate of a retired chain.** It becomes accepted
-  with its landing; its superseded-in-part notes from ADR-0024 and ADR-0025 stay.
-- **Three ADRs open with a stale «to be moved by the operator» paragraph.** The paragraph is
-  history and stays; their existing «Status» section is rewritten in place below it.
-- **The brief lists «conformità» among the connector's read tools.** That is the MCP lint tool,
-  which ADR-0038 kept, so the line is true and is not touched.
-- **Old commits and PR bodies keep saying ADR-0061 for the external-deletion work.** The two
-  renumbering notes are the bridge; git history is not rewritten.
-- **The ledger header's counts go stale the moment `PG-156` is checked by hand.** Left to the
-  post-merge sync on purpose; the SPEC records it so nobody «fixes» it twice.
+- A note with CRLF and a BOM whose frontmatter is edited in-app: only the edited key changes; every
+  line still ends in CRLF; the BOM is still there.
+- A duplicated `tags:` block: both blocks survive a write that does not touch tags (see *Not yet
+  specified* for a write that does).
+- A Canvas whose nodes share an id: opens and edits normally; if an external writer changes the
+  file during a pending save, the board goes `conflicted` with a recorded problem instead of
+  trapping.
+- An existing Pratiche message file written before this change: a later «Rigenera» shows a
+  one-time diff on `pergamenum-mail-date` (machine zone → sender offset). Its file name does not
+  change, because a sync never renames a message file.
+- An HTML body with an unclosed `<a>` or `<td>` at end of input: the text after the open tag is
+  kept.
+- A task line with `#topic-forni e #topic-forni-tunnel`: the display text removes both tags whole,
+  leaving "e" and no `-tunnel` residue.
+- `## ![[schema.png]]` in a heading: renders as an embed, never as `!schema.png`.
+- `### Note correlate operative` or a mid-sentence "## Note correlate": not taken as the related
+  section by export or by the linter.
 
 ## Test seams
 
-No unit test: nothing executable changes. The seam is a set of repository checks a reviewer runs
-at the review step of `/build`, listed here so each criterion is checkable:
+1. **The pure parsers in Core** (frontmatter, JSON Canvas and reconciliation, MIME decoder, header
+   decoder, HTML reducer, message document, task parser, inline markdown, rename, export, related
+   section, transclusion, board resolver): table-driven Swift Testing over one in-code corpus, each
+   case asserting parse → serialise equals the original bytes, or a named refusal. This seam
+   carries almost every criterion.
+2. **One vault-level test through the session's write door** for CRLF and BOM, because the BOM's
+   fate is decided by the text decoding on read and the write hash, not by the parser alone.
+3. **The existing lint engine tests** for the new advisory rule.
 
-- one file per ADR number in the ADR directory (duplicate detection over the numeric prefix);
-- no «ADR-0061» left that means the external deletion (a search over Sources, Tests, docs, the
-  ledger, the ROADMAP and CLAUDE.md, each hit classified by the discriminators above);
-- no «ADR-0155» under Sources or Tests; in the 11 documents, every file's first mention carries
-  the qualifier;
-- no ADR whose status reads proposed, pending or not implemented; every ADR has a status line;
-  every PR number or commit a status line cites is on `main`'s first-parent history;
-- the Swift diff is comment-only (every added or removed line in a Swift file starts with a
-  comment marker), nothing changed under scripts, workflows, the Tuist manifest or the package
-  list;
-- the amendment notes and the README exist where the criteria say.
-
-The Stop hook's unit build proves the comment edits still compile. The script that would make
-these checks repeatable is the follow-up entry (R-14).
+No GUI test, no new test target.
 
 ## Success criteria
 
-- [ ] R-01 — The app spec's §9 `note?id=` row and §14 Frontmatter row each carry an inline
-  «Emendato 2026-09-25 (ADR-0059)» note saying the id is recorded in the vault's note-id
-  registry file, not in the frontmatter nor in the index, follows every rename and move the app
-  performs, and is stable until the file is renamed outside the app; the original wording of
-  each row stays readable beside the note. (no-test: documentation; checked by search)
-- [ ] R-02 — ADR-0001 §D2's last paragraph says the ids live in the vault registry per ADR-0059,
-  and the ADR's head carries a scope note in ADR-0047 §D12's form pointing at ADR-0059; no other
-  line of the body changes. (no-test: documentation)
-- [ ] R-03 — The brief's summary of the §14 decisions no longer says note ids live in the index;
-  the clause carries an inline amendment naming ADR-0059. (no-test: documentation)
-- [ ] R-04 — Exactly one file per number exists in the ADR directory; the external-deletion ADR
-  is 0064 in both its file name and its title line; its git history follows the rename.
-  (no-test: documentation; checked by duplicate search and history)
-- [ ] R-05 — Both the merge-guard ADR and the renumbered ADR carry one dated renumbering note at
-  the head naming the other and the reason; the renumbered ADR's original numbering note stays
-  verbatim; nothing else in either body changes. (no-test: documentation)
-- [ ] R-06 — No reference to the external-deletion decision says 0061: the eleven source files,
-  the three test files, the implementing plan (plus one head line recording the change),
-  CLAUDE.md's index label, the closed `PG-234` ledger entry's marker and the ROADMAP's
-  «post-ADR-0061» line all say ADR-0064, and CLAUDE.md's index keeps both entries in place. Every
-  reference that means the merge guard still says 0061. (no-test: documentation; checked by
-  classified search)
-- [ ] R-07 — No file under Sources or Tests mentions ADR-0155; every stale claim of a stub or a
-  red batch in those 54 files is gone; a still-true fact keeps its sentence without the number;
-  every added or removed line in a Swift file is a comment line. (no-test: comments; checked by
-  search and a comment-only diff filter)
-- [ ] R-08 — In each of the 11 documents that cite ADR-0155, the first mention carries the
-  qualifier that it is the retired concept-to-code workflow's ADR, not a Pergamenum one; no other
-  sentence in those files changes. (no-test: documentation)
-- [ ] R-09 — No ADR reads proposed, pending or not implemented. The 25 in the class (the 19 whose
-  bulleted line read proposed, 0044 among them; 0026's «implementation pending»; 0023, 0024,
-  0025, 0027 and 0028, whose «Status» section read Proposed) say accepted and name their landing
-  on `main` (PR number, or first-parent commit when the file landed without one) with its date,
-  plus the implementing PR where the record's PR did not carry it; each file keeps the status
-  form it already had, rewritten in place. (no-test: documentation)
-- [ ] R-10 — Every PR number and commit a status line cites is read from git and is on `main`'s
-  first-parent history; none is recalled from a ticket or an ADR body. (no-test: documentation;
-  checked by ancestry)
-- [ ] R-11 — `PG-156` is checked as closed with a sentence naming ADR-0033 and PR #178
-  (2026-09-07) and a closed marker in the ledger's own format; the header's counts and `PG-267`
-  are untouched. (no-test: ledger)
-- [ ] R-12 — The brief's 2026-08-13 changelog entry ends with one note saying the Conformità pane
-  and its «Verifica conformità» command were removed on 2026-09-11 by ADR-0038 while the CLI and
-  MCP lint tools remain; none of the entry's own sentences change; the connector tool list that
-  mentions «conformità» is untouched. (no-test: documentation)
-- [ ] R-13 — A README exists in the ADR directory with three rules and a register: one number one
-  file, the next number is the highest plus one, a rename keeps history and is recorded at both
-  heads and in the register; a status line is mandatory, accepted names the landing evidence,
-  proposed is only for an implementation not yet on `main`; a citation of an ADR the directory
-  does not hold is qualified with its origin. The register's first entry is 0061 to 0064.
-  CLAUDE.md gains one line pointing at it. (no-test: documentation)
-- [ ] R-14 — A new ledger entry with the next free id proposes the reference-check script (unique
-  numbers, every cited ADR resolves or is qualified, no proposed status with an implementation on
-  `main`), P4, pointing at this chain; the header's last-id counter is raised to match.
-  (no-test: ledger)
-- [ ] R-15 — Nothing changes under scripts, workflows, the Tuist manifest or the package list; the
-  unit suite builds and passes. (no-test: verified by the Stop hook's build and a path check on
-  the diff)
+- [ ] R-01 — A note with CRLF line endings, with and without frontmatter, round-trips byte-identical
+  through parse and serialise, and an in-app frontmatter change leaves every other byte (CRLF
+  included) untouched; no second frontmatter block is ever prepended.
+- [ ] R-02 — A note starting with a UTF-8 BOM keeps its BOM and its frontmatter through an in-app
+  write via the session's write door, and the write is not refused by its own hash precondition.
+- [ ] R-03 — A tag that fails vocabulary validation is written back verbatim, after the valid tags,
+  on every serialise.
+- [ ] R-04 — A frontmatter line without a colon (including a column-0 YAML comment) is written back
+  verbatim in its original position.
+- [ ] R-05 — A duplicated frontmatter key (schema or foreign) round-trips with both occurrences,
+  byte-identical, when the write does not touch that key.
+- [ ] R-06 — A Canvas node of an unknown type round-trips with every payload key it had.
+- [ ] R-07 — An unrecognised colour on a node or an edge round-trips as its original string, and a
+  node carrying one is still read as a "Nota".
+- [ ] R-08 — A Canvas node or edge missing `id` or `type` is written back, not dropped.
+- [ ] R-09 — Reconciling a Canvas document with duplicate node or edge ids never traps: the board
+  enters the `conflicted` state and one problem is recorded.
+- [ ] R-10 — An HTML body with an unclosed `<a>` or `<td>` keeps all the text that follows it.
+- [ ] R-11 — An ISO-8859-15 part or header decodes byte `0xA4` as `€`.
+- [ ] R-12 — Whitespace between two adjacent RFC 2047 encoded-words (including one produced by
+  unfolding) does not reach the decoded subject; a B-word with non-canonical padding decodes.
+- [ ] R-13 — An RFC 2231 `filename*=` (with charset, and with continuations) yields the right
+  attachment name and extension, and `filename="Report; finale.pdf"` is not cut at the semicolon.
+- [ ] R-14 — A message subject containing a backslash followed by `n` (`C:\nuovo`) round-trips
+  through the message document unchanged.
+- [ ] R-15 — `pergamenum-mail-date` carries the sender's offset from the raw `Date` header, or UTC
+  when there is none, and the value does not depend on the machine's time zone.
+- [ ] R-16 — A task's display text removes each tag as a whole token, so a tag that is a prefix of
+  another leaves no residue.
+- [ ] R-17 — `![[file]]` inline is parsed as an embed, with no orphan `!`, in body text and in
+  headings.
+- [ ] R-18 — The related section is recognised only as a line that is exactly its heading, by
+  export and by the linter.
+- [ ] R-19 — Renaming a note rewrites `[[**Title**]]` (and the other emphasis forms `resolvedTitle`
+  strips) to the new title inside the same markers, and the reported count includes it.
+- [ ] R-20 — A `^[[Board.canvas]]` marker never adds a `.canvas` target to a note's link targets,
+  and the transclusion note test decides by an explicit extension list.
+- [ ] R-21 — A regression test asserts that NFD and NFC spellings of the same name resolve to the
+  same board and the same note in the cited resolvers.
+- [ ] R-22 — The lint engine reports, as advisory `frontmatter` findings, a note carrying two
+  frontmatter blocks, a duplicated frontmatter key, and a frontmatter line without a colon; the
+  `VaultAPI.LintFinding` JSON shape is unchanged and none of these findings blocks a write or tag
+  entry.
+- [ ] R-23 — Every case of the chain's corpus either round-trips byte-identical or is refused with
+  a recorded problem; no case is dropped silently.
+- [ ] R-24 — One ADR records the "faithful or refused" rule and the decisions above, and
+  `ROADMAP.md` §Chain 1 is marked shipped with the PR number. (no-test: documentation obligation)
 
 ## Not yet specified
 
-_none_
+- **An in-app write to a key that appears more than once** (for example a category change on a
+  note whose `tags:` is duplicated): which occurrence the app rewrites, and whether the others
+  stay, merge or trigger a refusal. Real and in scope, but it depends on how the preserved raw
+  lines are modelled, which `/workplan` settles; the default under the opaque-first rule is to keep
+  every occurrence it did not mean to change.
 
 ## Out of scope
 
-- **The reference-check script** — proposed by R-14, built in its own chain, so this one stays
-  docs only as mandated.
-- **Comments that do not cite ADR-0155** — their truthfulness was not measured here; a general
-  comment audit is a different chain.
-- **ADR-0038 residues in the interface** (a tooltip, an orphan comment) — ROADMAP chain 13 item 5.
-- **Normalising the status-line form across all ADRs** — no information gained, diff noise.
-- **The «to be moved by the operator» paragraphs at the head of ADR-0023, 0024, 0025** —
-  history of how those files were written; they stay.
-- **The brief's Status section** — no milestone is reached by this chain.
-- **`PG-267`'s closure and the ledger header's counts** — the post-merge sync does both.
-- **The app spec's §4.1 tree** — ADR-0059 §D10 leaves it alone on purpose; not reopened.
-- **A ledger entry for the «board surface» idea** — the ROADMAP's chain 16 item 2 holds it; a
-  ledger id is opened only if Stefano asks.
-- **The ROADMAP's chain 14 text** — a dated audit report; its «renumber one (0063)» stays as the
-  audit wrote it, and this SPEC records the departure.
-
-## Domain terms
-
-- **Landing evidence** — the PR whose merge brought a file to `main`, or, when the file arrived
-  without a merge commit, the first-parent commit that did; always read from git.
-- **Qualified citation** — a reference to an ADR outside this repository that names its origin in
-  the same sentence, so a reader does not look for it in the ADR directory.
+- **Repairing damaged files**: data already lost (a dropped tag, a dropped canvas key) cannot be
+  reconstructed; a double frontmatter block is fixed by hand once lint points at it.
+- **Renaming existing Pratiche message files** whose names were built from a subject decoded with
+  the whitespace defect: a sync never renames a message file (ADR-0036), and changing that is a
+  separate decision.
+- **A fixture directory of real files**: rejected above for the manifest change it needs.
+- **GUI tests**: nothing here needs the interface to be observed.
+- **The other chains of the audit**, including chain 2 (board lifecycle), which touches
+  neighbouring Workspace code but not the parsers.

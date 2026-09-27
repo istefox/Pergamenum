@@ -169,7 +169,7 @@ extension VaultSession {
             path: relativePath,
             hashBefore: data.map(NoteStore.hash),
             hashAfter: "",
-            textBefore: data.flatMap { String(data: $0, encoding: .utf8) },
+            textBefore: data.flatMap(NoteStore.decodedText),
             command: journalCommand,
             operation: currentOperation,
             kind: .removal,

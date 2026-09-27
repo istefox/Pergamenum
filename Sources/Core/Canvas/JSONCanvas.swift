@@ -13,25 +13,42 @@ struct CanvasDocument: Equatable, Sendable {
     var edges: [CanvasEdge]
     /// Top-level keys outside `nodes` and `edges`, preserved verbatim.
     var unknown: [String: JSONValue]
+    /// Elements of `nodes`/`edges` the codec cannot read - an object without `id` or `type`
+    /// (nodes), without `id`, `fromNode` or `toNode` (edges), or anything that is not an object -
+    /// kept with their original index and written back there (ADR-0065 §D5.4, R-08).
+    var opaqueNodes: [CanvasOpaqueElement]
+    var opaqueEdges: [CanvasOpaqueElement]
 
     static let empty = CanvasDocument(nodes: [], edges: [], unknown: [:])
 
     enum DecodingError: Error, CustomStringConvertible {
         case notAnObject
         case unreadable(String)
+        /// `nodes` or `edges` is present and is not an array (ADR-0065 §D5.5): such a file cannot
+        /// be written back consistently, because `encoded()` always writes an array.
+        case notAList(String)
 
         var description: String {
             switch self {
             case .notAnObject: "the canvas file's root is not a JSON object"
             case .unreadable(let reason): "the canvas file could not be read: \(reason)"
+            case .notAList(let key): "the canvas file's \(key) is not a list"
             }
         }
     }
 
-    init(nodes: [CanvasNode] = [], edges: [CanvasEdge] = [], unknown: [String: JSONValue] = [:]) {
+    init(
+        nodes: [CanvasNode] = [],
+        edges: [CanvasEdge] = [],
+        unknown: [String: JSONValue] = [:],
+        opaqueNodes: [CanvasOpaqueElement] = [],
+        opaqueEdges: [CanvasOpaqueElement] = []
+    ) {
         self.nodes = nodes
         self.edges = edges
         self.unknown = unknown
+        self.opaqueNodes = opaqueNodes
+        self.opaqueEdges = opaqueEdges
     }
 
     init(data: Data) throws {
@@ -49,17 +66,39 @@ struct CanvasDocument: Equatable, Sendable {
         }
         guard let object = root as? [String: Any] else { throw DecodingError.notAnObject }
 
-        nodes = (object["nodes"] as? [[String: Any]] ?? []).compactMap(CanvasNode.init)
-        edges = (object["edges"] as? [[String: Any]] ?? []).compactMap(CanvasEdge.init)
+        (nodes, opaqueNodes) = try Self.elements(of: "nodes", in: object, read: CanvasNode.init)
+        (edges, opaqueEdges) = try Self.elements(of: "edges", in: object, read: CanvasEdge.init)
         unknown = object
             .filter { $0.key != "nodes" && $0.key != "edges" }
             .compactMapValues(JSONValue.init)
     }
 
+    /// Reads one array element by element, so one element the codec cannot read is kept as an
+    /// opaque value instead of emptying the whole board (ADR-0065 §D5.4). An absent key reads as
+    /// empty - JSON Canvas makes both optional - and a present non-array refuses the open (§D5.5).
+    private static func elements<Element>(
+        of key: String,
+        in object: [String: Any],
+        read: ([String: Any]) -> Element?
+    ) throws -> ([Element], [CanvasOpaqueElement]) {
+        guard let raw = object[key] else { return ([], []) }
+        guard let list = raw as? [Any] else { throw DecodingError.notAList(key) }
+        var readable: [Element] = []
+        var opaque: [CanvasOpaqueElement] = []
+        for (index, element) in list.enumerated() {
+            if let fields = element as? [String: Any], let value = read(fields) {
+                readable.append(value)
+            } else if let value = JSONValue(element) {
+                opaque.append(CanvasOpaqueElement(index: index, value: value))
+            }
+        }
+        return (readable, opaque)
+    }
+
     func encoded() throws -> Data {
         var object: [String: Any] = unknown.mapValues(\.rawValue)
-        object["nodes"] = nodes.map(\.rawValue)
-        object["edges"] = edges.map(\.rawValue)
+        object["nodes"] = CanvasOpaqueElement.interleaving(opaqueNodes, into: nodes.map(\.rawValue))
+        object["edges"] = CanvasOpaqueElement.interleaving(opaqueEdges, into: edges.map(\.rawValue))
         // Sorted keys so a file that did not change in content does not change on
         // disk either, which keeps the vault quiet under version control and under
         // iCloud sync. Slashes stay unescaped: `\/` is legal JSON and every parser
@@ -75,10 +114,32 @@ struct CanvasDocument: Equatable, Sendable {
     func node(id: String) -> CanvasNode? { nodes.first { $0.id == id } }
 }
 
-/// A node's colour: one of the six presets, or a hex value.
+/// An element of `nodes` or `edges` the codec cannot read, with the index it had in the file
+/// (ADR-0065 §D5.4).
+struct CanvasOpaqueElement: Equatable, Sendable {
+    var index: Int
+    var value: JSONValue
+
+    /// Re-inserts each opaque element at its original index, in ascending order, clamped to the
+    /// array's end: an unedited document encodes its array exactly as it read it, and an edited one
+    /// keeps every opaque element in its original relative order.
+    static func interleaving(_ opaque: [Self], into readable: [Any]) -> [Any] {
+        var result = readable
+        for element in opaque.sorted(by: { $0.index < $1.index }) {
+            result.insert(element.value.rawValue, at: min(max(element.index, 0), result.count))
+        }
+        return result
+    }
+}
+
+/// A node's colour: one of the six presets, a hex value, or a string this app does not read.
 enum CanvasColor: Equatable, Sendable {
     case preset(Int)
     case hex(String)
+    /// A colour string that is neither a preset nor a valid hex (`"7"`, `"#GGG"`, `"red"`), kept
+    /// verbatim so it round-trips (ADR-0065 §D5.2, R-07). `init?` never produces it: a caller that
+    /// wants to keep an unreadable value writes `CanvasColor(raw) ?? .unrecognised(raw)`.
+    case unrecognised(String)
 
     init?(_ raw: String) {
         if raw.hasPrefix("#") {
@@ -95,7 +156,15 @@ enum CanvasColor: Equatable, Sendable {
         switch self {
         case .preset(let value): String(value)
         case .hex(let value): value
+        case .unrecognised(let value): value
         }
+    }
+
+    /// A node's or an edge's `color` value as the codec keeps it: a string always becomes a
+    /// colour, understood or not; any other JSON type is not consumed (ADR-0065 §D5.3).
+    static func kept(_ value: Any?) -> CanvasColor? {
+        guard let raw = value as? String else { return nil }
+        return CanvasColor(raw) ?? .unrecognised(raw)
     }
 }
 
@@ -174,23 +243,31 @@ struct CanvasNode: Identifiable, Equatable, Sendable {
         y = CGFloat((object["y"] as? NSNumber)?.doubleValue ?? 0)
         width = CGFloat((object["width"] as? NSNumber)?.doubleValue ?? 260)
         height = CGFloat((object["height"] as? NSNumber)?.doubleValue ?? 120)
-        color = (object["color"] as? String).flatMap(CanvasColor.init)
+        color = CanvasColor.kept(object["color"])
 
+        // ADR-0065 §D5.1/§D5.3: each kind consumes only its own payload, an unknown kind none, and
+        // an optional key only when it is understood. Everything else stays in `unknown`.
+        var consumed: Set<String> = ["id", "type", "x", "y", "width", "height"]
+        if color != nil { consumed.insert("color") }
         switch type {
         case "text":
             kind = .text(object["text"] as? String ?? "")
+            consumed.insert("text")
         case "file":
-            kind = .file(path: object["file"] as? String ?? "", subpath: object["subpath"] as? String)
+            let subpath = object["subpath"] as? String
+            kind = .file(path: object["file"] as? String ?? "", subpath: subpath)
+            consumed.insert("file")
+            if subpath != nil { consumed.insert("subpath") }
         case "link":
             kind = .link(url: object["url"] as? String ?? "")
+            consumed.insert("url")
         case "group":
-            kind = .group(label: object["label"] as? String)
+            let label = object["label"] as? String
+            kind = .group(label: label)
+            if label != nil { consumed.insert("label") }
         default:
             kind = .unknown(type: type)
         }
-
-        let consumed: Set<String> = ["id", "type", "x", "y", "width", "height", "color",
-                                     "text", "file", "subpath", "url", "label"]
         unknown = object.filter { !consumed.contains($0.key) }.compactMapValues(JSONValue.init)
     }
 
@@ -278,11 +355,18 @@ struct CanvasEdge: Identifiable, Equatable, Sendable {
         toSide = (object["toSide"] as? String).flatMap(Side.init)
         fromEnd = (object["fromEnd"] as? String).flatMap(End.init)
         toEnd = (object["toEnd"] as? String).flatMap(End.init)
-        color = (object["color"] as? String).flatMap(CanvasColor.init)
+        color = CanvasColor.kept(object["color"])
         label = object["label"] as? String
 
-        let consumed: Set<String> = ["id", "fromNode", "fromSide", "fromEnd",
-                                     "toNode", "toSide", "toEnd", "color", "label"]
+        // ADR-0065 §D5.3 (G1.7): an optional key is consumed only when it was understood; a side
+        // or an end this app does not know, and a non-string colour or label, stay in `unknown`.
+        var consumed: Set<String> = ["id", "fromNode", "toNode"]
+        let understood: [(String, Bool)] = [
+            ("fromSide", fromSide != nil), ("toSide", toSide != nil),
+            ("fromEnd", fromEnd != nil), ("toEnd", toEnd != nil),
+            ("color", color != nil), ("label", label != nil),
+        ]
+        for (key, isUnderstood) in understood where isUnderstood { consumed.insert(key) }
         unknown = object.filter { !consumed.contains($0.key) }.compactMapValues(JSONValue.init)
     }
 

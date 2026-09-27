@@ -39,7 +39,7 @@ enum MIMEDecoder {
         let contentType = value(of: "content-type", in: headers) ?? "text/plain"
         let base = baseType(of: contentType)
 
-        if base.hasPrefix("multipart/"), let boundary = parameter("boundary", of: contentType) {
+        if base.hasPrefix("multipart/"), let boundary = MIMEParameter.value("boundary", in: contentType) {
             return bodies(of: split.body, boundary: boundary)
                 .enumerated()
                 .flatMap { index, childBody in
@@ -69,8 +69,8 @@ enum MIMEDecoder {
     ) -> MIMEPart {
         let disposition = value(of: "content-disposition", in: headers) ?? ""
         let transferEncoding = value(of: "content-transfer-encoding", in: headers)
-        let filename = parameter("filename", of: disposition)
-            ?? parameter("name", of: value(of: "content-type", in: headers) ?? "")
+        let filename = MIMEParameter.value("filename", in: disposition)
+            ?? MIMEParameter.value("name", in: value(of: "content-type", in: headers) ?? "")
         // `EmailHeaders.messageID` strips the angle brackets a `Content-ID` is written
         // in, and a `cid:` reference in the body carries none either: the stripped form
         // is the one both sides can compare.
@@ -98,7 +98,7 @@ enum MIMEDecoder {
                 ? decodeText(
                     body,
                     transferEncoding: transferEncoding,
-                    charset: parameter("charset", of: value(of: "content-type", in: headers) ?? "")
+                    charset: MIMEParameter.value("charset", in: value(of: "content-type", in: headers) ?? "")
                 )
                 : nil,
             // A TNEF `winmail.dat` is carried through exactly as it arrived: this app
@@ -186,22 +186,6 @@ enum MIMEDecoder {
             .lowercased()
     }
 
-    /// One `; name=value` parameter, quoted or bare. Case-insensitive on the name,
-    /// value returned verbatim so a file name keeps its capitals.
-    private static func parameter(_ name: String, of raw: String) -> String? {
-        for piece in raw.split(separator: ";").dropFirst() {
-            let trimmed = piece.trimmingCharacters(in: .whitespaces)
-            guard let equals = trimmed.firstIndex(of: "=") else { continue }
-            let key = String(trimmed[trimmed.startIndex..<equals])
-                .trimmingCharacters(in: .whitespaces).lowercased()
-            guard key == name else { continue }
-            return String(trimmed[trimmed.index(after: equals)...])
-                .trimmingCharacters(in: .whitespaces)
-                .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-        }
-        return nil
-    }
-
     /// Decodes one part's raw body bytes given its `Content-Transfer-Encoding`
     /// (`7bit`/`8bit`/`quoted-printable`/`base64`, case-insensitive, `nil` treated as
     /// `7bit`) and charset (`utf-8`/`iso-8859-1`/`windows-1252`, `nil` treated as
@@ -209,7 +193,7 @@ enum MIMEDecoder {
     /// thrown error or a dropped part (R-05).
     static func decodeText(_ data: Data, transferEncoding: String?, charset: String?) -> String {
         let bytes = decodeBytes(data, transferEncoding: transferEncoding)
-        let encoding = stringEncoding(for: charset)
+        let encoding = MailCharset.encoding(for: charset ?? "utf-8")
         if encoding == .utf8 {
             // `String(data:encoding:.utf8)` answers `nil` on a single bad byte and
             // would lose the whole part; `String(decoding:as:)` substitutes U+FFFD for
@@ -279,18 +263,6 @@ enum MIMEDecoder {
         case 0x41...0x46: byte - 0x41 + 10
         case 0x61...0x66: byte - 0x61 + 10
         default: nil
-        }
-    }
-
-    /// The charsets Italian and English business mail actually arrives in. Anything
-    /// else is read as UTF-8, which degrades to U+FFFD rather than to nothing.
-    private static func stringEncoding(for charset: String?) -> String.Encoding {
-        switch (charset ?? "utf-8").trimmingCharacters(in: .whitespaces).uppercased() {
-        case "ISO-8859-1", "ISO8859-1", "LATIN1", "ISO_8859-1": .isoLatin1
-        case "ISO-8859-15", "LATIN9": .isoLatin2
-        case "WINDOWS-1252", "CP1252", "CP-1252": .windowsCP1252
-        case "US-ASCII", "ASCII": .ascii
-        default: .utf8
         }
     }
 }
