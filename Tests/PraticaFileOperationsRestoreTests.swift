@@ -22,21 +22,23 @@ import Testing
         return .init(original: folder.appending(path: name), inTrash: inTrash, relativePath: "Pratica/email/\(name)")
     }
 
-    @Test func restorePutsAFileBackWhereItWas() throws {
+    @Test func restorePutsAFileBackWhereItWas() async throws {
         let root = try makeRoot()
         let file = try trashed("a.md", in: root, folderExists: true)
+        let session = VaultSession(root: root, stateBase: root.appending(path: "state", directoryHint: .isDirectory))
 
-        let failures = PraticaFileOperations.restore([file])
+        let failures = await PraticaFileOperations.restore([file], session: session)
 
         #expect(failures.isEmpty)
         #expect(FileManager.default.fileExists(atPath: file.original.path(percentEncoded: false)))
     }
 
-    @Test func restoreReturnsTheFilesItCouldNotPutBackAndDoesNotRecreateTheFolder() throws {
+    @Test func restoreReturnsTheFilesItCouldNotPutBackAndDoesNotRecreateTheFolder() async throws {
         let root = try makeRoot()
         let file = try trashed("a.md", in: root, folderExists: false)
+        let session = VaultSession(root: root, stateBase: root.appending(path: "state", directoryHint: .isDirectory))
 
-        let failures = PraticaFileOperations.restore([file])
+        let failures = await PraticaFileOperations.restore([file], session: session)
 
         #expect(failures == [file])
         #expect(

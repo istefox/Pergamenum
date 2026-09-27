@@ -237,7 +237,7 @@ private func orderingDisk(_ vault: borrowing TemporaryVault) -> VaultDisk {
     #expect(try String(contentsOf: vault.root.appending(path: "Board.canvas"), encoding: .utf8) == text)
 
     // R-01: trash is another writer on the same path, including non-note files.
-    let removed = try await disk.trashFile(at: "Board.canvas")
+    let removed = try await disk.trashFile(at: "Board.canvas").mutation
     #expect(removed.path == "Board.canvas")
     #expect(removed.record == nil)
     #expect(removed.sequence == written.sequence + 1)

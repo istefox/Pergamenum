@@ -132,6 +132,8 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Vault/VaultSession+Files.swift",
     "Sources/Vault/VaultSession+Identity.swift",
     "Sources/Vault/VaultSession+Journal.swift",
+    // ADR-0067 §D1: `VaultSession.write` calls `announce(_:)`, declared here.
+    "Sources/Vault/VaultSession+LandedChanges.swift",
     "Sources/Vault/VaultSession+Notes.swift",
     // The stable note-id registry's vault-side store and lifecycle (ADR-0059 §D2/§D3/§D9),
     // named by hand per ADR-0007 §D2 the same way `CategoryRegistryStore.swift` above is:

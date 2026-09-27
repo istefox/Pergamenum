@@ -215,6 +215,14 @@ final class VaultController {
             stateBase: stateBase,
             bundledVocabulary: Bundle.pergamenumResources.url(forResource: "vocabolari", withExtension: "json")
         )
+        // ADR-0067 §D4: the handler follows this controller's session and only it. The
+        // outgoing session loses it first, so a write still completing there can never reach
+        // the next vault's tabs; the closure also re-checks identity at delivery time.
+        session?.landedChangeSubscriber = nil
+        newSession.landedChangeSubscriber = { [weak self, weak newSession] change in
+            guard let self, let newSession, self.session === newSession else { return }
+            self.landed(change)
+        }
         session = newSession
         // Owned here, not by the Workspace that used to create it: the cache belongs
         // to the vault, and reading mode needs the same renderer to draw a picture
@@ -244,6 +252,8 @@ final class VaultController {
     func close() {
         watcher?.stop()
         watcher = nil
+        // ADR-0067 §D4: a session somebody else still holds must not keep calling back here.
+        session?.landedChangeSubscriber = nil
         session = nil
         thumbnails = nil
         columns = [EditorColumn()]

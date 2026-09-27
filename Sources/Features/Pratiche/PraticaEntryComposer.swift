@@ -56,7 +56,7 @@ struct PraticaEntryComposer {
         let notePath = PraticaNaming.praticaNotePath(of: praticaPath)
         // The same refusal every file operation makes (`VaultController+Files`): a
         // tab holding unsaved edits to this note is asked to save first, never
-        // merged with and never discarded - `handOff` below catches that tab up.
+        // merged with and never discarded - the write below catches that tab up (ADR-0067).
         guard vault.canOperate(on: notePath) else { return }
         let counterpart = counterpart(of: praticaPath, fallback: pratica.client)
         do {
@@ -64,10 +64,10 @@ struct PraticaEntryComposer {
             let insertion = PraticaEntry.insert(
                 kind: kind, at: timestamp, counterpart: counterpart, in: source
             )
-            let result = try await session.write(insertion.text, to: notePath, expecting: record.contentHash)
+            try await session.write(insertion.text, to: notePath, expecting: record.contentHash)
             await mirror(kind, of: pratica, counterpart: counterpart, on: timestamp, session: session)
             pratiche.reloadTimeline(from: vault)
-            handOff(insertion, notePath: notePath, result: result)
+            handOff(insertion, notePath: notePath)
         } catch let refusal as VaultSession.WriteRefusal {
             pratiche.report("La voce non è stata scritta in «\(notePath)»: \(refusal.description)")
         } catch {
@@ -118,16 +118,14 @@ struct PraticaEntryComposer {
     ///
     /// `openNote(at:)` focuses a tab that already holds the note rather than re-reading
     /// it - and after the first entry it always does, since this very hand-off opened
-    /// it. That buffer predates the write above, and its next save would put the file
-    /// back without the heading: `syncOpenNote(with:)` catches it up instead of the
-    /// disk-rereading helper this used to call - the file, after `await`, may already
-    /// have moved on again (`insert`'s own race, closed by `expecting:` above, is
-    /// exactly why a second, un-preconditioned read here would be wrong). It is this
-    /// write's own `result`, never a fresh read, and it asks rather than silently
-    /// replacing a buffer the user is still editing (ADR-0001 §D3.4).
-    func handOff(_ insertion: PraticaEntry.Insertion, notePath: String, result: VaultSession.WriteResult) {
+    /// it. That buffer was caught up by the write in `insert` itself, before this runs
+    /// (ADR-0067 §D1, §D5): to the write's own result, never a fresh read - the file, after
+    /// `await`, may already have moved on again (`insert`'s own race, closed by
+    /// `expecting:` above, is exactly why an un-preconditioned re-read would be wrong) - and
+    /// asking rather than silently replacing a buffer the user was editing when the write
+    /// landed (ADR-0001 §D3.4). So this only opens the note and places the caret.
+    func handOff(_ insertion: PraticaEntry.Insertion, notePath: String) {
         vault.openChosenNote(at: notePath)
-        vault.syncOpenNote(with: result)
         navigation.jumpToLine(
             range: insertion.cursorRange,
             ordinal: Self.ordinal(ofOffset: insertion.cursorRange.location, in: insertion.text)

@@ -82,8 +82,8 @@ extension VaultController {
     /// `linkCategory`/`unlinkCategory`'s shared outcome handling.
     private func handle(_ outcome: VaultSession.WriteOutcome) -> Bool {
         switch outcome {
-        case .written(let result):
-            syncOpenNote(with: result)
+        case .written:
+            // The write already caught every open copy up (ADR-0067 §D1).
             return true
         case .unchanged:
             return true

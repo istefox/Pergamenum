@@ -296,85 +296,6 @@ extension PraticaSyncEngine {
         return .embedded(write: placed.write, fileName: placed.fileName)
     }
 
-    /// Everything `resolveContext` reads or computes once from `row`/`reader`, so
-    /// `decodeBody` and `prepare` itself don't each recompute it (ADR-0045 Task 4:
-    /// `prepare`'s own body, split along its existing comment blocks to clear the
-    /// function_body_length error, never changes what any of these values are).
-    private struct PrepareContext {
-        var emlxURL: URL
-        var container: EMLXDocument
-        var headers: EmailHeaders
-        var messageID: String
-        var isPending: Bool
-        var existing: ExistingMessage?
-        var date: Date
-        var calendarDate: CalendarDate
-        var subject: String
-        var direction: MessageDocument.Direction
-        var carbonCopies: [EmailAddress]
-        var counterpart: EmailAddress?
-    }
-
-    /// `prepare`'s "locate + read `.emlx`" and "resolve `Message-ID` and the
-    /// exclusion recheck" blocks, unchanged - still answers `nil` for every reason
-    /// this run must leave the message alone: no `.emlx` to read, no `Message-ID`
-    /// to key it by, or a file already on disk that §D6 forbids rewriting.
-    private func resolveContext(
-        _ row: MailMessageRow, request: SyncRequest, reader: MailStoreReader, folder: FolderContext
-    ) -> PrepareContext? {
-        guard let emlxURL = locate(row, reader: reader),
-              let container = try? EMLXReader.read(contentsOf: emlxURL)
-        else { return nil }
-
-        let headers = EmailHeaderParser.parse(Self.headerText(of: container.rfc822))
-        // The row's own id first: it is what `onDisk`, the ledger and
-        // `PraticaSyncPlan`'s dedup all key on. The header is the fallback for a row
-        // read straight out of the index, which carries none (ADR §D3).
-        guard let messageID = row.messageID ?? headers.messageID.map({ "<\($0)>" })
-        else { return nil }
-        // «Escludi» enforced a second time, now that the id is known: a row read
-        // straight out of the index carries no `Message-ID`, so
-        // `MembershipRule.candidates` could not match it against `dossier.excluded`
-        // and let it through. Without this check every excluded message came back on
-        // the next sync.
-        guard !request.dossier.excluded.contains(messageID) else { return nil }
-
-        let isPending = container.bodyState == .pending
-        let existing = folder.messagesByID[messageID]
-        if let existing {
-            // §D6: a file already on disk is rewritten for one of three reasons - it was
-            // written `pending` and the body has since arrived (R-15), this is the one
-            // message an explicit «Rigenera» named (ADR §D21.1), or it carries at least
-            // one pending attachment entry (ADR-0040 §D3/§D5) - which narrows this guard
-            // rather than removing it: every other message stays untouched.
-            let isRequestedRegeneration = request.regenerating == messageID
-            let hasPendingAttachments = !existing.document.frontmatter.pendingAttachmentNames.isEmpty
-            let hasPendingInlineImages = !existing.document.frontmatter.pendingInlineImages.isEmpty
-            guard isRequestedRegeneration
-                || (existing.document.frontmatter.body == .pending && !isPending)
-                || hasPendingAttachments
-                || hasPendingInlineImages
-            else { return nil }
-        }
-
-        let date = headers.date ?? row.dateSent ?? row.dateReceived ?? .distantPast
-        let calendarDate = CalendarDate(date)
-        let subject = headers.subject ?? row.subject ?? ""
-        let ownAddresses = Set(request.settings.ownAddresses)
-        let carbonCopies = Self.addresses(of: "cc", in: headers)
-        let direction = MessageDocument.direction(from: headers.from, ownAddresses: ownAddresses)
-        let counterpart = MessageDocument.counterpart(
-            direction: direction, from: headers.from, to: headers.to, cc: carbonCopies,
-            ownAddresses: ownAddresses
-        )
-
-        return PrepareContext(
-            emlxURL: emlxURL, container: container, headers: headers, messageID: messageID,
-            isPending: isPending, existing: existing, date: date, calendarDate: calendarDate,
-            subject: subject, direction: direction, carbonCopies: carbonCopies, counterpart: counterpart
-        )
-    }
-
     /// `decodeBody`'s answer: everything `prepare` folds into a `MailFrontmatter`
     /// and a `PreparedMessage` once the MIME walk and body reduction are done.
     private struct DecodedBody {
@@ -501,13 +422,32 @@ extension PraticaSyncEngine {
     /// is not legal here regardless of who would need to call it. `decodeAndCommit`
     /// below is the cross-file entry point `sync(_:)` in `PraticaSyncEngine.swift`
     /// calls instead, since its own signature never names `PreparedMessage`.
+    ///
+    /// This four-argument form discards what `locate` found indeterminate: its one
+    /// caller, `regenerationPreview`, has already looked the file up itself and throws
+    /// `.lookupIndeterminate` on its own.
     private func prepare(
         _ row: MailMessageRow,
         request: SyncRequest,
         reader: MailStoreReader,
         folder: FolderContext
     ) -> PreparedMessage? {
-        guard let context = resolveContext(row, request: request, reader: reader, folder: folder)
+        var discarded: [String] = []
+        return prepare(row, request: request, reader: reader, folder: folder, indeterminateLookups: &discarded)
+    }
+
+    /// ADR-0068 §D7: a lookup that could not answer appends the message to
+    /// `indeterminateLookups` (the run's `outcome`) and is skipped like any other miss.
+    private func prepare(
+        _ row: MailMessageRow,
+        request: SyncRequest,
+        reader: MailStoreReader,
+        folder: FolderContext,
+        indeterminateLookups: inout [String]
+    ) -> PreparedMessage? {
+        guard let context = resolveContext(
+            row, request: request, reader: reader, folder: folder, indeterminateLookups: &indeterminateLookups
+        )
         else { return nil }
 
         var attachmentNameByDigest = folder.attachmentNameByDigest
@@ -610,7 +550,10 @@ extension PraticaSyncEngine {
     ) async throws -> Bool {
         // Decoding happens first and writes nothing: it is the window during which
         // a `cancel()` sent from outside gets queued on this actor.
-        let prepared = prepare(row, request: request, reader: reader, folder: folder)
+        let prepared = prepare(
+            row, request: request, reader: reader, folder: folder,
+            indeterminateLookups: &outcome.indeterminateLookups
+        )
         // ADR §D14: cancellation is observed at the write boundary, never
         // mid-message. The yields are what let a queued `cancel()` actually run -
         // an actor only services another job while the job it is running is
@@ -625,18 +568,6 @@ extension PraticaSyncEngine {
             try await commit(prepared, request: request, folder: &folder, outcome: &outcome)
         }
         return true
-    }
-
-    /// ADR §D4: only `.notInStore` means «non più in Mail», and a drifted rule is not
-    /// that - both are skipped here, and R-16's caption is decided by
-    /// `noLongerInMail(request:reader:)` against the index instead.
-    private func locate(_ row: MailMessageRow, reader: MailStoreReader) -> URL? {
-        switch EMLXLocator.locate(predictedURL: reader.emlxPath(forRow: row)) {
-        case let .found(url), let .foundPartial(url):
-            return url
-        case .notInStore, .ruleFailed:
-            return nil
-        }
     }
 
     // MARK: - «Rigenera» (ADR §D21)
@@ -664,6 +595,9 @@ extension PraticaSyncEngine {
         case notInStore
         case notDecodable
         case fileMissing
+        /// ADR-0068 §D7: the fallback walk could not answer either way (budget
+        /// exhausted or a directory unreadable) - never reported as `.notInStore`.
+        case lookupIndeterminate
     }
 
     /// ADR-0049 §D7: a linked note survives «Rigenera» - carried into
@@ -725,6 +659,9 @@ extension PraticaSyncEngine {
             throw RegenerationFailure.notInStore
         case .ruleFailed:
             throw RegenerationFailure.notDecodable
+        case .indeterminate:
+            // ADR-0068 §D7: the walk could not answer, so this is never `.notInStore`.
+            throw RegenerationFailure.lookupIndeterminate
         }
 
         var regenerationRequest = request
@@ -780,6 +717,16 @@ extension PraticaSyncEngine {
         folder: inout FolderContext,
         outcome: inout SyncOutcome
     ) async throws {
+        // ADR-0068 §D10: a file the quarantine could not be stamped on stays where it is,
+        // and the run goes on. Every such file of this message is named in ONE sentence,
+        // added on whichever exit this function takes.
+        var unquarantined: [String] = []
+        defer {
+            if let sentence = Self.quarantineProblemSentence(unquarantined) {
+                outcome.attachmentProblems.append(sentence)
+            }
+        }
+
         // Sidecars first, note last: a note is what says "this message is imported", so
         // it must never be the thing that exists while what it points at does not. The
         // attachment bytes are written the same way regardless of write mode below
@@ -799,7 +746,7 @@ extension PraticaSyncEngine {
                 // PG-123: the bytes came out of a mail store, so the copy is a download as far
                 // as Gatekeeper is concerned - stamped after the rename, or the xattr would
                 // land on the temporary sibling `.atomic` throws away.
-                try AttachmentQuarantine.apply(to: target)
+                if !stampQuarantine(on: target) { unquarantined.append(attachment.fileName) }
             }
         }
         folder.attachmentNameByDigest = prepared.attachmentNameByDigest
@@ -834,6 +781,16 @@ extension PraticaSyncEngine {
             // `pergamenum-mail-attachments` line, its inline-image placeholders and its
             // `pergamenum-mail-inline-pending` line may change (ADR-0042 §D8). The `.eml`
             // sidecar is never rewritten in this mode: its bytes have not changed (§D18).
+            //
+            // ADR-0068 §D9: the bridge depends only on the resolved row, so it is recorded
+            // on entry, before any early return below - "patch equals disk" is the normal
+            // path for an attachment that keeps failing, and it must still correct a
+            // ROWID a Mail index rebuild made stale.
+            if let conversationID = prepared.conversationID {
+                outcome.bridge.append(PraticaLedger.Entry(
+                    messageID: prepared.messageID, rowID: prepared.rowID, conversationID: conversationID
+                ))
+            }
             guard let existingOnDisk else { return }
 
             let pendingIDs = existingOnDisk.document.frontmatter.pendingInlineImages
@@ -865,37 +822,48 @@ extension PraticaSyncEngine {
                 fileName: prepared.fileName, document: patchedDocument, text: patchedText
             )
             outcome.resolvedAttachmentFiles.append(notePath)
-            if let conversationID = prepared.conversationID {
-                outcome.bridge.append(PraticaLedger.Entry(
-                    messageID: prepared.messageID, rowID: prepared.rowID, conversationID: conversationID
-                ))
-            }
             return
         }
 
-        if let originalBytes = prepared.originalBytes {
-            let baseName = (prepared.fileName as NSString).deletingPathExtension
+        // ADR-0068 §D5: a full render over a file that already exists - a `pending` body
+        // that arrived, a `storeReferences` change - is composed from Mail alone, so the
+        // person's `pergamenum-mail-note` link is carried over from the file on disk. A
+        // requested regeneration is excluded on purpose: `regenerationPreview` already
+        // carried it into the plan whose diff was shown, and ADR-0036 §D21 is a promise
+        // about that path - the bytes shown are the bytes written, untouched here.
+        var rendered = prepared
+        if let existingOnDisk, !isRequestedRegeneration {
+            rendered = Self.carryingOverLinkedNote(from: existingOnDisk.text, into: prepared)
+            if rendered.noteText != prepared.noteText {
+                rendered.document.frontmatter.linkedNote = existingOnDisk.document.frontmatter.linkedNote
+            }
+        }
+
+        if let originalBytes = rendered.originalBytes {
+            let baseName = (rendered.fileName as NSString).deletingPathExtension
             let emlTarget = emailDirectory.appending(path: "\(baseName).eml", directoryHint: .notDirectory)
             try Self.writeAtomically(originalBytes, to: emlTarget)
             // PG-155: same rationale as PG-123 above - the bytes came out of a mail
             // store, so the sidecar `.eml` is a download as far as Gatekeeper is
             // concerned, and the xattr must be stamped after the rename.
-            try AttachmentQuarantine.apply(to: emlTarget)
+            if !stampQuarantine(on: emlTarget) { unquarantined.append(emlTarget.lastPathComponent) }
         }
 
-        // §D8 excludes this by name: `prepared.noteText` is composed from Mail, not from
+        // §D8 excludes this by name: `rendered.noteText` is composed from Mail, not from
         // the file on disk - there is no "before" to expect, whether this note is being
         // created for the first time or fully re-rendered.
-        try await write(prepared.noteText, notePath, nil)
+        try await write(rendered.noteText, notePath, nil)
 
-        if !prepared.isRegeneration {
-            folder.takenNoteNames.append((prepared.fileName, prepared.messageID))
-            outcome.importedMessageIDs.append(prepared.messageID)
+        if !rendered.isRegeneration {
+            folder.takenNoteNames.append((rendered.fileName, rendered.messageID))
+            outcome.importedMessageIDs.append(rendered.messageID)
         } else {
             outcome.regeneratedPendingFiles.append(notePath)
         }
-        folder.messagesByID[prepared.messageID] = ExistingMessage(
-            fileName: prepared.fileName, document: prepared.document, text: prepared.noteText
+        // The carried link is recorded too, so a later message in the same run - and
+        // this one's own `regeneratePending` pass - reads the document as written.
+        folder.messagesByID[rendered.messageID] = ExistingMessage(
+            fileName: rendered.fileName, document: rendered.document, text: rendered.noteText
         )
         outcome.writtenFiles.append(notePath)
         // §D23.1: outside the isRegeneration branch above — a regeneration is exactly
@@ -951,7 +919,10 @@ extension PraticaSyncEngine {
                 row = found
             }
 
-            guard let prepared = prepare(row, request: request, reader: reader, folder: folder) else {
+            guard let prepared = prepare(
+                row, request: request, reader: reader, folder: folder,
+                indeterminateLookups: &outcome.indeterminateLookups
+            ) else {
                 continue
             }
             await Task.yield()
@@ -976,5 +947,28 @@ extension PraticaSyncEngine {
     /// write fail with ENOENT instead.
     private static func writeAtomically(_ data: Data, to url: URL) throws {
         try data.write(to: url, options: .atomic)
+    }
+
+    /// PG-123/PG-155 through the injected `quarantine` (ADR-0068 §D10): `false` when the
+    /// attribute could not be stamped. The file stays where it is either way - «Apri»
+    /// refuses it later if the attribute is still missing.
+    private func stampQuarantine(on url: URL) -> Bool {
+        do {
+            try quarantine(url)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// One sentence for every file of one message the quarantine could not be stamped
+    /// on, `nil` when there is none.
+    private static func quarantineProblemSentence(_ fileNames: [String]) -> String? {
+        guard !fileNames.isEmpty else { return nil }
+        let names = fileNames.map { "«\($0)»" }.joined(separator: ", ")
+        let consequence = fileNames.count == 1
+            ? "il file resta nella pratica e «Apri» riproverà ad applicarlo prima di aprirlo."
+            : "i file restano nella pratica e «Apri» riproverà ad applicarlo prima di aprirli."
+        return "Impossibile applicare l'attributo di quarantena a \(names): \(consequence)"
     }
 }

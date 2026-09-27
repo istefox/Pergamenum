@@ -5,9 +5,9 @@ import Foundation
 ///
 /// Split out of `VaultController.swift` when tabs pushed that file past SwiftLint's 400 lines.
 /// Every one of these reaches a buffer through a door that stayed behind with the stored
-/// `columns` - `updateTabs(showing:_:)` for the catch-up after a write, which every tab showing
-/// the path needs (ADR-0058), and `replaceOpenNote` or `updateFocusedTab` for settling the
-/// banner the person clicked (`closeTabs(_:ofVanishedNote:)` when it was a deletion, ADR-0064
+/// `columns` - the catch-up after a write is `landed(_:)`'s, which the session calls itself
+/// (ADR-0067, `VaultController+TabFollowUps.swift`), and `replaceOpenNote` or
+/// `updateFocusedTab` for settling the banner the person clicked (`closeTabs(_:ofVanishedNote:)` when it was a deletion, ADR-0064
 /// §D5) - so the rule that a view cannot swap the buffer under the editor survives the move.
 extension VaultController {
     /// Writes the open note.
@@ -24,13 +24,15 @@ extension VaultController {
     ///
     /// The *target* is the focused buffer, as every caller means it; the *effects* reach every
     /// tab showing the path (ADR-0058 §D3). The writer tab's id is taken before the `await`,
-    /// because the focused tab when the write resumes may no longer be the one that saved.
+    /// because the focused tab when the write resumes may no longer be the one that saved, and
+    /// handed to the write as its `origin` (ADR-0067 §D2): the session echoes it back through
+    /// `landed(_:)`, which gives that tab its saved text and every other copy the prompt rule.
+    /// Nothing is called after the write - the door already delivered it.
     func saveOpenNote() async {
         guard let session, let writer = focusedTab, writer.note.hasUnsavedChanges else { return }
         let note = writer.note
         do {
-            let result = try await session.write(note.text, to: note.relativePath)
-            syncOpenNote(with: result, savedBy: writer.id)
+            try await session.write(note.text, to: note.relativePath, origin: writer.id)
         } catch {
             recordProblem("\(note.relativePath): \(error)")
         }
@@ -53,71 +55,17 @@ extension VaultController {
     ///
     /// The path is read **before** the save, not after it: a re-read of `openNote` once the
     /// save resumes finds whichever tab has the focus then, and would write one note's past
-    /// version over another (ADR-0058 §D4). The catch-up reaches every tab showing the path,
-    /// the writer's own included; a buffer still dirty after the save - a failed save, or
-    /// text typed during either `await` - gets the prompt rather than being overwritten.
+    /// version over another (ADR-0058 §D4). The restore passes no `origin` (ADR-0067 §D2), so
+    /// the catch-up `landed(_:)` performs reaches every tab showing the path, the writer's own
+    /// included; a buffer still dirty after the save - a failed save, or text typed during
+    /// either `await` - gets the prompt rather than being overwritten.
     func restoreVersion(_ text: String) async {
         guard let session, let path = openNote?.relativePath else { return }
         await saveOpenNote()
         do {
-            let result = try await session.write(text, to: path)
-            syncOpenNote(with: result)
+            try await session.write(text, to: path)
         } catch {
             recordProblem("\(path): \(error)")
-        }
-    }
-
-    /// Puts the editor back in step after a write the session made underneath it.
-    ///
-    /// This is the fourth of the four things every write in this app used to do by
-    /// hand, and the only one that is the facade's business: the session writes the
-    /// file, records the hash and updates the index, and then this decides whether the
-    /// editor should notice.
-    ///
-    /// **A buffer with unsaved changes raises the conflict prompt (ADR-0043 §D7).** The
-    /// dirty buffer is the user's work, and ADR-0001 §D3.4 says never to merge and never
-    /// to discard it - ask. This used to leave the buffer alone on the theory that "the
-    /// watcher will raise the question when the write comes back round", which is false:
-    /// `reconcile` drops this session's own writes by matching their hash
-    /// (`VaultSession+Watching.swift`), which is §D3.3 working correctly, so a write
-    /// this session made itself never reaches the watcher as an external change and the
-    /// question would never have been asked at all.
-    ///
-    /// **Every tab showing the path, in every column - not only the focused one (ADR-0058
-    /// §D2).** For the same reason as above, this call is a tab's only chance to hear of a
-    /// write this app made: a copy of the note in a background tab or in the other column
-    /// that it skipped stayed stale - a clean one reverted the write on its next save, a
-    /// dirty one was never asked (`PG-223`, #461). Each tab decides dirty or clean for
-    /// itself through `catchUp(to:)`; no tab's state decides for another.
-    func syncOpenNote(with result: VaultSession.WriteResult) {
-        updateTabs(showing: result.path) { $0.note.catchUp(to: .text(result.text)) }
-    }
-
-    /// The half of `saveOpenNote()` that runs after the `await` (ADR-0058 §D3).
-    ///
-    /// `internal` on purpose, not `private`: a test moves the focus or types into the writer
-    /// first and then calls this directly, with no timer and no gate - `VaultDisk` has no seam
-    /// that could suspend a write halfway, and adding one would put test machinery on the write
-    /// door (ADR-0046 §D11's reason, `PraticaEntryComposer.handOff`'s shape).
-    ///
-    /// **The writer is found by id, not by focus.** The focus read before the `await` is a
-    /// filter, not a guard (CLAUDE.md): if it moved during the write, the focused tab now is
-    /// some other tab, and handing it this save's snapshot would overwrite that tab's note. A
-    /// writer tab that closed or started showing another note meanwhile is skipped, because
-    /// the path is part of the filter.
-    ///
-    /// The writer takes `savedText` only and **keeps its `text`**: anything typed during the
-    /// suspension is newer than the write and stays unsaved. It is also the one tab exempt
-    /// from `catchUp(to:)` - its `savedText` is still the old text when this runs, so the
-    /// rule would read its own save as a conflict. Every other copy of the path gets the rule.
-    func syncOpenNote(with result: VaultSession.WriteResult, savedBy writer: NoteTab.ID) {
-        updateTabs(showing: result.path) { tab in
-            if tab.id == writer {
-                tab.note.savedText = result.text
-                tab.note.externalChangePending = nil
-            } else {
-                tab.note.catchUp(to: .text(result.text))
-            }
         }
     }
 

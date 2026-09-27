@@ -371,4 +371,62 @@ import Testing
 
         #expect(offending.isEmpty, "sqlite3_ found outside MailStoreConnection.swift: \(offending)")
     }
+
+    // MARK: - Item 12, copy half (ADR-0068 §D11, R-18): a permission failure is named, not retried
+
+    /// An unreadable source `Envelope Index` (EPERM) must be classified as
+    /// `.permissionDenied` at once - never retried, unlike a torn copy. Red until
+    /// Task 5 wires the classification in `attemptPublish`: today's implementation
+    /// treats every copy failure alike and falls through the same one retry plus
+    /// `Thread.sleep(forTimeInterval: 2)` `.mailIsWriting` reports.
+    @Test func publishReportsPermissionDeniedWithNoRetryDelayOnAnUnreadableSource() throws {
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [Self.inboxMailbox],
+            messages: [Self.firstMessage]
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000], ofItemAtPath: fixture.indexURL.path(percentEncoded: false)
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644], ofItemAtPath: fixture.indexURL.path(percentEncoded: false)
+            )
+        }
+        let stateDirectory = try Self.freshStateDirectory()
+
+        let started = Date()
+        let result = MailStoreCopy.publish(from: fixture.root, into: stateDirectory)
+        let elapsed = Date().timeIntervalSince(started)
+
+        #expect(result == .permissionDenied, "an EPERM source copy must be classified, not treated as a torn copy")
+        #expect(elapsed < 1.5, "a permission failure must never pay the 2s torn-copy retry delay")
+    }
+
+    /// `MailStorePreparation.reader`'s sentence for `.permissionDenied` must name Full
+    /// Disk Access, not the generic "Mail is writing" wording it shares with
+    /// `.mailIsWriting` today (the placeholder Task 3 left in
+    /// `MailStorePreparation.swift:36`).
+    @Test func readerNamesFullDiskAccessOnAPermissionDeniedSource() throws {
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [Self.inboxMailbox],
+            messages: [Self.firstMessage]
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000], ofItemAtPath: fixture.indexURL.path(percentEncoded: false)
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644], ofItemAtPath: fixture.indexURL.path(percentEncoded: false)
+            )
+        }
+        let stateDirectory = try Self.freshStateDirectory()
+
+        let outcome = MailStorePreparation.reader(mailRoot: fixture.root, stateDirectory: stateDirectory)
+
+        guard case .failed(let sentence) = outcome else {
+            Issue.record("expected .failed on an unreadable source, got \(outcome)")
+            return
+        }
+        #expect(sentence.contains("Accesso completo al disco"), "got: \(sentence)")
+    }
 }

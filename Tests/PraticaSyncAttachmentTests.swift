@@ -227,4 +227,90 @@ import Testing
             "unreadable dimensions must never be treated as decorative"
         )
     }
+
+    // MARK: R-07/§D5, item 1 - a linked note survives a `storeReferences` change
+
+    /// The other trigger `commit`'s full-render branch reads (row 3, `existingOnDisk?
+    /// .storeReferences != prepared.storeReferences`): a lowered threshold turns an
+    /// already-copied attachment into a store reference on a later sync, forcing a
+    /// full render. Red until Task 5 applies `carryingOverLinkedNote` there too.
+    /// `resolveContext`'s own guard (`PraticaSyncEngine+Messages.swift` §D6) skips an
+    /// existing, non-`pending`, non-regenerating note outright - so lowering the
+    /// threshold on an already-*complete* message never re-enters `decodeBody` at all,
+    /// and the `storeReferences`-driven full-render branch (§D5,
+    /// `existingOnDisk?.storeReferences != prepared.storeReferences`) is never reached.
+    /// The only way in is a message that still carries a pending attachment entry
+    /// (`hasPendingAttachments`), whose resolution on the next sync changes
+    /// `storeReferences` from empty to non-empty - the ADR-0048 sibling-directory shape
+    /// `PraticaSyncExternalizedAttachmentTests` already exercises for a fresh import.
+    @Test func aLinkedNoteSurvivesAStoreReferencesChange() async throws {
+        let message = EmailFixtureCorpus.zeroByteAttachmentMessageRFC822(
+            messageID: "linked789@rossi-spa.it", filename: "disegno-staffa.dwg"
+        )
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Offerta grande", senderAddress: "m.rossi@rossi-spa.it", mailboxRowID: 1,
+                conversationID: 112_409, dateSent: Date(timeIntervalSince1970: 1_781_093_170),
+                dateReceived: Date(timeIntervalSince1970: 1_781_093_170), emlxBody: message
+            )]
+        )
+        let vaultRoot = try Fixtures.makeVaultRoot()
+        let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+
+        // First sync: no sibling file exists yet, so the empty inline payload has
+        // nothing to resolve from - the attachment stays pending, exactly
+        // `PraticaSyncExternalizedAttachmentTests.anAttachmentStaysPendingWhenNoSiblingFileExists`.
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Fixtures.praticaFolder, dossier: Fixtures.sampleDossier(),
+            candidates: [
+                Fixtures.row(rowID: 1, messageID: "<linked789@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(request)
+        let doc = try Fixtures.onlyMessageDocument(under: vaultRoot)
+        #expect(doc.frontmatter.storeReferences.isEmpty, "the first sync must leave the attachment pending, not referenced")
+        #expect(!doc.frontmatter.pendingAttachmentNames.isEmpty, "setup: the attachment must actually be pending")
+
+        let emailDir = vaultRoot.appending(path: "\(Fixtures.praticaFolder)/email", directoryHint: .isDirectory)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: emailDir.path(percentEncoded: false))) ?? []
+        let fileName = try #require(names.first { $0.hasSuffix(".md") })
+        let noteURL = emailDir.appending(path: fileName, directoryHint: .notDirectory)
+        let placeholderText = try String(contentsOf: noteURL, encoding: .utf8)
+        let linked = try #require(MessageFrontmatterPatch.applying(
+            line: MessageDocument.noteLine(for: "[[Nota collegata]]"), forKey: MessageDocument.noteKey,
+            before: [MessageDocument.storeReferencesKey, "pergamenum-mail-body"], to: placeholderText
+        ))
+        try linked.write(to: noteURL, atomically: true, encoding: .utf8)
+
+        // Second sync: the sibling `Attachments/` directory now holds the file, over a
+        // lowered threshold, so it resolves into a `StoreReference` instead of staying
+        // pending - `resolveContext`'s guard lets this message back into `decodeBody`
+        // because it still carries a pending attachment entry, and `storeReferences`
+        // actually changes (empty -> non-empty), reaching the full-render branch.
+        let bigBytes = Data(repeating: 0x41, count: 2 * 1024 * 1024) // 2 MB
+        try Fixtures.writeExternalizedAttachment(
+            bigBytes, named: "disegno-staffa.dwg", rowID: 1, part: "2", into: fixture
+        )
+        var overThreshold = PraticheSettings.default
+        overThreshold.attachmentThresholdMB = 1 // the 2 MB sibling file is over this
+        let secondRequest = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Fixtures.praticaFolder, dossier: Fixtures.sampleDossier(),
+            candidates: [
+                Fixtures.row(rowID: 1, messageID: "<linked789@rossi-spa.it>", date: Date(timeIntervalSince1970: 1_781_093_170)),
+            ],
+            onDisk: ["<linked789@rossi-spa.it>"], settings: overThreshold
+        )
+        _ = try await engine.sync(secondRequest)
+
+        let afterText = try String(contentsOf: noteURL, encoding: .utf8)
+        let afterDocument = try #require(MessageDocument.parse(afterText))
+        #expect(!afterDocument.frontmatter.storeReferences.isEmpty, "the second sync must actually have changed storeReferences")
+        #expect(afterDocument.frontmatter.pendingAttachmentNames.isEmpty, "the pending attachment must have resolved")
+        #expect(
+            afterDocument.frontmatter.linkedNote == "[[Nota collegata]]",
+            "the hand-added link must survive the storeReferences-driven full render"
+        )
+    }
 }

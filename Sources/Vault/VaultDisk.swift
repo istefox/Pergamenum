@@ -394,15 +394,24 @@ extension VaultDisk {
     /// Moves a file and returns both endpoints' mutations, each stamped from its own
     /// path's clock (§D1) - the removal and the insertion are two different rows and must
     /// be orderable against a concurrent write to either one independently.
-    func moveFile(from oldPath: String, to newPath: String) async throws -> [IndexMutation] {
+    ///
+    /// `requiringExistingFolder` (ADR-0068 §D2, PG-168): with `true` the destination's parent
+    /// is never created, so a missing folder makes `moveItem` throw and the file stays where
+    /// it is. An undo of «Sposta in…» passes it, so undoing a move can never recreate a
+    /// pratica folder the person moved or trashed since.
+    func moveFile(
+        from oldPath: String, to newPath: String, requiringExistingFolder: Bool = false
+    ) async throws -> [IndexMutation] {
         // Both resolved before any disk touch, so a boundary violation on either end
         // refuses before a single byte moves.
         let destination = try store.url(for: newPath)
         let source = try store.url(for: oldPath)
 
-        try FileManager.default.createDirectory(
-            at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
+        if !requiringExistingFolder {
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
+        }
         try FileManager.default.moveItem(at: source, to: destination)
 
         let removal = IndexMutation(path: oldPath, record: nil, sequence: nextSequence(for: oldPath))
@@ -422,12 +431,48 @@ extension VaultDisk {
         return [removal, insertion]
     }
 
-    /// Moves a file to the Finder's trash and returns the removal (§D1). The trash rather
-    /// than an unlink, as it always was: a note deleted by a misclick is recoverable there.
-    func trashFile(at relativePath: String) async throws -> IndexMutation {
+    /// Moves a file to the Finder's trash and returns the removal beside the Trash URL
+    /// (§D1, ADR-0068 §D3 - the restore door needs where the file landed).
+    ///
+    /// `trashURL` is where the Finder's trash put the file, `nil` only when `FileManager`
+    /// did not say.
+    func trashFile(at relativePath: String) async throws -> (mutation: IndexMutation, trashURL: URL?) {
         let url = try store.url(for: relativePath)
-        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-        return IndexMutation(path: relativePath, record: nil, sequence: nextSequence(for: relativePath))
+        var landed: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &landed)
+        let mutation = IndexMutation(path: relativePath, record: nil, sequence: nextSequence(for: relativePath))
+        return (mutation, landed as URL?)
+    }
+
+    /// Restores a file from outside the vault to a path inside it (ADR-0068 §D3).
+    ///
+    /// Refuses a destination that is taken or whose folder is missing, and creates no
+    /// directory (PG-168). Then it moves the file, reads it once and stamps the mutation from
+    /// the destination's own clock, which is why this primitive lives here: `nextSequence`
+    /// is private to this file.
+    func restoreFile(from source: URL, to relativePath: String) async throws -> IndexMutation {
+        let destination = try store.url(for: relativePath)
+        guard !FileManager.default.fileExists(atPath: destination.path(percentEncoded: false)) else {
+            throw FileOperationError.alreadyExists(relativePath)
+        }
+        var isDirectory: ObjCBool = false
+        let parentExists = FileManager.default.fileExists(
+            atPath: destination.deletingLastPathComponent().path(percentEncoded: false), isDirectory: &isDirectory
+        )
+        guard parentExists, isDirectory.boolValue else {
+            throw VaultSession.WriteRefusal.folderVanished((relativePath as NSString).deletingLastPathComponent)
+        }
+        try FileManager.default.moveItem(at: source, to: destination)
+
+        // One read of the restored file, `moveFile`'s shape (ADR-0041 §D7).
+        let data = try? Data(contentsOf: destination)
+        let attributes = try? FileManager.default.attributesOfItem(
+            atPath: destination.path(percentEncoded: false)
+        )
+        let record = data.flatMap { bytes in
+            try? store.record(from: bytes, attributes: attributes ?? [:], at: relativePath)
+        }
+        return IndexMutation(path: relativePath, record: record, sequence: nextSequence(for: relativePath))
     }
 }
 

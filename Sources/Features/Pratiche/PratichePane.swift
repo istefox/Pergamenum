@@ -76,13 +76,13 @@ struct PratichePane: View {
         .accessibilityIdentifier("pratiche-pane")
         // On appearing and at no other moment: nothing reads a person's mail store
         // until they have opened this pane at least once in the session (ADR §D10 -
-        // the probe is per trigger, never at launch).
-        .task {
-            pratiche.load(from: vault)
-            pratiche.startWatching(vault)
-            await pratiche.syncAll(in: vault, kind: .vaultOpen)
-        }
-        .task(id: pratiche.selection) { loadInspector() }
+        // the probe is per trigger, never at launch). Keyed on the vault (ADR-0068
+        // §D15), so a vault switch while the pane is visible re-arms at once; the
+        // per-pratica throttle makes a second appearance inside the window a no-op.
+        .task(id: vault.root) { await pratiche.paneAppeared(in: vault) }
+        // ADR-0068 §D16: reloads on a selection change and on any landed write to the
+        // selected pratica's own `pratica.md` («Nota», «Chiudi»/«Riapri»).
+        .task(id: pratiche.inspectorKey(for: vault.session)) { loadInspector() }
         .alert(
             "Eliminare «\(pratiche.deletionRequest?.title ?? "")»?",
             isPresented: deletionAlert,

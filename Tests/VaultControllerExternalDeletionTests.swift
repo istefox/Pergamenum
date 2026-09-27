@@ -221,8 +221,12 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
 /// Green today, and the regression guard gate G1 exists to protect
 /// (`Tests/VaultControllerMoveNoteTests.swift:81`'s own race, inferred rather than reproduced):
 /// today the missing-path branch reports nothing for the vacated source, so the tab is never
-/// closed and simply follows the move once `movedNote` runs. §D6's fix keeps this true on
-/// purpose, by suppressing the deletion signal for a session's own move rather than by this gap.
+/// closed and simply follows the move. §D6's fix keeps this true on purpose, by suppressing the
+/// deletion signal for a session's own move rather than by this gap.
+///
+/// ADR-0067 §D5: the follow-up is no longer an explicit `movedNote` call made after the
+/// reconcile - `moveFile` announces the move itself, before it returns. What this still pins is
+/// that the watcher's reconcile of the vacated source, arriving afterwards, closes nothing.
 @MainActor
 @Test func aSessionMoveReconciledBeforeMovedNoteStillFollows() async throws {
     let vault = try TemporaryVault()
@@ -235,15 +239,15 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     // destination that exists - "C.md" is free.
     try await controller.session?.moveFile(from: "A.md", to: "C.md")
     await controller.reconcile(["A.md"])
-    controller.movedNote(from: "A.md", to: "C.md")
 
     #expect(controller.openNote?.relativePath == "C.md")
 }
 
 /// Green today: `trashNote(at:)` already closes its tabs synchronously before the watcher's own
-/// `reconcile` could, and an explicit `trashedNote(at:)` call after a bare `session.trashFile`
-/// closes them just as well the other way round - the R-09 ordering argument the SPEC registers,
-/// not independently mechanized, but true in both orders already.
+/// `reconcile` could, and a bare `session.trashFile` closes them just as well through the
+/// `.trashed` change it announces (ADR-0067 §D1; before §D5 this was an explicit `trashedNote`
+/// call) - the R-09 ordering argument the SPEC registers, not independently mechanized, but
+/// true in both orders already.
 @MainActor
 @Test func aTrashEndsInTheSameStateInEitherOrder() async throws {
     let vaultOne = try TemporaryVault()
@@ -268,7 +272,6 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
 
     try await controllerTwo.session?.trashFile(at: "A.md")
     await controllerTwo.reconcile(["A.md"])
-    controllerTwo.trashedNote(at: "A.md")
 
     #expect(!controllerTwo.tabs.contains { $0.note.relativePath == "A.md" })
     #expect(!controllerTwo.closedTabPaths.contains("A.md"))

@@ -64,10 +64,12 @@ extension VaultController {
     /// The tags the editor offers after a `#`, most useful first.
     var tagSuggestions: [String] { session?.tagSuggestions ?? [] }
 
-    /// Creates a structural link in both directions (wikilink.md W-05), and catches up every
-    /// tab showing either note, in every column, with each write that landed (ADR-0058 §D5).
-    /// A dirty buffer gets the prompt rather than being replaced: the link is built from the
-    /// text on disk, and the unsaved edits are the person's to keep or drop.
+    /// Creates a structural link in both directions (wikilink.md W-05). Each write that lands
+    /// catches up every tab showing its note, in every column, on its own (ADR-0067 §D1): a
+    /// dirty buffer gets the prompt rather than being replaced, since the link is built from
+    /// the text on disk and the unsaved edits are the person's to keep or drop. The session's
+    /// `written` list still reports which writes landed (ADR-0058 §D5); this caller no longer
+    /// needs it.
     @discardableResult
     func addStructuralLink(
         from sourcePath: String,
@@ -76,10 +78,9 @@ extension VaultController {
         reverseReason: String
     ) async -> Bool {
         guard let session else { return false }
-        let (created, written) = await session.addStructuralLink(
+        let (created, _) = await session.addStructuralLink(
             from: sourcePath, to: targetTitle, reason: reason, reverseReason: reverseReason
         )
-        for result in written { syncOpenNote(with: result) }
         return created
     }
 

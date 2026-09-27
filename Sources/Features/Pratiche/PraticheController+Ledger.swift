@@ -320,6 +320,10 @@ extension PraticheController {
             var gone = Set(state.notInStore)
             gone.formUnion(outcome.noLongerInMail)
             gone.subtract(outcome.importedMessageIDs)
+            // ADR-0068 §D6: a message merely seen again loses the marker too - one
+            // already on disk is never re-imported, so the line above alone never
+            // cleared it.
+            gone.subtract(outcome.seenInMail)
             state.notInStore = gone.sorted()
             // §D23.2: the §D3 bridge, keyed by Message-ID so a regeneration's fresh triple
             // replaces the stale one rather than appending a second - newest wins because
@@ -336,12 +340,32 @@ extension PraticheController {
         if isCurrentVault {
             // ADR-0040 §D10/§D7.3: what this run's attachment repair pass could not
             // fix - a file it could not trash, a downgrade it could not write. Empty
-            // on every healthy run.
-            if !outcome.attachmentProblems.isEmpty {
-                problem = [problem, outcome.attachmentProblems.joined(separator: "\n")]
+            // on every healthy run. ADR-0068 §D7/§D19: a lookup that could not answer
+            // joins the same single report, never a second one.
+            var sentences = outcome.attachmentProblems
+            if let indeterminate = Self.indeterminateLookupSentence(count: outcome.indeterminateLookups.count) {
+                sentences.append(indeterminate)
+            }
+            if !sentences.isEmpty {
+                problem = [problem, sentences.joined(separator: "\n")]
                     .compactMap { $0 }
                     .joined(separator: "\n")
             }
+        }
+    }
+
+    /// ADR-0068 §D7: distinct from «Non più in Mail» - these messages were skipped, not
+    /// judged gone, and stay candidates for the next sync. `nil` for zero.
+    nonisolated static func indeterminateLookupSentence(count: Int) -> String? {
+        switch count {
+        case 0:
+            return nil
+        case 1:
+            return "1 messaggio non è stato trovato nell'archivio di Mail questa volta: "
+                + "verrà cercato di nuovo al prossimo aggiornamento."
+        default:
+            return "\(count) messaggi non sono stati trovati nell'archivio di Mail questa volta: "
+                + "verranno cercati di nuovo al prossimo aggiornamento."
         }
     }
 
@@ -678,6 +702,8 @@ extension PraticheController {
         case nil: break
         }
         regeneration = nil
+        // ADR-0068 §D11: the engine a preview held is released with the sheet.
+        releaseRegeneration?()
     }
 
     /// Review round 2, MINOR 2's other half: since `destination(of:)` never removes what

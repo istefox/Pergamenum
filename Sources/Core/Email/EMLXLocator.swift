@@ -20,6 +20,17 @@ enum EMLXLocator {
         /// bounded enumeration this case triggers found nothing either - a rule that
         /// has drifted, reported as a diagnostic rather than shown as R-16's caption.
         case ruleFailed(candidatesTried: [String])
+        /// The fallback walk could not answer either way (ADR-0068 §D7): the budget
+        /// ran out before covering the tree, or a
+        /// subdirectory could not be read. Neither `.notInStore` (R-16's «non più in
+        /// Mail») nor `.ruleFailed` (a drifted rule) is honest here - the caller
+        /// records the lookup as indeterminate instead of concluding either.
+        case indeterminate(Reason)
+
+        enum Reason: Equatable, Sendable {
+            case budgetExhausted
+            case unreadable
+        }
     }
 
     /// `predictedURL` is `MailStoreReader.emlxPath(forRow:)`'s answer (the digit-fan
@@ -31,9 +42,15 @@ enum EMLXLocator {
     /// mailbox for the caller's lifetime (ADR §D4) - the cache itself is the coder's
     /// concern; this signature takes the one predicted candidate a unit test can
     /// build without a live store.
+    /// `enumerationBudget` (ADR-0068 §D7): defaulted to `defaultEnumerationBudget`, so
+    /// every existing call compiles unchanged and a test can exhaust it with a tiny
+    /// tree. A walk that exhausts it, or that met a directory it could not read and
+    /// found nothing, is `.indeterminate`; only a complete walk of a readable `Data/`
+    /// directory that found nothing is `.notInStore`.
     static func locate(
         predictedURL: URL?,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        enumerationBudget: Int = defaultEnumerationBudget
     ) -> LocateResult {
         // No predicted path at all means the mailbox url never became a directory:
         // nothing was looked at, so this is the drifted-rule diagnostic and never
@@ -57,18 +74,25 @@ enum EMLXLocator {
             return .ruleFailed(candidatesTried: tried)
         }
         let wanted = Set([predictedURL.lastPathComponent, partialURL.lastPathComponent])
-        switch enumerate(under: dataDirectory, matching: wanted, fileManager: fileManager) {
-        case .some(let hit):
+        guard fileManager.fileExists(atPath: dataDirectory.path(percentEncoded: false)) else {
+            return .ruleFailed(candidatesTried: tried + [dataDirectory.path(percentEncoded: false)])
+        }
+        switch enumerate(
+            under: dataDirectory, matching: wanted, fileManager: fileManager, budget: enumerationBudget
+        ) {
+        case .hit(let hit):
             return hit.lastPathComponent == predictedURL.lastPathComponent
                 ? .found(hit)
                 : .foundPartial(hit)
-        case .none:
-            // The enumeration ran to completion over a real directory and neither form
-            // is there: the message is genuinely gone, which is the one state R-16's
-            // caption is allowed to describe.
-            return fileManager.fileExists(atPath: dataDirectory.path(percentEncoded: false))
-                ? .notInStore
-                : .ruleFailed(candidatesTried: tried + [dataDirectory.path(percentEncoded: false)])
+        case .completeMiss:
+            // The enumeration ran to completion over a real, readable directory and
+            // neither form is there: the message is genuinely gone, which is the one
+            // state R-16's caption is allowed to describe.
+            return .notInStore
+        case .indeterminate(let reason):
+            // ADR-0068 §D7: a walk cut short by its budget, or one that met a directory
+            // it could not read, cannot tell "gone" from "somewhere it did not look".
+            return .indeterminate(reason)
         }
     }
 
@@ -95,25 +119,46 @@ enum EMLXLocator {
     /// How many directory entries the fallback walk may visit before it gives up.
     /// A mailbox's `Data/` tree is a few thousand entries; a walk that has not found
     /// the file by then is walking something that is not a mail store.
-    private static let enumerationBudget = 20_000
+    ///
+    /// Not `private` (Task 3 declaration): `locate(predictedURL:fileManager:
+    /// enumerationBudget:)`'s own default reads it, and a test drives a small budget
+    /// through that parameter instead of touching this constant.
+    static let defaultEnumerationBudget = 20_000
 
+    /// What one fallback walk can honestly say (ADR-0068 §D7): it found the file, it
+    /// walked everything readable and found nothing, or it could not finish the job.
+    private enum Walk {
+        case hit(URL)
+        case completeMiss
+        case indeterminate(LocateResult.Reason)
+    }
+
+    /// A directory the enumerator could not open is reported to `errorHandler`, which
+    /// records it and keeps walking: a hit anywhere else still counts, but a miss over
+    /// a tree with a hole in it is no longer a complete miss.
     private static func enumerate(
         under directory: URL,
         matching names: Set<String>,
-        fileManager: FileManager
-    ) -> URL? {
+        fileManager: FileManager,
+        budget: Int
+    ) -> Walk {
+        var metUnreadable = false
         guard let walk = fileManager.enumerator(
             at: directory,
             includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else { return nil }
+            options: [.skipsHiddenFiles, .skipsPackageDescendants],
+            errorHandler: { _, _ in
+                metUnreadable = true
+                return true
+            }
+        ) else { return .indeterminate(.unreadable) }
 
         var visited = 0
         for case let url as URL in walk {
             visited += 1
-            if visited > enumerationBudget { return nil }
-            if names.contains(url.lastPathComponent) { return url }
+            if visited > budget { return .indeterminate(.budgetExhausted) }
+            if names.contains(url.lastPathComponent) { return .hit(url) }
         }
-        return nil
+        return metUnreadable ? .indeterminate(.unreadable) : .completeMiss
     }
 }

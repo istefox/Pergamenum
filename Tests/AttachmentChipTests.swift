@@ -221,4 +221,97 @@ import Testing
             "a pending attachment has no file to probe - the state closure must never be invoked (R-08)"
         )
     }
+
+    // MARK: - Item 11 "Apri" half (ADR-0068 §D10, R-17): `openDecision`'s four cases
+
+    /// Already-quarantined file: opens without ever trying to apply anything.
+    /// Guard - the stub already maps `openURL` to `.open` regardless of the
+    /// quarantine closures, and this case needs neither called.
+    @Test func openDecisionForAnAlreadyQuarantinedFileOpensWithoutApplying() throws {
+        try Self.withTemporaryFile { root in
+            let url = root.appending(path: "offerta.pdf", directoryHint: .notDirectory)
+            try Data("x".utf8).write(to: url)
+            let content = AttachmentChip.Content.file(PraticaAttachmentRef(name: "offerta.pdf", url: url))
+            var applyCalls: [URL] = []
+
+            let decision = AttachmentChipModel.openDecision(
+                for: content, state: Self.state,
+                isQuarantined: { _ in true },
+                applyQuarantine: { applyCalls.append($0) }
+            )
+
+            #expect(decision == .open(url))
+            #expect(applyCalls.isEmpty, "an already-quarantined file must never be re-quarantined")
+        }
+    }
+
+    /// Not yet quarantined, applying it succeeds: opens, and the quarantine was
+    /// actually applied - PG-123's own gap for a file placed before the fix landed.
+    /// Red until Task 6 wires `openDecision` to call `applyQuarantine` for a
+    /// not-yet-quarantined file: today's stub never calls it at all.
+    @Test func openDecisionForAFileNotYetQuarantinedAppliesItThenOpens() throws {
+        try Self.withTemporaryFile { root in
+            let url = root.appending(path: "offerta.pdf", directoryHint: .notDirectory)
+            try Data("x".utf8).write(to: url)
+            let content = AttachmentChip.Content.file(PraticaAttachmentRef(name: "offerta.pdf", url: url))
+            var applyCalls: [URL] = []
+
+            let decision = AttachmentChipModel.openDecision(
+                for: content, state: Self.state,
+                isQuarantined: { _ in false },
+                applyQuarantine: { applyCalls.append($0) }
+            )
+
+            #expect(decision == .open(url))
+            #expect(
+                applyCalls == [url],
+                "a not-yet-quarantined file must be quarantined before it opens - red until Task 6 wires this"
+            )
+        }
+    }
+
+    /// Not yet quarantined, applying it fails (the volume refuses the attribute):
+    /// refuses with the reveal URL, never opens. Red until Task 6: today's stub
+    /// ignores `applyQuarantine` entirely and always opens.
+    @Test func openDecisionForAFileWhoseQuarantineCannotBeAppliedRefusesWithTheRevealURL() throws {
+        try Self.withTemporaryFile { root in
+            let url = root.appending(path: "offerta.pdf", directoryHint: .notDirectory)
+            try Data("x".utf8).write(to: url)
+            let content = AttachmentChip.Content.file(PraticaAttachmentRef(name: "offerta.pdf", url: url))
+            struct QuarantineFailure: Error {}
+
+            let decision = AttachmentChipModel.openDecision(
+                for: content, state: Self.state,
+                isQuarantined: { _ in false },
+                applyQuarantine: { _ in throw QuarantineFailure() }
+            )
+
+            guard case .refuse(_, let reveal) = decision else {
+                Issue.record("expected .refuse when applying quarantine fails, got \(decision)")
+                return
+            }
+            #expect(reveal == url)
+        }
+    }
+
+    /// A store reference is unaffected by quarantine entirely (ADR-0036: never a file
+    /// this app wrote itself) - opens exactly as `openURL` says, guard.
+    @Test func openDecisionForAStoreReferenceIsUnchangedByQuarantine() throws {
+        try Self.withTemporaryFile { root in
+            let storeURL = root.appending(path: "allegato-grande.zip", directoryHint: .notDirectory)
+            try Data("x".utf8).write(to: storeURL)
+            let reference = MessageDocument.StoreReference(
+                name: "allegato-grande.zip", size: 400_000_000, storePath: storeURL.path(percentEncoded: false)
+            )
+            let content = AttachmentChip.Content.storeReference(reference)
+
+            let decision = AttachmentChipModel.openDecision(
+                for: content, state: Self.state,
+                isQuarantined: { _ in false },
+                applyQuarantine: { _ in Issue.record("a store reference must never be quarantined") }
+            )
+
+            #expect(decision == .open(storeURL))
+        }
+    }
 }

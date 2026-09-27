@@ -6,7 +6,9 @@ import Testing
 // Required production contracts (the coder implements these, never test-side stubs):
 // selfWrittenHashes: [String: [(sequence: UInt64, hash: String)]]
 // write(_:to:expecting: String? = nil), throwing WriteRefusal.movedOn(path)
-// Internal PraticaEntryComposer.handOff(_:notePath:result:), accepting WriteResult.
+// Internal PraticaEntryComposer.handOff(_:notePath:) - since ADR-0067 §D5 it takes no
+// WriteResult: `session.write` catches every open tab up itself, through
+// `VaultController.landed(_:)`, before `handOff` runs.
 // Earlier batches supply IndexMutation, apply([mutation]) and async reconcile.
 
 private func batch3Text(_ body: String) -> String {
@@ -126,7 +128,7 @@ private func batch3Controller(_ vault: borrowing TemporaryVault) async -> VaultC
     try #require(controller.openNote?.hasUnsavedChanges == true)
     let result = VaultSession.WriteResult(path: "N.md", text: batch3Text("Incoming write"))
 
-    controller.syncOpenNote(with: result)
+    controller.landed(.written(result, origin: nil))
 
     #expect(controller.openNote?.externalChangePending == .text(result.text))
     #expect(controller.openNote?.text == buffer)
@@ -143,17 +145,52 @@ private func batch3Controller(_ vault: borrowing TemporaryVault) async -> VaultC
     try #require(controller.openNote?.hasUnsavedChanges == false)
     let result = VaultSession.WriteResult(path: "N.md", text: batch3Text("Written"))
 
-    controller.syncOpenNote(with: result)
+    controller.landed(.written(result, origin: nil))
 
     #expect(controller.openNote?.text == result.text)
     #expect(controller.openNote?.savedText == result.text)
     #expect(controller.openNote?.externalChangePending == nil)
 }
 
-// R-08, R-09, R-14: recreate insert's write/handOff boundary with the actual write result.
+// R-08, R-09, R-14: recreate insert's write/handOff boundary with the actual write.
 // Calling handOff directly is the forcing mechanism requested by Task 8, not a sleep.
+//
+// ADR-0067 §D5 changed this test's premise, not its intent. The door is synchronous: the
+// tab is caught up inside `session.write`, before it returns. A buffer the person dirtied
+// while the write was in flight is therefore dirty *before the write lands*, and that is
+// the case that owes the prompt - asserted here. Text typed after the write returned is
+// typed on a buffer already caught up, so it is an ordinary unsaved edit with no prompt -
+// asserted by the sibling below.
 @MainActor
-@Test func composerHandOffPreservesEditsMadeAfterTheWriteReturned() async throws {
+@Test func composerHandOffPreservesEditsMadeBeforeTheWriteLanded() async throws {
+    let vault = try TemporaryVault()
+    let original = batch3Text("Saved")
+    try vault.write(original, to: "N.md")
+    let controller = await batch3Controller(vault)
+    defer { controller.close() }
+    let session = try #require(controller.session)
+    let insertion = PraticaEntry.insert(
+        kind: .note, at: Date(timeIntervalSince1970: 1_784_000_000), counterpart: "Test", in: original
+    )
+    let composer = PraticaEntryComposer(
+        pratiche: PraticheController(probe: { .granted }, performSync: { _, _ in }),
+        vault: controller, navigation: Navigation()
+    )
+    let buffer = batch3Text("Unsaved while insert awaited")
+    controller.updateOpenNoteText(buffer)
+    try #require(controller.openNote?.hasUnsavedChanges == true)
+
+    let result = try await session.write(insertion.text, to: "N.md")
+    composer.handOff(insertion, notePath: "N.md")
+
+    #expect(controller.openNote?.externalChangePending == .text(result.text))
+    #expect(controller.openNote?.text == buffer)
+}
+
+// ADR-0067 §D5: the sibling of the test above - edits typed after the write returned are
+// kept, and they are the person's own unsaved edits over the caught-up text, not a conflict.
+@MainActor
+@Test func composerHandOffKeepsEditsMadeAfterTheWriteReturnedAsOrdinaryUnsavedEdits() async throws {
     let vault = try TemporaryVault()
     let original = batch3Text("Saved")
     try vault.write(original, to: "N.md")
@@ -168,14 +205,15 @@ private func batch3Controller(_ vault: borrowing TemporaryVault) async -> VaultC
         pratiche: PraticheController(probe: { .granted }, performSync: { _, _ in }),
         vault: controller, navigation: Navigation()
     )
-    let buffer = batch3Text("Unsaved while insert awaited")
+    let buffer = batch3Text("Typed after insert returned")
     controller.updateOpenNoteText(buffer)
-    try #require(controller.openNote?.hasUnsavedChanges == true)
 
-    composer.handOff(insertion, notePath: "N.md", result: result)
+    composer.handOff(insertion, notePath: "N.md")
 
-    #expect(controller.openNote?.externalChangePending == .text(result.text))
+    #expect(controller.openNote?.externalChangePending == nil)
     #expect(controller.openNote?.text == buffer)
+    #expect(controller.openNote?.savedText == result.text)
+    #expect(controller.openNote?.hasUnsavedChanges == true)
 }
 
 // R-08, R-14: disk advancing again cannot replace the result being handed off.
@@ -195,9 +233,11 @@ private func batch3Controller(_ vault: borrowing TemporaryVault) async -> VaultC
         pratiche: PraticheController(probe: { .granted }, performSync: { _, _ in }),
         vault: controller, navigation: Navigation()
     )
-    // No await follows this external write, so the watcher cannot race the assertion.
+    // No await follows this external write, so the watcher cannot race the assertion. The
+    // tab was caught up to `result` inside `session.write` (ADR-0067 §D1); `handOff` must
+    // not re-read the disk that has since moved on.
     try vault.write(batch3Text("Later writer"), to: "N.md")
-    composer.handOff(insertion, notePath: "N.md", result: result)
+    composer.handOff(insertion, notePath: "N.md")
 
     #expect(controller.openNote?.text == result.text)
 }

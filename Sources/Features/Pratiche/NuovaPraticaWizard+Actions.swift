@@ -172,10 +172,8 @@ extension NuovaPraticaWizard {
         let document = NoteDocument(
             frontmatter: frontmatter, body: "\n", hasFrontmatterBlock: true
         )
-        do {
-            try await session.write(document.serialized(), to: path)
-        } catch {
-            problem = "«\(path)» non è stato creato: \(error.localizedDescription)"
+        if let sentence = await PraticaCreation.writeNote(at: folder, document: document, session: session) {
+            problem = sentence
             return
         }
         onClose()
