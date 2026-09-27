@@ -25,6 +25,10 @@ extension VaultController {
         let directory = root.appending(
             path: VaultAPI.CaptureDestination.defaultFolder, directoryHint: .isDirectory
         )
+        // Names already promised to earlier files of this same batch, none of which is on
+        // disk yet: without them two `scan.pdf` from different folders both proposed
+        // `scan.pdf` (ADR-0066 §D6, the twin of `WorkspaceController.importFiles`).
+        var minted: Set<String> = []
         return urls.map { url in
             let original = url.lastPathComponent
             var proposed = original
@@ -40,11 +44,9 @@ extension VaultController {
             } else {
                 proposed = ImportNaming.sanitizedFileName(original)
             }
-            return FileImportProposal(
-                source: url,
-                originalName: original,
-                proposedName: ImportNaming.uniqueFileName(proposed, in: directory)
-            )
+            let unique = ImportNaming.uniqueFileName(proposed, in: directory, reserved: minted)
+            minted.insert(unique)
+            return FileImportProposal(source: url, originalName: original, proposedName: unique)
         }
     }
 

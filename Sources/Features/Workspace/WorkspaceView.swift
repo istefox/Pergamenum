@@ -331,8 +331,11 @@ struct WorkspaceView: View {
                 viewportSize = size
                 workspace.applyPendingRefit(in: size)
             }
-            .onChange(of: workspace.folder) { _, _ in
-                // A board opens over its content, not over the origin.
+            .onChange(of: workspace.board) { _, _ in
+                // A board opens over its content, not over the origin. Keyed on the board's
+                // own path, not its folder (#569 point 6): since ADR-0025 two boards share a
+                // folder, and the second opened on an empty viewport. `board` goes `""` on a
+                // folder or empty selection, so reopening the same board refits too.
                 workspace.zoomToFit(in: viewportSize)
             }
         }

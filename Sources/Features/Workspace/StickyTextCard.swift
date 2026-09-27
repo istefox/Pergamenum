@@ -124,6 +124,9 @@ struct StickyTextCard: View {
 
     /// Maps the six JSON Canvas presets onto theme tokens so a canvas made in Obsidian keeps
     /// its colour coding here, in this app's palette.
+    ///
+    /// One token per entry of `BoardContentLayer.colorNames` (#569 point 10): «Rosso» and
+    /// «Arancio» used to share `stickyPink`, and «Viola» fell through to grey.
     private func stickyColor(_ color: CanvasColor) -> Color {
         switch color {
         case .hex(let value):
@@ -132,10 +135,11 @@ struct StickyTextCard: View {
         case .preset(let index):
             return switch index {
             case 1: theme.color(.stickyPink)
-            case 2: theme.color(.stickyPink)
+            case 2: theme.color(.stickyOrange)
             case 3: theme.color(.stickyYellow)
             case 4: theme.color(.stickyGreen)
             case 5: theme.color(.stickyBlue)
+            case 6: theme.color(.stickyPurple)
             default: theme.color(.stickyGrey)
             }
         }

@@ -71,6 +71,10 @@ enum ColorToken: String, TokenKey {
     case stickyBlue = "color.sticky.blue"
     case stickyPink = "color.sticky.pink"
     case stickyGrey = "color.sticky.grey"
+    // One token per entry of the sticky colour menu (PG-255, #569 point 10): with five
+    // tokens for six JSON Canvas presets, red and orange drew alike and purple drew grey.
+    case stickyOrange = "color.sticky.orange"
+    case stickyPurple = "color.sticky.purple"
 
     // A category's own palette, saturated for an 8pt dot rather than a card
     // background - distinct from `sticky*` above on purpose (CategoryColor.swift).
