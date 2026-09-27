@@ -1,7 +1,7 @@
 # ADR-0067: One door onto the editor after a landed change
 
-- Status: **proposed**. Not on `main`; it flips to `accepted` with the merge PR and its
-  first-parent merge hash (`docs/adr/README.md` rule 2).
+- Status: **accepted**. Merged to `main` via PR #609 (`519668ac`, 2026-09-27), together with its
+  companion ADR-0068.
 - Date: 2026-09-26. Written before the implementation, against `3fcde6f0` (tree clean apart from
   `SPEC.md`). `origin/main` is `1e09448e`. Its net difference from this tree is `TODO.md` alone,
   so every line number below holds on both.
