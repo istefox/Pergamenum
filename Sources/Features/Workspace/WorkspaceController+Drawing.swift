@@ -31,23 +31,32 @@ extension WorkspaceController {
     ///
     /// The node keeps its identity when a drawing is reopened, so editing ink does not
     /// leave the old card behind next to the new one.
+    ///
+    /// Both the folder and the file go through the store's boundary (ADR-0041 §D2, #569
+    /// point 5): a reopened drawing's path is a node's `file`, ordinary JSON a person or a
+    /// merge can write, and one escaping the vault is refused and reported - no SVG is
+    /// written outside it.
     @discardableResult
     func commitDrawing(date: CalendarDate = .today) -> String? {
         guard let store, !activeDrawing.strokes.isEmpty else { return nil }
         let bounds = activeDrawing.bounds
 
         let relativePath: String
-        if let editingID = editingDrawingNodeID,
-           let node = document.node(id: editingID),
-           case .file(let existing, _) = node.kind {
-            relativePath = existing
-        } else {
-            relativePath = folder.isEmpty
-                ? nextDrawingName(date: date, in: store.root)
-                : "\(folder)/\(nextDrawingName(date: date, in: store.root.appending(path: folder)))"
+        let url: URL
+        do {
+            if let editingID = editingDrawingNodeID,
+               let node = document.node(id: editingID),
+               case .file(let existing, _) = node.kind {
+                relativePath = existing
+            } else {
+                let name = nextDrawingName(date: date, in: try boardFolderURL(in: store))
+                relativePath = folder.isEmpty ? name : "\(folder)/\(name)"
+            }
+            url = try store.boundary.url(for: relativePath)
+        } catch {
+            recordProblem("salvataggio del disegno: \(error)")
+            return nil
         }
-
-        let url = store.root.appending(path: relativePath, directoryHint: .notDirectory)
         do {
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true
@@ -82,14 +91,17 @@ extension WorkspaceController {
     }
 
     /// Reopens a drawing card for editing, when its SVG is one this app wrote.
-    /// Returns false for an imported illustration, which is an image and not ink.
+    /// Returns false for an imported illustration, which is an image and not ink - and for
+    /// a path escaping the vault, read through the boundary like every node `file`
+    /// (ADR-0041 §D2, #569 point 5).
     @discardableResult
     func editDrawing(nodeID: String) -> Bool {
         guard let store,
               let node = document.node(id: nodeID),
               case .file(let path, _) = node.kind,
               path.lowercased().hasSuffix(".svg"),
-              let text = try? String(contentsOf: store.root.appending(path: path), encoding: .utf8),
+              let url = try? store.boundary.url(for: path),
+              let text = try? String(contentsOf: url, encoding: .utf8),
               let drawing = DrawingSVG.decode(text)
         else { return false }
 

@@ -345,6 +345,29 @@ func canonicalisesTheCounterparty(_ testCase: (raw: String, expected: String)) {
 }
 
 @MainActor
+@Test func fileMenuImportOfTwoSameNamedFilesProposesDistinctNames() async throws {
+    // Pre-fix: each name was checked against the Inbox on disk only, so two `scan.pdf` from
+    // different folders both proposed `scan.pdf` and the second copy failed (ADR-0066 §D6).
+    let root = try CanvasTemporaryRoot()
+    var sources: [URL] = []
+    for _ in 0..<2 {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appending(path: "scan.pdf")
+        try Data("%PDF-1.4".utf8).write(to: url)
+        sources.append(url)
+    }
+    defer { for url in sources { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) } }
+
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(root.url)
+
+    let proposals = controller.proposeImport(sources)
+    #expect(proposals.map(\.proposedName) == ["scan.pdf", "scan-2.pdf"])
+    controller.close()
+}
+
+@MainActor
 @Test func fileMenuImportProposesTheAssistedNameForAnEmailAndKeepsAPlainFileAsIs() async throws {
     let root = try CanvasTemporaryRoot()
     let emlSource = FileManager.default.temporaryDirectory

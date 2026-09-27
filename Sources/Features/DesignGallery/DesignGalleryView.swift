@@ -62,6 +62,8 @@ struct DesignGalleryView: View {
                     (.stickyGreen, "sticky.green"),
                     (.stickyBlue, "sticky.blue"),
                     (.stickyPink, "sticky.pink"),
+                    (.stickyOrange, "sticky.orange"),
+                    (.stickyPurple, "sticky.purple"),
                     (.stickyGrey, "sticky.grey"),
                 ])
                 colorSection("Categorie", [

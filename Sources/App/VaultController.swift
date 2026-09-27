@@ -144,6 +144,12 @@ final class VaultController {
     /// waiting to be reopened. `nil` in every test that builds a bare `VaultController`.
     @ObservationIgnored var didChangeExternally: ((String) -> Void)?
 
+    /// The Workspace board attached to this vault, so «Esci» can flush its ~1 s autosave
+    /// debounce (#506, ADR-0066). `WorkspaceController` is `@State` in `WorkspaceView`,
+    /// which `AppDelegate` cannot see; the board registers itself in `attach` and clears
+    /// this in `detach`. Weak: the view owns the board, not the vault.
+    @ObservationIgnored weak var openBoard: WorkspaceController?
+
     /// Everything the `pergamenum://` routes hold between arriving and being acted on
     /// (SPEC §9). The type is declared beside the extension that uses it.
     var routeState = RouteState()

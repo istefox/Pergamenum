@@ -127,9 +127,10 @@ struct BoardToolbar: View {
                 // Suspended while a card is being written into: a bare-key shortcut with
                 // no modifier reaches `performKeyEquivalent:` ahead of the first
                 // responder, so typing the word "nota" into a `TextEditor` would switch
-                // tools on its own "n".
+                // tools on its own "n". A link card's title field counts too (#569 point
+                // 4), which is why this reads `isEditingText` and not the text card's id.
                 .keyboardShortcut(
-                    workspace.editingTextNodeID == nil
+                    !workspace.isEditingText
                         ? (tool.shortcut.map { KeyEquivalent(Character($0)) } ?? "\0")
                         : "\0",
                     modifiers: []
