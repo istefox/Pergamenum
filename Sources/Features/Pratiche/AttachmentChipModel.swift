@@ -55,6 +55,38 @@ enum AttachmentChipModel {
         return reference.url
     }
 
+    /// Item 11's «Apri» half (ADR-0067 §D10): what `openWithDefaultApp` does - open,
+    /// refuse with a file to reveal in the Finder, or nothing at all (`openURL == nil`).
+    enum OpenDecision: Equatable {
+        case open(URL)
+        case refuse(sentence: String, reveal: URL)
+        case unavailable
+    }
+
+    /// A copied `.file` opens only once it carries `com.apple.quarantine`: a missing
+    /// attribute is applied first (which also covers attachments placed before PG-123),
+    /// and a volume that refuses it refuses the open, offering the Finder instead. A
+    /// `.storeReference` opens as `openURL` says - a file in Mail's own store is never
+    /// written by this app (ADR-0036), and Mail stamps its own downloads.
+    static func openDecision(
+        for content: AttachmentChip.Content, state: (URL) -> FileState,
+        isQuarantined: (URL) -> Bool, applyQuarantine: (URL) throws -> Void
+    ) -> OpenDecision {
+        guard let url = openURL(for: content, state: state) else { return .unavailable }
+        guard case .file(let reference) = content, !isQuarantined(url) else { return .open(url) }
+        do {
+            try applyQuarantine(url)
+            return .open(url)
+        } catch {
+            return .refuse(sentence: quarantineRefusal(named: reference.name), reveal: url)
+        }
+    }
+
+    /// ADR-0067 §D10's refusal, exact wording.
+    static func quarantineRefusal(named name: String) -> String {
+        "Impossibile aprire «\(name)» in sicurezza: il volume non accetta l'attributo di quarantena."
+    }
+
     /// The default-app / double-click target (R-27): the local copy for a file
     /// reference when usable, or the file at `storePath` for a store reference when it
     /// is still there and usable. `nil` for `.pending` without ever probing anything

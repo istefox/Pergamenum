@@ -213,8 +213,8 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     controller.openNoteInNewTab(at: "Progetti/Sospensione.md")
 
     // Renaming the note in the tab that is *not* focused, which is the case a single open
-    // note could never produce.
-    controller.movedNote(from: "Nexion.md", to: "Progetti/Sospensione.md")
+    // note could never produce. A hand-built change (ADR-0066 §D3): no real move happens here.
+    controller.landed(.moved(from: "Nexion.md", to: "Progetti/Sospensione.md"))
 
     #expect(controller.tabs.first?.note.relativePath == "Progetti/Sospensione.md")
     controller.close()
@@ -230,7 +230,7 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     controller.closeTab(doomed)
     controller.reopenClosedTab()
 
-    controller.trashedNote(at: "Nexion.md")
+    controller.landed(.trashed("Nexion.md"))
 
     #expect(controller.tabs.contains { $0.note.relativePath == "Nexion.md" } == false)
     // And Cmd+Shift+T does not offer back a note that is in the trash.
@@ -385,12 +385,12 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     controller.openNote(at: "Nexion.md")
     controller.openNoteInNewTab(at: "Progetti/Sospensione.md")
 
-    controller.movedNote(from: "Nexion.md", to: "Archivio/Nexion.md")
+    controller.landed(.moved(from: "Nexion.md", to: "Archivio/Nexion.md"))
     #expect(controller.recentNotePaths.contains("Archivio/Nexion.md"))
     #expect(!controller.recentNotePaths.contains("Nexion.md"))
 
     // A row pointing at a note in the trash opens nothing, which is worse than no row.
-    controller.trashedNote(at: "Progetti/Sospensione.md")
+    controller.landed(.trashed("Progetti/Sospensione.md"))
     #expect(!controller.recentNotePaths.contains("Progetti/Sospensione.md"))
     controller.close()
 }

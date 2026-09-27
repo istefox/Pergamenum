@@ -66,9 +66,15 @@ extension VaultSession {
     ///
     /// The source path goes into `selfWrittenHashes` under `absenceMarker` (ADR-0064 §D6), so
     /// the watcher's reconciliation of the path this move vacated is this session's own and
-    /// reports nothing; `movedNote` is the tab's follow-up. `trashFile` below records no such
+    /// reports nothing; the `.moved` change this door announces last (ADR-0066 §D1) is the
+    /// tab's follow-up. `trashFile` below records no such
     /// marker on purpose: an in-app trash still reaches the watcher as `.deleted` (R-09).
-    func moveFile(from oldPath: String, to newPath: String) async throws {
+    /// `requiringExistingFolder` (ADR-0067 §D2, PG-168): forwarded to `VaultDisk.moveFile`,
+    /// which then skips the parent-folder creation, so a missing folder fails the move rather
+    /// than coming back. The undo of Pratiche «Sposta in…» passes `true`.
+    func moveFile(
+        from oldPath: String, to newPath: String, requiringExistingFolder: Bool = false
+    ) async throws {
         guard oldPath != newPath else { return }
         guard exists(oldPath) else { throw FileOperationError.missing(oldPath) }
         guard !exists(newPath) else {
@@ -79,7 +85,7 @@ extension VaultSession {
         // ADR-0064 §D6: the vacated source is this session's own absence, recorded before
         // the hop like a write's hash (ADR-0041 §D10), so a watcher racing the move never
         // finds the source gone before this session holds its record of it - otherwise it
-        // is reported `.deleted` and closes the tab `movedNote` is about to follow.
+        // is reported `.deleted` and closes the tab the `.moved` announcement is about to follow.
         let provisional = reserveProvisionalSequence()
         selfWrittenHashes[oldPath, default: []].append((sequence: provisional, hash: Self.absenceMarker))
 
@@ -87,7 +93,9 @@ extension VaultSession {
         // side both move inside `VaultDisk`, stamped from that path's own clock.
         let mutations: [VaultDisk.IndexMutation]
         do {
-            mutations = try await disk.moveFile(from: oldPath, to: newPath)
+            mutations = try await disk.moveFile(
+                from: oldPath, to: newPath, requiringExistingFolder: requiringExistingFolder
+            )
         } catch {
             removeSelfWrittenEntry(at: oldPath, sequence: provisional)
             throw FileOperationError.failed(
@@ -123,6 +131,9 @@ extension VaultSession {
             kind: .move,
             pathBefore: oldPath
         ))
+        // ADR-0066 §D1: last, once the move is real and recorded - every tab showing the
+        // note follows it before this door returns.
+        announce(.moved(from: oldPath, to: newPath))
     }
 
     /// Moves a file to the Finder's trash and records its whole text, so `undo` can write it
@@ -138,7 +149,14 @@ extension VaultSession {
     /// The note's id is forgotten here, after the dry-run return and once the trash has
     /// succeeded (ADR-0059 §D5/§D6), so a later note created at this path never inherits an
     /// old link. The forgotten id travels in the entry's `idBefore`, and an undo puts it back.
-    func trashFile(at relativePath: String) async throws {
+    ///
+    /// `forgettingNoteID` (ADR-0067 §D3): defaulted `true`, the behaviour above. A Pratiche
+    /// trash («Escludi», «Rigenera») passes `false`: it is undoable to the same path, so the id
+    /// is neither read nor forgotten and the entry's `idBefore` is `nil` (ADR-0059 §D6).
+    ///
+    /// Returns where the Finder's trash put the file, `nil` on a rehearsal.
+    @discardableResult
+    func trashFile(at relativePath: String, forgettingNoteID: Bool = true) async throws -> URL? {
         guard exists(relativePath) else {
             throw FileOperationError.missing(relativePath)
         }
@@ -146,21 +164,24 @@ extension VaultSession {
         // not discover an unreadable file, and the real thing would then fail where the
         // rehearsal had said it was fine.
         let data = (try? store.url(for: relativePath)).flatMap { try? Data(contentsOf: $0) }
-        guard !isDryRun else { return }
+        guard !isDryRun else { return nil }
 
         // ADR-0043 §D1: the `trashItem` call moves inside `VaultDisk`, stamped from this
         // path's own clock.
-        let mutation: VaultDisk.IndexMutation
+        let trashed: (mutation: VaultDisk.IndexMutation, trashURL: URL?)
         do {
-            mutation = try await disk.trashFile(at: relativePath)
+            trashed = try await disk.trashFile(at: relativePath)
         } catch {
             throw FileOperationError.failed(
                 "eliminazione: \(error.localizedDescription)"
             )
         }
-        apply([mutation])
-        let idBefore = existingNoteID(for: relativePath)
-        forgetNoteIDs([relativePath])
+        apply([trashed.mutation])
+        var idBefore: String?
+        if forgettingNoteID {
+            idBefore = existingNoteID(for: relativePath)
+            forgetNoteIDs([relativePath])
+        }
         selfWrittenHashes.removeValue(forKey: relativePath)
 
         record(WriteJournal.Entry(
@@ -175,6 +196,10 @@ extension VaultSession {
             kind: .removal,
             idBefore: idBefore
         ))
+        // ADR-0066 §D1: last, once the trash is real and recorded. The watcher still reports
+        // the path `.deleted` afterwards (no absence marker, R-09); it finds the tabs settled.
+        announce(.trashed(relativePath))
+        return trashed.trashURL
     }
 
     // MARK: A file that is not a note

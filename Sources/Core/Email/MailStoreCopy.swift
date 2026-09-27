@@ -23,6 +23,10 @@ enum MailStoreCopy {
         case mailIsWriting
         /// `source` holds no `Envelope Index` to copy.
         case storeMissing
+        /// A source copy failed with a permission error (`CocoaError
+        /// .fileReadNoPermission`, POSIX `EPERM`/`EACCES`) - never retried, unlike
+        /// `.mailIsWriting`, since a second copy fails the same way (ADR-0067 §D11).
+        case permissionDenied
     }
 
     /// `~/Library/Mail/V10/MailData/Envelope Index` - the two components below `source`.
@@ -88,12 +92,18 @@ enum MailStoreCopy {
 
         // One retry, then the honest answer - never a half-populated reader.
         for attempt in 0...1 {
-            if attemptPublish(sourceIndex: sourceIndex, generation: generation, fileManager: fileManager) {
+            switch attemptPublish(sourceIndex: sourceIndex, generation: generation, fileManager: fileManager) {
+            case .published:
                 deleteOtherGenerations(keeping: generation, in: stateDirectory, fileManager: fileManager)
                 return .published(generation)
-            }
-            if attempt == 0 {
-                Thread.sleep(forTimeInterval: retryDelay)
+            case .permissionDenied:
+                // ADR-0067 §D11: a second copy two seconds later fails the same way, so
+                // the retry that waits out Mail's write burst is never paid for this.
+                return .permissionDenied
+            case .failed:
+                if attempt == 0 {
+                    Thread.sleep(forTimeInterval: retryDelay)
+                }
             }
         }
         return .mailIsWriting
@@ -101,11 +111,21 @@ enum MailStoreCopy {
 
     // MARK: - One attempt
 
-    /// Copies, recovers, checks and publishes; `false` on any failure, leaving the
-    /// previously published generation (if any) untouched.
+    /// What one attempt can report: published, refused by the file system's permissions
+    /// on the source (not worth a retry), or any other failure (a torn copy, a failed
+    /// check - worth the one retry).
+    private enum Attempt {
+        case published
+        case permissionDenied
+        case failed
+    }
+
+    /// Copies, recovers, checks and publishes; on any failure, leaves the previously
+    /// published generation (if any) untouched. A failure to copy the source index or
+    /// its `-wal` for want of permission is `.permissionDenied` (ADR-0067 §D11).
     private static func attemptPublish(
         sourceIndex: URL, generation: URL, fileManager: FileManager
-    ) -> Bool {
+    ) -> Attempt {
         let stateDirectory = generation.deletingLastPathComponent()
         let staging = stateDirectory.appending(
             path: "\(stagingPrefix)\(UUID().uuidString)", directoryHint: .isDirectory
@@ -120,14 +140,22 @@ enum MailStoreCopy {
         do {
             try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
 
-            let stagedIndex = staging.appending(path: indexFileName, directoryHint: .notDirectory)
-            try fileManager.copyItem(at: sourceIndex, to: stagedIndex)
+            // Only the two source copies are classified: they are the reads of Mail's
+            // own files, the ones Full Disk Access governs. Everything after them works
+            // on this app's own copy.
+            do {
+                let stagedIndex = staging.appending(path: indexFileName, directoryHint: .notDirectory)
+                try fileManager.copyItem(at: sourceIndex, to: stagedIndex)
 
-            let sourceWAL = sibling(of: sourceIndex, suffix: walSuffix)
-            if fileManager.fileExists(atPath: sourceWAL.path(percentEncoded: false)) {
-                try fileManager.copyItem(at: sourceWAL, to: sibling(of: stagedIndex, suffix: walSuffix))
+                let sourceWAL = sibling(of: sourceIndex, suffix: walSuffix)
+                if fileManager.fileExists(atPath: sourceWAL.path(percentEncoded: false)) {
+                    try fileManager.copyItem(at: sourceWAL, to: sibling(of: stagedIndex, suffix: walSuffix))
+                }
+            } catch {
+                return isPermissionDenied(error) ? .permissionDenied : .failed
             }
 
+            let stagedIndex = staging.appending(path: indexFileName, directoryHint: .notDirectory)
             try recoverAndIndex(stagedIndex)
 
             // One rename, one syscall (ADR §D2). A generation directory left behind
@@ -139,10 +167,24 @@ enum MailStoreCopy {
             }
             try fileManager.moveItem(at: staging, to: generation)
             published = true
-            return true
+            return .published
         } catch {
-            return false
+            return .failed
         }
+    }
+
+    /// `CocoaError.fileReadNoPermission`, or a POSIX `EPERM`/`EACCES` either as the
+    /// error itself or as its underlying error (ADR-0067 §D11).
+    private static func isPermissionDenied(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain, nsError.code == CocoaError.fileReadNoPermission.rawValue {
+            return true
+        }
+        let posix = nsError.domain == NSPOSIXErrorDomain
+            ? nsError
+            : nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+        guard let posix, posix.domain == NSPOSIXErrorDomain else { return false }
+        return posix.code == Int(EPERM) || posix.code == Int(EACCES)
     }
 
     /// ADR §D2 steps 2 to 5, on our own copy: read-write so SQLite replays the `-wal`

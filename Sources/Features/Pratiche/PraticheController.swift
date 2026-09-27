@@ -60,6 +60,27 @@ final class PraticheController {
     /// The chosen pratica's folder path, which is also its list row's `.tag`.
     var selection: String?
 
+    /// Item 15 (ADR-0067 §D16): the key `.task(id:)` reloads the inspector on - the
+    /// selected pratica's path plus its `pratica.md`'s own landed generation, so a write
+    /// that lands while the pane is already open (no selection change) still triggers a
+    /// reload. With nothing selected the generation is always 0, which is what makes
+    /// "nothing selected" one key rather than one per stale write.
+    struct InspectorKey: Hashable {
+        var praticaPath: String?
+        var generation: UInt64
+    }
+
+    /// Only landed writes through the session advance the generation (ADR-0066 §D6): a
+    /// «Nota» or «Chiudi»/«Riapri» write does, an external edit to `pratica.md` does not
+    /// (ADR-0067 §D20).
+    func inspectorKey(for session: VaultSession?) -> InspectorKey {
+        guard let selection, let session else { return InspectorKey(praticaPath: selection, generation: 0) }
+        return InspectorKey(
+            praticaPath: selection,
+            generation: session.landedGeneration(at: PraticaNaming.praticaNotePath(of: selection))
+        )
+    }
+
     /// The chosen pratica's rows, oldest first (R-23) - already through
     /// `PraticaTimelineModel.ordered`, so the view scrolls to the end for the newest.
     var timeline: [PraticaTimelineEntry] = []
@@ -232,6 +253,11 @@ final class PraticheController {
     /// also says whether a sentence is already on screen) - wired by
     /// `PraticheController.live` to `PraticaLiveSync.commitRegeneration`.
     @ObservationIgnored var commitRegeneration: (@MainActor (_ plan: PraticaSyncEngine.RegenerationPlan) async -> PraticaRegenerationCommit)?
+
+    /// Item 12 (Task 3 declaration, ADR-0067 §D11): wired by `PraticheController.live`
+    /// to `PraticaLiveSync.releaseRegenerationEngine` (Task 6). `nil` means nothing is
+    /// wired, the same shape as `prepareRegeneration`/`commitRegeneration` above.
+    @ObservationIgnored var releaseRegeneration: (() -> Void)?
 
     /// R-30: the strip a person collapsed stays collapsed until they open it again,
     /// for this window only.
@@ -583,15 +609,24 @@ extension PraticheController {
     ///   that never loaded, plus a sync finishing), and clearing a tombstone there would resurrect the
     ///   key the trash had just removed.
     /// - `problem` and `fullDiskAccessState`: not per vault.
-    /// - `mailStoreEvents`, `windowKeyObserver`, `fsEventsFireTask`: per Mail store and per controller,
-    ///   armed once by `startWatching(_:)`, which only the Pratiche pane calls - tearing them down here
-    ///   would leave both automatic triggers disarmed until the pane was next opened. What
+    /// - `mailStoreEvents` and `fsEventsFireTask`: per Mail store and per controller, armed once by
+    ///   `startWatching(_:)`. They belong to the Mail store, not the vault, and stay armed. What
     ///   `watchersByPraticaPath` holds is pure throttle bookkeeping (`PraticaWatcher` is a struct of
     ///   dates), so emptying it IS stopping those watchers.
+    ///
+    /// `windowKeyObserver` IS removed here (ADR-0067 §D15, amending ADR-0052 §D5 for this one
+    /// property). The pane's appearance task is keyed on the vault (`.task(id: vault.root)`), so a
+    /// switch while the pane is visible re-arms it at once; a switch while it is not visible leaves
+    /// the window-key trigger disarmed until the pane is next opened - the rule the app already
+    /// applies at launch (ADR-0036 §D10: nothing reads Mail until the pane was opened), now per vault.
     ///
     /// `selection` is cleared by assignment and not through `select(nil, in:)`, which marks a pratica
     /// opened, rebuilds the list and reloads the timeline, all against the vault being left.
     private func resetVaultScopedState() {
+        if let windowKeyObserver {
+            NotificationCenter.default.removeObserver(windowKeyObserver)
+        }
+        windowKeyObserver = nil
         pratiche = []
         trayProposals = [:]
         trayCounts = [:]

@@ -1,6 +1,8 @@
 # ADR-0058: An in-process write, a save and a restore reach every tab that shows the note
 
 - Status: accepted. Landed on `main` via PR #500 (merge `b390000`, 2026-09-25).
+- **Amended (2026-09-26, ADR-0066):** §D6's clause keeping the name `syncOpenNote` is retired and
+  §D7 is closed; every landed change now reaches the tabs through one session door. Body untouched.
 - Date: 2026-09-24. Written **before** the implementation, against `2e529c14` (clean tree). Every
   line number below was read from that tree. None is recalled from the ticket.
 - **Numbering note:** `0056` is the highest file under `docs/adr/` on this branch, but

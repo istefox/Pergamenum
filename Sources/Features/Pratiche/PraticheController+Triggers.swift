@@ -32,6 +32,20 @@ extension PraticheController {
         await performSync(praticaPath, kind)
     }
 
+    /// The pane's appearance (ADR-0067 §D15, item 14): `PratichePane` runs this from
+    /// `.task(id: vault.root)`, so switching vault while the pane is visible runs it again
+    /// and re-arms what `resetVaultScopedState` tore down.
+    ///
+    /// `.windowKey`, not `.vaultOpen`: the per-pratica 60-second throttle then applies, so
+    /// two appearances inside the window trigger one sync. The first appearance after a
+    /// vault opens still syncs at once, since the throttle marks are vault-scoped and
+    /// emptied on a vault change (ADR-0052 §D5). The app no longer fires `.vaultOpen`.
+    func paneAppeared(in vault: VaultController) async {
+        load(from: vault)
+        startWatching(vault)
+        await syncAll(in: vault, kind: .windowKey)
+    }
+
     // MARK: - Triggers (R-17), as the running app arms them
 
     /// Installs the two automatic sources the app can arm without a timer: the window
@@ -42,18 +56,24 @@ extension PraticheController {
     /// person's mail store until they have gone to Pratiche at least once in this
     /// session, and the plan's budget for `PergamenumApp.swift` is one `@State` plus
     /// two `.environment` injections.
+    ///
+    /// Both closures hold the vault weakly (ADR-0067 §D15): they outlive any one pane
+    /// appearance, and must never be what keeps a switched-away vault alive.
     func startWatching(_ vault: VaultController) {
         if windowKeyObserver == nil {
             windowKeyObserver = NotificationCenter.default.addObserver(
                 forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
-            ) { _ in
-                Task { @MainActor [weak self] in await self?.syncAll(in: vault, kind: .windowKey) }
+            ) { [weak vault] _ in
+                Task { @MainActor [weak self, weak vault] in
+                    guard let self, let vault else { return }
+                    await self.syncAll(in: vault, kind: .windowKey)
+                }
             }
         }
         if mailStoreEvents == nil {
-            let stream = MailStoreEventStream(root: MailStoreLocation.resolve()) {
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
+            let stream = MailStoreEventStream(root: MailStoreLocation.resolve()) { [weak vault] in
+                Task { @MainActor [weak self, weak vault] in
+                    guard let self, let vault else { return }
                     // Records the pulse on every watcher; nothing fires yet, since
                     // `PraticaWatcher` reads the deadline against the same instant.
                     await self.syncAll(in: vault, kind: .fsEvents)
@@ -114,9 +134,15 @@ extension PraticheController {
     /// One pass over every pratica, each with its own eligibility (R-17): the closed
     /// ones are told `.manualOnly`, which is also what teaches their watcher to refuse
     /// a later FSEvents pulse.
+    ///
+    /// ADR-0067 §D13 item 8: the loop's own `pratica` is a snapshot taken before the first
+    /// `await`, so each iteration re-reads the list first - `fireDueFSEventsPulses`' shape
+    /// above. A pratica gone from the list is skipped; one closed during the pass is
+    /// triggered with its current `.manualOnly`, so it is not synced and gains no sync mark.
     func syncAll(in vault: VaultController, kind: PraticaWatcher.Trigger) async {
         for pratica in pratiche {
-            await trigger(pratica.id, kind: kind, eligibility: Self.eligibility(of: pratica))
+            guard let current = pratiche.first(where: { $0.id == pratica.id }) else { continue }
+            await trigger(current.id, kind: kind, eligibility: Self.eligibility(of: current))
         }
         load(from: vault)
     }

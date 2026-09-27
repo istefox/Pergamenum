@@ -147,7 +147,11 @@ private func controller(
     controller.close()
 }
 
-// MARK: 5. `movedNote`/`trashedNote` reach a tab in the second column - RED before the fix
+// MARK: 5. A landed move/trash reaches a tab in the second column - RED before the fix
+//
+// These used to call `movedNote`/`trashedNote` directly; ADR-0066 §D5 folded both into
+// `landed(_:)`, so the hand-built `.moved`/`.trashed` change is the faithful replacement - no
+// real move or trash happens here either.
 
 @MainActor
 @Test func movedNoteFollowsATabInTheSecondColumn() async throws {
@@ -157,10 +161,10 @@ private func controller(
     controller.splitEditor()
     // Refocus column 1, exactly like `NoteTabGestureTests.renamingANoteFollowsItInTheTabThatShowsIt`
     // does within one column: the note it follows to is an already-existing file, the same trick
-    // that test uses, since `movedNote` only updates tabs and never touches disk itself.
+    // that test uses, since the handler only updates tabs and never touches disk itself.
     controller.focusColumn(0)
 
-    controller.movedNote(from: "A.md", to: "B.md")
+    controller.landed(.moved(from: "A.md", to: "B.md"))
 
     #expect(controller.columns[1].tabs.first?.note.relativePath == "B.md")
     controller.close()
@@ -176,7 +180,7 @@ private func controller(
     #expect(controller.columns[0].tabs.contains { $0.note.relativePath == "A.md" })
     #expect(controller.columns[1].tabs.contains { $0.note.relativePath == "A.md" })
 
-    controller.trashedNote(at: "A.md")
+    controller.landed(.trashed("A.md"))
 
     #expect(!controller.columns[0].tabs.contains { $0.note.relativePath == "A.md" })
     #expect(!controller.columns[1].tabs.contains { $0.note.relativePath == "A.md" })

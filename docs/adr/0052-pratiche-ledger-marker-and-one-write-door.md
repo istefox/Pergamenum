@@ -2,6 +2,8 @@
 
 - Status: accepted, with the branch implementing `SPEC.md` (Approved 2026-09-20, PG-172)
   merging to `main`.
+- **Amended (2026-09-26, ADR-0067 §D15):** in §D5's "deliberately NOT cleared" list,
+  `windowKeyObserver` is now removed and cleared with the vault-scoped state. Body untouched.
 - Date: 2026-09-20. Written on the worktree `Pergamenum.worktrees/main-2` at `9379990`
   (only `SPEC.md` modified). Every signature, line reference and call-site count below was
   read out of that tree, not recalled.

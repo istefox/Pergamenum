@@ -57,6 +57,17 @@ struct AttachmentChip: View {
                 .themedText(.body)
                 .padding(theme.spacing(.s))
         }
+        // ADR-0067 §D10: `presenting:` hands each button the refusal it was raised with
+        // (the confirmation-dialog rule in CLAUDE.md), never `openRefusal` read back after
+        // the alert's own dismissal has cleared it.
+        .alert(
+            openRefusal?.sentence ?? "",
+            isPresented: isShowingOpenRefusal,
+            presenting: openRefusal
+        ) { refusal in
+            Button("Mostra nel Finder") { NSWorkspace.shared.activateFileViewerSelecting([refusal.reveal]) }
+            Button("OK", role: .cancel) {}
+        }
         .contextMenu {
             Button("Anteprima") { preview() }
                 .disabled(previewURL == nil)
@@ -69,6 +80,7 @@ struct AttachmentChip: View {
     }
 
     @State private var isShowingPendingExplanation = false
+    @State private var openRefusal: OpenRefusal?
 
     // MARK: What the chip is
 
@@ -85,6 +97,12 @@ struct AttachmentChip: View {
     /// prefix and a suffix only (`AttachmentIntegrity.verdict(ofFileAt:named:)`), never
     /// the whole file (ADR-0040 §D8, R-07, R-09).
     private func state(_ url: URL) -> AttachmentChipModel.FileState {
+        Self.fileState(of: url, named: name)
+    }
+
+    /// The chip's file-state function, shared with `PraticaCommandActions` so «Anteprima
+    /// allegato» asks the same question the chip does (ADR-0067 §D17).
+    static func fileState(of url: URL, named name: String) -> AttachmentChipModel.FileState {
         guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { return .missing }
         return AttachmentIntegrity.verdict(ofFileAt: url, named: name) == .usable ? .usable : .unusable
     }
@@ -166,13 +184,33 @@ struct AttachmentChip: View {
 
     /// «Apri» and double-click. A usable file `AttachmentChipModel.refusesToOpen`
     /// rejects (PG-123: executable, bundle, disk image, script) has no `openURL` and is
-    /// revealed in the Finder instead, where Gatekeeper's own prompt applies.
+    /// revealed in the Finder instead, where Gatekeeper's own prompt applies. A copied
+    /// file opens only once it carries the quarantine attribute (ADR-0067 §D10); when the
+    /// volume refuses it, the alert offers the Finder instead.
     private func openWithDefaultApp() {
-        if let openURL {
-            NSWorkspace.shared.open(openURL)
-        } else if revealURL != nil {
-            showInFinder()
+        switch AttachmentChipModel.openDecision(
+            for: content, state: state,
+            isQuarantined: AttachmentQuarantine.isApplied(to:),
+            applyQuarantine: { try AttachmentQuarantine.apply(to: $0) }
+        ) {
+        case .open(let url):
+            NSWorkspace.shared.open(url)
+        case .refuse(let sentence, let reveal):
+            openRefusal = OpenRefusal(sentence: sentence, reveal: reveal)
+        case .unavailable:
+            if revealURL != nil { showInFinder() }
         }
+    }
+
+    /// What the refusal alert presents - captured whole, so its buttons read the value
+    /// the alert was raised with rather than state its own dismissal clears.
+    private struct OpenRefusal {
+        let sentence: String
+        let reveal: URL
+    }
+
+    private var isShowingOpenRefusal: Binding<Bool> {
+        Binding(get: { openRefusal != nil }, set: { if !$0 { openRefusal = nil } })
     }
 
     /// R-27's «Copia»: the file itself when a copy is on disk (or the store path still

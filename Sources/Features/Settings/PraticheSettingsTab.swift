@@ -30,6 +30,8 @@ struct PraticheSettingsTab: View {
     @State private var newAddress = ""
     @State private var fullDiskAccessState = FullDiskAccessProbe.state()
     @State private var syncProblem: String?
+    /// The last «Scegli…» picked the vault itself or a folder outside it (ADR-0067 §D18).
+    @State private var rootFolderRefused = false
 
     var body: some View {
         Form {
@@ -80,18 +82,26 @@ struct PraticheSettingsTab: View {
 
     private var rootFolderRow: some View {
         LabeledContent("Cartella radice") {
-            HStack {
-                Text(vault.settings.pratiche.rootFolder)
-                    .themedText(.body, color: .textSecondary)
-                    .accessibilityIdentifier("settings-pratiche-root-folder-label")
-                Button("Scegli…") { chooseRootFolder() }
-                    .accessibilityIdentifier("settings-pratiche-root-folder-choose")
+            VStack(alignment: .trailing, spacing: theme.spacing(.xs)) {
+                HStack {
+                    Text(vault.settings.pratiche.rootFolder)
+                        .themedText(.body, color: .textSecondary)
+                        .accessibilityIdentifier("settings-pratiche-root-folder-label")
+                    Button("Scegli…") { chooseRootFolder() }
+                        .accessibilityIdentifier("settings-pratiche-root-folder-choose")
+                }
+                if rootFolderRefused {
+                    Text("Scegli una cartella dentro la vault, non la vault stessa né una cartella esterna.")
+                        .themedText(.caption, color: .taskOverdue)
+                        .accessibilityIdentifier("settings-pratiche-root-folder-refused")
+                }
             }
         }
     }
 
     /// `NSOpenPanel` scoped to the open vault: a root folder outside it would name a
-    /// folder no `VaultSession.write` can ever reach.
+    /// folder no `VaultSession.write` can ever reach. Only a strict subfolder is stored
+    /// (ADR-0067 §D18); anything else leaves the setting as it was and says why.
     private func chooseRootFolder() {
         guard let root = vault.root else { return }
         let panel = NSOpenPanel()
@@ -100,9 +110,27 @@ struct PraticheSettingsTab: View {
         panel.allowsMultipleSelection = false
         panel.directoryURL = root
         guard panel.runModal() == .OK, let chosen = panel.url else { return }
-        let relative = chosen.path(percentEncoded: false)
-            .replacingOccurrences(of: root.path(percentEncoded: false) + "/", with: "")
+        guard let relative = Self.relativeRootFolder(chosen: chosen, vaultRoot: root) else {
+            rootFolderRefused = true
+            return
+        }
+        rootFolderRefused = false
         vault.updateSettings { $0.pratiche.rootFolder = relative }
+    }
+
+    /// Item 17 (ADR-0067 §D18): `chosen` relative to the vault, or `nil` for the vault
+    /// root itself and for anything outside it. Answers through `VaultBoundary.contains`,
+    /// with `chosen` resolved the same way the boundary resolves its root, so `/var` and
+    /// `/private/var` agree.
+    static func relativeRootFolder(chosen: URL, vaultRoot: URL) -> String? {
+        let boundary = VaultBoundary(root: vaultRoot)
+        let resolved = chosen.resolvingSymlinksInPath().standardizedFileURL
+        guard boundary.contains(resolved) else { return nil }
+        let rootPath = boundary.root.path(percentEncoded: false)
+        let prefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        var relative = String(resolved.path(percentEncoded: false).dropFirst(prefix.count))
+        while relative.hasSuffix("/") { relative.removeLast() }
+        return relative.isEmpty ? nil : relative
     }
 
     // MARK: - I miei indirizzi

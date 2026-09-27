@@ -171,14 +171,12 @@ extension VaultController {
             let target = try VaultAPI.CaptureDestination.named(
                 destination ?? "today", folder: nil
             )
-            let summary = try await VaultAPI.capture(
+            // The editor may be holding the note that just grew: the capture's own write
+            // catches it up (ADR-0066 §D1), or the next keystroke would save the version
+            // without the capture in it.
+            _ = try await VaultAPI.capture(
                 session, to: target, text: text, scheduled: scheduled, due: due
             )
-            // The editor may be holding the note that just grew: re-read it, or the
-            // next keystroke saves the version without the capture in it.
-            if let result = try? session.read(summary.path) {
-                syncOpenNote(with: VaultSession.WriteResult(path: summary.path, text: result.text))
-            }
             return true
         } catch {
             recordProblem("capture: \(error)")

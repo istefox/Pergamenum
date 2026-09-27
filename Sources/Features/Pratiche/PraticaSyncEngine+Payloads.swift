@@ -76,6 +76,17 @@ extension PraticaSyncEngine {
         /// downgrade that could not be written (ADR-0040 §D7.3). Empty on every
         /// healthy run.
         var attachmentProblems: [String] = []
+        /// `Message-ID`s already on disk that this run found still in Mail - surfaced
+        /// as a candidate, resolved by the index, or resolved by the ledger's ROWID
+        /// fallback (item 4, ADR-0067 §D6) - what `recordSyncOutcome` subtracts from a
+        /// stale "not in Mail" marker instead of leaving it. Defaulted and declared last
+        /// (ADR-0040 §D10's rule, applied again).
+        var seenInMail: [String] = []
+        /// Messages whose `.emlx` lookup came back indeterminate (ADR-0067 §D7), keyed
+        /// by `Message-ID` (or `#<ROWID>` for a row that carries none) - skipped this
+        /// run, joined into the pane's report beside `attachmentProblems`, never marked
+        /// "not in Mail". Defaulted and declared last.
+        var indeterminateLookups: [String] = []
 
         static let empty = SyncOutcome(
             writtenFiles: [], importedMessageIDs: [], noLongerInMail: [],

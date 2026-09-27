@@ -20,10 +20,10 @@ extension VaultController {
     /// whose guard is already written for exactly this".
     ///
     /// Asks of every column, like `canOperate(on:)` (`VaultController+Files.swift`) already
-    /// does — not only `openNote` (ADR-0056 §D7): `renameFolder`/`trashFolder` now reach a
-    /// note in any column through `movedNote`/`trashedNote`, so a dirty tab this check
-    /// missed in another column would have its buffer silently replaced or its tab closed
-    /// with no dialogue.
+    /// does — not only `openNote` (ADR-0056 §D7): `renameFolder`/`trashFolder` reach a note
+    /// in any column through the `.moved`/`.trashed` changes the session announces (ADR-0066
+    /// §D1), so a dirty tab this check missed in another column would have its file moved or
+    /// trashed under it with no dialogue beforehand.
     func canOperateOnFolder(_ relativePath: String) -> Bool {
         let folder = relativePath.trimmingCharacters(in: .pathSlashes)
         let hasDirtyTab = columns.contains { column in
@@ -60,9 +60,8 @@ extension VaultController {
             for refusal in outcome.refusals {
                 recordProblem(VaultWriteRefusal.movedOn(refusal).description)
             }
-            for moved in outcome.movedNotes {
-                movedNote(from: moved.old, to: moved.new)
-            }
+            // The tabs already followed every carried note: the session announced each one
+            // (ADR-0066 §D1).
             // Covers renaming an *ancestor* folder (e.g. `01 Progetti` itself), which
             // orphans a descendant pratica the same way a move does (ADR-0026 §D7) -
             // `moveItems`' own `follow(_:)` hook does not run for a rename.
@@ -84,10 +83,8 @@ extension VaultController {
     func trashFolder(at relativePath: String) -> Bool {
         guard let session, canOperateOnFolder(relativePath) else { return false }
         do {
-            let result = try session.trashFolder(at: relativePath)
-            for path in result.trashedNotePaths {
-                trashedNote(at: path)
-            }
+            // The session announced each trashed note, which closed its tabs (ADR-0066 §D1).
+            _ = try session.trashFolder(at: relativePath)
             // The deletion twin of `renameFolder`'s `didRelocateFolders` call (ADR-0026 §D7,
             // 2026-09-19 amendment, PG-169). Trimmed the way `canOperateOnFolder` trims one
             // line above the `do`, so a caller that ever passes "F/" cannot leave a key
@@ -110,7 +107,7 @@ extension VaultController {
     /// unsaved edits to a `.canvas` for a second at a time, dozens of times a session.
     /// That race is real (ADR-0054 §D6) and this is where its refusal surfaces, not where
     /// it is prevented - `canOperateOnFolder`'s "ask before" shape does not apply to a
-    /// board autosave nothing here schedules or waits on. No `movedNote` pass either,
+    /// board autosave nothing here schedules or waits on. No `.moved` announcement either,
     /// because renaming a board moves no note. What is left: report what could not be
     /// repointed and what refused because the board changed since the plan was read, then
     /// rescan so the browser tree rebuilds around the new name.

@@ -45,12 +45,35 @@ struct PraticaCommandActions {
         PraticaCommand.available(isActive: !PraticheSidebarGrouping.isClosed(status: pratica.status))
     }
 
-    /// The commands a message row offers - `.previewAttachment` only when there is one
-    /// to preview, a copied file or an over-threshold store reference alike.
+    /// The commands a message row offers - `.previewAttachment` exactly when
+    /// `previewURL(for:state:)` has something to open (ADR-0067 §D17): a message whose
+    /// only attachments are over-threshold store references, or whose copies are missing
+    /// or damaged, no longer offers a command that does nothing.
     func commands(for detail: PraticaRowDetail?) -> [MessageCommand] {
-        let hasAttachments = !(detail?.attachments.isEmpty ?? true)
-            || !(detail?.storeReferences.isEmpty ?? true)
-        return MessageCommand.available(hasAttachments: hasAttachments, hasLinkedNote: detail?.linkedNote != nil)
+        let canPreview = Self.previewURL(for: detail, state: Self.chipState(for: detail)) != nil
+        return MessageCommand.available(hasAttachments: canPreview, hasLinkedNote: detail?.linkedNote != nil)
+    }
+
+    /// Item 16 (ADR-0067 §D17): the first attachment Quick Look can show, by the chip's
+    /// own rule (`AttachmentChipModel.previewURL`) - `nil` when there is none. The one
+    /// predicate behind both offering «Anteprima allegato» and what it opens.
+    static func previewURL(
+        for detail: PraticaRowDetail?, state: (URL) -> AttachmentChipModel.FileState
+    ) -> URL? {
+        for reference in detail?.attachments ?? [] {
+            if let url = AttachmentChipModel.previewURL(for: .file(reference), state: state) { return url }
+        }
+        return nil
+    }
+
+    /// The chip's own file-state function (`AttachmentChip.fileState(of:named:)`), with
+    /// each URL judged under the name its attachment carries.
+    private static func chipState(for detail: PraticaRowDetail?) -> (URL) -> AttachmentChipModel.FileState {
+        let attachments = detail?.attachments ?? []
+        return { url in
+            let name = attachments.first { $0.url == url }?.name ?? url.lastPathComponent
+            return AttachmentChip.fileState(of: url, named: name)
+        }
     }
 
     /// Where «Sposta in…» and «Aggiungi anche a…» may send a message: every other
@@ -146,7 +169,7 @@ struct PraticaCommandActions {
             ).url else { return }
             NSWorkspace.shared.open(url)
         case .previewAttachment:
-            guard let url = detail?.attachments.first?.url else { return }
+            guard let url = Self.previewURL(for: detail, state: Self.chipState(for: detail)) else { return }
             onQuickLook?(url)
         case .exclude:
             Task { @MainActor in await exclude(entry, detail: detail) }
@@ -167,16 +190,32 @@ struct PraticaCommandActions {
     /// sync stores one copy of an attachment per digest (`attachmentNameByDigest`), so
     /// a file in `allegati/` is very often somebody else's attachment too, and trashing
     /// it would break a message nobody asked to touch.
+    ///
+    /// The exclusion is recorded first and the files trashed second (ADR-0067 §D12): a
+    /// dossier that cannot be parsed or written trashes nothing, and its problem is already
+    /// on screen. If the exclusion landed but no file could be trashed, it is written back
+    /// out and no undo is registered, so the dossier never claims an exclusion the files
+    /// contradict.
     func exclude(_ entry: PraticaTimelineEntry, detail: PraticaRowDetail?) async {
         guard let praticaPath = praticaPath(detail: detail),
               let messageID = entry.messageID,
               let detail
         else { return }
 
-        let trashed = files.trash(filesOf: detail.notePath)
-        guard !trashed.isEmpty else { return }
-        await updateDossier(at: praticaPath) { dossier in
-            if !dossier.excluded.contains(messageID) { dossier.excluded.append(messageID) }
+        var added = false
+        let recorded = await updateDossier(at: praticaPath) { dossier in
+            guard !dossier.excluded.contains(messageID) else { return }
+            dossier.excluded.append(messageID)
+            added = true
+        }
+        guard recorded else { return }
+        let trashed = await files.trash(filesOf: detail.notePath)
+        guard !trashed.isEmpty else {
+            // Only an exclusion this call added goes back out: one already there was not ours.
+            if added {
+                await updateDossier(at: praticaPath) { $0.excluded.removeAll { $0 == messageID } }
+            }
+            return
         }
         reload()
 
@@ -187,7 +226,8 @@ struct PraticaCommandActions {
             // the dossier and the files are independent, and leaving the id excluded would
             // also stop the next sync re-importing it. The person is told where they are
             // instead of watching the row come back with nothing behind it.
-            let stillInTrash = PraticaFileOperations.restore(trashed)
+            guard let session = actions.vault.session else { return }
+            let stillInTrash = await PraticaFileOperations.restore(trashed, session: session)
             if let sentence = PraticaFileOperations.restoreFailureMessage(for: stillInTrash) {
                 actions.pratiche.report(sentence)
             }
@@ -212,7 +252,7 @@ struct PraticaCommandActions {
               let detail
         else { return }
 
-        let (moved, rewrites) = files.moveFiles(of: detail, to: destination.id)
+        let (moved, rewrites) = await files.moveFiles(of: detail, to: destination.id)
         guard !moved.isEmpty else { return }
         await updateDossier(at: praticaPath) { dossier in
             if !dossier.excluded.contains(messageID) { dossier.excluded.append(messageID) }
@@ -223,10 +263,10 @@ struct PraticaCommandActions {
         reload()
 
         register(undoName: "Sposta") { actions in
-            let restored = actions.files.moveBack(moved)
+            let restored = await actions.files.moveBack(moved)
             if let root = actions.vault.root,
                restored.contains(root.appending(path: detail.notePath, directoryHint: .notDirectory)) {
-                actions.files.reverseContentRewrites(rewrites, notePath: detail.notePath)
+                await actions.files.reverseContentRewrites(rewrites, notePath: detail.notePath)
             }
             await actions.updateDossier(at: praticaPath) { $0.excluded.removeAll { $0 == messageID } }
             await actions.updateDossier(at: destination.id) { $0.included.removeAll { $0 == messageID } }
@@ -247,7 +287,7 @@ struct PraticaCommandActions {
         _ entry: PraticaTimelineEntry, detail: PraticaRowDetail?, to destination: PraticaListItem
     ) async {
         guard let messageID = entry.messageID, let detail else { return }
-        guard !files.copyFiles(of: detail, to: destination.id).isEmpty else { return }
+        guard await !files.copyFiles(of: detail, to: destination.id).isEmpty else { return }
         await updateDossier(at: destination.id) { dossier in
             if !dossier.included.contains(messageID) { dossier.included.append(messageID) }
         }
@@ -277,18 +317,18 @@ struct PraticaCommandActions {
     /// back if that fails, so «Rigenera» never leaves the message file missing.
     func confirmRegeneration(_ plan: PraticaSyncEngine.RegenerationPlan) {
         pratiche.regeneration = nil
-        let trashed = files.trash(filesOf: plan.notePath)
-        guard !trashed.isEmpty else {
-            // Nothing will ever call `commitRegeneration` for this attempt now, so
-            // nothing will call `recordSyncOutcome` either - release the claim here
-            // or it never releases (review round 2, MINOR 1/2).
-            pratiche.endRegeneration(plan.praticaFolder)
-            return
-        }
         Task {
+            let trashed = await files.trash(filesOf: plan.notePath)
+            guard !trashed.isEmpty else {
+                // Nothing will ever call `commitRegeneration` for this attempt now, so
+                // nothing will call `recordSyncOutcome` either - release the claim here
+                // or it never releases (review round 2, MINOR 1/2).
+                pratiche.endRegeneration(plan.praticaFolder)
+                return
+            }
             let result = await pratiche.commitRegeneration?(plan) ?? .failed
-            if result != .committed {
-                let stillInTrash = PraticaFileOperations.restore(trashed)
+            if result != .committed, let session = vault.session {
+                let stillInTrash = await PraticaFileOperations.restore(trashed, session: session)
                 // `.refused` already put the better sentence on screen - the pratica moved or
                 // was trashed, and the files are in the Trash - and `report` is last-writer-
                 // wins, so speaking again would replace it with a worse one. `.failed` has said
@@ -350,11 +390,41 @@ struct PraticaCommandActions {
     /// `follow(_:)` just below: "follows and imports, in that order, because the import
     /// reads the dossier from disk". A wrapper that returned before its write landed would
     /// let the sync read the file the follow had not written yet.
-    func updateDossier(at praticaPath: String, _ change: (inout Dossier) -> Void) async {
-        guard let session = vault.session else { return }
+    /// `Bool` (Task 3 declaration, ADR-0067 §D12): `true` once the write (or the
+    /// no-op it decided was unnecessary) went through, `false` on a reported
+    /// failure - `exclude(_:detail:)`'s own «write first, trash second, write back
+    /// on nothing trashed» needs to know which happened.
+    @discardableResult
+    func updateDossier(at praticaPath: String, _ change: (inout Dossier) -> Void) async -> Bool {
+        guard let session = vault.session else { return false }
         if let message = await DossierWriter.update(at: praticaPath, session: session, change) {
             pratiche.report(message)
+            return false
         }
+        return true
+    }
+
+    /// ADR-0067 §D13 item 18: the add-to-pratica tail, pulled out of
+    /// `AddToPraticaSheet.add()`. Writes the inclusion, then re-reads the target through
+    /// `liveTarget(of:)` on this side of the write's `await` - the choice the sheet made
+    /// before it is a filter, not a guard. Returns the path to select and refresh, or
+    /// `nil` on a write failure or a target that stopped existing since.
+    func addToPratica(messageID: String, praticaPath: String) async -> String? {
+        let wrote = await updateDossier(at: praticaPath) { dossier in
+            if !dossier.included.contains(messageID) { dossier.included.append(messageID) }
+        }
+        guard wrote else { return nil }
+        return liveTarget(of: praticaPath)
+    }
+
+    /// `praticaPath`, re-checked: still in `pratiche.pratiche` and its own
+    /// `pratica.md` still on disk. `nil` when either has moved on - the caller must
+    /// not select or refresh a pane for a pratica that relocated or closed during an
+    /// `await` (ADR-0067 §D13 item 18).
+    func liveTarget(of praticaPath: String) -> String? {
+        guard pratiche.pratiche.contains(where: { $0.id == praticaPath }) else { return nil }
+        guard vault.session?.exists(PraticaNaming.praticaNotePath(of: praticaPath)) == true else { return nil }
+        return praticaPath
     }
 
     /// One read-modify-write of a note, through the session so the index and the

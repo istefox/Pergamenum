@@ -58,6 +58,8 @@ extension PraticaLiveSync {
     /// Not `private`: `PraticaLiveSync.swift`'s `run(praticaPath:kind:)` is in a
     /// separate file, and is this member's only caller.
     func runExclusive(praticaPath: String) async -> RunOutcome {
+        // ADR-0067 §D14: a «Annulla» belongs to the run it interrupted, never to this one.
+        stopRequested = false
         guard let controller, let session = vault.session, let root = vault.root else { return .finished }
         guard let dossier = PraticheController.dossier(at: praticaPath, vaultRoot: root) else {
             controller.report("«\(praticaPath)» non ha un dossier leggibile in pratica.md.")
@@ -92,12 +94,7 @@ extension PraticaLiveSync {
         defer { controller.endSync() }
 
         do {
-            let outcome = await Task.detached(priority: .utility) {
-                MailStorePreparation.prepare(
-                    mailRoot: mailRoot, stateDirectory: stateDirectory,
-                    dossier: dossier, ledgerEntries: state.entries, proposalWindow: window
-                )
-            }.value
+            let outcome = await preparationStep(mailRoot, stateDirectory, dossier, state.entries, window)
 
             // The one hand-placed guard (round-4 review, §2): right after the detached
             // preparation above returns and before `switch outcome` even runs, so
@@ -105,6 +102,10 @@ extension PraticaLiveSync {
             // moved. Every other guard in this pipeline lands automatically, inside
             // the steps themselves, through `livePraticaPath(in:)`.
             _ = try context.livePraticaPath(in: vault)
+            // ADR-0067 §D14: «Annulla» pressed while the copy was being published. No engine
+            // existed for `cancel()` to reach, so the run stops here, before `runEngine`;
+            // the `defer` above releases the claim.
+            guard !stopRequested else { return .finished }
 
             let prepared: MailStorePreparation.Prepared
             switch outcome {
@@ -225,18 +226,35 @@ extension PraticaLiveSync {
         return effectiveDossier
     }
 
-    /// §D23.5/§D24.4: the two reports a preparation can carry, each shown once per sync.
+    /// §D23.5/§D24.4: the two reports a preparation can carry, shown once per sync - in
+    /// one report (ADR-0067 §D19), since `report(_:)` is last-writer-wins and two calls
+    /// in a row left only the second sentence on screen.
     private func reportPreparationProblems(_ prepared: MailStorePreparation.Prepared, controller: PraticheController) {
-        if !prepared.unrecoverableConversations.isEmpty {
-            controller.report(
-                "Una conversazione seguita non è più ricostruibile in Mail: \(prepared.unrecoverableConversations.count)."
+        if let sentence = Self.preparationProblemSentence(
+            unrecoverableConversations: prepared.unrecoverableConversations.count,
+            recipientsUnsupported: prepared.recipientsUnsupported
+        ) {
+            controller.report(sentence)
+        }
+    }
+
+    /// Item 19 (ADR-0067 §D19): the preparation's sentences joined with a space, `nil`
+    /// when neither problem happened.
+    nonisolated static func preparationProblemSentence(
+        unrecoverableConversations: Int, recipientsUnsupported: Bool
+    ) -> String? {
+        var sentences: [String] = []
+        if unrecoverableConversations > 0 {
+            sentences.append(
+                "Una conversazione seguita non è più ricostruibile in Mail: \(unrecoverableConversations)."
             )
         }
-        if prepared.recipientsUnsupported {
-            controller.report(
+        if recipientsUnsupported {
+            sentences.append(
                 "L'indice di Mail non espone i destinatari: la vaschetta vede solo i messaggi ricevuti."
             )
         }
+        return sentences.isEmpty ? nil : sentences.joined(separator: " ")
     }
 
     /// §D22.3: two evaluations, and the second is proved to be the last - rule 3

@@ -10,6 +10,11 @@ import Testing
 // background tab or in the other column (ADR-0012 §D4) stayed stale - a clean one reverted the
 // write on its next save, a dirty one was never asked (ADR-0001 §D3.4).
 //
+// ADR-0066 §D5 deleted `syncOpenNote(with:)`/`syncOpenNote(with:savedBy:)`: the session now
+// announces every landed write to `VaultController.landed(_:)` itself. The tests below that
+// hand-build a result drive that handler directly, `landed(.written(result, origin:))`, with
+// `origin: nil` for an ordinary writer and the writer tab's id for a save.
+//
 // No timer, no sleep, no gate: where the timing of an `await` matters, the test calls the half
 // that runs after it directly (ADR-0058 §D3; ADR-0046 §D11).
 
@@ -95,7 +100,7 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     #expect(buffer.externalChangePending == nil)
 }
 
-// MARK: §D2 - `syncOpenNote(with:)` reaches every tab showing the path
+// MARK: §D2 - a landed write (`landed(.written(_, origin: nil))`, ADR-0066) reaches every tab showing the path
 
 @MainActor
 @Test func syncOpenNoteRaisesThePromptOnADirtyTabInTheOtherColumn() async throws {
@@ -107,7 +112,7 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     try #require(controller.focusedColumnIndex == 1)
     let result = VaultSession.WriteResult(path: "A.md", text: note("A, scritto dall'app."))
 
-    controller.syncOpenNote(with: result)
+    controller.landed(.written(result, origin: nil))
 
     let dirty = try tab(showing: "A.md", in: controller.columns[0])
     #expect(dirty.note.externalChangePending == .text(result.text))
@@ -121,7 +126,7 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     defer { controller.close() }
     let result = VaultSession.WriteResult(path: "A.md", text: note("A, scritto dall'app."))
 
-    controller.syncOpenNote(with: result)
+    controller.landed(.written(result, origin: nil))
 
     let background = try tab(showing: "A.md", in: controller.columns[1])
     #expect(background.note.text == result.text)
@@ -141,7 +146,7 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     controller.updateTab(backgroundID) { $0.note.text = note("A, non salvato in secondo piano.") }
     let result = VaultSession.WriteResult(path: "A.md", text: note("A, scritto dall'app."))
 
-    controller.syncOpenNote(with: result)
+    controller.landed(.written(result, origin: nil))
 
     let background = try #require(controller.tabs.first { $0.id == backgroundID })
     #expect(background.note.externalChangePending == .text(result.text))
@@ -160,7 +165,7 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     let before = controller.columns.map { $0.tabs.map(\.note) }
     try #require(before.allSatisfy { $0.allSatisfy { $0.relativePath == "B.md" } })
 
-    controller.syncOpenNote(with: VaultSession.WriteResult(path: "A.md", text: note("A, scritto dall'app.")))
+    controller.landed(.written(VaultSession.WriteResult(path: "A.md", text: note("A, scritto dall'app.")), origin: nil))
 
     #expect(controller.columns.map { $0.tabs.map(\.note) } == before)
 }
@@ -240,7 +245,7 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     let focusedBefore = try #require(controller.focusedTab)
     try #require(focusedBefore.id != writerID)
 
-    controller.syncOpenNote(with: VaultSession.WriteResult(path: "A.md", text: written), savedBy: writerID)
+    controller.landed(.written(VaultSession.WriteResult(path: "A.md", text: written), origin: writerID))
 
     let writer = try #require(controller.tabs.first { $0.id == writerID })
     #expect(!writer.note.hasUnsavedChanges)
@@ -263,7 +268,7 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     let newer = note("A, salvato e poi ancora modificato.")
     controller.updateOpenNoteText(newer)
 
-    controller.syncOpenNote(with: VaultSession.WriteResult(path: "A.md", text: written), savedBy: writerID)
+    controller.landed(.written(VaultSession.WriteResult(path: "A.md", text: written), origin: writerID))
 
     let writer = try #require(controller.focusedTab)
     #expect(writer.note.text == newer)

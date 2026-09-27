@@ -177,12 +177,11 @@ extension VaultController {
         return nil
     }
 
-    /// Follows every note the batch carried into the tabs and RECENTI that were showing
-    /// it, then rebuilds the index - `renameFolder`'s two follow-ups, for a batch.
+    /// Relocates what follows a moved folder, then rebuilds the index - `renameFolder`'s
+    /// follow-ups, for a batch. The tabs and RECENTI already followed every carried note:
+    /// the session announced each move as it landed (ADR-0066 §D1), forward and on
+    /// `performInverse`'s undo/redo alike.
     private func follow(_ outcome: VaultSession.MoveBatchOutcome) {
-        for moved in outcome.movedNotes {
-            movedNote(from: moved.old, to: moved.new)
-        }
         // The single choke point for both directions (§D8's own claim): this runs for
         // a forward move and, unchanged, for `performInverse`'s undo/redo - so a moved
         // pratica's ledger follows the same way back as it followed forward.

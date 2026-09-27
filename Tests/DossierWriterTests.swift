@@ -38,3 +38,22 @@ Corpo della pratica, non toccato.
     #expect(text.contains("<new@rossi-spa.it>"))
     #expect(text.contains("<already-excluded@rossi-spa.it>"))
 }
+
+/// R-19's writer half (ADR-0067 §D12): today `Dossier.parse` failing returns `nil` from
+/// `update`, silently reporting success. Red until Task 4's fix (`DossierWriter.swift:33`)
+/// returns a sentence instead.
+@MainActor
+@Test func dossierWriterUpdateOnAnUnparseableDossierReturnsASentenceAndWritesNothing() async throws {
+    let vault = try TemporaryVault()
+    try vault.write("---\ndate: 2026-09-26\n---\n\nNessun dossier qui.\n", to: "Rossi/pratica.md")
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+    let before = try session.read("Rossi/pratica.md").text
+
+    let failure = await DossierWriter.update(at: "Rossi", session: session) { dossier in
+        dossier.excluded.append("<new@rossi-spa.it>")
+    }
+
+    #expect(failure != nil, "an unparseable dossier must be reported, not silently ignored")
+    let after = try session.read("Rossi/pratica.md").text
+    #expect(after == before, "nothing should be written when the dossier does not parse")
+}

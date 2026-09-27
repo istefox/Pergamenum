@@ -43,9 +43,10 @@ struct PraticaWatcher: Equatable, Sendable {
     /// `Eligibility` - a pulse is a fact about `~/Library/Mail`, not about one
     /// pratica's status - so the status has to be remembered from the triggers that do
     /// carry it. `PraticheController.trigger(_:kind:eligibility:now:)` passes one on
-    /// every `.vaultOpen`/`.windowKey`/`.manualRefresh`, and the controller's vault-open
-    /// pass reaches **every** pratica, closed ones included, so a watcher has been told
-    /// its pratica's status before any pulse can be observed in the running app.
+    /// every `.vaultOpen`/`.windowKey`/`.manualRefresh`, and the pane-appearance pass
+    /// (`PraticheController.paneAppeared(in:)`, a `.windowKey` pass since ADR-0067 §D15)
+    /// reaches **every** pratica, closed ones included, so a watcher has been told its
+    /// pratica's status before any pulse can be observed in the running app.
     ///
     /// `.automatic` until told otherwise: a watcher exists for a pratica the app is
     /// watching, and defaulting the other way would silence the ordinary case for a
