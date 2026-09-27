@@ -119,7 +119,8 @@ import Testing
 
     // MARK: - R-08: italic moves to the prose face too
 
-    /// PLAN DEVIATION (ADR-0073 §D2): the plan's Task 5 brief claims an existing ".italic is
+    /// PLAN DEVIATION (ADR-0073 §D2 of the retired concept-to-code workflow): the plan's Task 5
+    /// brief claims an existing ".italic is
     /// still oblique-or-italic (the existing assertion, kept verbatim)" test to preserve - no
     /// such assertion exists anywhere in the suite. `Tests/CardFormattingTests.swift` has italic
     /// tests, but they cover `InlineFormat`'s markdown-wrapping toggle (source text mutation),

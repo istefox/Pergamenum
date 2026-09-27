@@ -331,7 +331,8 @@ argument for it is that these strings are written into user files in an interope
 and renaming one silently orphans every card a user has styled — the same class of harm as a
 `schemaVersion` bump. The argument against is that `CanvasCrop.key` was never given an entry
 for the identical class of value, so adding one only here is an inconsistency, and this check
-BLOCKS once declared (ADR-0053 §D2). The consistent version covers both files. The operator
+BLOCKS once declared (ADR-0053 §D2 of the retired concept-to-code workflow). The consistent version
+covers both files. The operator
 decides at Gate 2; nothing here creates or edits the file.
 
 ### D10 — The card never conceals markdown markers; Obsidian-style live preview stays a note-editor-only feature (non-goal)

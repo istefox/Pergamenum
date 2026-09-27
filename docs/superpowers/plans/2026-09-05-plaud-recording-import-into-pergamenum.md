@@ -78,7 +78,8 @@ after each task, not just the touched file's tests.**
   new type's *declaration* — stored properties, function signatures returning a stub — is written in
   the **tester's** task together with the tests that call it. The coder fills bodies.
 - **Every new source and test file's header cites both `ADR-0032` and this plan's basename**
-  (`2026-09-05-plaud-recording-import-into-pergamenum`) — ADR-0154: a harness naming neither is
+  (`2026-09-05-plaud-recording-import-into-pergamenum`) — ADR-0154 of the retired
+  concept-to-code workflow: a harness naming neither is
   descoped.
 - **Swift Testing (`@Test`/`#expect`) for all new tests.** Never XCTest, except inside `UITests/`,
   which is an XCTest bundle and stays one.
