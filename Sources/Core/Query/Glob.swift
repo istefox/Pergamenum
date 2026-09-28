@@ -1,6 +1,7 @@
 import Foundation
 
-/// The wildcard matching `tag()` and `path()` use in a view (ADR-0009 §D3).
+/// The wildcard matching `tag()` and `path()` use in a view (ADR-0009 §D3), and the tag
+/// rule global search's `tag:`/`-tag:` share with them (PG-260), so the two cannot drift.
 ///
 /// Two metacharacters and no others: `*` stands for any run of characters including
 /// none, `?` for exactly one. No character classes, no `**`, no escaping, and above all
@@ -48,7 +49,7 @@ enum Glob {
 
     /// True when a pattern carries a wildcard at all.
     ///
-    /// The two callers read it in opposite directions, which is why it is a question and
+    /// The two rules read it in opposite directions, which is why it is a question and
     /// not a rule: `tag("status-aperto")` without one means *that* tag exactly, while
     /// `path("Clienti")` without one means that folder and everything under it. A prefix
     /// rule for tags would make `tag("status-a")` quietly take `status-aperto`, and an
@@ -57,7 +58,9 @@ enum Glob {
         pattern.contains("*") || pattern.contains("?")
     }
 
-    /// `tag()`: exact when the pattern has no wildcard, glob when it has one.
+    /// `tag()` in a view and `tag:`/`-tag:` in a search: exact when the pattern has no
+    /// wildcard, glob when it has one. Search used a prefix rule until PG-260, which made
+    /// `tag:client-acme` take `client-acme-industriale`; `tag:client-*` is the family search.
     static func matchesTag(_ pattern: String, _ tag: String) -> Bool {
         isPattern(pattern) ? matches(pattern, tag) : SearchQuery.fold(pattern) == SearchQuery.fold(tag)
     }

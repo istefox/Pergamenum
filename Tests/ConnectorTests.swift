@@ -350,6 +350,22 @@ private func limitSentence(_ attempt: () throws -> Any?) -> ConnectorError? {
     #expect(try VaultAPI.search(session, "Corpo", limit: 0).isEmpty)
 }
 
+// MARK: - PG-260 R-12: the connector's search shares the views' tag rule
+
+@MainActor
+@Test func aConnectorSearchMatchesATagExactly() async throws {
+    let vault = try TemporaryVault()
+    try vault.write("---\ntags:\n  - client-acme\n---\n\nAcme.\n", to: "Acme.md")
+    try vault.write("---\ntags:\n  - client-acme-industriale\n---\n\nIndustriale.\n", to: "Industriale.md")
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+    await session.rescan()
+
+    // `tag:x` is exact now; the family needs the wildcard, which the positive control shows.
+    #expect(try VaultAPI.search(session, "tag:client-acme", limit: nil).map(\.path) == ["Acme.md"])
+    #expect(try Set(VaultAPI.search(session, "tag:client-*", limit: nil).map(\.path))
+        == ["Acme.md", "Industriale.md"])
+}
+
 @MainActor
 @Test func journalLogWithLimitZeroAnswersEmpty() async throws {
     let vault = try TemporaryVault()

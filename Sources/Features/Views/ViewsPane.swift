@@ -13,9 +13,12 @@ import SwiftUI
 /// a catalogue - a view matching nothing is usually a view whose tag was renamed.
 ///
 /// **It costs a full-vault read and then one evaluation per view**, which is why it runs
-/// when the pane opens and when the vault is rescanned, and never on a draw. The scan is
-/// the same one `VaultAPI.views` does for the connector, and the price §D7 accepts for
-/// views living in files rather than in a table.
+/// when the pane opens, when the vault is rescanned and when the day changes, and never on
+/// a draw. The scan is the same one `VaultAPI.views` does for the connector, and the price
+/// §D7 accepts for views living in files rather than in a table. It runs on the main actor
+/// (ADR-0041 §D12) but cooperatively, in chunks of notes with a pause between them
+/// (`ViewCatalogue.scan`, PG-260), so the spinner draws while it runs; one evaluation of a
+/// view with a `text()` filter still reads the whole vault inside its chunk.
 struct ViewsPane: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
@@ -24,6 +27,15 @@ struct ViewsPane: View {
 
     @State private var entries: [ViewEntry] = []
     @State private var isScanning = false
+    /// Bumped on every day change, so the scan trigger changes and the counts are answered
+    /// again for the new day.
+    @State private var dayTick = 0
+
+    /// What starts a scan: a rescan of the vault or a new day.
+    private struct ScanTrigger: Equatable {
+        let generation: Int
+        let dayTick: Int
+    }
 
     var body: some View {
         ScrollView {
@@ -39,10 +51,12 @@ struct ViewsPane: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(theme.color(.backgroundPrimary))
-        .task(id: vault.scanGeneration) { scan() }
+        // One trigger for both reasons to scan, so a new one cancels the running scan
+        // through `.task(id:)` rather than racing it.
+        .task(id: ScanTrigger(generation: vault.scanGeneration, dayTick: dayTick)) { await scan() }
         // The counts beside each row are answers, and an answer to «modified >= week-start»
         // is a different one on Monday (ADR-0014 §D4).
-        .onDayChange { scan() }
+        .onDayChange { dayTick += 1 }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("views-pane")
         .toolbar { ToolbarItemGroup(placement: .primaryAction) { themeToggleToolbarItem(themeEngine) } }
@@ -157,58 +171,25 @@ struct ViewsPane: View {
 
     // MARK: The scan
 
-    /// Reads every note once, parses the views in it, and runs each one for its count.
+    /// Reads every note once, parses the views in it, and runs each one for its count, through
+    /// `ViewCatalogue.scan`.
     ///
-    /// Synchronous on the main actor, like the rest of what touches `VaultSession`: the
-    /// session is main-actor bound, and hopping off it to read files would mean copying
-    /// the index to another isolation for no gain on a vault of this size. If a vault
-    /// ever makes this stutter, the fix is the watcher of §D7, not a thread.
-    private func scan() {
+    /// On the main actor, like the rest of what touches `VaultSession` (ADR-0041 §D12), and
+    /// cooperative rather than threaded (PG-260): the scan pauses between chunks of notes so
+    /// the spinner draws, and a new trigger cancels it. A cancelled scan publishes nothing and
+    /// leaves the spinner to the scan that replaced it. One evaluation of a view with a
+    /// `text()` filter still reads the whole vault inside its step; if a vault ever makes that
+    /// stutter, the fix is the watcher of §D7, not a thread.
+    private func scan() async {
         guard let session = vault.session else {
             entries = []
+            isScanning = false
             return
         }
         isScanning = true
-        defer { isScanning = false }
-
-        entries = session.index.allNotes
-            .sorted { $0.relativePath < $1.relativePath }
-            .flatMap { record -> [ViewEntry] in
-                guard let text = try? session.read(record.relativePath).text else { return [] }
-                let locations = ViewCatalogue.locations(in: text)
-                let blocks = ViewBlock.blocks(in: NoteDocument.parse(text).body)
-                return blocks.enumerated().map { ordinal, parsed in
-                    entry(record, ordinal: ordinal, parsed: parsed,
-                          location: ordinal < locations.count ? locations[ordinal] : nil,
-                          session: session)
-                }
-            }
-    }
-
-    private func entry(
-        _ record: NoteRecord,
-        ordinal: Int,
-        parsed: Result<ViewBlock, ViewBlockError>,
-        location: ViewCatalogue.Location?,
-        session: VaultSession
-    ) -> ViewEntry {
-        switch parsed {
-        case .success(let block):
-            let result = ViewEvaluator.evaluate(block, over: session.index) { candidate in
-                try? session.read(candidate.relativePath).text
-            }
-            return ViewEntry(
-                path: record.relativePath, noteTitle: record.title, ordinal: ordinal,
-                lineIndex: location?.lineIndex ?? 0, heading: location?.heading,
-                block: block, error: nil, matches: result.total
-            )
-        case .failure(let failure):
-            return ViewEntry(
-                path: record.relativePath, noteTitle: record.title, ordinal: ordinal,
-                lineIndex: location?.lineIndex ?? 0, heading: location?.heading,
-                block: nil, error: failure.description, matches: nil
-            )
-        }
+        guard let scanned = try? await ViewCatalogue.scan(session), !Task.isCancelled else { return }
+        entries = scanned
+        isScanning = false
     }
 }
 

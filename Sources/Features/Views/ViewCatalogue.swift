@@ -113,3 +113,73 @@ enum ViewCatalogue {
         return found
     }
 }
+
+// MARK: - The scan
+
+extension ViewCatalogue {
+    /// Every view in the vault, in path order: reads each note once, parses the views in it,
+    /// and runs each one for its count - the same scan `VaultAPI.views` does for the connector.
+    ///
+    /// On the main actor, where `VaultSession`'s reads stay (ADR-0041 §D12), and cooperative
+    /// (PG-260): one note is one step, and after every `chunkSize` notes, when more remain, it
+    /// awaits `pause` and checks for cancellation, so the pane's spinner draws and a newer scan
+    /// or a day change stops this one. A cancelled scan throws and returns nothing.
+    ///
+    /// One step can still be long: `ViewEvaluator.evaluate` is synchronous and shared with the
+    /// connectors, so a view with a `text()` filter reads the whole vault inside its note's step.
+    @MainActor
+    static func scan(
+        _ session: VaultSession, today: CalendarDate = .today,
+        chunkSize: Int = CooperativeLoop.chunkSize,
+        pause: @MainActor () async -> Void = CooperativeLoop.pause
+    ) async throws -> [ViewEntry] {
+        try Task.checkCancellation()
+        let records = session.index.allNotes.sorted { $0.relativePath < $1.relativePath }
+        let chunkSize = max(chunkSize, 1)
+        let body = { (candidate: NoteRecord) in try? session.read(candidate.relativePath).text }
+
+        var entries: [ViewEntry] = []
+        for (offset, record) in records.enumerated() {
+            if offset > 0, offset.isMultiple(of: chunkSize) {
+                await pause()
+                try Task.checkCancellation()
+            }
+            guard let text = try? session.read(record.relativePath).text else { continue }
+            let placed = Self.locations(in: text)
+            let blocks = ViewBlock.blocks(in: NoteDocument.parse(text).body)
+            for (ordinal, parsed) in blocks.enumerated() {
+                entries.append(entry(
+                    record, ordinal: ordinal, parsed: parsed,
+                    location: ordinal < placed.count ? placed[ordinal] : nil,
+                    corpus: session.index, today: today, text: body
+                ))
+            }
+        }
+        return entries
+    }
+
+    /// One catalogued view: a parsed block evaluated for its count, or a broken one listed
+    /// with its error rather than hidden - a query with a typo in it is exactly the one
+    /// somebody is looking for.
+    static func entry(
+        _ record: NoteRecord, ordinal: Int, parsed: Result<ViewBlock, ViewBlockError>,
+        location: Location?, corpus: some ViewCorpus, today: CalendarDate = .today,
+        text: (NoteRecord) -> String?
+    ) -> ViewEntry {
+        switch parsed {
+        case .success(let block):
+            let result = ViewEvaluator.evaluate(block, over: corpus, today: today, body: text)
+            return ViewEntry(
+                path: record.relativePath, noteTitle: record.title, ordinal: ordinal,
+                lineIndex: location?.lineIndex ?? 0, heading: location?.heading,
+                block: block, error: nil, matches: result.total
+            )
+        case .failure(let failure):
+            return ViewEntry(
+                path: record.relativePath, noteTitle: record.title, ordinal: ordinal,
+                lineIndex: location?.lineIndex ?? 0, heading: location?.heading,
+                block: nil, error: failure.description, matches: nil
+            )
+        }
+    }
+}

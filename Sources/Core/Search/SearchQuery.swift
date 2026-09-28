@@ -16,7 +16,9 @@ struct SearchQuery: Equatable, Sendable {
     var words: [String] = []
     /// Quoted phrases, matched as a contiguous run.
     var phrases: [String] = []
-    /// `tag:type-note`, matched against the note's frontmatter and inline tags.
+    /// `tag:type-note`, matched against the note's frontmatter and task tags by the views'
+    /// rule (`Glob.matchesTag`): exactly without a wildcard, as a glob with one
+    /// (`tag:client-*`).
     var tags: [String] = []
     /// `path:01 Progetti`, matched as a substring of the note's path.
     var paths: [String] = []
@@ -209,14 +211,26 @@ struct SearchQuery: Equatable, Sendable {
         var isNegated: Bool
     }
 
+    /// Which quote, if any, is open while tokenising.
+    ///
+    /// One state rather than two booleans, because the two quotes answer a `"` differently
+    /// and the old pair let them disagree: a phrase ending in a colon (`"nota:"`) read its
+    /// own closing quote as an operator's opening one and swallowed the rest of the query.
+    /// An operator quote opens only when no quote is open; a quote closes whichever is.
+    private enum QuoteState {
+        case none
+        /// Inside `"frase"`: its closing quote makes the run a phrase.
+        case phrase
+        /// Inside a quote that belongs to an operator (`path:"01 Progetti"`). Its closing
+        /// quote must not turn the token into a phrase.
+        case operatorValue
+    }
+
     /// Splits on whitespace, keeping quoted runs together and taking off a leading `-`.
     private static func tokenise(_ raw: String) -> [Token] {
         var tokens: [Token] = []
         var current = ""
-        var inQuotes = false
-        /// True while inside a quote that belongs to an operator (`path:"01 Progetti"`).
-        /// Its closing quote must not turn the token into a phrase.
-        var quotedOperator = false
+        var state = QuoteState.none
         /// Set when a `-` was consumed just before an opening quote, so `-"frase"` reaches
         /// the closing quote still knowing it was a negation.
         var pendingNegation = false
@@ -236,27 +250,27 @@ struct SearchQuery: Equatable, Sendable {
 
         for character in raw {
             if character == "\"" {
-                // A quote right after an operator belongs to it: the folders in this
-                // vault are called "01 Progetti", so `path:` without quoting would
-                // split on the space and search for the wrong thing.
-                if current.hasSuffix(":") {
-                    inQuotes = true
-                    quotedOperator = true
-                    continue
+                switch state {
+                case .none where current.hasSuffix(":"):
+                    // A quote right after an operator belongs to it: the folders in this
+                    // vault are called "01 Progetti", so `path:` without quoting would
+                    // split on the space and search for the wrong thing.
+                    state = .operatorValue
+                case .none:
+                    let negatesPhrase = current == "-"
+                    if negatesPhrase { current = "" }
+                    flush(asPhrase: false)
+                    if negatesPhrase { pendingNegation = true }
+                    state = .phrase
+                case .phrase:
+                    flush(asPhrase: true)
+                    state = .none
+                case .operatorValue:
+                    state = .none
                 }
-                if quotedOperator {
-                    inQuotes = false
-                    quotedOperator = false
-                    continue
-                }
-                let negatesPhrase = !inQuotes && current == "-"
-                if negatesPhrase { current = "" }
-                flush(asPhrase: inQuotes)
-                if negatesPhrase { pendingNegation = true }
-                inQuotes.toggle()
                 continue
             }
-            if character == " ", !inQuotes {
+            if character == " ", state == .none {
                 flush(asPhrase: false)
                 continue
             }
@@ -264,7 +278,7 @@ struct SearchQuery: Equatable, Sendable {
         }
         // An unclosed quote is still a phrase: the user typed a run they want kept
         // together, and dropping it or splitting it would search for something else.
-        flush(asPhrase: inQuotes)
+        flush(asPhrase: state != .none)
         return tokens
     }
 
