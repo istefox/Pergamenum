@@ -1,6 +1,6 @@
 # ADR-0070: Backspace in the pratica timeline runs the row's own «Escludi», on a route chosen by measuring who holds the key
 
-- Status: **proposed**. The implementation is not on `main`.
+- Status: **accepted**. Merged to `main` via PR #653 (`b373bade`, 2026-09-28), closing `PG-298`/#642.
 - Date: 2026-09-28. Written before the implementation, against `2300f752` (`origin/main`). The
   branch it was read on, `chore/todo-sync-635` at `2a41306a`, has the same tree. Every line number
   below was read from that tree.
