@@ -73,6 +73,49 @@ isolatore attenua o amplifica. Trasmissibilità sotto radice di due.
     #expect(SearchQuery("task:forse").taskState == nil)
 }
 
+// MARK: - Quote state
+
+@Test func aPhraseEndingInAColonClosesItself() {
+    // PG-260 R-06: the closing quote of `"nota:"` used to read as an operator's opening
+    // one and swallow the rest of the query into the phrase.
+    let query = SearchQuery("\"nota:\" progetto forno")
+    #expect(query.phrases == ["nota:"])
+    #expect(query.words == ["progetto", "forno"])
+}
+
+@Test func aNegatedPhraseEndingInAColonClosesItself() {
+    let query = SearchQuery("-\"nota:\" forno")
+    #expect(query.negatedPhrases == ["nota:"])
+    #expect(query.phrases.isEmpty)
+    #expect(query.words == ["forno"])
+}
+
+@Test func anOperatorQuoteStillHoldsItsValue() {
+    // PG-260 R-07.
+    let plain = SearchQuery("path:\"01 Progetti\"")
+    #expect(plain.paths == ["01 progetti"])
+    #expect(plain.words.isEmpty)
+
+    let negated = SearchQuery("-path:\"03 Risorse\" x")
+    #expect(negated.negatedPaths == ["03 risorse"])
+    #expect(negated.words == ["x"])
+
+    #expect(SearchQuery("tag:\"type-note\"").tags == ["type-note"])
+}
+
+@Test func aPhraseThenAnOperatorQuote() {
+    let query = SearchQuery("\"frase\" path:\"01 Progetti\"")
+    #expect(query.phrases == ["frase"])
+    #expect(query.paths == ["01 progetti"])
+}
+
+@Test func anUnclosedOperatorQuoteBehavesAsToday() {
+    // SPEC edge case: an unbalanced quote at the end behaves as it did before PG-260.
+    let query = SearchQuery("path:\"01 Pro")
+    #expect(query.phrases == ["path:01 pro"])
+    #expect(query.paths.isEmpty)
+}
+
 // MARK: - Matching
 
 @Test func matchesWordsAnywhereInTheNote() {
@@ -105,8 +148,10 @@ isolatore attenua o amplifica. Trasmissibilità sotto radice di due.
 @Test func filtersByTag() {
     #expect(SearchQuery("tag:topic-vibration-isolation").matches(record: record(), text: body))
     #expect(!SearchQuery("tag:topic-acoustics").matches(record: record(), text: body))
-    // A prefix matches, so `tag:topic-` finds every topic.
-    #expect(SearchQuery("tag:topic-").matches(record: record(), text: body))
+    // The family is asked for with a wildcard (PG-260): `tag:topic-*` finds every topic,
+    // while `tag:topic-` is an exact tag nobody carries and finds nothing.
+    #expect(SearchQuery("tag:topic-*").matches(record: record(), text: body))
+    #expect(!SearchQuery("tag:topic-").matches(record: record(), text: body))
 }
 
 @Test func findsATagThatOnlyAppearsOnATask() {

@@ -655,6 +655,19 @@ solved the identical case on the diary side and documents why; the fix is to sha
 
 ### Chain 7 — Search and query correctness (P2)
 
+**Shipped** on branch `fix/pg-260-search-query-correctness` (PG-260), closing #574. It closes all 5
+items below, no ADR (`SPEC.md` of that chain settled the decisions). Search `tag:`/`-tag:` now uses
+the views' exact-or-glob rule through `Glob.matchesTag` (`tag:client-*` is the family search, and
+the legend shows it). Item 3 departs from the fix proposed there: the SPEC kept the reads on the
+main actor (ADR-0041 §D12) and made them cooperative instead of moving them off it. Search and the
+«Viste» scan run in chunks with a pause between them (`CooperativeLoop`), and a superseded search or
+scan stops early and publishes nothing. Residuals named, not fixed:
+`ViewEvaluator.evaluate` is synchronous, so a view with a `text()` filter still reads the whole
+vault inside one chunk step. `VaultSession.unlinkedMentions` is the same full-vault read shape and
+stays synchronous. Item 5 has no production caller today: the «Progetti» grouping
+(`TaskArrangement.bySubtasks`) already scoped board parents correctly, and a test now ties the two
+rules together.
+
 Root cause: two tag matchers with opposite rules, a quote parser with no open/close distinction,
 and a UI whose debounce sits in the wrong place.
 
@@ -990,7 +1003,8 @@ verified as live and excluded.
 - `TagRenameSheet.swift:108-111`: `changes` is a computed whole-vault preview consulted three
   times per body evaluation, per character typed.
 - `DiaryTimeline.swift:52-57` (see Chain 6 item 8).
-- `GlobalSearchView` and `ViewsPane` synchronous reads (Chain 7 items 3 and 4).
+- `GlobalSearchView` and `ViewsPane` synchronous reads (Chain 7 items 3 and 4). **Absorbed** by
+  Chain 7 (PG-260): both are cooperative on the main actor now.
 
 ---
 

@@ -184,7 +184,7 @@ private func parseErrorDescription(_ source: String) -> String {
 /// cataloguing tests cover two valid fences, and a fence quoted inside another code block (not
 /// counted as a view at all). Neither covers a fence that *is* a `pergamenum-view` fence - so
 /// `ViewCatalogue.locations` does count its line and heading - but whose body fails
-/// `ViewBlock.parse`, which is `ViewsPane.entry`'s own second branch and what a "one valid, one
+/// `ViewBlock.parse`, which is `ViewCatalogue.entry`'s own second branch and what a "one valid, one
 /// broken" note actually looks like. `Tests/SidebarTests.swift` is read here, not edited or
 /// re-run: it must stay green unmodified.
 @Suite struct ViewCatalogueCataloguingUnchangedForOneValidAndOneInvalidFence {
@@ -233,29 +233,16 @@ private func parseErrorDescription(_ source: String) -> String {
         ```
         """
 
-    /// `ViewsPane.entry(_:ordinal:parsed:location:session:)`'s own logic, replicated rather than
-    /// called - it is `private` and needs a live `VaultSession`, which this test does not build.
-    /// If `ViewsPane.swift`'s source is unchanged (the grep evidence this task also reports),
-    /// replicating its unedited logic here is a faithful regression fixture, not a guess.
+    /// The production cataloguing step, `ViewCatalogue.entry(...)`, called over this test's
+    /// in-memory corpus. It lived as a `private` function on `ViewsPane` and was replicated here
+    /// until PG-260 moved it into `ViewCatalogue` beside the cooperative scan; calling it now
+    /// pins the real code rather than a copy of it.
     private static func entry(
         _ record: NoteRecord, ordinal: Int, parsed: Result<ViewBlock, ViewBlockError>,
         location: ViewCatalogue.Location?
     ) -> ViewEntry {
-        switch parsed {
-        case .success(let block):
-            let result = ViewEvaluator.evaluate(block, over: corpus) { _ in nil }
-            return ViewEntry(
-                path: record.relativePath, noteTitle: record.title, ordinal: ordinal,
-                lineIndex: location?.lineIndex ?? 0, heading: location?.heading,
-                block: block, error: nil, matches: result.total
-            )
-        case .failure(let failure):
-            return ViewEntry(
-                path: record.relativePath, noteTitle: record.title, ordinal: ordinal,
-                lineIndex: location?.lineIndex ?? 0, heading: location?.heading,
-                block: nil, error: failure.description, matches: nil
-            )
-        }
+        ViewCatalogue.entry(record, ordinal: ordinal, parsed: parsed, location: location,
+                            corpus: corpus, text: { _ in nil })
     }
 
     @Test func locationsStillFindsBothFencesWithTheirHeadingAndLine() {

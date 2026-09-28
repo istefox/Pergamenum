@@ -198,13 +198,15 @@ struct IndexSnapshot: Sendable {
         allTasks.filter { WorkspaceBoardResolver.matches(canvasFileName, workspacePath: $0.workspacePath) }
     }
 
-    /// The same-note children of a task, bucketed on its `^id` (ADR-0021 D2, D5). A
-    /// `^parent(N)` in a different note whose own `^id(N)` matches is **not** a child:
-    /// ids are note-local, and the join is `sourcePath`-scoped.
+    /// The same-source children of a task (the note or board the parent lives on),
+    /// bucketed on its `^id` (ADR-0021 D2, D5). A `^parent(N)` in a different file whose
+    /// own `^id(N)` matches is **not** a child: ids are file-local, and the join is
+    /// `sourcePath`-scoped. A board parent reads its board's tasks (PG-260), every card of
+    /// that board alike - the same scoping `TaskArrangement`'s «Progetti» grouping applies.
     func subtasks(of task: TaskItem) -> [TaskItem] {
         guard let id = task.localID else { return [] }
-        guard let record = notes[task.sourcePath] else { return [] }
-        return record.tasks.filter { $0.parentLocalID == id }
+        let siblings = notes[task.sourcePath]?.tasks ?? boardTasks[task.sourcePath]?.tasks ?? []
+        return siblings.filter { $0.parentLocalID == id }
     }
 
     /// How many of a project's sub-tasks are done (ADR-0021 D5). `nil` for a task with
