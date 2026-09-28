@@ -13,8 +13,9 @@ the rules by hand, once, and a mechanical rule nobody runs decays.
 - Rule 2, a status line: every ADR states its status in its head, as a
   `- Status:` bullet (bold or not) or as a `## Status` section that is the first
   second-level heading, and the status word is one of `accepted`, `proposed`,
-  `superseded`, `deprecated`, `rejected`. An ADR the base holds that still reads
-  `proposed` is a finding. A commit hash inside the status statement that is
+  `superseded`, `deprecated`, `rejected`. An ADR the base holds, matched by
+  number, that still reads `proposed` is a finding, unless rule 1 reports that
+  number. A commit hash inside the status statement that is
   not a commit on the base's first-parent line is a warning, never a finding.
 - Rule 3, a citation says where the ADR lives: in every scanned file, the first
   citation of a number `docs/adr/` does not hold must share its sentence with a
@@ -203,16 +204,19 @@ def rule_one(
     merge_base_held: Dict[str, List[str]],
 ) -> Tuple[List[Finding], set]:
     """Duplicates in the tree, then numbers the branch introduced that the base
-    holds under another name. Returns the findings and the numbers reported
-    against the base, which rule 2's «proposed on the base» leaves alone."""
+    holds under another name. Returns the findings and every number rule 1
+    reports, in the tree or against the base, which rule 2's «proposed on the
+    base» leaves alone: the collision is already the finding, and a file that
+    never landed must not be told to flip to `accepted` (PG-290)."""
     found = []  # type: List[Finding]
-    against_base = set()
+    reported = set()
     for number, names in sorted(held.items()):
         if len(names) > 1:
             found.append(Finding(1, adr_path(names[0]), 1, "number %s is also held by %s" % (
                 number, ", ".join(adr_path(n) for n in names[1:]))))
+            reported.add(number)
     if base is None:
-        return found, against_base
+        return found, reported
     for number, names in sorted(held.items()):
         if number in merge_base_held or number not in base_held:
             continue  # a slug rename, or a number still free on the base
@@ -222,8 +226,8 @@ def rule_one(
                 found.append(Finding(1, adr_path(name), 1, "number %s is held on %s by %s; "
                                      "take the next free number" % (
                                          number, base.ref, ", ".join(adr_path(n) for n in others))))
-                against_base.add(number)
-    return found, against_base
+                reported.add(number)
+    return found, reported
 
 
 # --- rule 2 --------------------------------------------------------------------------
@@ -297,7 +301,7 @@ def rule_two(
     held: Dict[str, List[str]],
     base: Optional[Base],
     base_held: Dict[str, List[str]],
-    against_base: set,
+    reported: set,
     errors: List[str],
 ) -> Tuple[List[Finding], List[Warning_]]:
     found = []  # type: List[Finding]
@@ -319,7 +323,7 @@ def rule_two(
                 found.append(Finding(2, path, line, "status word %r is not one of %s" % (
                     word, ", ".join(STATUS_WORDS))))
             elif word == "proposed" and base is not None and number in base_held \
-                    and number not in against_base:
+                    and number not in reported:
                 found.append(Finding(2, path, line, "reads proposed, but %s already holds %s: "
                                      "flip it to accepted with its landing evidence" % (
                                          base.ref, number)))
@@ -520,8 +524,8 @@ def run(repo: str, base: Optional[str], verbose: bool) -> int:
         base_held = numbered(commit_names(root, resolved.sha))
         merge_base_held = numbered(commit_names(root, resolved.merge_base))
 
-    found_one, against_base = rule_one(held, resolved, base_held, merge_base_held)
-    found_two, warnings = rule_two(root, held, resolved, base_held, against_base, errors)
+    found_one, reported = rule_one(held, resolved, base_held, merge_base_held)
+    found_two, warnings = rule_two(root, held, resolved, base_held, reported, errors)
 
     phrases = None  # type: Optional[List[str]]
     try:
@@ -714,13 +718,13 @@ def _scenario_r01(lab: _Lab) -> None:
 # R-02
 
 
-def _collision_repo(lab: _Lab) -> str:
+def _collision_repo(lab: _Lab, bar_status: str = "- Status: accepted") -> str:
     """A branch adds 0003-bar.md; main then adds 0003-foo.md."""
     repo = lab.repo("r02-collision")
     adr(repo, 1, "x")
     commit(lab, repo, "base")
     lab.sh(repo, "checkout", "-q", "-b", "feature")
-    adr(repo, 3, "bar")
+    adr(repo, 3, "bar", bar_status)
     commit(lab, repo, "branch takes 0003")
     lab.sh(repo, "checkout", "-q", "main")
     adr(repo, 3, "foo")
@@ -875,6 +879,71 @@ def _scenario_r04(lab: _Lab) -> None:
     code, out, _ = lab.cli(repo, "--base", "main")
     lab.check("R-04", "pass", code == 0,
               "proposed on the base, accepted in the working tree: exit 0")
+
+
+# PG-290
+
+
+def _pr_merge_repo(lab: _Lab, main_status: str) -> str:
+    """The PR merge shape: a branch adds a proposed 0003-bar.md, main adds
+    0003-foo.md, HEAD is a merge of both. The merge-base with main then already
+    holds main's file, so rule 1's base check skips the number and only the
+    in-tree duplicate reports it."""
+    repo = lab.repo("pg290-pr-merge")
+    adr(repo, 1, "x")
+    commit(lab, repo, "base")
+    lab.sh(repo, "checkout", "-q", "-b", "feature")
+    adr(repo, 3, "bar", "- Status: proposed")
+    commit(lab, repo, "branch proposes 0003")
+    lab.sh(repo, "checkout", "-q", "main")
+    adr(repo, 3, "foo", main_status)
+    commit(lab, repo, "main takes 0003")
+    lab.sh(repo, "checkout", "-q", "-b", "pr", "main")
+    lab.sh(repo, "merge", "-q", "--no-ff", "-m", "pr merge ref", "feature")
+    return repo
+
+
+def _scenario_pg290(lab: _Lab) -> None:
+    repo = _pr_merge_repo(lab, "- Status: accepted")
+    code, out, _ = lab.cli(repo, "--base", "main")
+    found = findings(out, 1)
+    lab.check("PG-290", "fail", code == 1 and len(found) == 1
+              and "0003-bar.md" in found[0] and "0003-foo.md" in found[0]
+              and not findings(out, 2),
+              "PR merge shape, a proposed 0003-bar.md beside main's accepted 0003-foo.md: "
+              "exit 1, one rule 1 line, no rule 2 line")
+
+    repo = _pr_merge_repo(lab, "- Status: proposed")
+    code, out, _ = lab.cli(repo, "--base", "main")
+    lab.check("PG-290", "fail", code == 1 and len(findings(out, 1)) == 1
+              and not findings(out, 2),
+              "PR merge shape, main's own 0003-foo.md reading proposed: exit 1, rule 1 owns "
+              "a number it reports, no rule 2 line")
+
+    # PG-273's collision fixture uses an accepted file; this is the only check
+    # proving rule 2 skips the against-the-base shape.
+    repo = _collision_repo(lab, "- Status: proposed")
+    code, out, _ = lab.cli(repo, "--base", "main")
+    found = findings(out, 1)
+    lab.check("PG-290", "fail", code == 1 and len(found) == 1 and "held on main" in found[0]
+              and not findings(out, 2),
+              "a proposed 0003-bar.md against main's 0003-foo.md, no merge: exit 1, one rule 1 "
+              "line, no rule 2 line")
+
+    # Pins D1: rule 2 matches the base by number, the identity rule 1 counts.
+    # Switching it to file-name matching would lose this finding.
+    repo = lab.repo("pg290-slug-rename")
+    adr(repo, 1, "foo", "- Status: proposed")
+    commit(lab, repo, "base")
+    lab.sh(repo, "checkout", "-q", "-b", "feature")
+    lab.sh(repo, "mv", "docs/adr/0001-foo.md", "docs/adr/0001-bar.md")
+    commit(lab, repo, "rename the slug")
+    code, out, _ = lab.cli(repo, "--base", "main")
+    found = findings(out, 2)
+    lab.check("PG-290", "fail", code == 1 and not findings(out, 1) and len(found) == 1
+              and found[0].startswith("docs/adr/0001-bar.md:"),
+              "slug rename 0001-foo.md -> 0001-bar.md of an ADR reading proposed on the base: "
+              "exit 1, one rule 2 line (rule 2 matches by number, as rule 1 does)")
 
 
 # R-05
@@ -1096,16 +1165,35 @@ def _scenario_cli(lab: _Lab) -> None:
               "a directory that is not a git repository: exit 2")
 
 
+# PG-291
+
+
+def _scenario_pg291(lab: _Lab) -> None:
+    # Safe from recursion only because `--self` is refused, never routed to
+    # self_test(): routing it would make this check start the self-test again.
+    repo = lab.repo("pg291")
+    adr(repo, 1, "x")
+    commit(lab, repo)
+    code, out, err = lab.cli(repo, "--self")
+    lab.check("PG-291", "fail", code == 2 and _no_traceback(err) and "rule 1:" not in out,
+              "--self, an abbreviation of --self-test: exit 2, the check does not run")
+    code, out, err = lab.cli(repo, "--verb")
+    lab.check("PG-291", "fail", code == 2 and _no_traceback(err) and "rule 1:" not in out,
+              "--verb, an abbreviation of --verbose: exit 2, no long option is matched by prefix")
+
+
 SCENARIOS = (
     _scenario_r01,
     _scenario_r02,
     _scenario_r03,
     _scenario_r04,
+    _scenario_pg290,
     _scenario_r05,
     _scenario_r06,
     _scenario_r07,
     _scenario_r08,
     _scenario_cli,
+    _scenario_pg291,
 )
 
 
@@ -1138,6 +1226,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=PROG,
         description="Check the three rules of docs/adr/README.md on the working tree.",
+        # A prefix such as `--self` must not run the real check and exit 0 as if a
+        # self-test passed (PG-291): long options match exactly or exit 2.
+        allow_abbrev=False,
     )
     parser.add_argument(
         "--base",

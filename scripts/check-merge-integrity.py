@@ -1291,6 +1291,30 @@ def _scenario_cli_range_unresolvable(base_dir, report):
            % (r.returncode, r.stderr[-200:]))
 
 
+def _scenario_cli_abbreviations(base_dir, report):
+    """PG-291: un prefisso di un'opzione lunga non è accettato. `--self` non deve
+    far girare il controllo vero ed uscire con 0 come un self-test passato.
+    refs/remotes/origin/main è necessario: senza, `--self` cadrebbe nel --range
+    di default ed uscirebbe con 2 per il motivo sbagliato ("range non
+    risolvibile"). Sicuro dalla ricorsione solo perché `--self` è rifiutato, mai
+    instradato a self_test()."""
+    repo = _init_repo(base_dir, "cli-abbreviations")
+    _write(repo, "a.txt", "a\n")
+    _commit_all(repo, "base")
+    _sh(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+    r = _run_cli(repo, "--self")
+    _check(report, r.returncode == 2 and "Traceback" not in r.stderr
+           and "nessun merge commit" not in r.stdout and "merge esaminati" not in r.stdout,
+           "PG-291: --self, abbreviazione di --self-test: exit 2, il controllo non gira "
+           "(trovato: %d)" % r.returncode)
+
+    r = _run_cli(repo, "--verb")
+    _check(report, r.returncode == 2 and "Traceback" not in r.stderr
+           and "nessun merge commit" not in r.stdout and "merge esaminati" not in r.stdout,
+           "PG-291: --verb, abbreviazione di --verbose: exit 2 (trovato: %d)" % r.returncode)
+
+
 def self_test():
     report = []
     tmp = tempfile.mkdtemp(prefix="pergamenum-merge-integrity-selftest-")
@@ -1320,6 +1344,7 @@ def self_test():
         _scenario_cli_mode_mutual_exclusion(tmp, report)
         _scenario_landing_cannot_verify(tmp, report)
         _scenario_cli_range_unresolvable(tmp, report)
+        _scenario_cli_abbreviations(tmp, report)
     finally:
         # Guardia: non cancellare mai nulla fuori dalla nostra directory temporanea.
         if tmp.startswith(tempfile.gettempdir()) and os.path.basename(tmp).startswith(
@@ -1340,7 +1365,10 @@ def build_parser():
     parser = argparse.ArgumentParser(
         description="Trova un merge che ha scartato in silenzio il contenuto di un genitore "
         "(ADR-0061), o un landing che riporta un path a una versione che main aveva già "
-        "superato (ADR-0062)."
+        "superato (ADR-0062).",
+        # A prefix such as `--self` must not run the real check and exit 0 as if a
+        # self-test passed (PG-291): long options match exactly or exit 2.
+        allow_abbrev=False,
     )
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--range", help="intervallo git, es. origin/main..HEAD (default)")
