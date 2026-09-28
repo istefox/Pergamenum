@@ -52,18 +52,10 @@ extension WorkspaceView {
         guard outcome.didMove else { return outcome.refusals + outcome.failures }
         // Landing somewhere only means something if a board is actually open - moving a
         // row that is merely selected in the tree moves no document on screen - and if it
-        // is still the one open before the `await`: navigated elsewhere meanwhile, the
-        // person is left where they went.
-        guard workspace.isShowingBoard, workspace.board == openBefore else { return [] }
-
-        // `outcome.moves`, not a separately-planned list: an item that failed on disk
-        // mid-batch is not in it, so the open board does not chase a path nothing wrote.
-        let landed = WorkspaceFolderNavigation.boardAfterMove(open: openBefore, moves: outcome.moves)
-        guard landed != openBefore else { return [] }
-        // Reopened rather than left alone: the document on screen was read from a file
-        // that has moved, and `open(board:)` is what re-reads it, refreshes the folder's
-        // contents and redraws the breadcrumb - so the board never flickers closed (R-13).
-        workspace.open(board: landed)
+        // is still the one open before the `await`; `followMove` asks both. `outcome.moves`,
+        // not a separately-planned list: an item that failed on disk mid-batch is not in it,
+        // so the open board does not chase a path nothing wrote.
+        workspace.followMove(from: openBefore, moves: outcome.moves)
         return []
     }
 
