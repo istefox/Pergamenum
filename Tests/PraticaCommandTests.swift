@@ -139,4 +139,43 @@ import Testing
             #expect(command.title == expected[command])
         }
     }
+
+    // MARK: - Item 16/R-22: `previewURL(for:state:)` gates «Anteprima allegato»
+
+    private func detail(attachments: [PraticaAttachmentRef], storeReferences: [MessageDocument.StoreReference] = []) -> PraticaRowDetail {
+        PraticaRowDetail(
+            notePath: "Rossi/email/msg.md", body: "", quotedHistory: nil, signature: nil,
+            attachments: attachments, storeReferences: storeReferences, isPending: false,
+            senderAddress: nil, linkedNote: nil
+        )
+    }
+
+    @MainActor
+    @Test func previewURLIsTheUsableFilesURL() {
+        let ref = PraticaAttachmentRef(name: "a.pdf", url: URL(fileURLWithPath: "/tmp/a.pdf"))
+        let url = PraticaCommandActions.previewURL(for: detail(attachments: [ref])) { _ in .usable }
+        #expect(url == ref.url)
+    }
+
+    @MainActor
+    @Test func previewURLIsNilWithNoAttachments() {
+        let url = PraticaCommandActions.previewURL(for: detail(attachments: [])) { _ in .usable }
+        #expect(url == nil)
+    }
+
+    @MainActor
+    @Test func previewURLIsNilWhenTheFileIsMissingOrUnusable() {
+        let ref = PraticaAttachmentRef(name: "a.pdf", url: URL(fileURLWithPath: "/tmp/a.pdf"))
+        #expect(PraticaCommandActions.previewURL(for: detail(attachments: [ref])) { _ in .missing } == nil)
+        #expect(PraticaCommandActions.previewURL(for: detail(attachments: [ref])) { _ in .unusable } == nil)
+    }
+
+    @MainActor
+    @Test func previewURLIsNilForAMessageWithOnlyStoreReferences() {
+        let reference = MessageDocument.StoreReference(name: "b.pdf", size: 1, storePath: "/store/b.pdf")
+        let url = PraticaCommandActions.previewURL(
+            for: detail(attachments: [], storeReferences: [reference])
+        ) { _ in .usable }
+        #expect(url == nil)
+    }
 }

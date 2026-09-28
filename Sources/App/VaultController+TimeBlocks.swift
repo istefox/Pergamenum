@@ -34,10 +34,10 @@ extension VaultController {
     @discardableResult
     func setTimeBlocks(_ blocks: [TimeBlock], on day: CalendarDate) async -> Bool {
         guard let session else { return false }
+        // The write catches every open copy of the daily note up itself (ADR-0067 §D1).
         let outcome = await session.setTimeBlocks(
             blocks, on: day, preferring: bufferText(for: dailyNotePath(for: day))
         )
-        if let result = outcome.result { syncOpenNote(with: result) }
         return outcome.succeeded
     }
 
@@ -58,7 +58,6 @@ extension VaultController {
             preferring: bufferText(for: dailyNotePath(for: day))
         ) else { return nil }
 
-        if let result = placed.write.result { syncOpenNote(with: result) }
         return placed.block
     }
 }
@@ -93,8 +92,8 @@ extension VaultController {
         guard let created = await session.eventNote(
             for: eventTitle, on: day, start: start, end: end, attendees: attendees
         ) else { return nil }
-        // The day's note gained a line, and it may be the one the editor is showing.
-        if let write = created.dailyNote { syncOpenNote(with: write) }
+        // The day's note may have gained a line; its write already caught any tab showing it
+        // up (ADR-0067 §D1).
         openNote(at: created.path)
         return created.path
     }

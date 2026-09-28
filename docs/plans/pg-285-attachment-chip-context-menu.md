@@ -11,7 +11,7 @@ entry in `TODO.md`. The acceptance criteria it came with are declared here as si
 - **R-02** A right-click anywhere else on the message row still opens the message menu unchanged.
   That covers the header text, the footer, the gaps and the note slot, and the menu still includes
   «Inserisci qui». (Corrected 2026-09-28: the expanded body's text view answers a right-click with
-  its own text menu, and did so before this change too; ADR-0066 §D4.) A left click, a double-click, the tooltip and the pending popover
+  its own text menu, and did so before this change too; ADR-0069 §D4.) A left click, a double-click, the tooltip and the pending popover
   on the chip behave as today.
 - **R-03** `UITests/AttachmentChipContextMenuUITests.swift` goes green through
   `scripts/uitests.sh`. It is not disabled, skipped or weakened. It may be strengthened.
@@ -28,7 +28,7 @@ below was checked against that tree.
 
 ## ADR outcome: new ADR
 
-**`docs/adr/0066-attachment-chip-menu-is-hosted-by-appkit.md`** (status: proposed).
+**`docs/adr/0069-attachment-chip-menu-is-hosted-by-appkit.md`** (status: proposed).
 
 On the three-part test, the decision is surprising without context and is a real trade-off (six
 alternatives were weighed). "Hard to reverse" alone is weak: the shim is local. Two overrides
@@ -159,7 +159,7 @@ end of this task: every test fails on an assertion, never on a build error (ADR-
        «Anteprima» hands the file's URL to the chip's `onQuickLook`. This is the test that fails
        if a SwiftUI `.contextMenu` replaces the AppKit one.
      - **If the harness does not:** write neither this group nor group 4. Record the measurement
-       in ADR-0066's implementation notes. Never write a test that asserts the harness cannot do
+       in ADR-0069's implementation notes. Never write a test that asserts the harness cannot do
        something (ADR-0053).
   4. **Hosted row, the R-02 guard.** Only if group 3's measurement is positive. Host a
      `PraticaMessageRow` whose `PraticaRowDetail` carries one attachment, one store reference and
@@ -222,7 +222,7 @@ File: `Sources/Features/Pratiche/AttachmentChip.swift`.
    `.overlay { AttachmentChipMenuHost(entries: { AttachmentChipModel.menuEntries(for: content, state: state) }, perform: run).accessibilityHidden(true) }`.
 4. **Add `.accessibilityActions`**, iterating the enabled `menuEntries`: one action per entry,
    titled by the entry, running `run(entry.command)` (ADR §D5).
-5. **Update the header comment.** It points to ADR-0066: why the menu is AppKit's, and why the
+5. **Update the header comment.** It points to ADR-0069: why the menu is AppKit's, and why the
    overlay must stay last in the chain.
 
 `PraticaTimelineView.swift` and `PraticaMessageRow.swift` are **not** edited (ADR §D4).
@@ -231,7 +231,7 @@ Green: Task 1's group 3, and group 4 if written.
 
 **Hand checks** (plan M1, M2, M3, M5) run on a Debug build before Task 4's GUI run. If M1 fails
 (the overlay does not win the right-click), or M2, M3 or M5 fails (a left click no longer reaches
-the chip), switch to ADR-0066 §D2's container fallback in this same task. Then note the switch in
+the chip), switch to ADR-0069 §D2's container fallback in this same task. Then note the switch in
 the ADR's implementation notes.
 
 ### Task 4: GUI test, strengthened, plus the R-02 witness (tester) (R-01, R-02, R-03)
@@ -258,7 +258,7 @@ launch flags are unchanged (`-disableCalendar`, `-disableUpdater`, `-mailStoreRo
 `-stateBase`).
 
 Update the header comment. PG-285: the menu was unreachable. It should say what each test
-witnesses and cite the ADR-0066 §D6 justification for the second GUI test.
+witnesses and cite the ADR-0069 §D6 justification for the second GUI test.
 
 No `XCTSkip`, no relaxed timeout, no removed assertion. An agent never runs this file; Task 7 runs
 it under a gate.
@@ -275,10 +275,10 @@ File: `scripts/uitests.sh`.
 
 ### Task 6: Records (coder, one step behind a human approval) (R-06)
 
-Files: `docs/adr/0066-attachment-chip-menu-is-hosted-by-appkit.md`, `CLAUDE.md`, `TODO.md`,
+Files: `docs/adr/0069-attachment-chip-menu-is-hosted-by-appkit.md`, `CLAUDE.md`, `TODO.md`,
 `ROADMAP.md`.
 
-- **ADR-0066 implementation notes:** which shape shipped (overlay or fallback), Task 1's
+- **ADR-0069 implementation notes:** which shape shipped (overlay or fallback), Task 1's
   measurement about hosting a representable offscreen, and any line drift. The status stays
   `proposed` until the merge, then flips to `accepted` with the PR and the merge hash
   (`docs/adr/README.md` §2).
@@ -286,8 +286,8 @@ Files: `docs/adr/0066-attachment-chip-menu-is-hosted-by-appkit.md`, `CLAUDE.md`,
   - a working-agreement bullet next to the `DisclosureGroup` one: "A view inside a `List` row that
     carries its own `.contextMenu` cannot have a working SwiftUI `.contextMenu` of its own: the
     row's menu takes every right-click in the row. Host its menu through AppKit, the
-    `AttachmentChipMenuHost` shape (ADR-0066)";
-  - a Chain decision index entry for ADR-0066.
+    `AttachmentChipMenuHost` shape (ADR-0069)";
+  - a Chain decision index entry for ADR-0069.
 - **`TODO.md`:**
   - close `PG-285` in the file's closing format, which cites the PR and the merge hash (at ship
     time);
@@ -297,7 +297,7 @@ Files: `docs/adr/0066-attachment-chip-menu-is-hosted-by-appkit.md`, `CLAUDE.md`,
     `WeekView`, `WorkspaceRow`, `WorkspaceBrowser+Rows`, `BoardContentLayer`, `TagBrowserView`,
     `DiaryEntryCard`, `NoteTreeRow`, `StarredPane`.
 - **`ROADMAP.md:830-832`** (item 6): note that the chip's catalogue is now one naming site
-  (ADR-0066 §D3). The wording question («Anteprima» against «Anteprima allegato») stays open
+  (ADR-0069 §D3). The wording question («Anteprima» against «Anteprima allegato») stays open
   there.
 
 ### Task 7: Verification and gates (orchestrator, then Stefano) (R-01, R-02, R-03)
@@ -326,7 +326,7 @@ Files: `docs/adr/0066-attachment-chip-menu-is-hosted-by-appkit.md`, `CLAUDE.md`,
    | M3 | Double-click a chip | The default app opens it |
    | M4 | Hover a chip | The tooltip appears |
    | M5 | Click a pending chip | The popover appears |
-   | M6 | Right-click the subject, the sender, a gap in the footer, the note slot | The message menu, «Inserisci qui» included (the expanded body shows its text view's own menu, pre-existing, ADR-0066 §D4) |
+   | M6 | Right-click the subject, the sender, a gap in the footer, the note slot | The message menu, «Inserisci qui» included (the expanded body shows its text view's own menu, pre-existing, ADR-0069 §D4) |
    | M7 | Ctrl+click a chip | The chip's menu |
    | M8 | VoiceOver on a chip | Its actions list the enabled commands |
    | M9 | Click the row outside the chips, then press Backspace | The row is still selected, and Backspace still offers «Escludi» |
@@ -384,7 +384,7 @@ and a run loop with every other suite.
 
 **HITL gates:**
 
-- **G1, before Task 2:** Stefano accepts ADR-0066's approach. In particular:
+- **G1, before Task 2:** Stefano accepts ADR-0069's approach. In particular:
   - the §D2 fallback, authorised in advance;
   - the §D5 accessibility actions, which Stefano may drop;
   - the §D6 second GUI test.

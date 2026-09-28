@@ -206,7 +206,7 @@ private func cascadeSession(_ vault: borrowing TemporaryVault) async -> VaultSes
     let move = try cascadeAsync(session.moveFile)
 
     await #expect(throws: FileOperationError.self) {
-        try await move("Source.md", "Destination.md")
+        try await move("Source.md", "Destination.md", false)
     }
 
     #expect(try String(contentsOf: vault.root.appending(path: "Source.md"), encoding: .utf8) == source)
@@ -233,10 +233,10 @@ private func cascadeSession(_ vault: borrowing TemporaryVault) async -> VaultSes
     // ADR-0046 §D5; ADR-0063 §D4.5).
     try await write(replacement, "Board.canvas", nil, false)
     #expect(try String(contentsOf: vault.root.appending(path: "Board.canvas"), encoding: .utf8) == replacement)
-    try await move("Board.canvas", "Archive/Board.canvas")
+    try await move("Board.canvas", "Archive/Board.canvas", false)
     #expect(!session.exists("Board.canvas"))
     #expect(try String(contentsOf: vault.root.appending(path: "Archive/Board.canvas"), encoding: .utf8) == replacement)
-    try await trash("Archive/Board.canvas")
+    try await trash("Archive/Board.canvas", true)
     #expect(!session.exists("Archive/Board.canvas"))
 
     let entries = session.journalOnDisk.entries()

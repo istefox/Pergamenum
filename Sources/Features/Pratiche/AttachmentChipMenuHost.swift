@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// ADR-0066 (the attachment chip's context menu is an AppKit menu, because the `List` row's own
+// ADR-0069 (the attachment chip's context menu is an AppKit menu, because the `List` row's own
 // `.contextMenu` takes every right-click inside the row), plan
 // docs/plans/pg-285-attachment-chip-context-menu.md - R-01, R-02, R-04.
 //
@@ -15,7 +15,7 @@ import SwiftUI
 // The shape of `EmbedResizeOverlay`'s `hitTest` (a pass-through overlay) and of
 // `FormattingTextView.rightMouseDown` (`menu(for:)` shown through `popUpContextMenu`).
 
-/// The chip's context click, answered by AppKit (ADR-0066 §D1, §D2).
+/// The chip's context click, answered by AppKit (ADR-0069 §D1, §D2).
 @MainActor
 final class AttachmentChipMenuView: NSView {
     /// Read when the menu opens, not when the chip renders: enablement reflects the file on
@@ -87,7 +87,7 @@ final class AttachmentChipMenuView: NSView {
     override func isAccessibilityElement() -> Bool { false }
 }
 
-/// Places `AttachmentChipMenuView` over the chip (ADR-0066 §D1). It must stay the chip's last
+/// Places `AttachmentChipMenuView` over the chip (ADR-0069 §D1). It must stay the chip's last
 /// modifier: see the header of `AttachmentChip.swift`.
 struct AttachmentChipMenuHost: NSViewRepresentable {
     let entries: () -> [AttachmentChipModel.MenuEntry]

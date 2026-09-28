@@ -36,7 +36,8 @@
 - Depends on: **ADR-0036** in full (this is a defect fix inside that feature), **ADR-0020** (a
   prefixed key is how this repo extends a closed schema — cited here only to say the precedent is
   *not* spent again), **ADR-0022 §D6** (a deletion in this repo goes to the Trash through
-  `FileManager.trashItem`, never `removeItem`), **ADR-0053** (protected interfaces are proposed by
+  `FileManager.trashItem`, never `removeItem`), **ADR-0053** (the retired concept-to-code workflow's
+  ADR, not a Pergamenum one: protected interfaces are proposed by
   the architect and created by the operator), **ADR-0155** (the retired concept-to-code workflow's
   ADR, not a Pergamenum one: on a compiled language the tester owns the declaration, the coder owns
   the body).

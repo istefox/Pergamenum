@@ -313,6 +313,12 @@ few lines; the chain exists so they ship together with tests in `scripts/mcp-smo
 
 ### Chain 4 — Pratiche sync integrity (P1/P2)
 
+**Absorbed** by ADR-0068 (`docs/adr/0068-pratiche-sync-integrity.md`), issue #571 (`PG-257`), in
+the same PR as ADR-0067, which ships Chain 16 item 1 with it. It closes all 19 items below. Item 2
+is widened to every raw note operation in `PraticaFileOperations` (move, copy, trash, restore, not
+only the two `try? text.write` calls). Items 9 and 18 are corrected inline against the code at
+`3fcde6f0`. The residuals the chain found and did not fix are in ADR-0068 §D20.
+
 Root cause: three writers in the Pratiche feature go around `VaultSession` or around the
 carry-over that keeps ADR-0049 links alive, and several ledger/outcome paths throw away state on
 their early exits. Extends ADR-0036/0040/0049/0052.
@@ -382,7 +388,10 @@ their early exits. Extends ADR-0036/0040/0049/0052.
    What: `running` is assigned only inside `runEngine`, after the `Task.detached` that copies the
    Envelope Index (plus a `Thread.sleep(2)` on a torn copy). `cancel()` finds `nil`.
    `PraticaSyncEngine.sync` never consults `Task.isCancelled`.
-   Fix: register the task before the detached hop; check cancellation in the engine loop.
+   Fix (corrected by ADR-0068 §D14): the engine already has its own cancellation flag, so the
+   gap is the publication phase only, before the engine exists. A run-level `stopRequested` flag
+   set by `cancel()` and checked once the preparation returns stops the run before `runEngine`;
+   no `Task.isCancelled` check is added.
 
 10. **Line-4 patch discards the §D23.1 bridge triple on its empty exits.** `confirmed`
     Where: `PraticaSyncEngine+Messages.swift:837, 846, 850` vs `:863-867`.
@@ -432,8 +441,11 @@ their early exits. Extends ADR-0036/0040/0049/0052.
     absolute path (trailing `/` never matches) and every later pratica write is refused.
     Fix: compute the relative path with `VaultBoundary`, refuse anything outside.
 
-18. **`AddToPraticaSheet.swift:184-202` uses `praticaPath` captured before the `await`**; `follow`/
-    `ignore` already had to fix this shape (`:319-327`). `suspected`.
+18. **`AddToPraticaSheet.swift:184-202` uses `praticaPath` captured before the `await`**. `suspected`.
+    Correction (ADR-0068 §D13): the correctly fixed twin is `PraticaCommandActions.follow`/`ignore`
+    (`PraticaCommandActions.swift:309-340`), not a line of `AddToPraticaSheet.swift`. The tail moves
+    into `PraticaCommandActions.addToPratica(messageID:praticaPath:)`, which re-reads its target
+    through `liveTarget(of:)` after the write.
 
 19. **Two consecutive `controller.report()` calls overwrite each other.** `confirmed`
     Where: `PraticaLiveSync+Run.swift:229-240`. Fix: join the sentences.
@@ -830,7 +842,7 @@ system) and ADR-0030.
 6. **Hand-kept context menu**: `AttachmentChip.swift:60-68` builds from
    `AttachmentChipModel.contextMenuTitles` instead of `MessageCommand`; already drifted
    («Anteprima» vs «Anteprima allegato»). `CardCommand.swift:1-9` states why this is forbidden.
-   *Update (PG-285, ADR-0066 §D3):* the hand-kept half is closed. The chip's menu is now an
+   *Update (PG-285, ADR-0069 §D3):* the hand-kept half is closed. The chip's menu is now an
    AppKit menu built from one catalogue, `AttachmentChipModel.Command`/`menuEntries(for:state:)`,
    the only place its four titles are named; the SwiftUI `.contextMenu` at those lines is gone.
    Still open: the wording, «Anteprima» on the chip against «Anteprima allegato» on the row.
@@ -956,7 +968,8 @@ verified as live and excluded.
 2. **Two ADRs numbered 0061** (`0061-external-deletion-reaches-the-tabs-and-the-diary.md`,
    `0061-merge-integrity-guard.md`), both listed in CLAUDE.md's index. Renumber one (0063) and
    fix every cross-reference.
-3. **18 source files cite "ADR-0155 §D1"**, which does not exist in `docs/adr/`.
+3. **18 source files cite "ADR-0155 §D1"**, an ADR of the retired concept-to-code workflow, which
+   does not exist in `docs/adr/`.
 4. **16 implemented and merged ADRs still read `Status: proposed`**: 0017, 0029, 0030, 0031,
    0032, 0033, 0034, 0036, 0040, 0042, 0044 ("decided, not implemented" — CI exists), 0050, 0056,
    0057, 0058, 0059.
@@ -983,7 +996,10 @@ verified as live and excluded.
 
 ### Chain 16 — New features (what would make the app more complete), in recommended order
 
-1. **Post-write notification from `VaultSession.write`** (extends PG-232/#512). Seven writers never
+1. **Post-write notification from `VaultSession.write`** (extends PG-232/#512). **Absorbed** by
+   ADR-0067 (`docs/adr/0067-one-door-onto-the-editor-after-a-landed-change.md`) / #571, pulled
+   forward into Chain 4's PR: the session announces every landed write, move and trash to one
+   subscriber, and `syncOpenNote`, `movedNote` and `trashedNote` are deleted. Seven writers never
    catch the editor up (note-rename link rewrite, `renameTag`, `undoJournalledWrites`,
    `moveOnBoard`, Pratiche `ensuringLocalID`, the composer's diary mirror, Plaud re-import).
    `syncOpenNote` is a step each caller can forget, which is the failure ADR-0041's working

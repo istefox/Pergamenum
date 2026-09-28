@@ -3,7 +3,7 @@ import SwiftUI
 import Testing
 @testable import Pergamenum
 
-// ADR-0066 (the attachment chip's context menu is an AppKit menu), plan
+// ADR-0069 (the attachment chip's context menu is an AppKit menu), plan
 // docs/plans/pg-285-attachment-chip-context-menu.md, Task 1 - R-01, R-02, R-04.
 //
 // Which menu a real right-click opens inside a real `List` stays a GUI test
@@ -95,7 +95,7 @@ import Testing
 
 /// The chip and its row built for real (`HostedView`), with the AppKit menu view looked up in the
 /// hosting view's own subviews. This is the check that goes red if a SwiftUI `.contextMenu`
-/// replaces the AppKit one (ADR-0066 §D6).
+/// replaces the AppKit one (ADR-0069 §D6).
 @MainActor
 @Suite(.serialized)
 struct AttachmentChipHostedMenuTests {

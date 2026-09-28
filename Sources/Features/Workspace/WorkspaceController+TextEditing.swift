@@ -12,6 +12,9 @@ extension WorkspaceController {
         guard case .text(let text) = document.node(id: nodeID)?.kind else { return }
         // No two editors of different kinds open at once, the same rule `beginCrop` follows.
         if croppingNodeID != nil { endCrop(confirm: true) }
+        // Mirrors `beginTitleEdit` below: renaming a link card then clicking into a sticky
+        // never committed the title draft, and the rename was lost (PG-255, #569 point 3).
+        if editingTitleNodeID != nil { endTitleEdit(commit: true) }
         select(nodeID: nodeID, adding: false)
         editingTextNodeID = nodeID
         editingTextDraft = text

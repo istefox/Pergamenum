@@ -35,22 +35,32 @@ struct PraticaFileOperations {
     /// The message's own `.md` and its `.eml` sidecar - see `exclude(_:detail:)` for
     /// why the attachments stay where they are.
     ///
+    /// The `.md` goes through the session's trash door, keeping its note id because this
+    /// trash is undoable to the same path (ADR-0068 §D1/§D3, ADR-0059 §D6); the `.eml` is
+    /// trashed raw, since the session has no byte door and the index does not hold it.
+    ///
     /// Not `private`: `PraticaCommandActions.swift`'s `exclude(_:detail:)` and
     /// `confirmRegeneration(_:)` are in a separate file, and both call this.
-    func trash(filesOf notePath: String) -> [TrashedFile] {
-        guard let root = vault.root else { return [] }
+    func trash(filesOf notePath: String) async -> [TrashedFile] {
+        guard let root = vault.root, let session = vault.session else { return [] }
         var trashed: [TrashedFile] = []
         for relativePath in Self.messageFilePaths(of: notePath) {
             let url = root.appending(path: relativePath, directoryHint: .notDirectory)
             guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { continue }
-            var landed: NSURL?
+            var inTrash: URL?
             do {
-                try FileManager.default.trashItem(at: url, resultingItemURL: &landed)
+                if Self.isNote(relativePath) {
+                    inTrash = try await session.trashFile(at: relativePath, forgettingNoteID: false)
+                } else {
+                    var landed: NSURL?
+                    try FileManager.default.trashItem(at: url, resultingItemURL: &landed)
+                    inTrash = landed as URL?
+                }
             } catch {
-                pratiche.report("«\(relativePath)» non è stato eliminato: \(error.localizedDescription)")
+                pratiche.report("«\(relativePath)» non è stato eliminato: \(Self.reason(error))")
                 continue
             }
-            guard let inTrash = landed as URL? else { continue }
+            guard let inTrash else { continue }
             trashed.append(TrashedFile(original: url, inTrash: inTrash, relativePath: relativePath))
         }
         return trashed
@@ -78,12 +88,20 @@ struct PraticaFileOperations {
     ///
     /// Not `private`: `PraticaCommandActions.swift`'s `exclude(_:detail:)` and
     /// `confirmRegeneration(_:)` are in a separate file, and both call this.
+    ///
+    /// The `.md` comes back through `session.restoreFromOutside(_:to:)`, which refuses a taken
+    /// path or a missing folder the same way (ADR-0068 §D1/§D3); the `.eml` through a raw
+    /// `moveItem`, which creates nothing either.
     @discardableResult
-    static func restore(_ files: [TrashedFile]) -> [TrashedFile] {
+    static func restore(_ files: [TrashedFile], session: VaultSession) async -> [TrashedFile] {
         var stillInTrash: [TrashedFile] = []
         for file in files {
             do {
-                try FileManager.default.moveItem(at: file.inTrash, to: file.original)
+                if isNote(file.relativePath) {
+                    try await session.restoreFromOutside(file.inTrash, to: file.relativePath)
+                } else {
+                    try FileManager.default.moveItem(at: file.inTrash, to: file.original)
+                }
             } catch {
                 stillInTrash.append(file)
             }
@@ -134,15 +152,20 @@ struct PraticaFileOperations {
         var attachmentRenames: [AttachmentRename] = []
     }
 
+    /// The `.md` moves through `session.moveFile`, which carries its note id and its star
+    /// along (ADR-0059 §D5) and lets an open tab follow it; the `.eml` moves raw. The sidecar
+    /// reference and every attachment rename are then composed into one text and written
+    /// once through the session (ADR-0068 §D1/§D4).
+    ///
     /// Not `private`: `PraticaCommandActions.swift`'s `move(_:detail:to:)` is in a
     /// separate file, and is this member's only caller.
     func moveFiles(
         of detail: PraticaRowDetail, to destination: String
-    ) -> (files: [MovedFile], rewrites: ContentRewrites) {
+    ) async -> (files: [MovedFile], rewrites: ContentRewrites) {
         let originalBaseName = (detail.notePath as NSString).lastPathComponent
             .replacingOccurrences(of: ".md", with: "")
         var rewrites = ContentRewrites(originalBaseName: originalBaseName, renamedBaseName: nil)
-        guard let root = vault.root else { return ([], rewrites) }
+        guard let root = vault.root, let session = vault.session else { return ([], rewrites) }
         let folder = root
             .appending(path: destination, directoryHint: .isDirectory)
             .appending(path: PraticheController.messagesDirectoryName, directoryHint: .isDirectory)
@@ -156,61 +179,92 @@ struct PraticaFileOperations {
         // `pergamenum-mail-original` pointing at a sidecar name that no longer exists.
         let baseName = Self.reservedBaseName(for: detail.notePath, in: folder)
         var moved: [MovedFile] = []
-        var movedMD: URL?
+        var movedMD: String?
         for relativePath in Self.messageFilePaths(of: detail.notePath) {
             let source = root.appending(path: relativePath, directoryHint: .notDirectory)
             guard FileManager.default.fileExists(atPath: source.path(percentEncoded: false)) else { continue }
             let ext = (relativePath as NSString).pathExtension
             let target = folder.appending(path: "\(baseName).\(ext)", directoryHint: .notDirectory)
             do {
-                try FileManager.default.moveItem(at: source, to: target)
+                if Self.isNote(relativePath) {
+                    let targetPath = VaultScanner.relativePath(of: target, under: root)
+                    try await session.moveFile(from: relativePath, to: targetPath)
+                    movedMD = targetPath
+                } else {
+                    try FileManager.default.moveItem(at: source, to: target)
+                }
                 moved.append(MovedFile(from: source, to: target))
-                if ext == "md" { movedMD = target }
             } catch {
-                pratiche.report("«\(relativePath)» non è stato spostato: \(error.localizedDescription)")
+                pratiche.report("«\(relativePath)» non è stato spostato: \(Self.reason(error))")
             }
         }
-        // A `FileManager` move, so no session door carries the note's id: this does, to the
-        // collision-renamed name too (ADR-0059 §D5).
-        if let movedMD {
-            vault.session?.relocateNoteIDs([
-                MovedNote(old: detail.notePath, new: VaultScanner.relativePath(of: movedMD, under: root)),
-            ])
-        }
-        if let movedMD, baseName != originalBaseName {
-            Self.updateOriginalReference(at: movedMD, to: "\(baseName).eml")
-            rewrites.renamedBaseName = baseName
-        }
+        if baseName != originalBaseName { rewrites.renamedBaseName = baseName }
         // The attachments are copied rather than moved for the same reason «Escludi»
         // leaves them alone: one file in `allegati/` can be several messages'
         // attachment, and this one is only taking its own copy with it.
-        rewrites.attachmentRenames = copyAttachments(of: detail, to: destination, patching: movedMD)
+        rewrites.attachmentRenames = copyAttachments(of: detail, to: destination)
+        if let movedMD {
+            await rewrite(
+                movedMD, session: session, landed: "spostato",
+                emlFileName: rewrites.renamedBaseName.map { "\($0).eml" },
+                renames: rewrites.attachmentRenames
+            )
+        }
         return (moved, rewrites)
     }
 
     /// The inverse of `moveFiles`'s `rewrites`: put the moved `.md`'s OWN text back
     /// to what it said before the transfer, once `moveBack` has put the files back
-    /// at their original paths. Order matters no more than `moveFiles`'s own two
-    /// independent rewrites did - the sidecar reference and each attachment link are
-    /// disjoint pieces of text.
+    /// at their original paths - one composed text, one guarded write (ADR-0068 §D4).
+    ///
+    /// Every inverted rename (`to → from`) goes into ONE call, never one call per rename:
+    /// with `q.pdf → q-2.pdf` and `q-2.pdf → q-3.pdf`, a second pass would catch the first
+    /// pass's own output and put both links on `[[q.pdf]]`.
     ///
     /// Not `private`: `PraticaCommandActions.swift`'s `move(_:detail:to:)` is in a
     /// separate file, and is this member's only caller.
-    func reverseContentRewrites(_ rewrites: ContentRewrites, notePath: String) {
-        guard let root = vault.root else { return }
-        let mdURL = root.appending(path: notePath, directoryHint: .notDirectory)
-        if rewrites.renamedBaseName != nil {
-            Self.updateOriginalReference(at: mdURL, to: "\(rewrites.originalBaseName).eml")
-        }
-        for rename in rewrites.attachmentRenames {
-            Self.renameAttachmentReference(in: mdURL, from: rename.to, to: rename.from)
+    func reverseContentRewrites(_ rewrites: ContentRewrites, notePath: String) async {
+        guard let session = vault.session else { return }
+        await rewrite(
+            notePath, session: session, landed: "rimesso al suo posto",
+            emlFileName: rewrites.renamedBaseName == nil ? nil : "\(rewrites.originalBaseName).eml",
+            renames: rewrites.attachmentRenames.map { AttachmentRename(from: $0.to, to: $0.from) }
+        )
+    }
+
+    /// Reads `notePath` through the session, applies the sidecar reference and the attachment
+    /// renames to that one text, and writes it once, `expecting:` the hash just read - only
+    /// when the text changed. A refusal or a failure is reported: the file operation landed,
+    /// its references were not updated (ADR-0068 §D1).
+    private func rewrite(
+        _ notePath: String, session: VaultSession, landed: String,
+        emlFileName: String?, renames: [AttachmentRename]
+    ) async {
+        guard emlFileName != nil || !renames.isEmpty else { return }
+        do {
+            let (record, text) = try session.read(notePath)
+            var updated = text
+            if let emlFileName { updated = Self.updatingOriginalReference(in: updated, to: emlFileName) }
+            updated = Self.applyingAttachmentRenames(renames, to: updated)
+            guard updated != text else { return }
+            try await session.write(updated, to: notePath, expecting: record.contentHash)
+        } catch {
+            pratiche.report(
+                "«\(notePath)» è stato \(landed), ma i suoi riferimenti non sono stati aggiornati: \(Self.reason(error))"
+            )
         }
     }
 
+    /// The `.eml` and the attachments are copied raw. The `.md` is never `copyItem`'d: its
+    /// text is read through the session, composed with the sidecar reference and the
+    /// attachment renames, and written as a new note with `expectingAbsent: true`, so a name
+    /// taken meanwhile is refused and reported rather than overwritten (ADR-0068 §D1). The
+    /// copy gets no note id until a link asks for one (ADR-0059 §D2).
+    ///
     /// Not `private`: `PraticaCommandActions.swift`'s `alsoAdd(_:detail:to:)` is in a
     /// separate file, and is this member's only caller.
-    func copyFiles(of detail: PraticaRowDetail, to destination: String) -> [URL] {
-        guard let root = vault.root else { return [] }
+    func copyFiles(of detail: PraticaRowDetail, to destination: String) async -> [URL] {
+        guard let root = vault.root, let session = vault.session else { return [] }
         let folder = root
             .appending(path: destination, directoryHint: .isDirectory)
             .appending(path: PraticheController.messagesDirectoryName, directoryHint: .isDirectory)
@@ -220,25 +274,42 @@ struct PraticaFileOperations {
             return []
         }
         let baseName = Self.reservedBaseName(for: detail.notePath, in: folder)
+        let originalBaseName = (detail.notePath as NSString).lastPathComponent.replacingOccurrences(of: ".md", with: "")
         var copied: [URL] = []
-        var copiedMD: URL?
+        var noteCopy: (source: String, target: URL)?
         for relativePath in Self.messageFilePaths(of: detail.notePath) {
             let source = root.appending(path: relativePath, directoryHint: .notDirectory)
             guard FileManager.default.fileExists(atPath: source.path(percentEncoded: false)) else { continue }
             let ext = (relativePath as NSString).pathExtension
             let target = folder.appending(path: "\(baseName).\(ext)", directoryHint: .notDirectory)
+            // The note waits for the attachment renames below, so its text is composed once.
+            if Self.isNote(relativePath) {
+                noteCopy = (relativePath, target)
+                continue
+            }
             do {
                 try FileManager.default.copyItem(at: source, to: target)
                 copied.append(target)
-                if ext == "md" { copiedMD = target }
             } catch {
                 pratiche.report("«\(relativePath)» non è stato copiato: \(error.localizedDescription)")
             }
         }
-        if let copiedMD, baseName != (detail.notePath as NSString).lastPathComponent.replacingOccurrences(of: ".md", with: "") {
-            Self.updateOriginalReference(at: copiedMD, to: "\(baseName).eml")
+        let renames = copyAttachments(of: detail, to: destination)
+        if let noteCopy {
+            do {
+                var text = try session.read(noteCopy.source).text
+                if baseName != originalBaseName {
+                    text = Self.updatingOriginalReference(in: text, to: "\(baseName).eml")
+                }
+                text = Self.applyingAttachmentRenames(renames, to: text)
+                try await session.write(
+                    text, to: VaultScanner.relativePath(of: noteCopy.target, under: root), expectingAbsent: true
+                )
+                copied.append(noteCopy.target)
+            } catch {
+                pratiche.report("«\(noteCopy.source)» non è stato copiato: \(Self.reason(error))")
+            }
         }
-        copyAttachments(of: detail, to: destination, patching: copiedMD)
         return copied
     }
 
@@ -267,44 +338,50 @@ struct PraticaFileOperations {
     /// `Dossier.merging` already applies to keys it does not own - re-rendering the
     /// whole document through `MessageDocument.render` would need the note's `tags`/
     /// `related`/`aliases` this function never had a reason to load.
-    private static func updateOriginalReference(at mdURL: URL, to emlFileName: String) {
-        guard var text = try? String(contentsOf: mdURL, encoding: .utf8) else { return }
+    ///
+    /// Pure, over text rather than a file, so a transfer composes it with the attachment
+    /// renames and writes the result once through the session (ADR-0068 §D1/§D4).
+    static func updatingOriginalReference(in text: String, to emlFileName: String) -> String {
         guard let range = text.range(
             of: #"pergamenum-mail-original:\s*"[^"]*""#, options: .regularExpression
-        ) else { return }
-        text.replaceSubrange(range, with: "pergamenum-mail-original: \"\(emlFileName)\"")
-        try? text.write(to: mdURL, atomically: true, encoding: .utf8)
+        ) else { return text }
+        var updated = text
+        updated.replaceSubrange(range, with: "pergamenum-mail-original: \"\(emlFileName)\"")
+        return updated
     }
 
     /// Returns the `from` URL of every file actually restored - the caller must not
     /// rewrite content back into a path whose restore failed, since that path may by
     /// now hold an unrelated note that merely reused the same name.
     ///
+    /// The `.md` goes back through `session.moveFile(…requiringExistingFolder: true)`, which
+    /// carries the id home with it (ADR-0059 §D5) and never recreates a pratica folder moved
+    /// or trashed since (ADR-0068 §D2, PG-168); the `.eml` through a raw `moveItem`, which
+    /// creates nothing either.
+    ///
     /// Not `private`: `PraticaCommandActions.swift`'s `move(_:detail:to:)` is in a
     /// separate file, and is this member's only caller.
     @discardableResult
-    func moveBack(_ files: [MovedFile]) -> Set<URL> {
+    func moveBack(_ files: [MovedFile]) async -> Set<URL> {
+        guard let root = vault.root, let session = vault.session else { return [] }
         var restored: Set<URL> = []
         for file in files {
             do {
-                try FileManager.default.moveItem(at: file.to, to: file.from)
+                if Self.isNote(file.from.lastPathComponent) {
+                    try await session.moveFile(
+                        from: VaultScanner.relativePath(of: file.to, under: root),
+                        to: VaultScanner.relativePath(of: file.from, under: root),
+                        requiringExistingFolder: true
+                    )
+                } else {
+                    try FileManager.default.moveItem(at: file.to, to: file.from)
+                }
                 restored.insert(file.from)
             } catch {
                 pratiche.report(
-                    "«\(file.to.lastPathComponent)» non è tornato al suo posto: \(error.localizedDescription)"
+                    "«\(file.to.lastPathComponent)» non è tornato al suo posto: \(Self.reason(error))"
                 )
             }
-        }
-        // The id goes home with the note, and only for a note actually restored, for the
-        // reason this method's doc comment gives (ADR-0059 §D5).
-        if let root = vault.root {
-            let homes = files.filter { restored.contains($0.from) && $0.from.pathExtension == "md" }
-            vault.session?.relocateNoteIDs(homes.map {
-                MovedNote(
-                    old: VaultScanner.relativePath(of: $0.to, under: root),
-                    new: VaultScanner.relativePath(of: $0.from, under: root)
-                )
-            })
         }
         return restored
     }
@@ -312,5 +389,22 @@ struct PraticaFileOperations {
     /// The message's `.md` and the `.eml` beside it (R-09's sidecar), vault-relative.
     private static func messageFilePaths(of notePath: String) -> [String] {
         [notePath, (notePath as NSString).deletingPathExtension + ".eml"]
+    }
+
+    /// Whether a message file is the note, which goes through the session, rather than the
+    /// `.eml` sidecar, which the session has no door for (ADR-0068 §D1).
+    private static func isNote(_ path: String) -> Bool {
+        (path as NSString).pathExtension == "md"
+    }
+
+    /// The reason part of a reported sentence: a session door's own Italian description, or
+    /// `FileManager`'s localized one. A session error is not a `LocalizedError`, so its
+    /// `localizedDescription` would be Foundation's generic text.
+    private static func reason(_ error: Error) -> String {
+        switch error {
+        case let error as FileOperationError: error.description
+        case let error as VaultWriteRefusal: error.description
+        default: error.localizedDescription
+        }
     }
 }

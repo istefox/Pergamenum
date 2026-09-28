@@ -55,6 +55,38 @@ enum AttachmentChipModel {
         return reference.url
     }
 
+    /// Item 11's «Apri» half (ADR-0068 §D10): what `openWithDefaultApp` does - open,
+    /// refuse with a file to reveal in the Finder, or nothing at all (`openURL == nil`).
+    enum OpenDecision: Equatable {
+        case open(URL)
+        case refuse(sentence: String, reveal: URL)
+        case unavailable
+    }
+
+    /// A copied `.file` opens only once it carries `com.apple.quarantine`: a missing
+    /// attribute is applied first (which also covers attachments placed before PG-123),
+    /// and a volume that refuses it refuses the open, offering the Finder instead. A
+    /// `.storeReference` opens as `openURL` says - a file in Mail's own store is never
+    /// written by this app (ADR-0036), and Mail stamps its own downloads.
+    static func openDecision(
+        for content: AttachmentChip.Content, state: (URL) -> FileState,
+        isQuarantined: (URL) -> Bool, applyQuarantine: (URL) throws -> Void
+    ) -> OpenDecision {
+        guard let url = openURL(for: content, state: state) else { return .unavailable }
+        guard case .file(let reference) = content, !isQuarantined(url) else { return .open(url) }
+        do {
+            try applyQuarantine(url)
+            return .open(url)
+        } catch {
+            return .refuse(sentence: quarantineRefusal(named: reference.name), reveal: url)
+        }
+    }
+
+    /// ADR-0068 §D10's refusal, exact wording.
+    static func quarantineRefusal(named name: String) -> String {
+        "Impossibile aprire «\(name)» in sicurezza: il volume non accetta l'attributo di quarantena."
+    }
+
     /// The default-app / double-click target (R-27): the local copy for a file
     /// reference when usable, or the file at `storePath` for a store reference when it
     /// is still there and usable. `nil` for `.pending` without ever probing anything
@@ -103,7 +135,7 @@ enum AttachmentChipModel {
     /// R-27's context menu, exact wording and order.
     static let contextMenuTitles = ["Mostra nel Finder", "Copia"]
 
-    /// The chip's own menu, one command per entry (ADR-0066 §D3): the one place its four
+    /// The chip's own menu, one command per entry (ADR-0069 §D3): the one place its four
     /// titles are named. «Mostra nel Finder» and «Copia» are `contextMenuTitles` by
     /// identity, the `CalendarDayCommand` pattern (ADR-0023 §D10).
     enum Command: String, CaseIterable, Sendable {
@@ -122,7 +154,7 @@ enum AttachmentChipModel {
         var identifier: String { "pratiche-attachment-command-\(rawValue)" }
     }
 
-    /// One entry of the chip's menu as it stands at the moment it opens (ADR-0066 §D3).
+    /// One entry of the chip's menu as it stands at the moment it opens (ADR-0069 §D3).
     struct MenuEntry: Equatable, Sendable {
         let command: Command
         let title: String

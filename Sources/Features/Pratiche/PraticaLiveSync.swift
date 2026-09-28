@@ -24,6 +24,7 @@ extension PraticheController {
         controller.commitRegeneration = { [coordinator] plan in
             await coordinator.commitRegeneration(plan)
         }
+        controller.releaseRegeneration = { [coordinator] in coordinator.releaseRegenerationEngine() }
         return controller
     }
 }
@@ -141,11 +142,53 @@ final class PraticaLiveSync {
     /// `dismissRegeneration` already ended.
     private var regenerationEngine: PraticaSyncEngine?
 
+    /// Whether a regeneration engine is currently held (item 12, ADR-0068 §D11): the
+    /// one thing `PraticheController.releaseRegeneration` needs to know without
+    /// reaching into a private property.
+    var holdsRegenerationEngine: Bool { regenerationEngine != nil }
+
+    /// Releases the held regeneration engine (item 12, ADR-0068 §D11), wired as
+    /// `controller.releaseRegeneration` in `PraticaLiveSync.live` and called by
+    /// `dismissRegeneration` («Annulla»/«Chiudi» on the sheet). The engine holds the
+    /// published store copy's reader, about 355 MB on this Mac, for as long as it lives.
+    /// An attempt still in flight finds `regenerationEngine` no longer its own and drops
+    /// its result, the round-3 identity rule.
+    func releaseRegenerationEngine() {
+        regenerationEngine = nil
+    }
+
+    /// «Annulla» reaching the preparation phase (item 9, ADR-0068 §D14): set by `cancel()`,
+    /// cleared by `runExclusive` on entry, and checked by it right after the preparation
+    /// returns - before any engine exists, which is the window `running` cannot cover.
+    ///
+    /// Not `private`: `PraticaLiveSync+Run.swift`'s `runExclusive` reads and clears it.
+    var stopRequested = false
+
+    /// The preparation step `runExclusive` awaits (item 9, ADR-0068 §D14), injectable so a
+    /// test can hold a run inside the phase behind a gate. Defaulted to the detached
+    /// `MailStorePreparation.prepare(...)`, which is never interrupted: it is a synchronous
+    /// copy with no checkpoint, and `MailStoreCopy` already discards its staging directory.
+    var preparationStep: @Sendable (
+        _ mailRoot: URL, _ stateDirectory: URL, _ dossier: Dossier,
+        _ ledgerEntries: [PraticaLedger.Entry], _ proposalWindow: ClosedRange<Date>
+    ) async -> MailStorePreparation.Preparation = { mailRoot, stateDirectory, dossier, ledgerEntries, proposalWindow in
+        await Task.detached(priority: .utility) {
+            MailStorePreparation.prepare(
+                mailRoot: mailRoot, stateDirectory: stateDirectory,
+                dossier: dossier, ledgerEntries: ledgerEntries, proposalWindow: proposalWindow
+            )
+        }.value
+    }
+
     /// «Annulla» (R-11). Cooperative and asynchronous by nature: the engine observes
     /// it at its next message boundary, so everything already written stays complete.
     /// Also drops every queued request: an interrupted sync should not be silently
     /// followed by the ones a burst of triggers left waiting behind it.
+    ///
+    /// Sets `stopRequested` first (ADR-0068 §D14): during the preparation phase no engine
+    /// exists yet, so the `guard let running` below has nothing to cancel.
     func cancel() {
+        stopRequested = true
         queue.cancelPending()
         queuedRequests.removeAll()
         guard let running else { return }
@@ -400,6 +443,12 @@ final class PraticaLiveSync {
             controller?.endRegeneration(plan.praticaFolder)
             return .failed
         }
+        // ADR-0068 §D11: the sheet closed on «Conferma» before this ran, so nothing else will
+        // release the engine. Released on every exit below, and only while it is still this
+        // attempt's own - an abandoned attempt never releases a newer one (round 3).
+        defer {
+            if regenerationEngine === engine { regenerationEngine = nil }
+        }
         // Round-4 review, §2: refused BEFORE anything is written - `plan.praticaFolder`
         // was captured when the preview ran, and the diff may have sat on screen long
         // enough for the folder to relocate before the person agreed to it.
@@ -457,6 +506,9 @@ final class PraticaLiveSync {
             return "Il messaggio non è stato letto correttamente da Mail."
         case .fileMissing:
             return "Il file della nota non è stato trovato nel vault."
+        case .lookupIndeterminate:
+            // ADR-0068 §D7: not «non più in Mail» - the search could not finish.
+            return "Il file del messaggio non è stato trovato nell'archivio di Mail questa volta: riprova più tardi."
         }
     }
 }

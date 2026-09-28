@@ -4,12 +4,12 @@ import Foundation
 // once it crossed `type_body_length`'s own warning line. Pure move, no behaviour change.
 
 extension PraticaFileOperations {
+    /// Copies the attachments and returns the renames a collision forced, patching no file:
+    /// the caller composes them into the note's one session write (ADR-0068 §D1/§D4).
+    ///
     /// Not `private`: `PraticaFileOperations.swift`'s `moveFiles(of:to:)` and
     /// `copyFiles(of:to:)` are in a separate file, and both call this.
-    @discardableResult
-    func copyAttachments(
-        of detail: PraticaRowDetail, to destination: String, patching mdURL: URL?
-    ) -> [AttachmentRename] {
+    func copyAttachments(of detail: PraticaRowDetail, to destination: String) -> [AttachmentRename] {
         guard !detail.attachments.isEmpty, let root = vault.root else { return [] }
         let folder = root
             .appending(path: destination, directoryHint: .isDirectory)
@@ -33,7 +33,7 @@ extension PraticaFileOperations {
         // Two references sharing the same name are the SAME attachment (its `.name` is
         // its `Identifiable` id) referenced twice, not two distinct files that happen to
         // collide - planning a second `AttachmentRename` for a name already planned
-        // would give `applyAttachmentRenames` a duplicate `from` key, which crashes
+        // would give `applyingAttachmentRenames` a duplicate `from` key, which crashes
         // `Dictionary(uniqueKeysWithValues:)` AFTER the first copy already landed on
         // disk (:530). One plan per name; the single rename it produces already covers
         // every `[[name]]` occurrence in the note.
@@ -71,32 +71,27 @@ extension PraticaFileOperations {
                 pratiche.report("«\(plan.attachment.name)» non è stato copiato: \(error.localizedDescription)")
             }
         }
-        Self.applyAttachmentRenames(renames, toFileAt: mdURL)
         return renames
     }
 
-    /// Renames every `[[oldName]]`/`![[oldName]]` reference to `attachment` inside the
-    /// transferred message to `newName` - the other half of resolving a same-name,
-    /// different-bytes collision (the file itself already got the new name).
+    /// Renames every `[[oldName]]`/`![[oldName]]` reference inside the transferred message -
+    /// the other half of resolving a same-name, different-bytes collision (the file itself
+    /// already got the new name). Pure, over text, so the caller writes the result once
+    /// through the session (ADR-0068 §D1/§D4).
     ///
-    /// Not `private`: `PraticaFileOperations.swift`'s `reverseContentRewrites(_:
-    /// notePath:)` is in a separate file, and is this member's only caller.
-    static func renameAttachmentReference(in mdURL: URL?, from oldName: String, to newName: String) {
-        applyAttachmentRenames([AttachmentRename(from: oldName, to: newName)], toFileAt: mdURL)
-    }
-
-    /// Every rename applied in ONE pass over the file's ORIGINAL text, keyed by the
-    /// bracketed name each `[[...]]` token actually names - never as a sequence of
-    /// `replacingOccurrences` calls. Two renames chained that way can cascade: once
-    /// `quote.pdf` becomes `quote-2.pdf`, a SEPARATE `quote-2.pdf -> quote-2-2.pdf`
-    /// pass would catch that just-rewritten text too, redirecting both attachments
-    /// onto the same final name. Reading the map against the untouched original
-    /// text is what keeps each token's rewrite independent of every other one's.
-    private static func applyAttachmentRenames(_ renames: [AttachmentRename], toFileAt mdURL: URL?) {
-        guard let mdURL, !renames.isEmpty, let text = try? String(contentsOf: mdURL, encoding: .utf8)
-        else { return }
+    /// Every rename applied in ONE pass over the ORIGINAL text, keyed by the bracketed name
+    /// each `[[...]]` token actually names - never as a sequence of `replacingOccurrences`
+    /// calls. Two renames chained that way can cascade: once `quote.pdf` becomes
+    /// `quote-2.pdf`, a SEPARATE `quote-2.pdf -> quote-2-2.pdf` pass would catch that
+    /// just-rewritten text too, redirecting both attachments onto the same final name.
+    ///
+    /// `uniqueKeysWithValues` is safe for both directions. Forward, the keys are attachment
+    /// names, planned once each by `copyAttachments`. Inverted (the undo, `to → from`), the
+    /// keys are the forward targets, and `copyAttachments` claims each target once.
+    static func applyingAttachmentRenames(_ renames: [AttachmentRename], to text: String) -> String {
+        guard !renames.isEmpty else { return text }
         let map = Dictionary(uniqueKeysWithValues: renames.map { ($0.from, $0.to) })
-        guard let regex = try? NSRegularExpression(pattern: #"\[\[([^\]]+)\]\]"#) else { return }
+        guard let regex = try? NSRegularExpression(pattern: #"\[\[([^\]]+)\]\]"#) else { return text }
         let nsText = text as NSString
         var result = ""
         var lastEnd = 0
@@ -107,8 +102,7 @@ extension PraticaFileOperations {
             lastEnd = match.range.location + match.range.length
         }
         result += nsText.substring(from: lastEnd)
-        guard result != text else { return }
-        try? result.write(to: mdURL, atomically: true, encoding: .utf8)
+        return result
     }
 
     /// `ImportNaming.uniqueFileName`'s own rule (`-2`, `-3`, ...), but checked

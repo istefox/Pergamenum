@@ -1,9 +1,14 @@
-# ADR-0066: The attachment chip's context menu is an AppKit menu, because the `List` row's own `.contextMenu` takes every right-click inside the row
+# ADR-0069: The attachment chip's context menu is an AppKit menu, because the `List` row's own `.contextMenu` takes every right-click inside the row
 
 - Status: **proposed**, 2026-09-26. The implementation is not on `main`. The status flips to
   `accepted` with the PR and the merge hash once it lands (`docs/adr/README.md` §2).
 - Date: 2026-09-26. Written before the implementation, against `1e09448e` (`main`, equal to
   `origin/main`, clean tree). Every line number below was read from that tree.
+- **Renumbering note (2026-09-28).** Written and committed as ADR-0066 (`edaf7db0`) on
+  `fix/pg-285-attachment-chip-context-menu`, before PR #598 landed a different ADR-0066 (Workspace
+  board lifecycle) on `main` and PR #609 took 0067 and 0068. Main's 0066 keeps its number; this
+  record moved to the next free one at the merge with `main` (`docs/adr/README.md` rule 1). Its
+  follow-up tickets moved with it: the audit is `PG-297`, the Backspace defect `PG-298`.
 - **Numbering note.** `0065` is the highest ADR on `origin/main`. `git log --all --oneline --
   'docs/adr/0066*'` is empty, and no local or remote-tracking branch has a `docs/adr/0066*` file
   (checked branch by branch). Check again immediately before the merge (`docs/adr/README.md` §1).
@@ -346,7 +351,7 @@ second rendering nobody can open with the pointer is exactly how PG-134's fix we
     this chain touched. Not caused by this change: reproduced by hand on the installed 1.9.2,
     which predates it, on a collapsed and on an expanded message alike. The key is answered with
     the system beep, so `PraticaTimelineView`'s `.onKeyPress(.delete)` returns `.ignored` and
-    `exclude` is never reached; «Escludi» from the row's menu works. Tracked as `PG-287`;
+    `exclude` is never reached; «Escludi» from the row's menu works. Tracked as `PG-298`;
   - not run: M3 (double-click opens the default app), M4 (tooltip), M8 (VoiceOver actions).
 - **Hosting a representable offscreen: measured positive.** `HostedView` (`Tests/HostedViewSupport.swift`)
   does instantiate an `NSViewRepresentable` offscreen. After `settle()`, an

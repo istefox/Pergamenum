@@ -347,14 +347,14 @@ private func praticaDetail(notePath: String) -> PraticaRowDetail {
     let pratiche = PraticheController(probe: { .granted }, performSync: { _, _ in })
     let ops = PraticaFileOperations(vault: controller, pratiche: pratiche)
 
-    let (moved, _) = ops.moveFiles(of: praticaDetail(notePath: "Rossi/email/msg.md"), to: "Bianchi")
+    let (moved, _) = await ops.moveFiles(of: praticaDetail(notePath: "Rossi/email/msg.md"), to: "Bianchi")
     let movedMD = try #require(moved.first { $0.to.pathExtension == "md" })
     let newRelativePath = VaultScanner.relativePath(of: movedMD.to, under: vault.root)
 
     let afterMove = try decodeRegistry(root: vault.root)
     #expect(rawPath(forID: seedID, in: afterMove) == newRelativePath)
 
-    ops.moveBack(moved)
+    await ops.moveBack(moved)
 
     let afterMoveBack = try decodeRegistry(root: vault.root)
     #expect(rawPath(forID: seedID, in: afterMoveBack) == "Rossi/email/msg.md")

@@ -30,7 +30,12 @@ enum DossierWriter {
             let (record, text) = try session.read(notePath)
             var document = NoteDocument.parse(text)
             let before = document
-            guard var dossier = Dossier.parse(document.frontmatter.foreignKeys) else { return nil }
+            // ADR-0068 §D12: a dossier that does not parse is a failure, not a success with
+            // nothing to do - «Escludi» records first and must not trash on this.
+            guard var dossier = Dossier.parse(document.frontmatter.foreignKeys) else {
+                let name = (praticaPath as NSString).lastPathComponent
+                return "La pratica «\(name)» non ha un dossier leggibile in pratica.md: nulla è stato modificato."
+            }
             change(&dossier)
             document.frontmatter.foreignKeys = Dossier.merging(dossier, into: document.frontmatter.foreignKeys)
             guard document != before else { return nil }

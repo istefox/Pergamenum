@@ -207,6 +207,9 @@ final class WorkspaceController {
         self.store = store
         self.thumbnails = thumbnails
         self.vault = vault
+        // The one reference `AppDelegate` can reach this `@State`-held board through, so
+        // «Esci» can flush its autosave debounce (#506). Weak on the vault's side.
+        vault?.openBoard = self
         // ADR-0024's "loaded, not chosen" becomes "not loaded at all" (ADR-0025 §D4):
         // there is no root board to read (§D1) and nothing ever needed the load - the
         // board area draws only while `isShowingBoard`, which is false until something
@@ -214,11 +217,8 @@ final class WorkspaceController {
         board = ""
         replaceDocument(.empty, origin: .none)
         current = nil
-        // A fold is transient and keyed by node id (ADR-0028 §D8): a table carried into
-        // another vault would name ids that mean nothing here, or - worse - ids that mean
-        // something else, since a canvas id is unique within its file and not across a vault.
-        // This line is what makes "a fold resets when the board is reopened" true.
-        foldedHeadings = [:]
+        // Nothing to commit: the previous store is gone (ADR-0066).
+        resetTransientEditing()
         // Carried over from the load that used to happen here, because they are about the
         // vault being left rather than the board being read: a step recorded on the
         // previous vault's board must not be undoable onto this one, and a dirty flag
@@ -228,61 +228,39 @@ final class WorkspaceController {
     }
 
     func detach() {
-        // A crop mode left open when the vault closes must not be silently lost
-        // (ADR-0020 Consequences: "the board gains its first modal state").
-        endCrop(confirm: true)
-        // `detach()` does not flush - it cancels. The flush that should have happened is
-        // `WorkspaceView`'s `.onDisappear`, which runs before this and now skips a
-        // conflicted board on purpose (ADR-0054 §D5), so this is the one path left where
-        // an unresolved conflict's edit still disappears - reported, not blocked: refusing
-        // to close over an autosave conflict would be worse than the loss it prevents.
+        // Settles then flushes, like every leave path (ADR-0066), and in that order while
+        // `current`/`store`/`board` still name the board being left. A crop mode left open
+        // when the vault closes must not be silently lost (ADR-0020 Consequences), and a
+        // crop confirmed a moment ago only scheduled the ~1 s autosave: cancelling that
+        // below without writing it first lost `pergamenum-crop` (PG-255, #569 point 1).
+        settleBoardEditing()
+        // A conflicted board is not flushed - it would attempt exactly the write already
+        // refused (ADR-0054 §D5) - so this is the one path left where an unresolved
+        // conflict's edit still disappears: reported, not blocked, since refusing to close
+        // over an autosave conflict would be worse than the loss it prevents.
         if case .conflicted = saveState {
             recordProblem(
                 "«\(board)» aveva un conflitto di salvataggio non risolto: le ultime modifiche non sono state salvate"
             )
+        } else {
+            flushPendingSave()
         }
         saveTask?.cancel()
         saveTask = nil
+        cancelPendingRefit()
+        if vault?.openBoard === self { vault?.openBoard = nil }
         store = nil
         thumbnails = nil
         vault = nil
         emailHeaders = [:]
-        // Same reason as in `attach` above, from the other side of the same crossing.
-        foldedHeadings = [:]
         replaceDocument(.empty, origin: .none)
         setContents(.init(subfolders: [], unplaced: []))
         board = ""
         current = nil
         selection = []
-    }
-
-    /// The breadcrumb of SPEC §6.1: the folders the user can jump to, ending in the open
-    /// board's own file name (ADR-0025 §D4, R-12).
-    ///
-    /// It walks the **selection**, not the loaded document (ADR-0024 §D8.1). `folder`
-    /// names the last board `load` read, and a `.folder(F)` selection loads nothing, so
-    /// deriving from `folder` would leave the previous board's trail on screen while the
-    /// tree showed `F`. With nothing selected the trail is `["Workspace"]` alone.
-    ///
-    /// A board is a file rather than the folder holding it, so it earns a segment of its
-    /// own: the two names can differ now (ADR-0025 §D3), and a folder holding two boards
-    /// would otherwise draw the same trail for both. That segment is the last one, which
-    /// `BoardTopBar` renders as a `Text` and not a link (ADR-0024 §D8.2), so it carries
-    /// its containing folder for want of anywhere else to go.
-    var breadcrumb: [BreadcrumbSegment] {
-        var trail: [BreadcrumbSegment] = [BreadcrumbSegment(title: "Workspace", folder: "")]
-        var accumulated = ""
-        for component in (current?.folder ?? "").split(separator: "/") {
-            accumulated = accumulated.isEmpty ? String(component) : "\(accumulated)/\(component)"
-            trail.append(BreadcrumbSegment(title: String(component), folder: accumulated))
-        }
-        if case .board(let path)? = current {
-            let fileName = (path as NSString).lastPathComponent
-            trail.append(BreadcrumbSegment(
-                title: (fileName as NSString).deletingPathExtension, folder: accumulated
-            ))
-        }
-        return trail
+        // The settle above records a history step for whatever it committed; a step on a
+        // board that is no longer open must not be undoable into the next one (ADR-0066).
+        history.reset()
     }
 
     /// Reads a board into this controller and says nothing about whether it is the
@@ -312,12 +290,13 @@ final class WorkspaceController {
             recordProblem("\(newBoard): \(error)")
             return false
         }
-        // Navigating away confirms an open crop the same way a click outside the card
-        // would (ADR-0020 D5), rather than silently discarding it.
-        endCrop(confirm: true)
-        // Leaving a board with pending edits must not lose them. Still aimed at the board
-        // being left, because `board` below has not moved yet.
+        // Navigating away confirms every open session - crop, text, title, ink - the same
+        // way a click outside the card would (ADR-0020 D5, ADR-0066), then writes what that
+        // owes. Both still aimed at the board being left, because `board` below has not
+        // moved yet.
+        settleBoardEditing()
         flushPendingSave()
+        cancelPendingRefit()
 
         board = newBoard
         replaceDocument(
@@ -368,19 +347,24 @@ final class WorkspaceController {
             return
         }
         // Selecting a board-less folder, or nothing at all, is still leaving whatever
-        // board was on screen, so it owes the same two obligations `load` discharges
-        // before replacing a document (ADR-0020 D5). What it does not do is load: no
-        // read happens here. But it must not go on showing what was already read
-        // (PG-062): `board`/`document`/`contents` are reset the same way `detach()`
-        // resets them, so `current == nil`/`.folder` and "a board's data is on screen"
-        // can never disagree.
-        endCrop(confirm: true)
+        // board was on screen, so it owes the same obligations `load` discharges before
+        // replacing a document (ADR-0020 D5, ADR-0066): settle, flush, drop the refit.
+        // What it does not do is load: no read happens here. But it must not go on
+        // showing what was already read (PG-062): `board`/`document`/`contents` are reset
+        // the same way `detach()` resets them, so `current == nil`/`.folder` and "a
+        // board's data is on screen" can never disagree.
+        settleBoardEditing()
         flushPendingSave()
+        cancelPendingRefit()
         selection = []
         current = new
         replaceDocument(.empty, origin: .none)
         setContents(.init(subfolders: [], unplaced: []))
         board = ""
+        // `load` resets the history for the board it opens; this branch opens none, so the
+        // step `settleBoardEditing()` just recorded would otherwise leave «Annulla» enabled
+        // with no board on screen, and an undo would schedule a save to `board == ""`.
+        history.reset()
     }
 
     /// A conflicted board is not left (ADR-0057 §D8, #498): `flushPendingSave()` skips it by
@@ -592,8 +576,9 @@ final class WorkspaceController {
     /// nothing of this reaches the `.canvas` file, so a fold is a way of looking at a card and
     /// never a property of it (principle 1), and reopening a board starts unfolded.
     ///
-    /// Cleared in `attach` and in `detach`, which is what actually enforces that reset - a
-    /// table keyed by node id would otherwise outlive the board whose node ids it names, and
+    /// Cleared by `resetTransientEditing()` (`WorkspaceController+Lifecycle.swift`), which
+    /// every door that leaves a board reaches (ADR-0066) - what actually enforces that reset:
+    /// a table keyed by node id would otherwise outlive the board whose node ids it names, and
     /// canvas ids are unique within a file rather than across a vault.
     var foldedHeadings: [String: Set<Int>] = [:]
     /// The grid the board draws, and the one cards snap to when snapping is on. One

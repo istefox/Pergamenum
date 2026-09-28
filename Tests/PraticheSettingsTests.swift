@@ -131,3 +131,54 @@ import Testing
         dateReceived: Date(timeIntervalSinceReferenceDate: 700_020_030)
     )
 }
+
+// MARK: - Item 17/R-23: `PraticheSettingsTab.relativeRootFolder`
+
+@Suite struct PraticheSettingsRelativeRootFolderTests {
+    private func makeRoot() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "settings-root-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    @Test func aStrictSubfolderGivesTheRelativePath() throws {
+        let root = try makeRoot()
+        let chosen = root.appending(path: "02 Clienti", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: chosen, withIntermediateDirectories: true)
+
+        #expect(PraticheSettingsTab.relativeRootFolder(chosen: chosen, vaultRoot: root) == "02 Clienti")
+    }
+
+    @Test func theRootItselfGivesNil() throws {
+        let root = try makeRoot()
+
+        #expect(PraticheSettingsTab.relativeRootFolder(chosen: root, vaultRoot: root) == nil)
+    }
+
+    @Test func anOutsideFolderGivesNil() throws {
+        let root = try makeRoot()
+        let outside = try makeRoot()
+
+        #expect(PraticheSettingsTab.relativeRootFolder(chosen: outside, vaultRoot: root) == nil)
+    }
+
+    /// `/var` vs `/private/var`: `FileManager.temporaryDirectory` resolves symlinks,
+    /// an `NSOpenPanel` choosing under a not-yet-resolved root would not - the case
+    /// this signature exists to let Task 6 fix through `VaultBoundary.contains`.
+    @Test func aSymlinkedTempRootGivesTheRightAnswer() throws {
+        let root = try makeRoot()
+        // The chosen folder spells the root through the other side of the `/var` ->
+        // `/private/var` symlink, whichever form `temporaryDirectory` handed out.
+        let rootPath = root.path(percentEncoded: false)
+        let otherForm = rootPath.hasPrefix("/private/var")
+            ? String(rootPath.dropFirst("/private".count))
+            : "/private" + rootPath
+        let chosen = URL(fileURLWithPath: otherForm, isDirectory: true)
+            .appending(path: "02 Clienti", directoryHint: .isDirectory)
+        // The folder panel only ever hands back a folder that exists.
+        try FileManager.default.createDirectory(at: chosen, withIntermediateDirectories: true)
+
+        #expect(PraticheSettingsTab.relativeRootFolder(chosen: chosen, vaultRoot: root) == "02 Clienti")
+    }
+}

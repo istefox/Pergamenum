@@ -668,7 +668,7 @@ migration twice.
 - The UI does not change. The acceptance criterion for the whole chain is that a person cannot
   tell, except that the editor stops hitching on large saves.
 
-## Protected-interface proposal (ADR-0053 — proposed, not written)
+## Protected-interface proposal (ADR-0053 of the retired concept-to-code workflow — proposed, not written)
 
 ```
 Sources/Core/Vault/VaultBoundary.swift:VaultBoundary.url(for:) — the vault's only path-resolution door; a signature change that removes `throws`, or a behaviour change that resolves symlinks per call instead of once at construction, silently reopens the path-traversal gap ADR-0041 §D1 closed and reintroduces the symlinked-vault regression recorded at NoteStore.swift:48-55

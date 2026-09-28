@@ -33,7 +33,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// it ends, and `settle()` awaits a write that ignores cancellation, so a group would
     /// wait out a hung write and the cap would cap nothing. Whichever finishes first
     /// replies; `replyToTerminate()` makes the second a no-op.
+    ///
+    /// The open Workspace board goes first, and synchronously (#506, ADR-0066): its save is
+    /// not async, so an edit inside its autosave debounce is written before anything here
+    /// decides whether to wait.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        vault?.openBoard?.settleForTermination()
         guard let diary, !diary.isSettled else { return .terminateNow }
         owesTerminateReply = true
         Task { [weak self] in

@@ -28,12 +28,47 @@ trustworthy. Each one answers a defect found on 2026-09-26 (issue #581).
 
 ## 3. A citation says where the ADR lives
 
-- A number this directory holds always means the file here.
+- A number this directory holds means the file here, unless the citation carries another origin:
+  a citation qualified with an origin from the table below means that origin even when the number
+  exists here.
 - An ADR this directory does not hold is cited with its origin in the same sentence, for example
   ADR-0155 of the retired concept-to-code workflow, not a Pergamenum ADR.
+- The rule applies to the first citation of a number in each file. Later citations of the same
+  number in that file may stay bare; they mean what the first one said.
+- A number this directory holds, cited bare but meant in another series, cannot be told apart from
+  a correct citation by its text, so no command detects it: qualify it when you write it. Five ADRs
+  and one source comment cited the retired concept-to-code workflow's ADR-0053 that way until
+  PG-273, while this directory's 0053 is a different record.
+
+## External ADR series
+
+The origins a citation may name, and the phrase that qualifies it. A citation is qualified when its
+sentence contains a phrase of the second column, whatever the case and the line wraps. A new origin
+is added here and nowhere else: `scripts/check-adr-references.py` reads this table.
+
+| Origin | Qualifying phrase |
+|---|---|
+| The retired concept-to-code workflow (vibe-coding harness, pre 2026-09-14) | concept-to-code workflow |
+
+## Checking the rules
+
+`scripts/check-adr-references.py` checks the three rules on the working tree, and against
+`origin/main` (or `--base <ref>`) when that resolves, so `git fetch origin` first. Exit 0 is clean,
+1 a finding, 2 a check it could not run: this table unreadable, not a git repository, bad usage.
+`--self-test` runs its own scenarios in throwaway repositories. `.github/workflows/adr-references.yml`
+runs both on every pull request and every push to `main`, as an advisory check, never a required
+one. The check is not in the pre-push hook, because a comment citation should not stop a push.
+
+It checks less of rule 2 than the rule says: a status line in the head with one of the words
+`accepted`, `proposed`, `superseded`, `deprecated` or `rejected`; no ADR on the base that reads
+`proposed`; and, as a warning only, a commit hash in a status line that is not on the base's
+first-parent line. The PR, hash and date that `accepted` should name are not checked. A record that
+reaches `main` ahead of its implementation is reported while it reads `proposed` there.
 
 ## Renumbering register
 
 | Old | New | Date | Reason |
 |---|---|---|---|
 | 0061 (`0061-external-deletion-reaches-the-tabs-and-the-diary.md`) | 0064 | 2026-09-26 | Two ADRs took 0061 on 2026-09-25. The merge-integrity guard (PR #529) landed first and keeps 0061, which `scripts/check-merge-integrity.py`, the pre-push hook, `merge-integrity.yml` and ADR-0062 cite. The external-deletion record (PR #530) moved to the next free number; 0063 was already ADR-0063. Issue #581. |
+| 0066 (`0066-one-door-onto-the-editor-after-a-landed-change.md`), 0067 (`0067-pratiche-sync-integrity.md`) | 0067, 0068 | 2026-09-27 | Both written for `PG-257`/#571 and committed on `kepler/task-fb693389` (`34346cda`) before PR #598 landed a different ADR-0066 (Workspace board lifecycle) on `main`. Main's 0066 keeps its number; the two unmerged records moved to the next free numbers before their own merge. |
+| 0066 (`0066-attachment-chip-menu-is-hosted-by-appkit.md`) | 0069 | 2026-09-28 | Written for `PG-285` and committed on `fix/pg-285-attachment-chip-context-menu` (`edaf7db0`) from `1e09448e`, before PR #598 landed the Workspace board lifecycle ADR-0066 and PR #609 landed 0067 and 0068 on `main`. Main's three keep their numbers; this record moved to the next free one at the merge with `main`, before its own PR. |

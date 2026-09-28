@@ -30,17 +30,24 @@ actor PraticaSyncEngine {
     /// patches below (`repairCorruptAttachments`, `commit`'s row-4 branch) read before
     /// composing their patch, or `nil` for a full render composed from Mail rather than
     /// from the file on disk (§D8 excludes that case by name).
+    /// `quarantine` (ADR-0068 §D10): defaulted to the real `AttachmentQuarantine
+    /// .apply(to:)`, so every existing call site keeps compiling and behaving
+    /// unchanged. `commit` stamps every attachment and `.eml` through it, and records
+    /// a failure as a problem sentence rather than aborting the run - which is what
+    /// lets a test inject a throwing quarantine.
     init(
         mailStoreURL: URL,
         vaultRoot: URL,
         write: @escaping @Sendable @MainActor (
             _ text: String, _ relativePath: String, _ expecting: String?
-        ) async throws -> Void
+        ) async throws -> Void,
+        quarantine: @escaping @Sendable (URL) throws -> Void = { try AttachmentQuarantine.apply(to: $0) }
     ) {
         self.mailStoreURL = mailStoreURL
         self.vaultRoot = vaultRoot
         self.boundary = VaultBoundary(root: vaultRoot)
         self.write = write
+        self.quarantine = quarantine
     }
 
     /// Back-compat overload for a caller with no "before" to compare, or one that
@@ -52,15 +59,21 @@ actor PraticaSyncEngine {
     init(
         mailStoreURL: URL,
         vaultRoot: URL,
-        write: @escaping @Sendable @MainActor (_ text: String, _ relativePath: String) async throws -> Void
+        write: @escaping @Sendable @MainActor (_ text: String, _ relativePath: String) async throws -> Void,
+        quarantine: @escaping @Sendable (URL) throws -> Void = { try AttachmentQuarantine.apply(to: $0) }
     ) {
-        self.init(mailStoreURL: mailStoreURL, vaultRoot: vaultRoot) { text, relativePath, _ in
-            try await write(text, relativePath)
-        }
+        self.init(
+            mailStoreURL: mailStoreURL, vaultRoot: vaultRoot,
+            write: { text, relativePath, _ in try await write(text, relativePath) },
+            quarantine: quarantine
+        )
     }
 
     private let mailStoreURL: URL
     private let vaultRoot: URL
+    /// Not `private`: `PraticaSyncEngine+Messages.swift`'s `stampQuarantine(on:)` is an
+    /// extension of this actor in a separate file, and calls it.
+    let quarantine: @Sendable (URL) throws -> Void
     /// The only way this engine turns `request.praticaFolder` - a folder name that
     /// reaches it from a caller, not from a walk - into a directory it reads or writes
     /// (ADR-0041 §D2).
@@ -139,7 +152,9 @@ actor PraticaSyncEngine {
 
         // SPEC "Sync algorithm", the two passes after the loop.
         try await regeneratePending(request: request, reader: reader, folder: &folder, outcome: &outcome)
-        outcome.noLongerInMail = noLongerInMail(request: request, reader: reader)
+        let presence = noLongerInMail(request: request, reader: reader)
+        outcome.noLongerInMail = presence.gone
+        outcome.seenInMail = presence.seen
         return outcome
     }
 
@@ -203,11 +218,37 @@ actor PraticaSyncEngine {
     /// precisely so that a caller which hands over a candidate list with the imported
     /// messages already subtracted does not turn every message it ever imported into
     /// «non più in Mail».
-    private func noLongerInMail(request: SyncRequest, reader: MailStoreReader) -> [String] {
+    ///
+    /// ADR-0068 §D6: an id the index cannot resolve by `Message-ID` falls back to the
+    /// ledger's recorded ROWID, the fallback `regeneratePending` already uses. Only an
+    /// id neither answers for is gone. Every other id on disk is `seen` - surfaced as a
+    /// candidate or found by either lookup - which is what lets `recordSyncOutcome`
+    /// clear a marker an earlier run left on a message that is still there.
+    private func noLongerInMail(
+        request: SyncRequest, reader: MailStoreReader
+    ) -> (gone: [String], seen: [String]) {
         let surfaced = Set(request.candidates.compactMap(\.messageID))
-        return request.onDisk.subtracting(surfaced).sorted().filter { messageID in
-            if case .found = reader.row(forMessageID: messageID) { return false }
-            return true
+        let rowIDByMessageID = Dictionary(
+            request.ledgerEntries.map { ($0.messageID, $0.rowID) }, uniquingKeysWith: { first, _ in first }
+        )
+        var gone: [String] = []
+        var seen: [String] = []
+        for messageID in request.onDisk.sorted() {
+            if surfaced.contains(messageID) {
+                seen.append(messageID)
+                continue
+            }
+            switch reader.row(forMessageID: messageID) {
+            case .found:
+                seen.append(messageID)
+            case .notResolvableFromIndex:
+                if let rowID = rowIDByMessageID[messageID], reader.row(rowID: rowID) != nil {
+                    seen.append(messageID)
+                } else {
+                    gone.append(messageID)
+                }
+            }
         }
+        return (gone, seen)
     }
 }

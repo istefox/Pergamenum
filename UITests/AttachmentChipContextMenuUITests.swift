@@ -3,12 +3,12 @@ import XCTest
 // PG-134/#234 added this class to drive the chip's real rendered menu. PG-285 found that
 // menu had never been reachable: the chip lives inside a timeline `List` row whose own
 // `.contextMenu` took every right-click in the row, so a right-click on the chip opened
-// the message menu instead. ADR-0066 moved the chip's menu to AppKit
+// the message menu instead. ADR-0069 moved the chip's menu to AppKit
 // (`AttachmentChipMenuHost`). The catalogue, the menu's items and the menu view's presence
 // on each chip are pinned in-process (`Tests/AttachmentChipTests.swift`,
 // `Tests/AttachmentChipMenuTests.swift`); which menu a real right-click opens inside a live
 // `List` is the one fact only this class observes, and it has two halves, one per test
-// (ADR-0066 §D6 justifies both GUI tests):
+// (ADR-0069 §D6 justifies both GUI tests):
 //
 // - `testAttachmentChipContextMenuShowsBothCatalogueEntries`: a right-click on the chip
 //   opens the chip's menu, all four entries, and not the message menu (R-01).
@@ -19,7 +19,7 @@ import XCTest
 //   still opens its explanatory popover, which is the one thing the plan's own residual
 //   risk (F11: "no GUI test clicks a chip") left unwitnessed - the overlay's `hitTest`
 //   must let a plain left click straight through to the chip underneath. Justified as
-//   the third GUI test for this feature (ADR-0066 §D6): it is the only mechanism this
+//   the third GUI test for this feature (ADR-0069 §D6): it is the only mechanism this
 //   chain could not verify in advance, and the two catalogue tests above say nothing
 //   about it.
 //
@@ -103,7 +103,7 @@ final class AttachmentChipContextMenuUITests: XCTestCase {
         app.typeKey(.escape, modifierFlags: [])
     }
 
-    /// R-02 (ADR-0066 §D6): the chip's menu stays on the chip. A right-click on the subject,
+    /// R-02 (ADR-0069 §D6): the chip's menu stays on the chip. A right-click on the subject,
     /// in the same header line as the chip, still opens the message menu. Pinned to the
     /// usable message's own subject, same reason as the test above.
     func testRightClickBesideTheChipStillOpensTheMessageMenu() throws {
@@ -122,7 +122,7 @@ final class AttachmentChipContextMenuUITests: XCTestCase {
         app.typeKey(.escape, modifierFlags: [])
     }
 
-    /// M5 (plan Task 7's hand-check table; ADR-0066 §D6 justifies this as the feature's
+    /// M5 (plan Task 7's hand-check table; ADR-0069 §D6 justifies this as the feature's
     /// third GUI test): a left click on the overlay must still reach the chip
     /// underneath, or the pending popover (`AttachmentChip.isShowingPendingExplanation`)
     /// would never open again once the AppKit overlay sat over every chip. This is the

@@ -92,6 +92,30 @@ final class VaultSession {
     /// parse, a vocabulary that could not be loaded.
     private(set) var problems: [String] = []
 
+    /// ADR-0067 §D1: the one subscriber told about every change this session lands -
+    /// `VaultController.landed(_:)`, installed and cleared by `VaultController.open(_:)`/
+    /// `close()` so it only ever follows the controller's own session (§D4). `perg` and
+    /// `pergamenum-mcp` never install one, so `announce(_:)` is a nil-check there.
+    ///
+    /// `@ObservationIgnored`: this is a delivery channel, not state a view reads.
+    @ObservationIgnored var landedChangeSubscriber: (@MainActor (LandedChange) -> Void)?
+
+    /// ADR-0067 §D6: a per-path counter, bumped by `announce(_:)` for every path a landed
+    /// change touches. Not persisted, and not an ordering authority - `VaultDisk`'s own
+    /// per-path sequence (ADR-0043 §D1) stays that. This exists for one reader, the
+    /// Pratiche inspector, so it is observed rather than `@ObservationIgnored`: a view
+    /// keying its reload on a path's generation has to see it change.
+    private(set) var landedGenerations: [String: UInt64] = [:]
+
+    /// The one door onto `landedGenerations`, called only by `announce(_:)`
+    /// (`VaultSession+LandedChanges.swift`). Declared here, beside the property, because Swift
+    /// confines a `private(set)` setter to the declaring file (ADR-0052 §D2's same trade).
+    func advanceLandedGenerations(_ paths: [String]) {
+        for path in paths {
+            landedGenerations[path, default: 0] &+= 1
+        }
+    }
+
     /// Hashes this session itself wrote, keyed by path, tagged with the sequence the
     /// write landed at (ADR-0043 §D6/§D10, Task 7).
     ///
@@ -578,12 +602,19 @@ extension VaultSession {
     /// inside the actor (`VaultDisk.write`) on existence rather than readability. Passing it
     /// with a non-nil `expecting` is a contradiction: asserted against in Debug, and
     /// `expecting` wins in Release. The refusal goes through the same `catch` below.
+    ///
+    /// **ADR-0067 §D2:** `origin`, when not nil, is the id of the editor tab whose own save
+    /// this is. The session never interprets it - it only echoes the value back in the
+    /// `.written` change `announce(_:)` hands to `landedChangeSubscriber`, so the controller
+    /// can tell its own writer apart from every other tab showing the same path. `nil` (the
+    /// default) is every writer that is not a tab's save.
     @discardableResult
     func write(
         _ text: String, to relativePath: String,
         expecting: String? = nil,
         expectingAbsent: Bool = false,
-        requiringExistingFolder: Bool = false
+        requiringExistingFolder: Bool = false,
+        origin: UUID? = nil
     ) async throws -> WriteResult {
         assert(!(expecting != nil && expectingAbsent), "expecting and expectingAbsent contradict each other")
         // ADR-0007 §D6's first guardrail: a dry run must never reach the actor.
@@ -632,7 +663,11 @@ extension VaultSession {
             // The write happened; the net or the hash agreement did not. Say so rather
             // than pretending otherwise.
             if let problem = outcome.journalProblem { recordProblem(problem) }
-            return WriteResult(path: relativePath, text: text)
+            let result = WriteResult(path: relativePath, text: text)
+            // ADR-0067 §D1: the change is real - index applied, self-write reconciled - so
+            // every open copy of the note hears of it before this door returns.
+            announce(.written(result, origin: origin))
+            return result
         } catch {
             // The write never reached disk (most often `WriteRefusal`): the provisional
             // hash never became true and must not linger - nothing will ever match it.

@@ -222,4 +222,68 @@ import Testing
         #expect(secondOutcome.bridge.count == 1, "the regeneration's own run records exactly its own triple")
         #expect(secondOutcome.bridge.first?.rowID == 99, "the stale ROWID 1 is what this regeneration corrects")
     }
+
+    // MARK: R-07/§D5, item 1 - a linked note survives a pending body's arrival
+
+    /// A `pergamenum-mail-note` link added by hand to a `pending` placeholder must
+    /// survive the full render `commit` performs once the real body arrives - today
+    /// `commit`'s full-render branch composes `prepared.noteText` from Mail alone with
+    /// no carry-over (`PraticaSyncEngine+Messages.swift`'s `commit`, row 1-3), so this
+    /// is red until Task 5 applies `carryingOverLinkedNote` there too, as
+    /// `regenerationPreview` already does at `:754`.
+    @Test func aLinkedNoteSurvivesAPendingBodyArriving() async throws {
+        let fixture = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Richiesta offerta (corpo in arrivo)", senderAddress: "m.rossi@rossi-spa.it",
+                mailboxRowID: 1, conversationID: 112_409,
+                dateSent: Date(timeIntervalSince1970: 2000), dateReceived: Date(timeIntervalSince1970: 2000),
+                emlxBody: EmailFixtureCorpus.headersOnlyMessageRFC822
+                    .replacingOccurrences(of: "abc123@rossi-spa.it", with: "linked456@rossi-spa.it")
+            )]
+        )
+        let vaultRoot = try Fixtures.makeVaultRoot()
+        let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
+        let request = PraticaSyncEngine.SyncRequest(
+            praticaFolder: Fixtures.praticaFolder, dossier: Fixtures.sampleDossier(),
+            candidates: [Fixtures.row(rowID: 1, messageID: "<linked456@rossi-spa.it>")],
+            onDisk: [], settings: .default
+        )
+        _ = try await engine.sync(request)
+
+        let emailDir = vaultRoot.appending(path: "\(Fixtures.praticaFolder)/email", directoryHint: .isDirectory)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: emailDir.path(percentEncoded: false))) ?? []
+        let fileName = try #require(names.first { $0.hasSuffix(".md") })
+        let noteURL = emailDir.appending(path: fileName, directoryHint: .notDirectory)
+        let placeholderText = try String(contentsOf: noteURL, encoding: .utf8)
+        // Simulates "Collega" (ADR-0049): a person links a note to this pending message
+        // by hand, before its body has arrived.
+        let linked = try #require(MessageFrontmatterPatch.applying(
+            line: MessageDocument.noteLine(for: "[[Nota collegata]]"), forKey: MessageDocument.noteKey,
+            before: [MessageDocument.storeReferencesKey, "pergamenum-mail-body"], to: placeholderText
+        ))
+        try linked.write(to: noteURL, atomically: true, encoding: .utf8)
+
+        // The body has since arrived: the same ROWID's `.emlx` is rewritten in place.
+        _ = try MailStoreFixture.build(
+            mailboxes: [.init(rowID: 1, url: "ews://acct1/INBOX")],
+            messages: [.init(
+                rowID: 1, subject: "Richiesta offerta", senderAddress: "m.rossi@rossi-spa.it",
+                mailboxRowID: 1, conversationID: 112_409,
+                dateSent: Date(timeIntervalSince1970: 2000), dateReceived: Date(timeIntervalSince1970: 2000),
+                emlxBody: EmailFixtureCorpus.completeMessageRFC822
+                    .replacingOccurrences(of: "abc123@rossi-spa.it", with: "linked456@rossi-spa.it")
+            )],
+            in: fixture.root
+        )
+        _ = try await engine.sync(request)
+
+        let afterText = try String(contentsOf: noteURL, encoding: .utf8)
+        let afterDocument = MessageDocument.parse(afterText)
+        #expect(afterDocument?.frontmatter.body == .complete, "the body must actually have arrived")
+        #expect(
+            afterDocument?.frontmatter.linkedNote == "[[Nota collegata]]",
+            "the hand-added link must survive the full render the arriving body triggers"
+        )
+    }
 }

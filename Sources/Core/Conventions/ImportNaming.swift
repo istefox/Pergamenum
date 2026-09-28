@@ -120,7 +120,8 @@ enum ImportNaming {
     // else's job (`uniqueFileName`, above); (4) the date is `recordedAt`'s own **local**
     // calendar date, never today's.
     //
-    // Also `.claude/protected-interfaces` (ADR-0053): a silent signature/behavior change
+    // Also `.claude/protected-interfaces` (ADR-0053 of the retired concept-to-code workflow): a
+    // silent signature/behavior change
     // here orphans every note already imported, since re-import matches an existing
     // transcript note by the name this function derives.
     //
@@ -200,17 +201,27 @@ enum ImportNaming {
         return ext.isEmpty ? finalStem : "\(finalStem).\(ext)"
     }
 
+    /// The first of `proposed`, `stem-2`, `stem-3`, … that is free in `directory`.
+    ///
+    /// `reserved` holds names already promised to files not yet on disk - the earlier files
+    /// of the same drop, which the Workspace import mints in one loop before copying any
+    /// (PG-255, #569 point 8): asked per file against disk alone, two same-named files got
+    /// the same name. Compared case-insensitively, the way the default APFS volume compares
+    /// the names `fileExists` sees, so `A.pdf` and `a.pdf` in one drop do not collide on
+    /// disk either. Empty by default, which leaves every other caller unchanged.
     static func uniqueFileName(
         _ proposed: String,
         in directory: URL,
+        reserved: Set<String> = [],
         fileManager: FileManager = .default
     ) -> String {
         let stem = (proposed as NSString).deletingPathExtension
         let ext = (proposed as NSString).pathExtension
+        let taken = Set(reserved.map { $0.lowercased() })
 
         var candidate = proposed
         var suffix = 2
-        while fileManager.fileExists(
+        while taken.contains(candidate.lowercased()) || fileManager.fileExists(
             atPath: directory.appending(path: candidate, directoryHint: .notDirectory)
                 .path(percentEncoded: false)
         ) {

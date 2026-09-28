@@ -786,7 +786,7 @@ self_test() {
     log_window_around "non è una data" >/dev/null 2>&1 || rc=$?
     expect_eq "finestra del log: un orario illeggibile non inventa una finestra" 1 "$rc"
 
-    # R-05 (PG-285, ADR-0066 §D6): a change under Pratiche selects the chip's own witness class
+    # R-05 (PG-285, ADR-0069 §D6): a change under Pratiche selects the chip's own witness class
     # too, not only PraticheUITests - the mapping that stayed missing while PG-285 was red.
     expect_eq "classes_for_path: Sources/Features/Pratiche/* selects both Pratiche classes" \
         "PraticheUITests AttachmentChipContextMenuUITests" \

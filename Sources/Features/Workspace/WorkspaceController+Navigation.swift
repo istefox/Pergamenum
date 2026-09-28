@@ -28,6 +28,38 @@ extension WorkspaceController {
         }
         return resolution
     }
+
+    /// The breadcrumb of SPEC §6.1: the folders the user can jump to, ending in the open
+    /// board's own file name (ADR-0025 §D4, R-12).
+    ///
+    /// It walks the **selection**, not the loaded document (ADR-0024 §D8.1). `folder`
+    /// names the last board `load` read, and a `.folder(F)` selection loads nothing, so
+    /// deriving from `folder` would leave the previous board's trail on screen while the
+    /// tree showed `F`. With nothing selected the trail is `["Workspace"]` alone.
+    ///
+    /// A board is a file rather than the folder holding it, so it earns a segment of its
+    /// own: the two names can differ now (ADR-0025 §D3), and a folder holding two boards
+    /// would otherwise draw the same trail for both. That segment is the last one, which
+    /// `BoardTopBar` renders as a `Text` and not a link (ADR-0024 §D8.2), so it carries
+    /// its containing folder for want of anywhere else to go.
+    ///
+    /// Moved here from `WorkspaceController.swift` as a size-only split (ADR-0045
+    /// convention, `type_body_length`); it reads `current` and nothing private.
+    var breadcrumb: [BreadcrumbSegment] {
+        var trail: [BreadcrumbSegment] = [BreadcrumbSegment(title: "Workspace", folder: "")]
+        var accumulated = ""
+        for component in (current?.folder ?? "").split(separator: "/") {
+            accumulated = accumulated.isEmpty ? String(component) : "\(accumulated)/\(component)"
+            trail.append(BreadcrumbSegment(title: String(component), folder: accumulated))
+        }
+        if case .board(let path)? = current {
+            let fileName = (path as NSString).lastPathComponent
+            trail.append(BreadcrumbSegment(
+                title: (fileName as NSString).deletingPathExtension, folder: accumulated
+            ))
+        }
+        return trail
+    }
 }
 
 extension WorkspaceBoardResolver {

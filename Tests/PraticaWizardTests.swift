@@ -208,3 +208,24 @@ import Testing
         #expect(AddToPraticaOrdering.recentFirst([b, a]).map(\.id) == ["a", "b"])
     }
 }
+
+// MARK: - Item 7/R-13: `PraticaCreation.writeNote` refuses an existing `pratica.md`
+
+@MainActor
+@Suite struct PraticaCreationWriteNoteTests {
+    /// Red until Task 6 gives `writeNote` its `expectingAbsent: true` precondition -
+    /// today's stub still writes unconditionally, over whatever was already there.
+    @Test func writingOverAnExistingPraticaMdIsRefusedAndItsBytesAreUnchanged() async throws {
+        let vault = try TemporaryVault()
+        try vault.write("---\npergamenum-dossier: 1\n---\n\nGià qui.\n", to: "Rossi/pratica.md")
+        let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+        let before = try session.read("Rossi/pratica.md").text
+
+        let document = NoteDocument(frontmatter: Frontmatter.empty, body: "\n", hasFrontmatterBlock: true)
+        let sentence = await PraticaCreation.writeNote(at: "Rossi", document: document, session: session)
+
+        #expect(sentence == "«Rossi» esiste già.")
+        let after = try session.read("Rossi/pratica.md").text
+        #expect(after == before)
+    }
+}

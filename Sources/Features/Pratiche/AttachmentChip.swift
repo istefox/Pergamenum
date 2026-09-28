@@ -10,7 +10,7 @@ import SwiftUI
 // panel Workspace cards use), double-click opens it with its default app, and the
 // context menu reaches the Finder and the pasteboard.
 //
-// The context menu is AppKit's, not a SwiftUI `.contextMenu` (ADR-0066, PG-285): the
+// The context menu is AppKit's, not a SwiftUI `.contextMenu` (ADR-0069, PG-285): the
 // chip lives inside a timeline `List` row whose own `.contextMenu` takes every
 // right-click in the row, so a menu declared here never opened. `AttachmentChipMenuHost`
 // lays an `NSView` over the chip that claims only the context click and shows the menu
@@ -60,7 +60,7 @@ struct AttachmentChip: View {
         .help(helpText)
         .accessibilityLabel(accessibilityText)
         .accessibilityIdentifier(identifier)
-        // The menu's non-pointer route (ADR-0066 §D5): the same catalogue, enabled entries only.
+        // The menu's non-pointer route (ADR-0069 §D5): the same catalogue, enabled entries only.
         .accessibilityActions {
             let enabled = AttachmentChipModel.menuEntries(for: content, state: state).filter(\.isEnabled)
             ForEach(enabled, id: \.command) { entry in
@@ -73,7 +73,18 @@ struct AttachmentChip: View {
                 .themedText(.body)
                 .padding(theme.spacing(.s))
         }
-        // Last on purpose (ADR-0066 §D1): see this file's header.
+        // ADR-0068 §D10: `presenting:` hands each button the refusal it was raised with
+        // (the confirmation-dialog rule in CLAUDE.md), never `openRefusal` read back after
+        // the alert's own dismissal has cleared it.
+        .alert(
+            openRefusal?.sentence ?? "",
+            isPresented: isShowingOpenRefusal,
+            presenting: openRefusal
+        ) { refusal in
+            Button("Mostra nel Finder") { NSWorkspace.shared.activateFileViewerSelecting([refusal.reveal]) }
+            Button("OK", role: .cancel) {}
+        }
+        // Last on purpose (ADR-0069 §D1): see this file's header.
         .overlay {
             AttachmentChipMenuHost(
                 entries: { AttachmentChipModel.menuEntries(for: content, state: state) },
@@ -84,6 +95,7 @@ struct AttachmentChip: View {
     }
 
     @State private var isShowingPendingExplanation = false
+    @State private var openRefusal: OpenRefusal?
 
     // MARK: What the chip is
 
@@ -100,6 +112,12 @@ struct AttachmentChip: View {
     /// prefix and a suffix only (`AttachmentIntegrity.verdict(ofFileAt:named:)`), never
     /// the whole file (ADR-0040 §D8, R-07, R-09).
     private func state(_ url: URL) -> AttachmentChipModel.FileState {
+        Self.fileState(of: url, named: name)
+    }
+
+    /// The chip's file-state function, shared with `PraticaCommandActions` so «Anteprima
+    /// allegato» asks the same question the chip does (ADR-0068 §D17).
+    static func fileState(of url: URL, named name: String) -> AttachmentChipModel.FileState {
         guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { return .missing }
         return AttachmentIntegrity.verdict(ofFileAt: url, named: name) == .usable ? .usable : .unusable
     }
@@ -167,7 +185,7 @@ struct AttachmentChip: View {
 
     // MARK: Actions
 
-    /// One menu command, from the AppKit menu or an accessibility action (ADR-0066 §D3, §D5).
+    /// One menu command, from the AppKit menu or an accessibility action (ADR-0069 §D3, §D5).
     private func run(_ command: AttachmentChipModel.Command) {
         switch command {
         case .preview: preview()
@@ -191,13 +209,33 @@ struct AttachmentChip: View {
 
     /// «Apri» and double-click. A usable file `AttachmentChipModel.refusesToOpen`
     /// rejects (PG-123: executable, bundle, disk image, script) has no `openURL` and is
-    /// revealed in the Finder instead, where Gatekeeper's own prompt applies.
+    /// revealed in the Finder instead, where Gatekeeper's own prompt applies. A copied
+    /// file opens only once it carries the quarantine attribute (ADR-0068 §D10); when the
+    /// volume refuses it, the alert offers the Finder instead.
     private func openWithDefaultApp() {
-        if let openURL {
-            NSWorkspace.shared.open(openURL)
-        } else if revealURL != nil {
-            showInFinder()
+        switch AttachmentChipModel.openDecision(
+            for: content, state: state,
+            isQuarantined: AttachmentQuarantine.isApplied(to:),
+            applyQuarantine: { try AttachmentQuarantine.apply(to: $0) }
+        ) {
+        case .open(let url):
+            NSWorkspace.shared.open(url)
+        case .refuse(let sentence, let reveal):
+            openRefusal = OpenRefusal(sentence: sentence, reveal: reveal)
+        case .unavailable:
+            if revealURL != nil { showInFinder() }
         }
+    }
+
+    /// What the refusal alert presents - captured whole, so its buttons read the value
+    /// the alert was raised with rather than state its own dismissal clears.
+    private struct OpenRefusal {
+        let sentence: String
+        let reveal: URL
+    }
+
+    private var isShowingOpenRefusal: Binding<Bool> {
+        Binding(get: { openRefusal != nil }, set: { if !$0 { openRefusal = nil } })
     }
 
     /// R-27's «Copia»: the file itself when a copy is on disk (or the store path still
