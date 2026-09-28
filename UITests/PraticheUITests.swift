@@ -19,6 +19,12 @@ import XCTest
 // (ADR-0070 F10), so this is the only place either is witnessed; `Tests/PraticaDeleteKeyTests
 // .swift` pins the pure target rule the key calls into. `UITests/AttachmentChipContextMenuUITests
 // .swift` is not touched (R-07).
+//
+// PG-306 turned most of that plan's hand checks (M1-M10) into assertions on the same two tests,
+// so the GUI suite does not grow: the held key (M3), the filter field (M4), a text selection in
+// an expanded body (M6), «Annulla» after an exclusion (M7), forward delete and Modifica ▸ Elimina
+// (M10). M9 is `AttachmentChipContextMenuUITests`'s own; M5 has no subject, since the inspector
+// renders `pratica.md` read-only; the beep and the board's preview (M8) stay by hand.
 final class PraticheUITests: XCTestCase {
     /// One conformant pratica, seeded on disk before `launch()`, so the list column
     /// has a row and the timeline/inspector/add-note/add-call surfaces - all gated on
@@ -207,17 +213,43 @@ final class PraticheUITests: XCTestCase {
     // MARK: - PG-298, ADR-0070: Backspace excludes the selected message (R-01, R-02, R-08)
 
     /// R-01, R-02: Backspace on a collapsed row, then on an expanded one, each runs
-    /// «Escludi dalla pratica» on the selected row and no other.
+    /// «Escludi dalla pratica» on the selected row and no other. PG-306: Backspace edits the
+    /// filter field instead (M4), a held key excludes one message only (M3), and Backspace
+    /// after selecting a word in an expanded body excludes nothing (M6).
     func testBackspaceExcludesTheSelectedMessageCollapsedAndExpanded() throws {
         selectFirstPratica()
 
-        clickTrailingHeaderArea(ofMessage: Self.messageWithoutAttachmentID)
+        // M4: the attachment row is selected, so a Backspace that leaked out of the field
+        // would have a message to exclude.
+        clickTrailingHeaderArea(ofMessage: Self.messageWithAttachmentID)
+        let filter = element("pratiche-filter")
+        XCTAssertTrue(filter.waitForExistence(timeout: 5), "il campo filtro non è comparso")
+        filter.click()
+        filter.typeText("zz")
         app.typeKey(.delete, modifierFlags: [])
+        XCTAssertEqual(filter.value as? String, "z", "Backspace non ha cancellato un carattere del filtro")
+        app.typeKey(.delete, modifierFlags: [])
+        assertStillInPratica(Self.messageWithAttachmentID, noteFile: "con-allegato.md")
+
+        // M1, M3: three presses on a collapsed row exclude that row and leave the next one.
+        clickTrailingHeaderArea(ofMessage: Self.messageWithoutAttachmentID)
+        for _ in 0..<3 { app.typeKey(.delete, modifierFlags: []) }
         assertExcluded(Self.messageWithoutAttachmentID, noteFile: "senza-allegato.md")
+        assertStillInPratica(Self.messageWithAttachmentID, noteFile: "con-allegato.md")
 
         let chevron = element("pratiche-message-chevron-\(Self.hash(Self.messageWithAttachmentID))")
         XCTAssertTrue(chevron.waitForExistence(timeout: 5), "lo chevron del messaggio non è comparso")
         chevron.click()
+
+        // M6: a word selected in the expanded body is text, not a message to exclude.
+        let body = app.staticTexts.matching(
+            NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "con un allegato", "con un allegato")
+        ).firstMatch
+        XCTAssertTrue(body.waitForExistence(timeout: 5), "il corpo del messaggio espanso non è comparso")
+        body.doubleClick()
+        app.typeKey(.delete, modifierFlags: [])
+        assertStillInPratica(Self.messageWithAttachmentID, noteFile: "con-allegato.md")
+
         clickTrailingHeaderArea(ofMessage: Self.messageWithAttachmentID)
         app.typeKey(.delete, modifierFlags: [])
         assertExcluded(Self.messageWithAttachmentID, noteFile: "con-allegato.md")
@@ -251,6 +283,20 @@ final class PraticheUITests: XCTestCase {
         clickTrailingHeaderArea(ofMessage: Self.messageWithoutAttachmentID)
         app.typeKey(.delete, modifierFlags: [])
         assertExcluded(Self.messageWithoutAttachmentID, noteFile: "senza-allegato.md")
+
+        // PG-306, M7: «Annulla» puts the excluded message back.
+        app.typeKey("z", modifierFlags: .command)
+        assertRestored(Self.messageWithoutAttachmentID, noteFile: "senza-allegato.md")
+
+        // PG-306, M10: forward delete and Modifica ▸ Elimina take the same route. The menu
+        // item is found by its action, `delete:`, never by the words on it.
+        clickTrailingHeaderArea(ofMessage: Self.messageWithoutAttachmentID)
+        app.typeKey(.forwardDelete, modifierFlags: [])
+        assertExcluded(Self.messageWithoutAttachmentID, noteFile: "senza-allegato.md")
+
+        clickTrailingHeaderArea(ofMessage: Self.messageWithAttachmentID)
+        app.menuBars.menuItems["delete:"].firstMatch.click()
+        assertExcluded(Self.messageWithAttachmentID, noteFile: "con-allegato.md")
     }
 
     // MARK: - PG-298 helpers
@@ -281,6 +327,39 @@ final class PraticheUITests: XCTestCase {
             praticaText?.contains(messageID) ?? false,
             "il Message-ID escluso non compare in pergamenum-dossier-excluded di pratica.md"
         )
+    }
+
+    /// PG-306: the opposite of `assertExcluded`, held for two seconds so an exclusion that
+    /// lands late is still caught: the row is there and its `.md` never left `email/`.
+    private func assertStillInPratica(_ messageID: String, noteFile: String) {
+        let row = element("pratiche-message-\(Self.hash(messageID))")
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "la riga del messaggio non è più nella timeline")
+        let noteURL = vault.appending(
+            path: "\(Self.praticaFolder)/email/\(noteFile)", directoryHint: .notDirectory
+        )
+        XCTAssertFalse(
+            waitForFile(noteURL, toExist: false, timeout: 2), "il messaggio è stato escluso senza volerlo"
+        )
+        XCTAssertTrue(row.exists, "la riga del messaggio è sparita dalla timeline")
+    }
+
+    /// PG-306, M7: the undo of an exclusion - the row is back, its `.md` is back in `email/`,
+    /// and its `Message-ID` left `pergamenum-dossier-excluded`.
+    private func assertRestored(_ messageID: String, noteFile: String) {
+        let row = element("pratiche-message-\(Self.hash(messageID))")
+        XCTAssertTrue(row.waitForExistence(timeout: 6), "«Annulla» non ha riportato la riga nella timeline")
+        let noteURL = vault.appending(
+            path: "\(Self.praticaFolder)/email/\(noteFile)", directoryHint: .notDirectory
+        )
+        XCTAssertTrue(waitForFile(noteURL, toExist: true), "«Annulla» non ha riportato il file in email/")
+        let praticaURL = vault.appending(path: "\(Self.praticaFolder)/pratica.md", directoryHint: .notDirectory)
+        let deadline = Date().addingTimeInterval(6)
+        var text = try? String(contentsOf: praticaURL, encoding: .utf8)
+        while text?.contains(messageID) ?? true, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.2)
+            text = try? String(contentsOf: praticaURL, encoding: .utf8)
+        }
+        XCTAssertFalse(text?.contains(messageID) ?? true, "il Message-ID è ancora escluso in pratica.md dopo «Annulla»")
     }
 
     private func waitForFile(_ url: URL, toExist expected: Bool, timeout: TimeInterval = 6) -> Bool {
