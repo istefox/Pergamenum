@@ -217,6 +217,26 @@ enum PraticaTimelineModel {
     /// string rather than two copies that can drift apart.
     static let notInMailCaption = "non più in Mail"
 
+    // MARK: - PG-298, ADR-0070 §D2: Backspace's own target
+
+    /// The pure rule behind Backspace («Escludi»): the selected row is the target only
+    /// when it is a message the person can currently see. A manual entry (`.note`/
+    /// `.call`), no selection, or an id naming no row of `entries` - a row the filter
+    /// hides, or another pratica's path - all answer `nil` (R-04).
+    ///
+    /// `entries` is the caller's `filteredTimeline`, never the unfiltered `timeline`:
+    /// a row hidden by the filter must not be excludable by a key the person cannot
+    /// see land on it.
+    static func deleteKeyTarget(
+        selectedID: String?, in entries: [PraticaTimelineEntry]
+    ) -> PraticaTimelineEntry? {
+        guard let selectedID,
+              let entry = entries.first(where: { $0.id == selectedID }),
+              entry.kind == .message
+        else { return nil }
+        return entry
+    }
+
     // MARK: - R-24: expansion (chevron / Opt+click expand-collapse-all)
 
     /// Per-window expansion state (SPEC "Timeline model" Chevron paragraph):

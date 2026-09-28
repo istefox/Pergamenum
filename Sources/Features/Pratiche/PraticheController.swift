@@ -206,8 +206,10 @@ final class PraticheController {
     /// `moveLedgerState`.
     var trayProposals: [String: [PraticaTrayModel.PraticaTrayProposal]] = [:]
 
-    /// The timeline row with key focus - what Backspace («Escludi») and the row
-    /// commands act on. Per window like `expansion`, never persisted.
+    /// The timeline's selected row - what the row commands act on. Per window like
+    /// `expansion`, never persisted. Backspace («Escludi») reads it only through
+    /// `takeDeleteKeyTarget()` (`PraticheController+DeleteKey.swift`, ADR-0070 §D2),
+    /// which clears it when it answers a target, so one press excludes one message.
     var selectedEntryID: String?
 
     /// The three requests a command raises that need a surface of their own: a name to
