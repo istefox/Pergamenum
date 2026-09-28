@@ -106,7 +106,10 @@ sets it, `detach` clears it when it still points at this controller, and
 - **Point 9:** the Workspace note creation and the sidebar move read the open board before the
   `await` and act after it only if the same board is still open (ADR-0043 §D7). Otherwise the
   created note is reported, not placed on another board, and the move leaves the person where
-  they navigated.
+  they navigated. The "ask again after" half lives on the controller
+  (`isStillShowing`, `placeCreatedNote`, `followMove` in `WorkspaceController+Lifecycle.swift`,
+  PG-287), so `Tests/WorkspaceAfterAwaitTests.swift` pins it; the views keep only the reads made
+  before the `await`.
 - **Point 10:** two tokens, `color.sticky.orange` and `color.sticky.purple`, in both bundled
   themes and in the built-in fallback palette. JSON Canvas presets 1 to 6 now map one to one.
 - **Point 11:** `BoardDragPayload.init?(text:)` requires its separator, so plain text dragged in
