@@ -75,8 +75,8 @@ extension WorkspaceView {
             // has to wait for the file it points at to exist.
             //
             // The board and its folder are read before the suspension and checked again
-            // after it (ADR-0043 §D7, #569 point 9): another board opened meanwhile must not
-            // receive a card for a note made in the first one's folder.
+            // after it by `placeCreatedNote` (ADR-0043 §D7, #569 point 9): another board
+            // opened meanwhile must not receive a card for a note made in the first one's folder.
             let targetBoard = workspace.board
             let targetFolder = workspace.folder
             Task { @MainActor in
@@ -84,13 +84,7 @@ extension WorkspaceView {
                     let path = try await vault.createNote(
                         title: value, in: targetFolder, date: .today
                     )
-                    guard workspace.isShowingBoard, workspace.board == targetBoard else {
-                        workspace.recordProblem(
-                            "nota «\(value)» creata in \(path), ma la board è cambiata: non è stata aggiunta"
-                        )
-                        return
-                    }
-                    _ = workspace.placeFile(path, at: point, creatingOnDisk: path)
+                    workspace.placeCreatedNote(path, title: value, at: point, openedOn: targetBoard)
                 } catch {
                     workspace.recordProblem(ConformanceText.creationFailure(error))
                 }

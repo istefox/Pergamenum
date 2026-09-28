@@ -108,4 +108,42 @@ extension WorkspaceController {
         refitTask = nil
         pendingRefit = nil
     }
+
+    // MARK: - After an `await` (#569 point 9)
+
+    /// A board read before an `await`, asked again after it (ADR-0043 §D7): the person can
+    /// open another board, or a folder, while the suspension runs.
+    func isStillShowing(_ board: String) -> Bool {
+        isShowingBoard && self.board == board
+    }
+
+    /// Places the card for a note created while `board` was open. When another board, or no
+    /// board, is on screen now, nothing is placed: the note exists on disk, a card on the
+    /// board that happens to be open would be the wrong one, so it is reported instead.
+    /// Answers the new node's id, nil when nothing was placed.
+    @discardableResult
+    func placeCreatedNote(
+        _ path: String, title: String, at point: CGPoint, openedOn board: String
+    ) -> String? {
+        guard isStillShowing(board) else {
+            recordProblem("nota «\(title)» creata in \(path), ma la board è cambiata: non è stata aggiunta")
+            return nil
+        }
+        return placeFile(path, at: point, creatingOnDisk: path)
+    }
+
+    /// Follows a move that ran while `openBefore` was open: reopens that board at the path
+    /// it landed on. Nothing happens when the person opened something else meanwhile (they
+    /// are left where they went) or when the move did not carry the open board. Reopened
+    /// rather than left alone: the document on screen was read from a file that has moved,
+    /// and `open(board:)` re-reads it, refreshes the folder and redraws the breadcrumb, so
+    /// the board never flickers closed (R-13). Answers the path opened, nil otherwise.
+    @discardableResult
+    func followMove(from openBefore: String, moves: [VaultMove]) -> String? {
+        guard isStillShowing(openBefore) else { return nil }
+        let landed = WorkspaceFolderNavigation.boardAfterMove(open: openBefore, moves: moves)
+        guard landed != openBefore else { return nil }
+        open(board: landed)
+        return landed
+    }
 }
