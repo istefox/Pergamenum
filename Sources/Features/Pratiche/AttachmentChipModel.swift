@@ -135,6 +135,49 @@ enum AttachmentChipModel {
     /// R-27's context menu, exact wording and order.
     static let contextMenuTitles = ["Mostra nel Finder", "Copia"]
 
+    /// The chip's own menu, one command per entry (ADR-0069 §D3): the one place its four
+    /// titles are named. «Mostra nel Finder» and «Copia» are `contextMenuTitles` by
+    /// identity, the `CalendarDayCommand` pattern (ADR-0023 §D10).
+    enum Command: String, CaseIterable, Sendable {
+        case preview, open, reveal, copy
+
+        var title: String {
+            switch self {
+            case .preview: "Anteprima"
+            case .open: "Apri"
+            case .reveal: contextMenuTitles[0]
+            case .copy: contextMenuTitles[1]
+            }
+        }
+
+        /// The `NSMenuItem.identifier` the AppKit menu gives this command's item.
+        var identifier: String { "pratiche-attachment-command-\(rawValue)" }
+    }
+
+    /// One entry of the chip's menu as it stands at the moment it opens (ADR-0069 §D3).
+    struct MenuEntry: Equatable, Sendable {
+        let command: Command
+        let title: String
+        let isEnabled: Bool
+    }
+
+    /// The chip's menu, in order: every command always present, disabled rather than
+    /// dropped when it has no target. «Anteprima» needs `previewURL`, «Apri» `openURL`,
+    /// «Mostra nel Finder» `revealURL`; «Copia» is always enabled, since a chip with no
+    /// file still copies its name. `.pending` never reaches `state` (ADR-0040 §D8): each
+    /// URL function answers `nil` for it without probing.
+    static func menuEntries(for content: AttachmentChip.Content, state: (URL) -> FileState) -> [MenuEntry] {
+        Command.allCases.map { command in
+            let isEnabled = switch command {
+            case .preview: previewURL(for: content, state: state) != nil
+            case .open: openURL(for: content, state: state) != nil
+            case .reveal: revealURL(for: content, state: state) != nil
+            case .copy: true
+            }
+            return MenuEntry(command: command, title: command.title, isEnabled: isEnabled)
+        }
+    }
+
     private static func targetURL(for content: AttachmentChip.Content, state: (URL) -> FileState) -> URL? {
         switch content {
         case .file(let reference):

@@ -10,6 +10,15 @@ import SwiftUI
 // panel Workspace cards use), double-click opens it with its default app, and the
 // context menu reaches the Finder and the pasteboard.
 //
+// The context menu is AppKit's, not a SwiftUI `.contextMenu` (ADR-0069, PG-285): the
+// chip lives inside a timeline `List` row whose own `.contextMenu` takes every
+// right-click in the row, so a menu declared here never opened. `AttachmentChipMenuHost`
+// lays an `NSView` over the chip that claims only the context click and shows the menu
+// built from `AttachmentChipModel.menuEntries`. It is the **last** modifier on purpose:
+// after `.accessibilityIdentifier`, so the representable is not a descendant of the
+// identified view (a UI test finds the chip by that identifier), and over everything
+// else the chip draws. Do not put a `.contextMenu` back here: it would be dead again.
+//
 // An over-threshold attachment (R-10) was never copied into `allegati/`: its chip
 // carries `icloud.slash` and says where it still lives, rather than pretending to a
 // file this vault does not have.
@@ -51,6 +60,13 @@ struct AttachmentChip: View {
         .help(helpText)
         .accessibilityLabel(accessibilityText)
         .accessibilityIdentifier(identifier)
+        // The menu's non-pointer route (ADR-0069 §D5): the same catalogue, enabled entries only.
+        .accessibilityActions {
+            let enabled = AttachmentChipModel.menuEntries(for: content, state: state).filter(\.isEnabled)
+            ForEach(enabled, id: \.command) { entry in
+                Button(entry.title) { run(entry.command) }
+            }
+        }
         .simultaneousGesture(TapGesture(count: 2).onEnded { openWithDefaultApp() })
         .popover(isPresented: $isShowingPendingExplanation) {
             Text("L'allegato non è ancora disponibile in Mail. Verrà riprovato alla prossima sincronizzazione.")
@@ -68,14 +84,13 @@ struct AttachmentChip: View {
             Button("Mostra nel Finder") { NSWorkspace.shared.activateFileViewerSelecting([refusal.reveal]) }
             Button("OK", role: .cancel) {}
         }
-        .contextMenu {
-            Button("Anteprima") { preview() }
-                .disabled(previewURL == nil)
-            Button("Apri") { openWithDefaultApp() }
-                .disabled(openURL == nil)
-            Button(AttachmentChipModel.contextMenuTitles[0]) { showInFinder() }
-                .disabled(revealURL == nil)
-            Button(AttachmentChipModel.contextMenuTitles[1]) { copy() }
+        // Last on purpose (ADR-0069 §D1): see this file's header.
+        .overlay {
+            AttachmentChipMenuHost(
+                entries: { AttachmentChipModel.menuEntries(for: content, state: state) },
+                perform: run
+            )
+            .accessibilityHidden(true)
         }
     }
 
@@ -169,6 +184,16 @@ struct AttachmentChip: View {
     }
 
     // MARK: Actions
+
+    /// One menu command, from the AppKit menu or an accessibility action (ADR-0069 §D3, §D5).
+    private func run(_ command: AttachmentChipModel.Command) {
+        switch command {
+        case .preview: preview()
+        case .open: openWithDefaultApp()
+        case .reveal: showInFinder()
+        case .copy: copy()
+        }
+    }
 
     /// A click: previews a usable file, or - for `.pending` - opens the popover
     /// explaining why (ADR-0040 §D8, R-08). Neither `onQuickLook` nor `NSWorkspace` is

@@ -1,20 +1,40 @@
 import XCTest
 
-// PG-134/#234: `AttachmentChip`'s `.contextMenu` used to hard-code «Mostra nel Finder»/
-// «Copia» instead of reading `AttachmentChipModel.contextMenuTitles`, the catalogue that
-// exists specifically to be the one source of truth for those two entries
-// (`AttachmentChipModel.swift:105`). `Tests/AttachmentChipTests.swift:174` only checked
-// the catalogue against itself, so a future edit to one side could drift from the other
-// without either suite noticing. This test drives the actual rendered menu, the one seam
-// a unit test cannot reach (a `.contextMenu`'s entries are `NSMenuItem`s outside the
-// chip's own accessibility subtree - `SidebarDeleteUITests`' documented convention).
+// PG-134/#234 added this class to drive the chip's real rendered menu. PG-285 found that
+// menu had never been reachable: the chip lives inside a timeline `List` row whose own
+// `.contextMenu` took every right-click in the row, so a right-click on the chip opened
+// the message menu instead. ADR-0069 moved the chip's menu to AppKit
+// (`AttachmentChipMenuHost`). The catalogue, the menu's items and the menu view's presence
+// on each chip are pinned in-process (`Tests/AttachmentChipTests.swift`,
+// `Tests/AttachmentChipMenuTests.swift`); which menu a real right-click opens inside a live
+// `List` is the one fact only this class observes, and it has two halves, one per test
+// (ADR-0069 §D6 justifies both GUI tests):
+//
+// - `testAttachmentChipContextMenuShowsBothCatalogueEntries`: a right-click on the chip
+//   opens the chip's menu, all four entries, and not the message menu (R-01).
+// - `testRightClickBesideTheChipStillOpensTheMessageMenu`: a right-click on the subject,
+//   in the same header line as the chip, still opens the message menu and not the chip's
+//   (R-02).
+// - `testLeftClickOnPendingChipOpensThePendingPopover`: a left click on a `.pending` chip
+//   still opens its explanatory popover, which is the one thing the plan's own residual
+//   risk (F11: "no GUI test clicks a chip") left unwitnessed - the overlay's `hitTest`
+//   must let a plain left click straight through to the chip underneath. Justified as
+//   the third GUI test for this feature (ADR-0069 §D6): it is the only mechanism this
+//   chain could not verify in advance, and the two catalogue tests above say nothing
+//   about it.
+//
+// Menu entries are `NSMenuItem`s outside the chip's own accessibility subtree, found by
+// their production title (`SidebarDeleteUITests`' documented convention).
 //
 // Deterministic: one fixture pratica with one message carrying one attachment already
 // placed in `allegati/` (`.txt`, an extension `AttachmentIntegrity` has no signature
-// table for, so any non-empty file reads `.usable` - no real Mail store, no timing-
-// dependent sync).
+// table for, so any non-empty file reads `.usable`) plus one message with a pending
+// attachment (ADR-0040 §D8's bare-name form) - no real Mail store, no timing-dependent
+// sync.
 final class AttachmentChipContextMenuUITests: XCTestCase {
     private static let praticaFolder = "01 Progetti/Acme/Offerta 118"
+    private static let usableMessageID = "<gui-test@example.com>"
+    private static let pendingMessageID = "<gui-test-pending@example.com>"
 
     private var vault: URL!
     private var stateBase: URL!
@@ -55,9 +75,10 @@ final class AttachmentChipContextMenuUITests: XCTestCase {
     }
 
     func testAttachmentChipContextMenuShowsBothCatalogueEntries() throws {
-        let chip = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "pratiche-attachment-"))
-            .firstMatch
+        // Pinned to the usable message's own chip by its hashed identifier: the fixture
+        // now also carries a pending chip for M5, and a bare `.firstMatch` on the
+        // identifier prefix would no longer be guaranteed to land on this one.
+        let chip = element("pratiche-attachment-\(Self.hash(Self.usableMessageID))-0")
         XCTAssertTrue(chip.waitForExistence(timeout: 5), "il chip dell'allegato non è comparso")
         chip.rightClick()
 
@@ -71,6 +92,52 @@ final class AttachmentChipContextMenuUITests: XCTestCase {
         XCTAssertTrue(revealItem.waitForExistence(timeout: 5), "manca la voce «Mostra nel Finder» nel menu contestuale")
         let copyItem = app.menuItems["Copia"]
         XCTAssertTrue(copyItem.waitForExistence(timeout: 5), "manca la voce «Copia» nel menu contestuale")
+
+        // PG-285: the chip's whole menu, and not the message menu in its place.
+        XCTAssertTrue(app.menuItems["Anteprima"].exists, "manca la voce «Anteprima» nel menu del chip")
+        XCTAssertTrue(app.menuItems["Apri"].exists, "manca la voce «Apri» nel menu del chip")
+        XCTAssertFalse(
+            app.menuItems["Escludi dalla pratica"].exists,
+            "si è aperto il menu del messaggio invece di quello del chip"
+        )
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
+    /// R-02 (ADR-0069 §D6): the chip's menu stays on the chip. A right-click on the subject,
+    /// in the same header line as the chip, still opens the message menu. Pinned to the
+    /// usable message's own subject, same reason as the test above.
+    func testRightClickBesideTheChipStillOpensTheMessageMenu() throws {
+        let subject = element("pratiche-message-subject-\(Self.hash(Self.usableMessageID))")
+        XCTAssertTrue(subject.waitForExistence(timeout: 5), "l'oggetto del messaggio non è comparso")
+        subject.rightClick()
+
+        XCTAssertTrue(
+            app.menuItems["Escludi dalla pratica"].waitForExistence(timeout: 5),
+            "il clic destro accanto al chip non ha aperto il menu del messaggio"
+        )
+        XCTAssertFalse(
+            app.menuItems["Mostra nel Finder"].exists,
+            "il clic destro accanto al chip ha aperto il menu del chip"
+        )
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
+    /// M5 (plan Task 7's hand-check table; ADR-0069 §D6 justifies this as the feature's
+    /// third GUI test): a left click on the overlay must still reach the chip
+    /// underneath, or the pending popover (`AttachmentChip.isShowingPendingExplanation`)
+    /// would never open again once the AppKit overlay sat over every chip. This is the
+    /// one mechanism the plan's own risk list (F11) named as unverified by any GUI test.
+    func testLeftClickOnPendingChipOpensThePendingPopover() throws {
+        let chip = element("pratiche-attachment-\(Self.hash(Self.pendingMessageID))-0")
+        XCTAssertTrue(chip.waitForExistence(timeout: 5), "il chip in attesa non è comparso")
+        chip.click()
+
+        XCTAssertTrue(
+            app.staticTexts["L'allegato non è ancora disponibile in Mail. "
+                + "Verrà riprovato alla prossima sincronizzazione."].waitForExistence(timeout: 5),
+            "il popover dell'allegato in attesa non è comparso dopo il clic sinistro"
+        )
+        app.typeKey(.escape, modifierFlags: [])
     }
 
     // MARK: - Navigation
@@ -99,11 +166,25 @@ final class AttachmentChipContextMenuUITests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
+    /// Mirrors `PraticaMessageRow.hash(of:)` exactly (FNV-1a over the message id
+    /// string), so this file computes the same identifiers production draws without a
+    /// `@testable import` - every UI test in this suite follows this convention rather
+    /// than reaching into the production module.
+    private static func hash(_ messageID: String) -> String {
+        var value: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in Array(messageID.utf8) {
+            value ^= UInt64(byte)
+            value &*= 0x0000_0100_0000_01b3
+        }
+        return String(value, radix: 16)
+    }
+
     // MARK: - Fixture
 
-    /// Same shape as `PraticheUITests.seedFixturePratica`, plus one message under
-    /// `email/` naming one attachment already placed in `allegati/` (ADR-0040 §D3's
-    /// wikilink form, `[[nota.txt]]` - a placed entry, never a pending one).
+    /// Same shape as `PraticheUITests.seedFixturePratica`, plus two messages under
+    /// `email/`: one naming an attachment already placed in `allegati/` (ADR-0040 §D3's
+    /// wikilink form, `[[nota.txt]]`), one naming a pending attachment (the bare-name
+    /// form) for M5's left-click-through check.
     private func seedFixturePraticaWithAttachment() throws {
         let folder = vault.appending(path: Self.praticaFolder, directoryHint: .isDirectory)
         let emailDirectory = folder.appending(path: "email", directoryHint: .isDirectory)
@@ -151,7 +232,7 @@ final class AttachmentChipContextMenuUITests: XCTestCase {
           - client-acme
           - source-email
         pergamenum-mail: 1
-        pergamenum-mail-message-id: "<gui-test@example.com>"
+        pergamenum-mail-message-id: "\(Self.usableMessageID)"
         pergamenum-mail-direction: received
         pergamenum-mail-date: 2026-09-02T09:00:00+02:00
         pergamenum-mail-from: "Mario Rossi <m.rossi@acme.it>"
@@ -164,6 +245,34 @@ final class AttachmentChipContextMenuUITests: XCTestCase {
         """
         try messageNote.write(
             to: emailDirectory.appending(path: "messaggio.md", directoryHint: .notDirectory),
+            atomically: true, encoding: .utf8
+        )
+
+        // A second message, later the same morning, carrying a pending attachment (the
+        // bare-name form, ADR-0040 §D8) rather than a placed one - M5's chip.
+        let pendingMessageNote = """
+        ---
+        date: 2026-09-02
+        tags:
+          - type-note
+          - type-email
+          - topic-pratica
+          - client-acme
+          - source-email
+        pergamenum-mail: 1
+        pergamenum-mail-message-id: "\(Self.pendingMessageID)"
+        pergamenum-mail-direction: received
+        pergamenum-mail-date: 2026-09-02T09:15:00+02:00
+        pergamenum-mail-from: "Mario Rossi <m.rossi@acme.it>"
+        pergamenum-mail-subject: "Preventivo"
+        pergamenum-mail-attachments: ["attesa.pdf"]
+        pergamenum-mail-body: complete
+        ---
+
+        Preventivo in arrivo, a breve l'allegato.
+        """
+        try pendingMessageNote.write(
+            to: emailDirectory.appending(path: "messaggio-pending.md", directoryHint: .notDirectory),
             atomically: true, encoding: .utf8
         )
     }
