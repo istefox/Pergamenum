@@ -148,6 +148,20 @@ private final class FocusableView: NSView {
         #expect(window.firstResponder === another)
     }
 
+    /// PG-307: nobody held the keyboard before the preview (the window is first responder),
+    /// so the host keeps it once the panel is gone and a bare space can reopen the panel.
+    @Test func handBackFocusKeepsTheHostWhenNobodyHeldTheKeyboard() {
+        let (window, _, host) = fixture()
+        defer { window.orderOut(nil) }
+        window.makeFirstResponder(nil)
+        #expect(window.firstResponder === window)
+
+        host.claimFocusForPresentation()
+        host.handBackFocus()
+
+        #expect(window.firstResponder === host)
+    }
+
     @Test func handBackFocusDoesNothingWhenTheRecordedViewLeftTheWindow() {
         let (window, elsewhere, host) = fixture()
         defer { window.orderOut(nil) }

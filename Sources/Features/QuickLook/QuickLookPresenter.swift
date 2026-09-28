@@ -74,10 +74,16 @@ final class QuickLookHostView: NSView, @preconcurrency QLPreviewPanelDataSource,
     /// responder only for the moment it presents: it records the window's first responder,
     /// then takes it, since the panel finds its controller through the responder chain.
     /// Already first responder, it keeps the earlier record rather than recording itself.
+    /// PG-307: when nobody held the keyboard (the window itself is first responder, which is
+    /// what a click on a chip or a `List` row leaves behind) nothing is recorded, so the host
+    /// keeps first responder after the panel closes and a bare space reopens it, as under the
+    /// standing claim. It takes nothing from anyone: a row click still hands the `List` the
+    /// keyboard through its `@FocusState` (ADR-0070 §D4, route F).
     func claimFocusForPresentation() {
         guard let window else { return }
         if window.firstResponder !== self {
-            focusBeforePresentation = Self.handBackTarget(for: window.firstResponder)
+            focusBeforePresentation = window.firstResponder === window
+                ? nil : Self.handBackTarget(for: window.firstResponder)
         }
         window.makeFirstResponder(self)
     }

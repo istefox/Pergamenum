@@ -342,7 +342,13 @@ clear the selection.
 - **Not named by this ADR: the timeline loses its bare-spacebar re-preview.** Under the old claim,
   once a chip had been previewed the host held the keyboard and a bare space reopened the last
   attachment. With `claimsFocus: false` a space goes to the `List`. The chip click and «Anteprima
-  allegato» are unchanged. Read from the code, not observed.
+  allegato» are unchanged. Read from the code, not observed. Restored after the merge by
+  `PG-307`: when nobody held the keyboard before a preview (the window itself was first
+  responder, what a chip click leaves), `claimFocusForPresentation()` records nothing, so the host
+  keeps first responder once the panel closes and a bare space reopens it; a row click still hands
+  the `List` the keyboard (route F). An `.onKeyPress(.space)` on the `List` was tried first and
+  never saw the key, since the hand-back went to the window, not the list.
+  `testBackspaceStillExcludesAfterAQuickLookPreview` presses the space after the panel closes.
 - **Not measured: a Backspace the door refuses.** `.onDeleteCommand` has no handled/ignored
   result, so a refused press (a manual entry, a filtered-out row, a repeat) is a silent no-op.
   Whether SwiftUI still beeps there is left to the hand checks.

@@ -241,6 +241,13 @@ final class PraticheUITests: XCTestCase {
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertFalse(panel.waitForExistence(timeout: 5), "il pannello Quick Look non si è chiuso")
 
+        // PG-307: the focus handed back to the timeline still reopens the last attachment on
+        // a bare space, as it did while the host held the keyboard.
+        app.typeKey(" ", modifierFlags: [])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5), "la barra spaziatrice non ha riaperto il pannello")
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertFalse(panel.waitForExistence(timeout: 5), "il pannello Quick Look non si è richiuso")
+
         clickTrailingHeaderArea(ofMessage: Self.messageWithoutAttachmentID)
         app.typeKey(.delete, modifierFlags: [])
         assertExcluded(Self.messageWithoutAttachmentID, noteFile: "senza-allegato.md")
