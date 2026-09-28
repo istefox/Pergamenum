@@ -148,6 +148,28 @@ enum FormatEdgeCorpus {
             name: "duplicateIds",
             json: #"{"nodes":[\#(nodeA),{"id":"a","type":"text","text":"A2","x":10,"y":10,"width":100,"height":50}],"edges":[]}"#
         ),
+        // PG-277 (ADR-0065 §D13.4): a required key present with a wrong JSON type keeps its node
+        // opaque, so the value is written back instead of a default.
+        CanvasCase(
+            name: "wrongTypeGeometry",
+            json: #"{"nodes":[{"id":"g1","type":"text","text":"G","x":"12","y":0,"width":100,"height":50},"# +
+                #"{"id":"g2","type":"text","text":"G","x":0,"y":0,"width":true,"height":50},"# +
+                #"{"id":"g3","type":"text","text":"G","x":0,"y":0,"width":100,"height":null}],"edges":[]}"#
+        ),
+        CanvasCase(
+            name: "wrongTypePayload",
+            json: #"{"nodes":[{"id":"t","type":"text","text":42,"x":0,"y":0,"width":100,"height":50},"# +
+                #"{"id":"f","type":"file","file":7,"x":0,"y":0,"width":100,"height":50},"# +
+                #"{"id":"l","type":"link","url":[],"x":0,"y":0,"width":100,"height":50}],"edges":[]}"#
+        ),
+        CanvasCase(
+            name: "wrongTypeEdgeEndpoint",
+            json: #"{"nodes":[\#(nodeA),\#(nodeB)],"edges":[{"id":"e","fromNode":3,"toNode":"b"}]}"#
+        ),
+        CanvasCase(
+            name: "numericGeometryForms",
+            json: #"{"nodes":[{"id":"n","type":"text","text":"N","x":12.5,"y":-3,"width":1e2,"height":0}],"edges":[]}"#
+        ),
         CanvasCase(name: "nodesNotAList", json: #"{"nodes":{}}"#, refusedKey: "nodes"),
         CanvasCase(name: "edgesNotAList", json: #"{"edges":"x"}"#, refusedKey: "edges"),
     ]
