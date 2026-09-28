@@ -63,7 +63,11 @@ It checks less of rule 2 than the rule says: a status line in the head with one 
 `accepted`, `proposed`, `superseded`, `deprecated` or `rejected`; no ADR on the base that reads
 `proposed`; and, as a warning only, a commit hash in a status line that is not on the base's
 first-parent line. The PR, hash and date that `accepted` should name are not checked. A record that
-reaches `main` ahead of its implementation is reported while it reads `proposed` there.
+reaches `main` ahead of its implementation is reported while it reads `proposed` there. The base's
+ADRs are matched by number, the identity rule 1 counts, so an ADR whose slug the branch renamed is
+still checked. A number rule 1 reports, in the tree or against the base, is not checked for
+`proposed` until the collision is resolved: the collision is already a finding, and a file that
+never landed must not be told to flip to `accepted`.
 
 ## Renumbering register
 
