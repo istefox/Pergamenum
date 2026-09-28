@@ -622,6 +622,12 @@ Each item is out of the SPEC's scope and is filed as a follow-up:
    whitespace-only delimiter test.
 4. A canvas's required keys with a wrong JSON type (`"x": "12"`, `"text": 42`) are replaced by their
    defaults (`JSONCanvas.swift:171-189`).
+
+   > Cross-reference, 2026-09-28 (PG-277, #616): closed by PR #N (merge hash recorded after the
+   > merge). Such a node is now kept opaque under §D5.4; no decision above changes. See
+   > «Implementation notes», «Follow-up: PG-277» and
+   > `docs/plans/pg-277-canvas-wrong-type-required-keys.md`.
+
 5. A `## Note correlate` line inside a fenced code block is still taken as the heading.
 6. `JSONValue` holds numbers as `Double`, so an integer beyond 2^53 loses precision. This is
    pre-existing.
@@ -871,6 +877,76 @@ byte cases, canvases, mail, message documents). Each one either round-trips byte
 refused with a named error. None is dropped. The per-case red state before each fix was not
 measured case by case; the plan's «Today» column is the prediction, and it was not re-checked
 individually.
+
+### Follow-up: PG-277
+
+Written 2026-09-28, closing §D13.4 (PG-277, #616, PR #N). Plan:
+`docs/plans/pg-277-canvas-wrong-type-required-keys.md`. It applies §D5.4's rule to one more input
+class and changes no decision of this ADR: no on-disk format, no `IndexCache.schemaVersion`, no
+protected interface.
+
+**The widened §D5.4 set.** A node is also unreadable, so kept opaque at its index and written back
+verbatim, when a required key is present with a wrong JSON type. JSON Canvas 1.0's required keys
+are `id`, `type`, `x`, `y`, `width` and `height` on every node, `text` on a text node, `file` on a
+file node and `url` on a link node; an edge's are `id`, `fromNode` and `toNode`. "Present" means
+the key exists after `JSONSerialization`, so a JSON `null` is present. The type is judged through
+`JSONValue(_:)`, which tells a boolean from a number:
+
+- `x`, `y`, `width`, `height`, on every node including an `.unknown` kind: any JSON number is
+  read; anything else, a boolean or `null` included, makes the node opaque.
+- `text`, `file`, `url`, each only on its own kind: a string is read; anything else makes the
+  node opaque.
+- A node's `id`/`type` and an edge's `id`/`fromNode`/`toNode` were already opaque on a wrong type,
+  and still are.
+- Optional keys are unchanged (§D5.3): a wrong-typed `subpath`, `color`, `label`, side, end or
+  `pergamenum-*` key stays in `unknown`, and its element stays readable. Another kind's payload
+  key stays in `unknown` whatever its type (§D5.1).
+
+The reader is `CanvasRequiredKey` (`Sources/Core/Canvas/CanvasRequiredKey.swift`, Foundation only,
+compiled by `perg` and `pergamenum-mcp` through the `Sources/Core/**` glob). `CanvasNode.init?`
+keeps its signature; only the set of inputs it answers `nil` for widens. The encode and
+`reconcile` are unchanged. A node that `base` reads and `theirs` has made malformed now diverges
+naming both its id and its opaque index (`nodes[i]`), under §D6.3.
+
+**Three boundary choices.**
+
+- "Integer" is not enforced. The spec types geometry as an integer, but this app writes
+  `Double(x)` and can carry fractional geometry on its own boards; enforcing it would make the
+  app's own cards opaque.
+- A boolean is not a number, although `NSNumber` carries both. `"width": true` used to read as 1
+  and be written back as `1`, the same loss as a default.
+- An absent required key keeps its default (0, 0, 260, 120 and `""`). Nothing is on disk for a save
+  to overwrite, and a generated canvas that omits geometry still opens drawn. The encode then adds
+  the key with the value the card was drawn with. That is a repair, not a round-trip, so no
+  absent-key case is in `FormatEdgeCorpus`.
+
+**Alternatives rejected.**
+
+- Refusing the open, `DecodingError` style. §D5.5 reserves refusal for a shape that cannot be
+  written back, and a malformed element can be, through the opaque path. Every background reader
+  also decodes with `try?` (`VaultScanner`, the note and folder rename repoints), so a refusal
+  there skips the whole board: one bad key would stop every other file node on it from being
+  repointed and would drop every board task on it from the index.
+- Keeping the element readable and carrying only the bad key. The card would be drawn at a frame
+  or with a text the file never had, it needs per-property provenance on `CanvasNode`, a third
+  carrying tier beside §D5.3 and §D5.4, and the first move, resize or keystroke on the card would
+  replace the value anyway.
+- Coercing leniently (`"12"` to 12, `true` to 1). It is a guess, and it changes the value's JSON
+  type on the next write, which fails the canonical round-trip. `true` to 1 was the defect itself.
+
+**Consequences (the plan's G1, accepted).** A node made opaque by this rule is carried, not
+interpreted. It is not drawn, and neither are its edges, which stay readable `CanvasEdge` values
+and are written back unchanged. It keeps its old path when the file it names is renamed or moved.
+A task line it holds does not reach the Tasks views. Its file is offered again in the board's
+tray, and it is not listed among the board's referenced notes. Before the fix the same node was
+drawn with a default value that the next write destroyed. Whether a board should say that it holds
+opaque elements applies to every §D5.4 element and is not decided here; this follow-up keeps
+§D5.4's silence.
+
+Named, not addressed: more opaque elements make `PG-281` (#605, an opaque element's index going
+stale after an insert or delete before it) more reachable, with order changing and no content
+lost; a generated id colliding with an opaque node's id stays a 2^-64 event, pre-existing for every
+§D5.4 element; a number outside `Double`'s range was not examined.
 
 ## References
 
