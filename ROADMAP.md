@@ -830,6 +830,10 @@ system) and ADR-0030.
 6. **Hand-kept context menu**: `AttachmentChip.swift:60-68` builds from
    `AttachmentChipModel.contextMenuTitles` instead of `MessageCommand`; already drifted
    («Anteprima» vs «Anteprima allegato»). `CardCommand.swift:1-9` states why this is forbidden.
+   *Update (PG-285, ADR-0066 §D3):* the hand-kept half is closed. The chip's menu is now an
+   AppKit menu built from one catalogue, `AttachmentChipModel.Command`/`menuEntries(for:state:)`,
+   the only place its four titles are named; the SwiftUI `.contextMenu` at those lines is gone.
+   Still open: the wording, «Anteprima» on the chip against «Anteprima allegato» on the row.
 7. **SF Symbols**: `MessageCommand.exclude` uses `xmark.circle` for a trash operation; two glyphs
    for "board" in `PratichePane+Links.swift:214` vs `PraticaLinkPicker.swift:209`; «attività» vs
    «task» oscillates across picker, inspector and errors.

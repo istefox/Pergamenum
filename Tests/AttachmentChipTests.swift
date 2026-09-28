@@ -221,4 +221,94 @@ import Testing
             "a pending attachment has no file to probe - the state closure must never be invoked (R-08)"
         )
     }
+
+    // MARK: - ADR-0066 §D3: the chip's menu, one catalogue for all four entries
+
+    /// The commands whose entry is enabled, after checking the menu always carries all four,
+    /// in order: an entry is disabled, never dropped.
+    private static func enabled(_ entries: [AttachmentChipModel.MenuEntry]) -> Set<AttachmentChipModel.Command> {
+        #expect(entries.map(\.command) == [.preview, .open, .reveal, .copy])
+        return Set(entries.filter(\.isEnabled).map(\.command))
+    }
+
+    @Test func theMenuOffersAnteprimaApriThenTheCatalogueTitlesUnderDistinctIdentifiers() throws {
+        try Self.withTemporaryFile { root in
+            let url = root.appending(path: "offerta.pdf", directoryHint: .notDirectory)
+            try Data("x".utf8).write(to: url)
+            let content = AttachmentChip.Content.file(PraticaAttachmentRef(name: "offerta.pdf", url: url))
+
+            let entries = AttachmentChipModel.menuEntries(for: content, state: Self.state)
+            #expect(entries.map(\.title) == ["Anteprima", "Apri"] + AttachmentChipModel.contextMenuTitles)
+            #expect(entries.map(\.title) == entries.map(\.command.title), "an entry's title is its command's")
+        }
+        let identifiers = AttachmentChipModel.Command.allCases.map(\.identifier)
+        #expect(Set(identifiers).count == AttachmentChipModel.Command.allCases.count)
+        #expect(identifiers.allSatisfy { $0.hasPrefix("pratiche-attachment-command-") })
+    }
+
+    @Test func aUsableFileEnablesAllFourEntries() throws {
+        try Self.withTemporaryFile { root in
+            let url = root.appending(path: "offerta.pdf", directoryHint: .notDirectory)
+            try Data("x".utf8).write(to: url)
+            let content = AttachmentChip.Content.file(PraticaAttachmentRef(name: "offerta.pdf", url: url))
+
+            let entries = AttachmentChipModel.menuEntries(for: content, state: Self.state)
+            #expect(Self.enabled(entries) == [.preview, .open, .reveal, .copy])
+        }
+    }
+
+    @Test func aMissingFileEnablesOnlyCopia() {
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "pergamenum-attachment-chip-missing-\(UUID().uuidString)/offerta.pdf")
+        let content = AttachmentChip.Content.file(PraticaAttachmentRef(name: "offerta.pdf", url: url))
+
+        #expect(Self.enabled(AttachmentChipModel.menuEntries(for: content, state: Self.state)) == [.copy])
+    }
+
+    @Test func anUnusableFileEnablesOnlyCopia() {
+        let url = FileManager.default.temporaryDirectory.appending(path: "offerta.pdf")
+        let content = AttachmentChip.Content.file(PraticaAttachmentRef(name: "offerta.pdf", url: url))
+
+        #expect(Self.enabled(AttachmentChipModel.menuEntries(for: content, state: { _ in .unusable })) == [.copy])
+    }
+
+    @Test func aUsableStoreReferenceEnablesApriRevealAndCopiaButNotAnteprima() throws {
+        try Self.withTemporaryFile { root in
+            let storeURL = root.appending(path: "allegato-grande.zip", directoryHint: .notDirectory)
+            try Data("x".utf8).write(to: storeURL)
+            let content = AttachmentChip.Content.storeReference(MessageDocument.StoreReference(
+                name: "allegato-grande.zip", size: 400_000_000, storePath: storeURL.path(percentEncoded: false)
+            ))
+
+            let entries = AttachmentChipModel.menuEntries(for: content, state: Self.state)
+            #expect(Self.enabled(entries) == [.open, .reveal, .copy])
+        }
+    }
+
+    @Test func aStoreReferenceWhoseStorePathIsGoneEnablesOnlyCopia() {
+        let content = AttachmentChip.Content.storeReference(MessageDocument.StoreReference(
+            name: "allegato-grande.zip", size: 400_000_000, storePath: "/Volumes/gone/allegato-grande.zip"
+        ))
+
+        #expect(Self.enabled(AttachmentChipModel.menuEntries(for: content, state: Self.state)) == [.copy])
+    }
+
+    @Test func aPendingChipEnablesOnlyCopiaAndNeverProbes() {
+        let probe = RecordingProbe()
+
+        let entries = AttachmentChipModel.menuEntries(for: .pending(name: "offerta.pdf"), state: probe.state)
+        #expect(Self.enabled(entries) == [.copy])
+        #expect(probe.calls.isEmpty, "a pending attachment has no file to probe (ADR-0040 §D8)")
+    }
+
+    @Test func aUsableScriptPreviewsRevealsAndCopiesButDoesNotOpen() throws {
+        try Self.withTemporaryFile { root in
+            let url = root.appending(path: "install.sh", directoryHint: .notDirectory)
+            try Data("x".utf8).write(to: url)
+            let content = AttachmentChip.Content.file(PraticaAttachmentRef(name: "install.sh", url: url))
+
+            let entries = AttachmentChipModel.menuEntries(for: content, state: Self.state)
+            #expect(Self.enabled(entries) == [.preview, .reveal, .copy])
+        }
+    }
 }
