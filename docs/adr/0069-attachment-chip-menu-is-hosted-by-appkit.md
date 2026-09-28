@@ -1,7 +1,6 @@
 # ADR-0069: The attachment chip's context menu is an AppKit menu, because the `List` row's own `.contextMenu` takes every right-click inside the row
 
-- Status: **proposed**, 2026-09-26. The implementation is not on `main`. The status flips to
-  `accepted` with the PR and the merge hash once it lands (`docs/adr/README.md` §2).
+- Status: **accepted**. Merged to `main` via PR #636 (`2941fbee`, 2026-09-28), closing `PG-285`/#617.
 - Date: 2026-09-26. Written before the implementation, against `1e09448e` (`main`, equal to
   `origin/main`, clean tree). Every line number below was read from that tree.
 - **Renumbering note (2026-09-28).** Written and committed as ADR-0066 (`edaf7db0`) on
