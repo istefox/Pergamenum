@@ -623,8 +623,8 @@ Each item is out of the SPEC's scope and is filed as a follow-up:
 4. A canvas's required keys with a wrong JSON type (`"x": "12"`, `"text": 42`) are replaced by their
    defaults (`JSONCanvas.swift:171-189`).
 
-   > Cross-reference, 2026-09-28 (PG-277, #616): closed by PR #N (merge hash recorded after the
-   > merge). Such a node is now kept opaque under §D5.4; no decision above changes. See
+   > Cross-reference, 2026-09-28 (PG-277, #616): closed by PR #658 (merge `58810e0e`). Such a
+   > node is now kept opaque under §D5.4; no decision above changes. See
    > «Implementation notes», «Follow-up: PG-277» and
    > `docs/plans/pg-277-canvas-wrong-type-required-keys.md`.
 
@@ -880,7 +880,7 @@ individually.
 
 ### Follow-up: PG-277
 
-Written 2026-09-28, closing §D13.4 (PG-277, #616, PR #N). Plan:
+Written 2026-09-28, closing §D13.4 (PG-277, #616, PR #658, merge `58810e0e`). Plan:
 `docs/plans/pg-277-canvas-wrong-type-required-keys.md`. It applies §D5.4's rule to one more input
 class and changes no decision of this ADR: no on-disk format, no `IndexCache.schemaVersion`, no
 protected interface.
