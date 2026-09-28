@@ -63,7 +63,10 @@
 #
 #         scripts/uitests.sh --status
 #         says whether this tree, and `main`, already has a verdict, and what changed since the
-#         last full green one. Read-only, instant, safe at any moment.
+#         last full green one. A `main` with no full verdict of its own is shown green by
+#         inheritance when nothing between it and its newest green ancestor reaches the UI (the
+#         TODO.md sync after every merge), and otherwise `nessun verdetto` with what a run would
+#         need. Read-only, instant, safe at any moment; the exit code is about HEAD only.
 #
 #         scripts/uitests.sh --affected
 #         derives the selection from what differs from the last full green verdict (or from
@@ -193,14 +196,14 @@ verdict_file() { printf '%s/%s.%s.verdict' "$VERDICT_DIR" "$1" "$2"; }
 # `--affected` counts from; every reader of a verdict goes through here (R-04).
 is_green_file() { [ "$(verdict_field "$1" result)" = green ]; }
 
-# The newest full green verdict whose commit is HEAD or one of its ancestors: the point from
-# which "what changed" is the whole question.
+# The newest full green verdict whose commit is the ref (HEAD when none is given) or one of its
+# ancestors: the point from which "what changed" is the whole question.
 last_verified_ancestor() {
-    local f c
+    local ref="${1:-HEAD}" f c
     for f in $(ls -t "$VERDICT_DIR"/*.full.verdict 2>/dev/null); do
         is_green_file "$f" || continue
         c=$(verdict_field "$f" commit)
-        if git merge-base --is-ancestor "$c" HEAD 2>/dev/null; then
+        if git merge-base --is-ancestor "$c" "$ref" 2>/dev/null; then
             printf '%s' "$c"
             return
         fi
@@ -215,12 +218,22 @@ PLAN_CLASSES=""
 PLAN_REASON=""
 PLAN_NONE=0
 plan_from() {
-    local changed path cls wanted=""
+    plan_for_paths "$( { git diff --name-only "$1"; git ls-files --others --exclude-standard; } | sort -u)"
+}
+
+# The same plan between two commits, `base` and `ref`, and nothing else: no working tree, no
+# untracked file. What `--status` asks about `main`, which is not the tree checked out here.
+plan_between() {
+    plan_for_paths "$(git diff --name-only "$1" "$2" | sort -u)"
+}
+
+# The classification both forms share: one changed path per line in $1, into the PLAN globals.
+plan_for_paths() {
+    local changed="$1" path cls wanted=""
     PLAN=""
     PLAN_CLASSES=""
     PLAN_REASON=""
     PLAN_NONE=0
-    changed=$( { git diff --name-only "$1"; git ls-files --others --exclude-standard; } | sort -u)
     while IFS= read -r path; do
         [ -n "$path" ] || continue
         cls=$(classes_for_path "$path")
@@ -249,20 +262,56 @@ describe_plan() {
 }
 
 show_verdict() {
-    local label="$1" tree="$2" scope f reasons
+    local scope
     for scope in full partial; do
-        f=$(verdict_file "$tree" "$scope")
-        if [ -f "$f" ]; then
-            # The signals a run recorded, zero or more, comma-separated in the file (R-01).
-            reasons=$(verdict_field "$f" reasons | sed 's/,/, /g')
-            printf '  %-5s %-8s %s il %s, %s test (commit %s)%s\n' "$label" "$scope" \
-                "$(verdict_field "$f" result)" "$(verdict_field "$f" date)" \
-                "$(verdict_field "$f" executed)" "$(verdict_field "$f" commit | cut -c1-7)" \
-                "${reasons:+; segnali: $reasons}"
-        else
-            printf '  %-5s %-8s nessun verdetto\n' "$label" "$scope"
-        fi
+        show_verdict_scope "$1" "$2" "$scope"
     done
+}
+
+show_verdict_scope() {
+    local label="$1" tree="$2" scope="$3" f reasons
+    f=$(verdict_file "$tree" "$scope")
+    if [ -f "$f" ]; then
+        # The signals a run recorded, zero or more, comma-separated in the file (R-01).
+        reasons=$(verdict_field "$f" reasons | sed 's/,/, /g')
+        printf '  %-5s %-8s %s il %s, %s test (commit %s)%s\n' "$label" "$scope" \
+            "$(verdict_field "$f" result)" "$(verdict_field "$f" date)" \
+            "$(verdict_field "$f" executed)" "$(verdict_field "$f" commit | cut -c1-7)" \
+            "${reasons:+; segnali: $reasons}"
+    else
+        printf '  %-5s %-8s nessun verdetto\n' "$label" "$scope"
+    fi
+}
+
+# Which ref `--status` means by `main`: the local branch, else the remote one. Empty when neither
+# resolves. Asked by exit status: `git rev-parse` echoes an unknown name back on stdout.
+main_ref() {
+    if tree_of main >/dev/null; then
+        echo main
+    elif tree_of origin/main >/dev/null; then
+        echo origin/main
+    fi
+}
+
+# The full row for a `main` whose own tree has no full verdict. The TODO.md sync `/ship` lands
+# after every merge moves `main` off the tree a run verified, so without this `main` would almost
+# never show one. The rule is HEAD's (end of `status_report`): the newest green full ancestor, and
+# nothing since that reaches the UI. It is a derivation, not a verdict: no file is written, and
+# the row says whose verdict it inherits. It sets the PLAN globals, so HEAD's reader calls it in a
+# subshell.
+main_full_row() {
+    local ref="$1" base
+    base=$(last_verified_ancestor "$ref")
+    if [ -z "$base" ]; then
+        printf '  %-5s %-8s nessun verdetto (nessun verde completo tra i suoi antenati)\n' main full
+        return
+    fi
+    plan_between "$base" "$ref"
+    if [ "$PLAN" = NONE ]; then
+        printf '  %-5s %-8s verde per ereditarietà da %s (%s)\n' main full "${base:0:7}" "$(describe_plan)"
+    else
+        printf '  %-5s %-8s nessun verdetto (da %s: %s)\n' main full "${base:0:7}" "$(describe_plan)"
+    fi
 }
 
 # How many GUI tests the tree currently carries - informational only, never a failing check
@@ -278,15 +327,23 @@ gui_test_count() {
 # session. Exit 0 when HEAD counts as verified (definition at the end of the function), 1 when
 # a run is still owed.
 status_report() {
-    local head_tree main_tree base
+    local head_tree mref main_tree base
     head_tree=$(tree_of HEAD)
     printf 'uitests: HEAD %s, albero %s, %s\n' "$(git rev-parse --short HEAD)" "${head_tree:0:7}" \
         "$(is_clean && echo pulito || echo 'con modifiche non committate')"
     printf 'uitests: %d test GUI (cap deciso 2026-09-21: 17)\n' "$(gui_test_count)"
     show_verdict HEAD "$head_tree"
-    main_tree=$(tree_of main || tree_of origin/main || true)
+    mref=$(main_ref)
+    main_tree=""
+    [ -z "$mref" ] || main_tree=$(tree_of "$mref")
     if [ -n "$main_tree" ] && [ "$main_tree" != "$head_tree" ]; then
-        show_verdict main "$main_tree"
+        if [ -f "$(verdict_file "$main_tree" full)" ]; then
+            show_verdict_scope main "$main_tree" full
+        else
+            # A subshell: the derivation sets the PLAN globals HEAD's exit code reads below.
+            ( main_full_row "$mref" )
+        fi
+        show_verdict_scope main "$main_tree" partial
     fi
     base=$(last_verified_ancestor)
     if [ -n "$base" ]; then
@@ -600,12 +657,33 @@ selftest_settle() {
     settle_verdict "$1" "$2" "$3"
 }
 
+# The throwaway repository the `main` row is checked in (#645), inside this mode's own directory.
+# Every call runs in a subshell that has left the real checkout, with the variables that could
+# point git back at it cleared, so no ref, index or object of the real repository is touched.
+SELFTEST_REPO=""
+in_selftest_repo() {
+    ( unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
+      cd "$SELFTEST_REPO" && "$@" )
+}
+st_git() {
+    in_selftest_repo git -c user.name=selftest -c user.email=selftest@invalid \
+        -c commit.gpgsign=false -c core.hooksPath=/dev/null "$@"
+}
+st_commit() {
+    st_git add -A && st_git commit -q --no-verify -m "$1"
+}
+# The plan functions set globals, which a subshell keeps to itself: these print them from inside.
+st_plan_between() { plan_between "$1" "$2"; echo "$PLAN $PLAN_NONE"; }
+st_plan_from() { plan_from "$1"; echo "$PLAN $PLAN_NONE"; }
+
 # Only ever empties the directory this mode made itself, and keeps it when a check failed so the
 # fabricated files can be read.
 selftest_cleanup() {
     [ "$SELFTEST_OK" -eq 1 ] || return 0
     case "$VERDICT_DIR" in
         */pergamenum-uitests-selftest.*)
+            # The throwaway repository is a tree of its own; nothing else here is a directory.
+            [ ! -d "$VERDICT_DIR/repo" ] || rm -rf -- "$VERDICT_DIR/repo"
             rm -f "$VERDICT_DIR"/* 2>/dev/null || true
             rmdir "$VERDICT_DIR" 2>/dev/null || true ;;
     esac
@@ -613,7 +691,7 @@ selftest_cleanup() {
 }
 
 self_test() {
-    local d="$VERDICT_DIR" head_tree head_commit f before out rc s
+    local d="$VERDICT_DIR" head_tree head_commit f before out rc s st_a
     case "$d" in
         */pergamenum-uitests-selftest.*) ;;
         *) fail "--self-test senza la sua cartella temporanea: mi fermo prima di scrivere altrove" ;;
@@ -800,6 +878,72 @@ self_test() {
     expect_eq "classes_for_path: an unrelated Workspace source does not pick up the chip's class" \
         "WorkspaceBoardUITests WorkspaceIntegrationUITests WorkspaceOpenStateUITests SidebarMoveUITests" \
         "$(classes_for_path "Sources/Features/Workspace/WorkspaceView.swift")"
+
+    # #645: `main`'s row inherits a green verdict across commits that cannot reach the UI (the
+    # TODO.md sync after every merge), keeps `nessun verdetto` with the plan when they can, writes
+    # nothing, and never moves HEAD's exit code. A throwaway repository: A, then `todo-only` =
+    # A + a TODO.md commit and `ui-change` = A + a Sources/ commit, with a green verdict on A.
+    rm -f "$d"/*.verdict
+    SELFTEST_REPO="$d/repo"
+    mkdir "$SELFTEST_REPO"
+    st_git init -q --template= -b main
+    mkdir -p "$SELFTEST_REPO/Sources/App"
+    printf 'let a = 1\n' >"$SELFTEST_REPO/Sources/App/A.swift"
+    printf '# TODO\n' >"$SELFTEST_REPO/TODO.md"
+    st_commit "A"
+    st_a=$(st_git rev-parse HEAD)
+    st_git branch todo-only
+    st_git branch ui-change
+    st_git checkout -q todo-only
+    printf -- '- PG-1\n' >>"$SELFTEST_REPO/TODO.md"
+    st_commit "chore(tasks): sync TODO.md"
+    st_git checkout -q ui-change
+    printf 'let b = 2\n' >>"$SELFTEST_REPO/Sources/App/A.swift"
+    st_commit "feat: reach the UI"
+    write_verdict "$(st_git rev-parse 'main^{tree}')" "$st_a" "2026-09-28 10:00" full green 21 "" \
+        "-only-testing:PergamenumUITests" "$d/x.xcresult" "$d/x.log"
+
+    expect_eq "last_verified_ancestor: con un ref, il verde tra i suoi antenati" \
+        "$st_a" "$(in_selftest_repo last_verified_ancestor todo-only)"
+    expect_eq "last_verified_ancestor: senza ref resta HEAD" \
+        "$st_a" "$(in_selftest_repo last_verified_ancestor)"
+    # An untracked UI file in the working tree belongs to HEAD, not to `main`.
+    printf 'let stray = 0\n' >"$SELFTEST_REPO/Sources/App/Stray.swift"
+    expect_eq "plan_between: due commit soli, niente albero di lavoro né file non tracciati" \
+        "NONE 1" "$(in_selftest_repo st_plan_between "$st_a" todo-only)"
+    expect_eq "plan_from: l'albero di lavoro resta nel piano di HEAD" \
+        "ALL 0" "$(in_selftest_repo st_plan_from "$st_a")"
+    expect_eq "main = verde + solo TODO.md: verde per ereditarietà, col commit di partenza" \
+        "  main  full     verde per ereditarietà da ${st_a:0:7} (nessun giro: 1 file cambiati, nessuno raggiunge la UI)" \
+        "$(in_selftest_repo main_full_row todo-only)"
+    expect_eq "main = verde + Sources/: nessun verdetto, col piano" \
+        "  main  full     nessun verdetto (da ${st_a:0:7}: giro completo: Sources/App/A.swift raggiunge troppe classi per elencarle)" \
+        "$(in_selftest_repo main_full_row ui-change)"
+    rm -f "$SELFTEST_REPO/Sources/App/Stray.swift"
+
+    before=$(ls "$d"; cat "$d"/*.verdict)
+    st_git branch -f main todo-only
+    rc=0
+    out=$(in_selftest_repo status_report) || rc=$?
+    expect_eq "--status: main ereditato verde non rende verificato un HEAD che tocca la UI (uscita 1)" 1 "$rc"
+    expect_eq "--status: la riga full di main nomina l'eredità" si \
+        "$(contains "$out" "  main  full     verde per ereditarietà da ${st_a:0:7}")"
+    expect_eq "--status: la riga partial di main resta com'era" si \
+        "$(contains "$out" "  main  partial  nessun verdetto")"
+    expect_eq "--status: il piano di HEAD resta quello di HEAD" si \
+        "$(contains "$out" "da allora giro completo: Sources/App/A.swift")"
+    st_git checkout -q todo-only
+    st_git branch -f main ui-change
+    rc=0
+    out=$(in_selftest_repo status_report) || rc=$?
+    expect_eq "--status: un main che tocca la UI non toglie la verifica a HEAD (uscita 0)" 0 "$rc"
+    expect_eq "--status: e main resta senza verdetto, col piano" si \
+        "$(contains "$out" "  main  full     nessun verdetto (da ${st_a:0:7}: giro completo")"
+    st_git branch -f main "$st_a"
+    out=$(in_selftest_repo status_report) || true
+    expect_eq "--status: un main col suo verdetto lo mostra, senza eredità" si \
+        "$(contains "$out" "  main  full     green il 2026-09-28 10:00")"
+    expect_eq "--status non scrive né cambia alcun verdetto" "$before" "$(ls "$d"; cat "$d"/*.verdict)"
 
     # --self-test stands alone. The nested call is told it is nested, so a refusal that ever broke
     # would end here as a failed check instead of a self-test spawning self-tests without end.
