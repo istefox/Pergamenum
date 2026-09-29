@@ -14,7 +14,7 @@
   (trash, never remove; skip an ambiguous rewrite and report it), ADR-0024 (flat rows), ADR-0023
   §D1 (one command catalogue), and ADR-0070 §D4 (Quick Look beside a `List`).
 - Amends: none.
-- Bumps the protected `IndexCache.schemaVersion` 5 → 6 (gate G1).
+- Bumps the protected `IndexCache.schemaVersion` 6 → 7 (gate G1). Approved as 5 → 6; PG-316 took 6 on `main` first, so the same bump became 6 → 7 at merge.
 
 ## Context
 
@@ -124,7 +124,7 @@ The keys are the SPEC's indicative names, now final:
   (`Sources/Core/Contenitore/`). Edits go through `NoteDocument`/`FrontmatterSource`, so a colour
   change rewrites one line.
 
-### §D2 The index carries the scheda's facts; `IndexCache.schemaVersion` 5 → 6
+### §D2 The index carries the scheda's facts; `IndexCache.schemaVersion` 6 → 7
 
 - `NoteRecord` gains `contenitore: ContenitoreFacts?`: file name, original name, hash and colour.
   - `NoteStore.record(from:)` fills it through `ContenitoreScheda.facts(in: foreignKeys)`.
@@ -565,7 +565,7 @@ silent change would unmake existing documents. This follows the `Dossier.render`
 
 ## Open for Stefano
 
-- **G1.** Approve the `IndexCache.schemaVersion` 5 → 6 bump. Recommended: approve (§D2).
+- **G1.** Approve the `IndexCache.schemaVersion` 6 → 7 bump. Recommended: approve (§D2).
 - **G2.** Approve the pane mockup before the pane is built (R-28).
 - **G3.** Decide what happens to a dropped `.md`. Recommended: refuse it with a notice. The
   alternative is to import it as a plain note with no scheda. A dropped `.canvas` is refused the

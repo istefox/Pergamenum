@@ -11,15 +11,49 @@ import Foundation
 /// Matching is folded the way search is (`SearchQuery.fold`), so an accent or a capital
 /// in a folder name does not decide whether a view has any rows.
 enum Glob {
+    /// A pattern folded once, for a caller that tests it against many candidates: a view
+    /// evaluation or a search holds one per pattern for the whole pass (ADR-0072). The static
+    /// functions below build one per call, so there is a single implementation of each rule.
+    struct Pattern: Sendable {
+        /// Asked of the pattern as written, exactly as `isPattern` asks it.
+        private let isGlob: Bool
+        private let folded: String
+        /// The folded pattern as characters, built only when there is a wildcard to walk.
+        private let characters: [Character]
+
+        init(_ pattern: String) {
+            isGlob = Glob.isPattern(pattern)
+            folded = SearchQuery.fold(pattern)
+            characters = isGlob ? Array(folded) : []
+        }
+
+        /// Whether the pattern matches a whole candidate string.
+        func matches(_ candidate: String) -> Bool {
+            Glob.wildcard(isGlob ? characters : Array(folded), Array(SearchQuery.fold(candidate)))
+        }
+
+        /// `tag()` in a view and `tag:`/`-tag:` in a search: see `Glob.matchesTag`.
+        func matchesTag(_ tag: String) -> Bool {
+            isGlob ? matches(tag) : folded == SearchQuery.fold(tag)
+        }
+
+        /// `path()`: see `Glob.matchesPath`.
+        func matchesPath(_ path: String) -> Bool {
+            isGlob ? matches(path) : SearchQuery.fold(path).hasPrefix(folded)
+        }
+    }
+
     /// Whether a pattern matches a whole candidate string.
+    static func matches(_ pattern: String, _ candidate: String) -> Bool {
+        Pattern(pattern).matches(candidate)
+    }
+
+    /// The matcher itself, over a folded pattern and a folded candidate.
     ///
     /// Iterative with a single backtracking point rather than recursive: a pattern is
     /// short but a path is not, and `a*a*a*` against a long path is the case that turns
     /// the recursive version into a pause.
-    static func matches(_ pattern: String, _ candidate: String) -> Bool {
-        let pattern = Array(SearchQuery.fold(pattern))
-        let text = Array(SearchQuery.fold(candidate))
-
+    private static func wildcard(_ pattern: [Character], _ text: [Character]) -> Bool {
         var patternIndex = 0, textIndex = 0
         // Where to resume if the `*` we last passed turns out to have swallowed too little.
         var starIndex: Int?
@@ -62,12 +96,12 @@ enum Glob {
     /// wildcard, glob when it has one. Search used a prefix rule until PG-260, which made
     /// `tag:client-acme` take `client-acme-industriale`; `tag:client-*` is the family search.
     static func matchesTag(_ pattern: String, _ tag: String) -> Bool {
-        isPattern(pattern) ? matches(pattern, tag) : SearchQuery.fold(pattern) == SearchQuery.fold(tag)
+        Pattern(pattern).matchesTag(tag)
     }
 
     /// `path()`: a prefix of the vault-relative path when the pattern has no wildcard,
     /// a glob over the whole path when it has one.
     static func matchesPath(_ pattern: String, _ path: String) -> Bool {
-        isPattern(pattern) ? matches(pattern, path) : SearchQuery.fold(path).hasPrefix(SearchQuery.fold(pattern))
+        Pattern(pattern).matchesPath(path)
     }
 }

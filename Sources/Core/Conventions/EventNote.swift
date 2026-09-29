@@ -72,23 +72,32 @@ enum EventNoteSection {
         let link = "- [[\(title)]]"
         guard !body.contains(link) else { return body }
 
+        // What this adds takes the note's own line break, and every test for one is made with
+        // `LineBreak.isTerminator`: a `"\r\n"` pair is one `Character`, so `hasSuffix("\n")`
+        // and a search for `"\n#"` never matched in a CRLF note (PG-318).
+        let lineBreak = LineBreak.detected(in: body).characters
+
         guard let range = body.range(of: heading) else {
-            let separator = body.hasSuffix("\n\n") ? "" : (body.hasSuffix("\n") ? "\n" : "\n\n")
-            return body + separator + heading + "\n\n" + link + "\n"
+            // Up to one blank line before the new section, as many as the note lacks.
+            let closingBreaks = min(body.reversed().prefix(while: LineBreak.isTerminator).count, 2)
+            let separator = String(repeating: lineBreak, count: 2 - closingBreaks)
+            return body + separator + heading + lineBreak + lineBreak + link + lineBreak
         }
 
         // Insert at the end of the section rather than at the end of the note: the section
         // ends at the next heading, and a link written past it would belong to that one.
         let afterHeading = body[range.upperBound...]
-        let nextHeading = afterHeading.range(of: "\n#")
-        let end = nextHeading?.lowerBound ?? body.endIndex
+        let nextHeading = afterHeading.indices.first { index in
+            LineBreak.isTerminator(body[index]) && body[body.index(after: index)...].first == "#"
+        }
+        let end = nextHeading ?? body.endIndex
 
         var result = body
         let section = String(body[range.upperBound..<end])
-        let trimmed = section.hasSuffix("\n")
+        let trimmed = section.last.map(LineBreak.isTerminator) == true
             ? String(section.dropLast())
             : section
-        result.replaceSubrange(range.upperBound..<end, with: trimmed + "\n" + link + "\n")
+        result.replaceSubrange(range.upperBound..<end, with: trimmed + lineBreak + link + lineBreak)
         return result
     }
 }

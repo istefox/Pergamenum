@@ -72,6 +72,21 @@ import Testing
         #expect(textView.string == "- [ ] prova\n")
     }
 
+    /// PG-316: `"\r\n"` is one `Character`, so the old `hasSuffix("\n")` missed it and `@done`
+    /// was appended after the line break, landing at the start of the next line.
+    @Test func aCRLFTaskTogglesOnItsOwnLineAndKeepsItsLineBreak() {
+        let (textView, coordinator) = Self.editor(note: "- [ ] prova\r\nsegue\r\n")
+        let box = Self.glyphRect(in: textView)
+        #expect(coordinator.toggleCheckbox(at: CGPoint(x: box.midX, y: box.midY), in: textView))
+        #expect(textView.string.hasPrefix("- [x] prova @done("))
+        #expect(textView.string.hasSuffix(")\r\nsegue\r\n"), "\(textView.string.debugDescription)")
+
+        let (doneView, doneCoordinator) = Self.editor(note: "- [x] prova @done(2026-01-01)\r\nsegue\r\n")
+        let doneBox = Self.glyphRect(in: doneView)
+        #expect(doneCoordinator.toggleCheckbox(at: CGPoint(x: doneBox.midX, y: doneBox.midY), in: doneView))
+        #expect(doneView.string == "- [ ] prova\r\nsegue\r\n")
+    }
+
     @Test func aClickOnTheTaskTextFallsThroughWithoutToggling() {
         let (textView, coordinator) = Self.editor(note: "- [ ] prova\n")
         let box = Self.glyphRect(in: textView)

@@ -87,7 +87,7 @@ The SPEC's `## Decisions` settle the following, and ADR-0071 carries them as the
 4. **The index keeps no foreign key.**
    - `StoredFrontmatter` holds four keys, which is why ADR-0047 added `categorySlug`
      (`IndexCache.swift:274`).
-   - Contenitore adds one typed field and bumps `schemaVersion` 5 → 6 (`IndexCache.swift:214`).
+   - Contenitore adds one typed field and bumps `schemaVersion` 6 → 7 (`IndexCache.swift:214`).
      That constant is protected, so the bump is gate G1.
 5. **A stem of exactly `YYYYMMDD` is a daily note** (`NoteName.category`). A name that sanitises to
    nothing gets the fallback `documento`.
@@ -270,12 +270,12 @@ Edits outside `Sources/Core/Contenitore/`:
 
 - Fill the bodies.
 - Fill `contenitore` in `NoteStore.record(from:)`.
-- After gate G1, set `IndexCache.schemaVersion` to 6 and add a "6 (ADR-0071 §D2)" line to its doc
+- After gate G1, set `IndexCache.schemaVersion` to 7 and add a "7 (ADR-0071 §D2)" line to its doc
   comment.
 
 ### Update tests and call-sites asserting the old behaviour
 
-- **`Tests/IndexCacheTests.swift:228`** asserts `IndexCache.schemaVersion == 5`. Change it to 6,
+- **`Tests/IndexCacheTests.swift:228`** asserts `IndexCache.schemaVersion == 6`. Change it to 7,
   and explain the change in chat first.
 - **Sticky colours.** `Sources/Features/Workspace/StickyTextCard.swift` and
   `BoardContentLayer.colorNames` now read the shared preset helper, with no visible change. The
@@ -733,7 +733,7 @@ which is PR 2.
 
 ## Risks, dependencies and HITL gates
 
-- **G1: schema bump** (protected interface). `IndexCache.schemaVersion` goes 5 → 6, so every vault
+- **G1: schema bump** (protected interface). `IndexCache.schemaVersion` goes 6 → 7, so every vault
   rebuilds its cache once. That rebuild is fast by principle 3. Recommended: approve.
 - **G2: mockup approval** (R-28). It blocks Task 7 only.
 - **G3: a dropped `.md`.** This is a user preference.
@@ -744,7 +744,7 @@ which is PR 2.
 - **G5: renaming the root from the Note pane** does not update the setting. Pratiche has the same
   gap. Recommended: a shared follow-up.
 - **G6: a protected-interface entry** for `ContenitoreScheda.render`.
-- **Answered at /workplan, 2026-09-29:** G1 approved (schemaVersion 5 → 6). G3: refuse a dropped
+- **Answered at /workplan, 2026-09-29:** G1 approved (schemaVersion 5 → 6 at the time; became 6 → 7 on 2026-09-29 when PG-316 took 6 on `main` first). G3: refuse a dropped
   `.md` with a notice. G4: yes, stem uniqueness is checked vault-wide against note titles. G5 and
   G6 are still open and do not block Task 2; G2 blocks Task 7 only.
 - **Stefano's usual gates.** He approves the schema change, the commit, the push and the SPEC §9

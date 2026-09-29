@@ -103,6 +103,9 @@ let sharedSources: [SourceFileGlob] = [
     // ADR-0071 §D2: the Contenitore schede and the duplicate check, which the shared session
     // doors (`VaultSession+Contenitore.swift`) read.
     "Sources/Index/IndexSnapshot+Contenitore.swift",
+    // The task views, `taskCounts` and the day arithmetic, moved out of `IndexSnapshot.swift`
+    // when its task list became stored (ADR-0072 §D6); the connectors read every one of them.
+    "Sources/Index/IndexSnapshot+TaskView.swift",
     "Sources/Calendar/TimeBlock.swift",
     "Sources/Vault/BoardTaskRecord.swift",
     "Sources/Vault/CanvasStore.swift",

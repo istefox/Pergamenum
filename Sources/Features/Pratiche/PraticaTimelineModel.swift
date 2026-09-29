@@ -237,6 +237,19 @@ enum PraticaTimelineModel {
         return entry
     }
 
+    // MARK: - R-16, ADR-0072 §D7: «Inserisci qui»'s neighbours
+
+    /// Each row's successor in `entries`, keyed by the row's id; the last row has none. One pass
+    /// per body, where every row menu used to search the array for its own row. An id that
+    /// appears twice keeps its first row's successor, as that search did.
+    static func nextRows(in entries: [PraticaTimelineEntry]) -> [PraticaTimelineEntry.ID: PraticaTimelineEntry] {
+        var next: [PraticaTimelineEntry.ID: PraticaTimelineEntry] = [:]
+        for index in entries.indices.dropLast() where next[entries[index].id] == nil {
+            next[entries[index].id] = entries[index + 1]
+        }
+        return next
+    }
+
     // MARK: - R-24: expansion (chevron / Opt+click expand-collapse-all)
 
     /// Per-window expansion state (SPEC "Timeline model" Chevron paragraph):

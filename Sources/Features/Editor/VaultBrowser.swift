@@ -12,6 +12,10 @@ struct VaultBrowser: View {
     /// Read for the key combinations the slash menu shows beside each app command.
     @Environment(ShortcutStore.self) var shortcuts
     @Environment(ThemeEngine.self) private var themeEngine
+    /// The inspector's two index-derived lists, kept while the index and their input stay the
+    /// same: the inspector redraws on every keystroke (ADR-0072 §D4).
+    @State private var backlinksMemo = IndexKeyedMemo<String, [NoteRecord]>()
+    @State private var unresolvedMemo = IndexKeyedMemo<Int, [(target: String, sources: [NoteRecord])]>()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -280,7 +284,9 @@ struct VaultBrowser: View {
     }
 
     private func backlinks(_ note: VaultController.OpenNote) -> some View {
-        let records = vault.index.backlinks(toTitle: note.title)
+        let records = backlinksMemo.value(generation: vault.indexGeneration, input: note.title) {
+            vault.index.backlinks(toTitle: note.title)
+        }
         return VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
             Text("BACKLINK").themedText(.caption, color: .textTertiary)
             if records.isEmpty {
@@ -296,7 +302,9 @@ struct VaultBrowser: View {
     }
 
     private var unresolved: some View {
-        let links = vault.index.unresolvedLinks().prefix(10)
+        let links = unresolvedMemo.value(generation: vault.indexGeneration, input: 10) {
+            vault.index.unresolvedLinks(limit: 10)
+        }
         return VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
             Text("LINK NON RISOLTI").themedText(.caption, color: .textTertiary)
             if links.isEmpty {

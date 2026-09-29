@@ -79,7 +79,11 @@ enum MarkdownBlockParser {
     /// metadata header.
     static func blocks(in body: String) -> [MarkdownBlock] {
         var state = Accumulator()
-        var lines = body.components(separatedBy: .newlines)[...]
+        // `Character.isNewline` is `CharacterSet.newlines` one `Character` at a time, so every
+        // separator the old `components(separatedBy: .newlines)` split on still splits - but a
+        // `"\r\n"` pair is one `Character` and ends one line, where the scalar split made it two
+        // and gave a CRLF note a blank line after every line (PG-317).
+        var lines = body.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)[...]
 
         while let line = lines.first {
             lines = lines.dropFirst()
