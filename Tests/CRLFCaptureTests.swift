@@ -138,3 +138,58 @@ private func appended(_ text: String, toNote note: String) async throws -> Strin
 @Test func normalisingToLFTurnsCRCRLFIntoOneCRLF() {
     #expect(LineBreak.lf.normalised("\r\r\n") == "\r\n")
 }
+
+/// PG-327: a capture as a new note splits its title off at the first line break, a CRLF one
+/// included, so the `"\r"` of that pair reaches neither the title nor the file name. The body
+/// is what followed the break, as given: the new note is LF, so `append` writes it verbatim
+/// (PG-322).
+
+@MainActor
+private func capturedAsNote(_ text: String) async throws -> (path: String, onDisk: String) {
+    let vault = try TemporaryVault()
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+    await session.rescan()
+    VaultAPI.arm(session, command: "capture", dryRun: false)
+    let summary = try await VaultAPI.capture(session, to: .newNote(folder: nil), text: text)
+    let onDisk = try String(contentsOf: vault.root.appending(path: summary.path), encoding: .utf8)
+    return (summary.path, onDisk)
+}
+
+@MainActor
+@Test func aCRLFCaptureAsANoteLeavesNoCarriageReturnOnTheTitle() async throws {
+    let (path, onDisk) = try await capturedAsNote("Relazione fornitore\r\nuno\r\ndue")
+    #expect(path == "00 Inbox/Relazione fornitore.md")
+    #expect(!path.unicodeScalars.contains("\r"))
+    #expect(!onDisk.contains("Relazione fornitore\r"))
+    #expect(onDisk.hasSuffix("uno\r\ndue\n"))
+}
+
+@MainActor
+@Test func aCRLFCaptureTrimsTheTitleAndTheBlankLinesBeforeTheBody() async throws {
+    let (path, onDisk) = try await capturedAsNote("Relazione fornitore  \r\n\r\ncorpo")
+    #expect(path == "00 Inbox/Relazione fornitore.md")
+    #expect(onDisk.hasSuffix("\n\ncorpo\n"))
+}
+
+@MainActor
+@Test func anLFCaptureAsANoteIsSplitAsBefore() async throws {
+    let (path, onDisk) = try await capturedAsNote("Relazione fornitore\nuno\ndue")
+    #expect(path == "00 Inbox/Relazione fornitore.md")
+    #expect(onDisk.hasSuffix("uno\ndue\n"))
+}
+
+@MainActor
+@Test func aTitleOnlyCRLFCaptureCreatesTheNoteWithNoCarriageReturnAndNoBody() async throws {
+    let (path, onDisk) = try await capturedAsNote("Relazione fornitore\r\n")
+    #expect(path == "00 Inbox/Relazione fornitore.md")
+    #expect(!path.unicodeScalars.contains("\r"))
+    #expect(!onDisk.contains("Relazione fornitore\r"))
+}
+
+@MainActor
+@Test func aCRLFCaptureWithOnlyBlankLinesAfterTheTitleHasNoBody() async throws {
+    let (withBlanks, withBlanksDisk) = try await capturedAsNote("Relazione fornitore\r\n\r\n  \r\n")
+    let (bare, bareDisk) = try await capturedAsNote("Relazione fornitore")
+    #expect(withBlanks == bare)
+    #expect(withBlanksDisk == bareDisk)
+}

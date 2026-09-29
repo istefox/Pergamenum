@@ -246,9 +246,9 @@ extension EditorColumnView {
     /// anything else is a title through the index - the same lookup a `[[wikilink]]` uses,
     /// so the two cannot disagree about which note a name means.
     ///
-    /// `scanGeneration` rides along so a target edited outside the app is redrawn on the
-    /// next scan, and only then: the id it feeds changes when the vault changes, not when a
-    /// key is pressed.
+    /// `transclusionGeneration(for:)` rides along so a target is redrawn when the index
+    /// changes, and only then: the id it feeds changes when a note is written, not when a key
+    /// is pressed.
     var transclusionSource: TransclusionSource {
         TransclusionSource(
             resolve: { reference in
@@ -266,8 +266,18 @@ extension EditorColumnView {
                 }
                 return nil
             },
-            generation: vault.scanGeneration
+            generation: Self.transclusionGeneration(for: vault)
         )
+    }
+
+    // Internal, not private: read by `Tests/IndexGenerationFollowUpTests.swift`.
+    /// The generation a `![[nota]]` is redrawn on: `indexGeneration` (ADR-0072 §D11, PG-328),
+    /// which every index change moves - a save, an external edit, a rescan. It was
+    /// `scanGeneration` (ADR-0010 §D8), so an embed did not redraw when the note it names was
+    /// saved in the app, since the app's own write is not a scan. `viewQueryGeneration(for:)`'s
+    /// twin, and pure for the same reason: a test can check it without rendering.
+    static func transclusionGeneration(for vault: VaultController) -> Int {
+        vault.indexGeneration
     }
 }
 

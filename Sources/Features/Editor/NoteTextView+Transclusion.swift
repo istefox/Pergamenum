@@ -89,6 +89,10 @@ extension NoteTextView.Coordinator {
         theme: Theme
     ) -> TranscludedRendition? {
         guard let source = parent.transclusions else { return nil }
+        if renditionGeneration != source.generation {
+            renditionCache.removeAll()
+            renditionGeneration = source.generation
+        }
         let key = "\(occurrence.reference)#\(occurrence.section ?? "")@\(source.generation)|\(Int(width))"
         if let cached = renditionCache[key] { return cached }
 
