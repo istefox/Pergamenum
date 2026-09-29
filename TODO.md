@@ -129,7 +129,7 @@ Their GitHub issues were closed 2026-09-12 as "not active work" — kept here as
   - Not yet scoped how the fix should look (inline `NSTextAttachmentViewProvider`-hosted board like ADR-0029's GFM table, or a live-updating panel opened from the "Viste" row) — needs its own interview before implementation, likely through `concept-to-code` given it reopens ADR-0009/ADR-0029 territory.
 
 ## Backlog / To Add
-- [ ] `PG-329` **P2** [feat] Contenitore PR 2: mockup gate G2 (plan Task 1, SPEC §9), Tasks 6-7 (controller that keeps ingest notices on screen, since the engine reports duplicate/rolled-back files once; watcher, settings, route, pane), Task 8 (ADR-0071 `proposed` → `accepted`, CLAUDE.md index line, SPEC §9 row) — `docs/plans/contenitore.md` <!-- src:session kind:roadmap opened:2026-09-29 pr:691 adr:0071 runs:1 -->
+- [ ] `PG-329` **P2** [feat] Contenitore PR 2: mockup gate G2 (plan Task 1, SPEC §9), Tasks 6-7 (controller that keeps ingest notices on screen, since the engine reports duplicate/rolled-back files once; watcher, settings, route, pane), Task 8 (PR 2 merge hash in ADR-0071's status, CLAUDE.md index line, SPEC §9 row) — `docs/plans/contenitore.md` <!-- src:session kind:roadmap opened:2026-09-29 pr:691 adr:0071 runs:1 -->
 
 `scripts/uitests.sh` run by hand on 2026-09-10 (114 tests, 88-1400s runs depending on the pass): first
 pass was 113/114 green with one failure in the new `PraticheUITests.testRigeneraShowsADiffPreviewAndAnnullaLeavesTheFileOnDisk`

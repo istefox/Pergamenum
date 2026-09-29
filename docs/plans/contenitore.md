@@ -175,7 +175,7 @@ Owners are the parent session and Stefano. No production code.
   - `pergamenum://contenitore?id=<uuid>`: «selects the document in the Contenitore pane; unknown id
     opens the pane with nothing selected (ADR-0071 §D10)».
 - **Done when:** the ADR is on the branch, the mockup is approved, and the §9 row is written.
-  - The CLAUDE.md chain-index line and the ADR's `accepted` flip belong to Task 8.
+  - The CLAUDE.md chain-index line and the ADR's landing evidence belong to Task 8.
 
 ## Task 2 — Pure Core units and the index field (R-02, R-06, R-17, R-18, R-19, R-26)
 
@@ -698,7 +698,8 @@ He then checks five things:
 
 **After the PR 2 merge (a docs change):**
 
-- Flip ADR-0071 to `accepted`, citing the merge hash.
+- Add PR 2's merge hash to ADR-0071's status line. The flip to `accepted` already happened after
+  PR 1 (#691, `32b5ecd3`): rule 2 reported 0071 as `proposed` on `main` as soon as PR 1 landed.
 - Add the ADR-0071 line to CLAUDE.md's chain decision index.
 - Confirm the SPEC §9 row (R-29).
 - If G6 was approved, add the protected-interface entry.

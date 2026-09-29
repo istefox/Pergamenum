@@ -1,8 +1,11 @@
 # ADR-0071: Contenitore, a managed document archive fed from a drop folder
 
-- Status: proposed. The implementation is not on `main` yet. Flip to `accepted` with the merge
-  commit of the PR that lands the pane (the second of the two PRs, see "Delivery"), per
-  `docs/adr/README.md` rule 2.
+- Status: accepted. PR 1 of the two (see "Delivery") landed on `main` via PR #691 (merge
+  `32b5ecd3`, 2026-09-29): the Core units, the index field, the session doors, the ingest engine,
+  the extraction store and queue, and search, all dormant. PR 2 (controller, watcher, settings,
+  route, pane) is not on `main` yet; its merge is added here when it lands. Flipped at PR 1 rather
+  than PR 2 because `docs/adr/README.md` rule 2 keeps `proposed` for an ADR whose implementation
+  is not on `main` at all, the shape ADR-0053 already took for a multi-PR plan.
 - Date: 2026-09-29
 - Numbering: the highest number on `origin/main` (`29307ccc`) was 0070 when this was written. Two
   unmerged `origin/docs/adr-0065-*` branches exist. Recheck `origin/main` and every branch about to
