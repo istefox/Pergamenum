@@ -32,6 +32,14 @@ enum LineBreak: Equatable, Sendable {
         guard let newline = scalars.firstIndex(of: "\n"), newline > scalars.startIndex else { return .lf }
         return scalars[scalars.index(before: newline)] == "\r" ? .crlf : .lf
     }
+
+    /// Whether a `Character` ends a line: `"\n"`, or the `"\r\n"` pair, which Swift reads as one
+    /// grapheme and so never equals `"\n"` (ADR-0065 §D13.1, PG-274). A walk over `Character`s
+    /// that searches with this treats both endings alike: the line's range stops before the
+    /// terminator, and `index(after:)` steps over all of it, `\r` included.
+    static func isTerminator(_ character: Character) -> Bool {
+        character == "\n" || character == "\r\n"
+    }
 }
 
 /// The frontmatter block exactly as it was read (ADR-0065 §D1.1).
