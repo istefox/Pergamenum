@@ -5,8 +5,8 @@ import AppKit
 /// `docs/superpowers/plans/2026-08-23-ridimensionamento-maniglie-embed-editor.md`,
 /// Tasks 5, 6 and 7.
 ///
-/// A `Coordinator` extension beside `NoteTextView+EmbedCaret.swift`, sharing its shape:
-/// `decoration(in:claimedBy:)` for the fragment walk,
+/// `EmbedResizeController` (ADR-0071 §D2), beside `NoteTextView+EmbedCaret.swift` and sharing
+/// its shape: `Coordinator.decoration(in:claimedBy:)` for the fragment walk,
 /// `decorations.drawnEmbedRange(atParagraphStart:in:)` as the single "is a picture actually
 /// on screen right now" guard plus `guard case .drawn`, and
 /// `Coordinator.drawnPictureFrame(at:in:)` + `textContainerOrigin` to bring the picture and
@@ -19,6 +19,72 @@ import AppKit
 /// without a window; this file's whole job is finding the picture's frame, deciding whether
 /// a point grabbed it, and keeping the overlay in step for as long as the gesture lasts.
 extension NoteTextView.Coordinator {
+    /// `EmbedResizeController.resize(_:in:)`, kept here under the name `wire(_:to:)`'s three
+    /// gesture closures call (ADR-0071 §D5).
+    func resizeEmbed(_ phase: EmbedResize.Phase, in textView: NSTextView) -> Bool {
+        embedResize.resize(phase, in: textView)
+    }
+
+    /// One drag, from the press inside a handle to the release that ends it: everything
+    /// `.moved` and `.ended` need that a mouse event does not carry (ADR-0019 §D6, "the
+    /// state lives on the Coordinator", now on its `embedResize` controller, ADR-0071 §D2 -
+    /// the text view stays the dumb forwarder every other decoration already treats it as).
+    ///
+    /// Held by `EmbedResizeController.embedDrag`, which is nil exactly when no drag is in flight and
+    /// is rebuilt from scratch by the next `.began`. Nothing here outlives a gesture, for
+    /// the reason ADR-0018 §D3 gives about the attachment and §D1 repeats about the size:
+    /// state that describes a picture and can disagree with the note is state nothing
+    /// downstream would notice going wrong.
+    struct EmbedDrag {
+        /// The embed's own run in the note's characters, as it stood at `.began` - what
+        /// `commit(_:in:)` finds the paragraph by, before asking `drawnEmbedRange` for the
+        /// range it actually replaces. Safe to keep for the length of the gesture precisely
+        /// because R-02 writes nothing while it lasts, so no offset moves under it.
+        var run: NSRange
+        /// The picture as it was drawn when the drag began, in the text view's own
+        /// coordinate space: the overlay's origin, and the size every `.moved` adds its
+        /// delta to.
+        var picture: CGRect
+        /// The rendition's own size, for `EmbedResize`'s aspect ratio - what tells `|W`
+        /// from `|WxH` when `commit(_:in:)` formats the suffix.
+        var natural: CGSize
+        /// Where the press landed, so the rectangle follows the pointer rather than
+        /// jumping to it.
+        var grab: CGPoint
+        /// The clamped size the last `.moved` resolved - what `.ended` writes, and, for a
+        /// gesture that never moved at all, the picture's own size as it was drawn.
+        var size: CGSize
+        /// The rectangle on screen. Held here rather than found again by position in
+        /// `textView.subviews`: a text view's subviews are not this file's to count.
+        var overlay: EmbedResizeOverlay
+    }
+}
+
+// MARK: - The controller (ADR-0071 §D2/§D3)
+
+/// The embed drag in flight and its three phases. It is the one controller that reads another's
+/// state (ADR-0071 §D3): the renditions a handle is drawn on come from `embeds`.
+@MainActor
+final class EmbedResizeController {
+    /// Read when `.began` runs, never captured earlier (ADR-0071 §D3): the overlay's theme.
+    private let parent: () -> NoteTextView?
+    private let embeds: EmbedTable
+    private let decorations: EditorDecorationDelegate
+
+    /// The embed resize drag in flight, or nil when there is none (ADR-0019 §D6: the
+    /// gesture's state lives here rather than on the text view, which owns no decoration's
+    /// state and knows about none of them). The three phases that fill, rewrite and clear it
+    /// are `resize(_:in:)`'s own, below.
+    private(set) var embedDrag: NoteTextView.Coordinator.EmbedDrag?
+
+    init(
+        parent: @escaping () -> NoteTextView?, embeds: EmbedTable, decorations: EditorDecorationDelegate
+    ) {
+        self.parent = parent
+        self.embeds = embeds
+        self.decorations = decorations
+    }
+
     /// Where the resize handle is painted (`EmbedResize.handleRect(in:)`) for the drawn
     /// embed whose handle `point` lands on, in the text view's own coordinate space - the
     /// same space `selectEmbed(at:in:)` already receives a click in.
@@ -57,7 +123,7 @@ extension NoteTextView.Coordinator {
         let text = textView.string as NSString
         let origin = textView.textContainerOrigin
         var grabbed: GrabbedEmbed?
-        _ = Self.decoration(in: textView) { (fragment: NSTextLayoutFragment) in
+        _ = NoteTextView.Coordinator.decoration(in: textView) { (fragment: NSTextLayoutFragment) in
             let paragraphStart = content.offset(
                 from: content.documentRange.location, to: fragment.rangeInElement.location
             )
@@ -79,7 +145,7 @@ extension NoteTextView.Coordinator {
                   let attachmentLocation = content.location(
                       content.documentRange.location, offsetBy: run.location
                   ),
-                  let picture = Self.drawnPictureFrame(at: attachmentLocation, in: fragment)
+                  let picture = NoteTextView.Coordinator.drawnPictureFrame(at: attachmentLocation, in: fragment)
             else { return false }
             // Out of the container's space and into the view's, once and here, rather than
             // `inContainer(_:of:)` bringing the click the other way: everything downstream
@@ -121,7 +187,7 @@ extension NoteTextView.Coordinator {
     /// **False is not a failure.** It is what leaves the event to whoever is next:
     /// `onClickInMargin` for a press anywhere on the picture but its corner, and `super`
     /// for the ordinary selection drag every `mouseDragged` outside a gesture still is.
-    func resizeEmbed(_ phase: EmbedResize.Phase, in textView: NSTextView) -> Bool {
+    func resize(_ phase: EmbedResize.Phase, in textView: NSTextView) -> Bool {
         switch phase {
         case .began(let point): beginResize(at: point, in: textView)
         case .moved(let point, let constrained):
@@ -139,12 +205,14 @@ extension NoteTextView.Coordinator {
         // and the next press is the one event certain to follow it. Thrown away rather than
         // committed - `abandonResize()`'s own comment says why.
         abandonResize()
-        guard let grabbed = grabbedEmbed(at: point, in: textView) else { return false }
+        guard let grabbed = grabbedEmbed(at: point, in: textView),
+              let theme = parent()?.theme
+        else { return false }
         let overlay = EmbedResizeOverlay(
-            frame: grabbed.picture, style: Self.overlayStyle(theme: parent.theme)
+            frame: grabbed.picture, style: Self.overlayStyle(theme: theme)
         )
         textView.addSubview(overlay)
-        embedDrag = EmbedDrag(
+        embedDrag = NoteTextView.Coordinator.EmbedDrag(
             run: grabbed.run,
             picture: grabbed.picture,
             natural: grabbed.natural,
@@ -224,7 +292,7 @@ extension NoteTextView.Coordinator {
     /// happened in between - would turn a stranded rectangle into a stray edit somewhere in
     /// the note.
     @discardableResult
-    private func abandonResize() -> EmbedDrag? {
+    private func abandonResize() -> NoteTextView.Coordinator.EmbedDrag? {
         guard let drag = embedDrag else { return nil }
         drag.overlay.removeFromSuperview()
         embedDrag = nil
@@ -261,7 +329,7 @@ extension NoteTextView.Coordinator {
     /// drag that ends on a size rounding to the suffix already written is the same
     /// no-op - and both roads lead to the same place: the run selected, exactly as a click
     /// on the picture would have left it, and not one character written.
-    private func commit(_ drag: EmbedDrag, in textView: NSTextView) {
+    private func commit(_ drag: NoteTextView.Coordinator.EmbedDrag, in textView: NSTextView) {
         let text = textView.string as NSString
         guard NSMaxRange(drag.run) <= text.length else { return }
         let paragraph = text.paragraphRange(for: NSRange(location: drag.run.location, length: 0))
@@ -279,7 +347,7 @@ extension NoteTextView.Coordinator {
             textView.setSelectedRange(run)
             return
         }
-        guard Self.replaceAtomically(run, with: rewritten, in: textView) else { return }
+        guard NoteTextView.Coordinator.replaceAtomically(run, with: rewritten, in: textView) else { return }
         // Left on the rewritten run, which is where `selectEmbed(at:in:)` leaves a click and
         // what keeps ADR-0018 §D5's rule that the caret never enters a drawn embed. After
         // the write, never before: `didChangeText()` has just run the restyle chain, and a
@@ -298,39 +366,5 @@ extension NoteTextView.Coordinator {
             font: theme.nsFont(.caption),
             cornerRadius: theme.radius(.control)
         )
-    }
-
-    /// One drag, from the press inside a handle to the release that ends it: everything
-    /// `.moved` and `.ended` need that a mouse event does not carry (ADR-0019 §D6, "the
-    /// state lives on the Coordinator" - the text view stays the dumb forwarder every
-    /// other decoration already treats it as).
-    ///
-    /// Held by `Coordinator.embedDrag`, which is nil exactly when no drag is in flight and
-    /// is rebuilt from scratch by the next `.began`. Nothing here outlives a gesture, for
-    /// the reason ADR-0018 §D3 gives about the attachment and §D1 repeats about the size:
-    /// state that describes a picture and can disagree with the note is state nothing
-    /// downstream would notice going wrong.
-    struct EmbedDrag {
-        /// The embed's own run in the note's characters, as it stood at `.began` - what
-        /// `commit(_:in:)` finds the paragraph by, before asking `drawnEmbedRange` for the
-        /// range it actually replaces. Safe to keep for the length of the gesture precisely
-        /// because R-02 writes nothing while it lasts, so no offset moves under it.
-        var run: NSRange
-        /// The picture as it was drawn when the drag began, in the text view's own
-        /// coordinate space: the overlay's origin, and the size every `.moved` adds its
-        /// delta to.
-        var picture: CGRect
-        /// The rendition's own size, for `EmbedResize`'s aspect ratio - what tells `|W`
-        /// from `|WxH` when `commit(_:in:)` formats the suffix.
-        var natural: CGSize
-        /// Where the press landed, so the rectangle follows the pointer rather than
-        /// jumping to it.
-        var grab: CGPoint
-        /// The clamped size the last `.moved` resolved - what `.ended` writes, and, for a
-        /// gesture that never moved at all, the picture's own size as it was drawn.
-        var size: CGSize
-        /// The rectangle on screen. Held here rather than found again by position in
-        /// `textView.subviews`: a text view's subviews are not this file's to count.
-        var overlay: EmbedResizeOverlay
     }
 }

@@ -3,11 +3,11 @@ import Testing
 @testable import Pergamenum
 
 // ADR-0033 §D15 (plan `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 5):
-// `rescueCaret`'s/`tableCaretRescue`'s third twin - a caret placed programmatically inside a
-// body line a styling pass is about to take out of the layout has nowhere to be drawn and
-// nowhere to type, and must move to the opening fence line's own offset, after the storage's
-// editing transaction closes, never inside it. `NoteTextView+Tables.swift`'s own
-// `tableCaretRescue`/`refreshTableGrids` is the shape copied here.
+// `FoldController.rescueCaret`'s/`TableBlockController.caretRescue`'s third twin - a caret placed
+// programmatically inside a body line a styling pass is about to take out of the layout has
+// nowhere to be drawn and nowhere to type, and must move to the opening fence line's own offset,
+// after the storage's editing transaction closes, never inside it. `NoteTextView+Tables.swift`'s
+// own `TableBlockController.caretRescue`/`refresh` is the shape copied here.
 //
 // `ViewBlockCaretRescue` below (Task 5) is now fully implemented and green: Task 5's coder
 // wired `applyViewBlocks`/`applyStyling` for real, so a caret placed inside the body line is
@@ -166,7 +166,7 @@ private func laidOutOffsets(of delegate: EditorDecorationDelegate, text: String)
     /// construction, a caret inside the fence's whole source range - which §D4 always reveals.
     /// A revealed fence hides nothing, so there is no longer a hidden line for this rescue to
     /// fire on; the caret is left exactly where it was and the body line stays in the layout.
-    /// `viewBlockCaretRescue` itself is kept as defensive code for a path that cannot currently
+    /// `ViewBlockController.caretRescue` itself is kept as defensive code for a path that cannot currently
     /// be reached through `applyViewBlocks` - see `.claude/agent-memory/coder/topics/
     /// pg-099-task6-reveal-supersedes-caret-rescue.md`.
     @Test func aCaretInsideTheBodyLineIsLeftWhereItWasBecauseTheFenceIsRevealed() {

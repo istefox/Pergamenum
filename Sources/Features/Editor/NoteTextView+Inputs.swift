@@ -82,7 +82,7 @@ extension NoteTextView {
         ///
         /// Handed in by `EditorColumn+Text.swift`'s `editing(_:)`, which owns the app's only
         /// `ViewQuerySource`, and read by `NoteTextView+ViewBlocks.swift`'s
-        /// `refreshViewBlockHosts`, which passes it - with `notePath`/`vaultRoot`/`thumbnails`,
+        /// `ViewBlockController.refresh`, which passes it - with `notePath`/`vaultRoot`/`thumbnails`,
         /// `onFollowLink` as the block's `onOpenNote` and a caret-placing `onEditSource` - into
         /// `ViewBlockHostStore.rootView(...)` on every styling pass. That call is the whole of
         /// what makes a drawn fence run its query in the editor (R-04, R-07, R-09); without it
@@ -94,7 +94,7 @@ extension NoteTextView {
         /// (`RenderedViewBlock.onEditQuery`'s own nil-means-no-control rule).
         ///
         /// Built per fence, per styling pass, by `NoteTextView+ViewBlocks.swift`'s
-        /// `refreshViewBlockHosts`, which is the one place that turns `ViewBlockHostStore.rootView`'s
+        /// `ViewBlockController.refresh`, which is the one place that turns `ViewBlockHostStore.rootView`'s
         /// plain `() -> Void` trigger into a `ViewQueryEditRequest` carrying the fence's current body
         /// and a commit closure anchored on its opening offset.
         var onEditQuery: ((ViewQueryEditRequest) -> Void)?

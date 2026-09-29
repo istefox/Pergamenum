@@ -5,8 +5,8 @@ import Testing
 // `HiddenBlockLines` and `CaretRescue` (ADR-0071 §D8): the line walk `applyTables` and
 // `applyViewBlocks` share, and the rescue rule the table, view-block and fold passes share.
 //
-// Selection semantics pinned here are the ones the three copies (`tableCaretRescue`,
-// `viewBlockCaretRescue`, `rescueCaret`) agree on: only `selection.location` is read, its
+// Selection semantics pinned here are the ones the three callers (`TableBlockController.caretRescue`,
+// `ViewBlockController.caretRescue`, `FoldController.rescueCaret`) agree on: only `selection.location` is read, its
 // length is ignored, and a location past the end of the text is left alone.
 
 @Suite struct HiddenBlockLinesWalk {

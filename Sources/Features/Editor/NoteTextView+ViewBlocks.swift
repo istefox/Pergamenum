@@ -310,7 +310,7 @@ final class ViewBlockController {
         }
     }
 
-    /// `rescueCaret(in:from:)`'s and the table rescue's third twin (ADR §D15): a caret inside a
+    /// `FoldController.rescueCaret(in:from:)`'s and the table rescue's third twin (ADR §D15): a caret inside a
     /// body or closing-fence line that has just become hidden is an insertion point with
     /// nowhere to be drawn and nowhere to type. It goes to the opening fence line's own offset,
     /// which is where the block is and where `onEditSource` puts it too - the same offset,

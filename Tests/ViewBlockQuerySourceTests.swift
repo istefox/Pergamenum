@@ -9,7 +9,7 @@ import Testing
 ///
 /// **Tester stubs declared for this task, all defaulted `nil` (ADR-0049):**
 /// - `NoteTextView.queries: ViewQuerySource?` - declared, not read by `EditorColumn+Text.swift`'s
-///   `editing(_:)` or by `NoteTextView+ViewBlocks.swift`'s `refreshViewBlockHosts` (still calls
+///   `editing(_:)` or by `NoteTextView+ViewBlocks.swift`'s `ViewBlockController.refresh` (still calls
 ///   `ViewBlockHostStore.rootView(source:theme:)` alone). That threading, and rewriting the now-
 ///   stale "unreferenced" comment at `EditorColumn+Text.swift:194-198`, are the coder's own work.
 /// - `RenderedViewBlock.onEditSource: (() -> Void)?` and `.onOpenNote: ((String) -> Void)?` -
@@ -146,7 +146,7 @@ private enum Fixture {
     }
 
     /// "the store pushes an updated root view carrying it": built through the very
-    /// `ViewBlockHostStore.rootView(...)` `NoteTextView+ViewBlocks.swift`'s `refreshViewBlockHosts`
+    /// `ViewBlockHostStore.rootView(...)` `NoteTextView+ViewBlocks.swift`'s `ViewBlockController.refresh`
     /// calls, pushed through `update(_:forOrdinal:)` - the store-call half of R-13's third named
     /// case, still without a live SwiftUI render. ADR §D3's "never rebuild" is reasserted here in
     /// the queries-aware case specifically: a live refresh is a second `update` on the *same*
@@ -210,7 +210,7 @@ private enum Fixture {
     }
 
     /// An edit above the fence shifts the opening paragraph's own offset - the dictionary key
-    /// `drawnViewBlocks` and `apply(viewBlockHosts:)` both use - but must leave the fence's
+    /// `ViewBlockController.drawn` and `apply(viewBlockHosts:)` both use - but must leave the fence's
     /// *ordinal* (still the note's first view block) and therefore its host untouched (ADR §D3),
     /// and its source-component of the id untouched too, since the fence's own body was never
     /// touched. `Tests/ViewBlockHostStoreTests.swift`'s `hostSurvivesAChangedParagraphOffsetAboveTheFence`
@@ -405,7 +405,7 @@ private enum Fixture {
 /// `applyStyling` pass and never puts a real `NSHostingView<AnyView>` through the attachment's
 /// own `as? NSHostingView<AnyView>` cast (`EditorDecorationDelegate+ViewBlockRendering.swift`).
 /// `ViewBlockQuerySourceTests`'s own suites above drive the real pass but only assert on
-/// `drawnViewBlocks`, never on the substituted paragraph. Neither half alone would have caught
+/// `viewBlocks.drawn`, never on the substituted paragraph. Neither half alone would have caught
 /// a regression at the seam between "the pass recognises and registers a fence" and "the
 /// delegate substitutes an attachment for what got registered" - which is exactly the seam this
 /// session's investigation crossed. This suite runs the real pipeline end to end and inspects

@@ -105,7 +105,7 @@ final class TableBlockController {
     /// `applyFolding`'s early return does not cover (§D5).
     private(set) var hiddenRows: Set<Int> = []
     /// Where the caret has to go once that transaction closes, when a row it was sitting in
-    /// has just left the layout (`rescueCaret`'s table twin, §D5).
+    /// has just left the layout (`FoldController.rescueCaret`'s table twin, §D5).
     private(set) var pendingCaret: Int?
 
     init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate) {
@@ -200,7 +200,7 @@ final class TableBlockController {
         CaretRescue.place(offset, in: textView)
     }
 
-    /// `rescueCaret(in:from:)`'s table twin (§D5): a caret inside a row that has just become
+    /// `FoldController.rescueCaret(in:from:)`'s table twin (§D5): a caret inside a row that has just become
     /// hidden is an insertion point with nowhere to be drawn and nowhere to type. It goes to
     /// the table's own header offset, which is where a person would look for it - and where
     /// the grid is. The rule itself is `CaretRescue.target`'s; the owner is the header.

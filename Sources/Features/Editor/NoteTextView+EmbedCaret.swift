@@ -229,7 +229,7 @@ extension NoteTextView.Coordinator {
     /// attachment at `location` occupies no space in `fragment` - which is what a
     /// paragraph that is not drawing a picture answers.
     ///
-    /// Extracted rather than written twice: `handleRect(forEmbedAt:in:)`
+    /// Extracted rather than written twice: `EmbedResizeController.handleRect(forEmbedAt:in:)`
     /// (`NoteTextView+EmbedResize.swift`, ADR-0019 §D6) needs the same frame the click
     /// above hit-tests against, and a handle whose corner disagreed with the picture's
     /// own corner by one rounding of the same two additions is the defect that would be

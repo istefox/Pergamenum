@@ -374,8 +374,8 @@ private func makeCard(
     /// A CommonMark link's brackets/parens are concealed, its visible text is not - the second
     /// shape `linkDelimiters` has to split correctly, distinct from the wikilink shape above.
     /// `MarkdownStyler` already emits the `[` and `](url)` halves as two separate `.linkSyntax`
-    /// spans (`NoteTextView+Coordinator.swift:576`), so each passes through `linkDelimiters`
-    /// untouched rather than being split further.
+    /// spans (`linkDelimiters(in:of:)`'s doc comment, `NoteTextView+Coordinator.swift`), so each
+    /// passes through `linkDelimiters` untouched rather than being split further.
     @Test func aCommonMarkLinksDelimitersAreConcealedAndItsTextIsNot() throws {
         let text = "[testo](https://esempio.it)"
         let card = try makeCard(text, editable: true)

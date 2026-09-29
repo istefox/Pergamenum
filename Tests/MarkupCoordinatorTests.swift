@@ -94,7 +94,7 @@ private final class NotificationCounter: @unchecked Sendable {
 // Drives a real `NoteTextView.Coordinator` + `NSTextView`, the shape `MarkupCoordinator`
 // above already uses. `EditorDecorationDelegate.revealedSpans` has no test accessor - that
 // file is out of this task's budget (ADR-0049) - so "the span table names exactly one
-// paragraph key with exactly one range" is read back through `coordinator.lastRevealedSpans`
+// paragraph key with exactly one range" is read back through `coordinator.reveal.lastRevealedSpans`
 // instead: it is assigned the very value handed to `decorations.apply(revealedSpans:)` right
 // before that call, in `NoteTextView+Reveal.swift`, so the two can never disagree.
 @MainActor
@@ -131,29 +131,29 @@ private final class NotificationCounter: @unchecked Sendable {
         let (textView, coordinator) = Self.editor(revealsInlineSpans: true)
         textView.setSelectedRange(NSRange(location: Self.insideFirstRun, length: 0))
 
-        #expect(coordinator.lastRevealedSpans.count == 1)
-        #expect(coordinator.lastRevealedSpans[0] == [Self.firstBoldSpan])
+        #expect(coordinator.reveal.lastRevealedSpans.count == 1)
+        #expect(coordinator.reveal.lastRevealedSpans[0] == [Self.firstBoldSpan])
     }
 
     @Test func movingTheCaretOutOfBothRunsEmptiesTheTable() {
         let (textView, coordinator) = Self.editor(revealsInlineSpans: true)
         textView.setSelectedRange(NSRange(location: Self.insideFirstRun, length: 0))
-        #expect(!coordinator.lastRevealedSpans.isEmpty)
+        #expect(!coordinator.reveal.lastRevealedSpans.isEmpty)
 
         textView.setSelectedRange(NSRange(location: Self.outsideBothRuns, length: 0))
-        #expect(coordinator.lastRevealedSpans.isEmpty)
+        #expect(coordinator.reveal.lastRevealedSpans.isEmpty)
     }
 
     @Test func flippingTheSettingOffWithTheCaretStillInsideARunEmptiesTheTable() {
         let (textView, coordinator) = Self.editor(revealsInlineSpans: true)
         textView.setSelectedRange(NSRange(location: Self.insideFirstRun, length: 0))
-        #expect(!coordinator.lastRevealedSpans.isEmpty)
+        #expect(!coordinator.reveal.lastRevealedSpans.isEmpty)
 
         // The caret never moves - only the setting does, so nothing but the flag flip can
         // be what empties the table.
         coordinator.parent.revealsInlineSpans = false
         coordinator.applyReveal(to: textView)
-        #expect(coordinator.lastRevealedSpans.isEmpty)
+        #expect(coordinator.reveal.lastRevealedSpans.isEmpty)
     }
 
     @Test func callingApplyRevealTwiceWithoutASelectionChangeInvalidatesNothingTheSecondTime() throws {

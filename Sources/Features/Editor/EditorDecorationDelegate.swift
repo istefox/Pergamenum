@@ -287,7 +287,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// Guarded on the set itself rather than unconditional, which the other two hidden-line
     /// setters can afford not to be: `applyViewBlocks`'s own `hidesMarkup`-off branch calls
     /// this on **every** keystroke (ADR §D12 - the escape hatch has to reach the enumeration
-    /// refusal, so it cannot skip the call the way `clearTables()` does), and an unguarded
+    /// refusal, so it cannot skip the call the way `TableBlockController.clear()` does), and an unguarded
     /// setter would write one `notice` per keystroke for a note that has no view block in it
     /// at all. The same shape, and the same reason, as `apply(hiddenMarkers:hidingMarkup:)`
     /// below.
@@ -593,7 +593,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// ADR-0037 §D3's per-marker filter: which of `survivors` should be drawn small
     /// (`collapsedFont`) rather than shown in full. Expressed as one pure static function,
     /// with no text view and no delegate state, so it is testable on its own
-    /// (`Tests/MarkupHidingTests.swift`'s `MarkupHidingInlineSpans` suite calls it
+    /// (`Tests/MarkupHidingInlineSpanTests.swift`'s `MarkupHidingInlineSpans` suite calls it
     /// directly) - the same reason the ADR itself gives for this shape.
     ///
     /// - `revealedSpans == nil` means the setting is off: `paragraphIsRevealed ? [] :

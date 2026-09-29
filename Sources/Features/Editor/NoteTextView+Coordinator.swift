@@ -25,56 +25,10 @@ extension NoteTextView {
         /// Guards the delegate callback from re-entering while styling rewrites
         /// attributes.
         private var isStyling = false
-        /// The focus request already honoured, so the cursor is not stolen back on
-        /// every subsequent update.
-        var lastFocusRequest = 0
-        /// The same, for the index's jumps: without it every later view update would
-        /// scroll back to the last heading clicked.
-        var lastScrollRequest = 0
-        /// And for the find bar's, which is a location rather than a counter: the stepper
-        /// moves between matches and it is arriving at a *different* one that scrolls.
-        var lastMatchLocation: Int?
-        /// The replacements batch already applied, so a `updateNSView` pass that runs again
-        /// before `onReplacementsApplied()`'s `pendingReplacements = nil` has propagated back
-        /// down does not replay the same edits a second time against text they already
-        /// changed (PG-093: an Outline nest/move applied twice this way, its second pass
-        /// deleting and re-inserting ranges that no longer meant what they meant when
-        /// computed, corrupting the note). Compared by value, not identity - two genuinely
-        /// distinct requests never compute the same ranges and text, since `OutlineMove`
-        /// already refuses a move that would be a no-op.
-        var lastAppliedReplacements: [NSRange] = []
-        var lastAppliedReplacementTexts: [String] = []
         /// What the editor draws besides the note's characters - folds and transcluded
         /// notes. Here rather than on the view: it is a fact about this text view's layout,
         /// and the view struct is rebuilt on every update (M8).
         let decorations = EditorDecorationDelegate()
-        /// The fold already applied, so an unchanged one does not invalidate the layout on
-        /// every view update.
-        private var lastFoldLayout = NoteFolding.Layout()
-        /// The transcluded notes already drawn, for the same reason as `lastFoldLayout`.
-        var lastRenditions: [Int: TranscludedRendition] = [:]
-        /// Renditions by reference, section, scan generation and width. Not private
-        /// because the code that fills it lives in `NoteTextView+Transclusion`, and not
-        /// unbounded in practice: a note names as many targets as it names.
-        var renditionCache: [String: TranscludedRendition] = [:]
-        /// The revealed paragraphs already applied (ADR-0018 §D2), so an unchanged set
-        /// does not invalidate the layout on every view update. Not private for the same
-        /// reason as `lastRenditions`: the mutator, `applyReveal`, lives in
-        /// `NoteTextView+Reveal`.
-        var lastRevealed: Set<Int> = []
-        /// The revealed inline spans (emphasis/strikethrough/link, ADR-0037 §D6) already
-        /// applied, for the same reason as `lastRevealed` above and kept beside it rather
-        /// than folded into it: the two are computed by two different `MarkupReveal`
-        /// functions and compared independently in `applyReveal`'s early-return guard.
-        var lastRevealedSpans: [Int: [NSRange]] = [:]
-        /// The note path `updateNSView` last saw, so it can tell a genuine note switch
-        /// apart from the same note's content changing externally (issue #188 fix 2): this
-        /// view is one persistent instance per editor column, never rebuilt per note, so
-        /// there is no other signal available for "this is a different note now."
-        var lastNotePath: String?
-        /// The index entry the caret was last reported to be in. Kept so the callback
-        /// fires when it *changes*, not on every arrow key.
-        private var lastOutlineEntry: Int??
         /// The ranges the spell checker must leave alone: markdown syntax, not prose (M8).
         /// Filled by `applyStyling`, which already knows what every range of the note is,
         /// so recognising them costs no second parse.
@@ -90,13 +44,6 @@ extension NoteTextView {
         /// inline: filling it calls `ThumbnailStore`, an actor, and that delegate cannot
         /// be `@MainActor` at all (Step 2).
         let embeds = EmbedTable()
-        /// The embed resize drag in flight, or nil when there is none (ADR-0019 §D6:
-        /// the gesture's state lives here rather than on the text view, which owns no
-        /// decoration's state and knows about none of them). Not private for the same
-        /// reason as `lastRenditions` and `lastRevealed` above: the three phases that
-        /// fill, rewrite and clear it are `resizeEmbed(_:in:)`'s own, in
-        /// `NoteTextView+EmbedResize.swift`, where `EmbedDrag` itself is declared.
-        var embedDrag: EmbedDrag?
         /// The table grids, their hidden rows and the table pass (ADR-0071 §D2,
         /// `NoteTextView+Tables.swift`). `lazy` only because its provider captures `self`,
         /// which an initial value cannot; `parent` is read through it when a pass runs.
@@ -108,6 +55,30 @@ extension NoteTextView {
         private(set) lazy var viewBlocks = ViewBlockController(
             parent: { [weak self] in self?.parent }, decorations: decorations
         )
+        /// The embed resize drag and its three phases (ADR-0071 §D2, ADR-0019 §D6,
+        /// `NoteTextView+EmbedResize.swift`). `lazy` for `tables`' reason.
+        private(set) lazy var embedResize = EmbedResizeController(
+            parent: { [weak self] in self?.parent }, embeds: embeds, decorations: decorations
+        )
+        /// The transcluded renditions, their cache and the click that opens one (ADR-0071
+        /// §D2, `NoteTextView+Transclusion.swift`). `lazy` for `tables`' reason.
+        private(set) lazy var transclusion = TransclusionController(
+            parent: { [weak self] in self?.parent }, decorations: decorations
+        )
+        /// The last fold layout and the folding pass (ADR-0071 §D2,
+        /// `NoteTextView+Folding.swift`). `lazy` for `tables`' reason.
+        private(set) lazy var folding = FoldController(
+            parent: { [weak self] in self?.parent }, decorations: decorations
+        )
+        /// The revealed paragraphs and spans and the reveal pass (ADR-0071 §D2, ADR-0018 §D2,
+        /// `NoteTextView+Reveal.swift`). `lazy` for `tables`' reason.
+        private(set) lazy var reveal = RevealController(
+            parent: { [weak self] in self?.parent }, decorations: decorations
+        )
+        /// The one-shot requests already honoured, the last replacement batch, note path and
+        /// outline entry (ADR-0071 §D2, `NoteTextView+Requests.swift`). `lazy` for `tables`'
+        /// reason.
+        private(set) lazy var requests = RequestLedger(parent: { [weak self] in self?.parent })
         /// The observation that keeps the readable-width inset right as the pane is resized
         /// (ADR-0030 §D6). It has to exist because `updateNSView` does **not** run on a
         /// window resize - nothing in the SwiftUI graph changed - so without it a column
@@ -189,8 +160,7 @@ extension NoteTextView {
             }
             let caret = textView.selectedRange().location
             let entry = parent.outline.outlineRanges.lastIndex { $0.location <= caret }
-            guard lastOutlineEntry != .some(entry) else { return }
-            lastOutlineEntry = entry
+            guard requests.claimOutlineEntry(entry) else { return }
             parent.outline.onOutlineEntryChanged?(entry)
         }
 
@@ -207,47 +177,10 @@ extension NoteTextView {
             }
         }
 
-        /// Recomputes the fold and makes the layout read it again.
-        ///
-        /// `edited(.editedAttributes,…)` is what re-runs the content manager's enumeration
-        /// without a character changing - the same trick the reveal-on-caret probe used in
-        /// the TextKit study. Skipped entirely when nothing is folded and nothing was, so
-        /// an ordinary note pays nothing for this.
+        /// `FoldController.apply(to:folded:theme:)`, kept here under the name `updateNSView`
+        /// calls (ADR-0071 §D5, `NoteTextView+Folding.swift`).
         func applyFolding(to textView: NSTextView, folded: Set<Int>, theme: Theme) {
-            guard decorations.isFolding || !folded.isEmpty else { return }
-            let layout = NoteFolding.layout(in: textView.string, foldedEntries: folded)
-            guard layout != lastFoldLayout else { return }
-            lastFoldLayout = layout
-
-            decorations.badgeColor = NSColor(theme.color(.textTertiary))
-            decorations.badgeBackground = NSColor(theme.color(.backgroundTertiary))
-            decorations.apply(hiddenLines: layout.hiddenLineOffsets, foldedHeadings: layout.foldedHeadings)
-
-            let length = (textView.string as NSString).length
-            textView.textContentStorage?.textStorage?.edited(
-                .editedAttributes, range: NSRange(location: 0, length: length), changeInLength: 0
-            )
-            if let manager = textView.textLayoutManager {
-                manager.invalidateLayout(for: manager.documentRange)
-            }
-            rescueCaret(in: textView, from: layout)
-        }
-
-        /// Moves the caret out of a section that has just been folded.
-        ///
-        /// The folded lines are not in the layout, so a caret left inside one is an
-        /// insertion point with nowhere to be drawn and nowhere to type. It goes to the
-        /// heading that swallowed it, which is where a person would look for it. The rule is
-        /// `CaretRescue`'s (ADR-0071 §D8); the owner is the nearest folded heading at or
-        /// above the caret, and the caret is placed at once rather than after `endEditing`.
-        private func rescueCaret(in textView: NSTextView, from layout: NoteFolding.Layout) {
-            let selection = textView.selectedRange()
-            let heading = CaretRescue.target(
-                for: selection, hidden: layout.hiddenLineOffsets, in: textView.string as NSString
-            ) { _ in
-                layout.foldedHeadings.keys.filter { $0 <= selection.location }.max() ?? 0
-            }
-            CaretRescue.place(heading, in: textView)
+            folding.apply(to: textView, folded: folded, theme: theme)
         }
 
         func textDidChange(_ notification: Notification) {
@@ -394,7 +327,8 @@ extension NoteTextView {
             }
             // A drawn embed's resize handle, from a token (ADR-0019 §D5) - the same
             // one-line hand-over `decorations.badgeColor = NSColor(theme.color(...))`
-            // makes in `applyFolding` above. Here rather than threaded through
+            // makes in the folding pass (`FoldController.apply`, `NoteTextView+Folding.swift`).
+            // Here rather than threaded through
             // `applyEmbeds(to:)`, which has no theme and would need one at three call
             // sites; and here rather than beside `badgeColor`, because `applyFolding`
             // returns early for a note with nothing folded, which is most notes.

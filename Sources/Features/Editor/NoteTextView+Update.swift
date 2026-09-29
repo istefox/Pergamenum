@@ -25,6 +25,9 @@ extension NoteTextView {
         // height measured after it depends on that.
         coordinator.applyReadableWidth(to: textView)
 
+        // Compared and recorded on every update, read only inside the branch below. Claimed
+        // ahead of the text sync rather than after it: nothing the sync triggers reads it.
+        let isNoteSwitch = coordinator.requests.claimNotePath(vault.notePath)
         // Only touch the text when the model diverges from what is on screen:
         // reassigning it unconditionally would reset the cursor on every keystroke.
         if textView.string != text {
@@ -37,7 +40,6 @@ extension NoteTextView {
             // - land inside a paragraph whose markup reveal-on-caret (ADR-0018 §D2) then
             // never gets a reason to re-hide. `vault.notePath` is the one signal available to
             // tell the two cases apart.
-            let isNoteSwitch = coordinator.lastNotePath != vault.notePath
             let selection = textView.selectedRange()
             textView.string = text
             textView.setSelectedRange(NSRange(
@@ -45,7 +47,6 @@ extension NoteTextView {
                 length: 0
             ))
         }
-        coordinator.lastNotePath = vault.notePath
     }
 
     /// Step 2: the passes, in the order each depends on the one before.
@@ -84,7 +85,7 @@ extension NoteTextView {
         // convention (`ViewQueryText.stub`'s `head`/`openingOffset`): a leading `\n` -
         // needed only when the caret was mid-line - moves the fence one character in,
         // nothing else does. Read from the live characters rather than from
-        // `drawnViewBlocks`, which is gated on `hidesMarkup` (ADR-0033 §D12) and would
+        // `viewBlocks.drawn`, which is gated on `hidesMarkup` (ADR-0033 §D12) and would
         // stay empty for an editor with markup-hiding off.
         guard insertion.opensQueryBuilder, let onEditQuery = vault.onEditQuery else { return }
         let openingOffset = insertionRange.location + (insertion.text.hasPrefix("\n") ? 1 : 0)
@@ -104,8 +105,7 @@ extension NoteTextView {
 
     /// Step 4: the one-shots, each consumed once against the coordinator's bookkeeping.
     func consumeOneShots(in textView: CompletingTextView, coordinator: Coordinator) {
-        if focusRequest != coordinator.lastFocusRequest {
-            coordinator.lastFocusRequest = focusRequest
+        if coordinator.requests.claimFocus(focusRequest) {
             coordinator.takeFocus()
         }
 
@@ -122,15 +122,13 @@ extension NoteTextView {
         }
 
         // Consumed by location, so stepping onto a different match scrolls and every other
-        // view update does not - the same guard `lastFocusRequest` and `lastScrollRequest`
-        // are. Cleared when the bar closes, so reopening on the same match scrolls again.
-        if find.matchJump?.location != coordinator.lastMatchLocation {
-            coordinator.lastMatchLocation = find.matchJump?.location
+        // view update does not - the same guard the focus and scroll claims are. Cleared when
+        // the bar closes, so reopening on the same match scrolls again.
+        if coordinator.requests.claimMatchJump(to: find.matchJump?.location) {
             if let matchJump = find.matchJump { coordinator.scroll(textView, to: matchJump, takingFocus: false) }
         }
 
-        if let scrollRequest = outline.scrollRequest, scrollRequest.id != coordinator.lastScrollRequest {
-            coordinator.lastScrollRequest = scrollRequest.id
+        if let scrollRequest = outline.scrollRequest, coordinator.requests.claimScroll(scrollRequest.id) {
             coordinator.scroll(textView, to: scrollRequest.range)
             outline.onScrollApplied()
         }
