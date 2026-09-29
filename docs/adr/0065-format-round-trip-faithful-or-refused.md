@@ -621,7 +621,7 @@ Each item is out of the SPEC's scope and is filed as a follow-up:
 3. `MessageFrontmatterPatch.swift:24-26` (app-written files) and `ViewCatalogue.swift:78,83` keep the
    whitespace-only delimiter test.
 
-   > Cross-reference, 2026-09-29 (PG-276, #615): closed by PR #N (merge `<merge hash>`). Both
+   > Cross-reference, 2026-09-29 (PG-276, #615): closed by PR #667 (merge `3106f44e`). Both
    > readers now find a block through the note parser's own test; no decision above changes. See
    > «Implementation notes», «Follow-up: PG-276» and `docs/plans/pg-276-crlf-delimiter-parsers.md`.
 
@@ -955,7 +955,7 @@ lost; a generated id colliding with an opaque node's id stays a 2^-64 event, pre
 
 ### Follow-up: PG-276
 
-Written 2026-09-29, closing §D13.3 (PG-276, #615, PR #N, merge `<merge hash>`). Plan:
+Written 2026-09-29, closing §D13.3 (PG-276, #615, PR #667, merge `3106f44e`). Plan:
 `docs/plans/pg-276-crlf-delimiter-parsers.md`. It applies §D1.2's line interpretation and §D3's
 line-ending rule to two more readers and changes no decision of this ADR: no on-disk format, no
 `IndexCache.schemaVersion`, no protected interface.
