@@ -175,3 +175,26 @@ Misura con `accelerometro` triassiale.
     #expect(data.count > 1000)
     #expect(data.prefix(5) == Data("%PDF-".utf8))
 }
+
+// MARK: - CRLF notes (PG-274)
+
+@Test func exportingACRLFNoteEndsWithItsOwnLineBreak() {
+    let crlf = "---\r\ndate: 2026-08-12\r\n---\r\n\r\n# Titolo\r\n\r\nCorpo\r\n"
+    let exported = NoteExport.markdown(from: crlf)
+    #expect(exported.hasSuffix("Corpo\r\n"))
+    #expect(!exported.contains("date:"))
+    // The LF note is unchanged: it still ends in a bare "\n".
+    let lf = NoteExport.markdown(from: crlf.replacingOccurrences(of: "\r\n", with: "\n"))
+    #expect(lf.hasSuffix("Corpo\n"))
+    #expect(!lf.contains("\r"))
+}
+
+@Test func renderingCRLFMarkdownAsHTMLMatchesTheLFRendering() {
+    let lf = "# Titolo\n\nUn paragrafo\ncontinua.\n\n- uno\n- due\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n```\ncodice\n```\n"
+    let crlf = lf.replacingOccurrences(of: "\n", with: "\r\n")
+    let html = MarkdownHTML.render(crlf)
+    #expect(html == MarkdownHTML.render(lf))
+    #expect(!html.contains("\r"))
+    #expect(html.contains("<h1>Titolo</h1>"))
+    #expect(html.contains("<table>"))
+}

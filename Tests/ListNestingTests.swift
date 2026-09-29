@@ -72,3 +72,54 @@ private func lineStart(of marker: String, in text: String) -> String.Index {
     let target = lineStart(of: "- c", in: text)
     #expect(ListNesting.level(in: text, lineStart: target, indent: 2) == 1)
 }
+
+// MARK: - CRLF notes (PG-274)
+
+/// "\r\n" is one Swift `Character`, so a walk searching for "\n" never found a CRLF line's end:
+/// the forward pass read the whole note as one line and the backward walk copied the whole
+/// prefix per list line. Both must give a CRLF note the levels its LF twin gets.
+@Test func aCRLFListNestsLikeItsLFTwin() {
+    let lf = "- a\n  - b\n    - c\n  - d\n- e"
+    let crlf = lf.replacingOccurrences(of: "\n", with: "\r\n")
+
+    func forwardLevels(_ text: String) -> [Int] {
+        ListNesting.levels(in: text).sorted { $0.key < $1.key }.map(\.value)
+    }
+    #expect(forwardLevels(lf) == [1, 2, 3, 2, 1])
+    #expect(forwardLevels(crlf) == forwardLevels(lf))
+    #expect(ListNesting.levels(in: crlf).count == 5)
+}
+
+@Test func theBackwardWalkOfACRLFListMatchesItsLFTwin() {
+    let lf = "- a\n  - b\n    - c\n\n  - d"
+    let crlf = lf.replacingOccurrences(of: "\n", with: "\r\n")
+    for (marker, indent) in [("- b", 2), ("- c", 4), ("- d", 2)] {
+        // Each fixture line starts with its indentation, so walk from the marker back to the
+        // line's own start rather than passing the marker's position.
+        func start(_ text: String) -> String.Index {
+            let found = text.range(of: marker)!.lowerBound
+            var index = found
+            while index > text.startIndex, text[text.index(before: index)] == " " { index = text.index(before: index) }
+            return index
+        }
+        #expect(
+            ListNesting.level(in: crlf, lineStart: start(crlf), indent: indent)
+                == ListNesting.level(in: lf, lineStart: start(lf), indent: indent),
+            "«\(marker)»"
+        )
+    }
+    #expect(ListNesting.level(in: crlf, lineStart: crlf.range(of: "    - c")!.lowerBound, indent: 4) == 3)
+}
+
+@Test func theStylerGivesACRLFListTheLevelsOfItsLFTwin() {
+    let lf = "- a\n  - b\n    - c\n"
+    let crlf = lf.replacingOccurrences(of: "\n", with: "\r\n")
+    let levels = { (text: String) -> [Int] in
+        MarkdownStyler.spans(in: text).compactMap { match -> Int? in
+            if case .listMarker(_, let level) = match.span { return level }
+            return nil
+        }
+    }
+    #expect(levels(lf) == [1, 2, 3])
+    #expect(levels(crlf) == levels(lf))
+}

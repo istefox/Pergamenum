@@ -93,11 +93,12 @@ enum NoteOutline {
         MarkdownInlineParser.spans(in: text).map(\.text).joined()
     }
 
+    /// A CRLF line ends before its `\r\n`, one `Character`, so its heading carries no `\r` (PG-274).
     private static func lineRanges(in text: String, from start: String.Index) -> [Range<String.Index>] {
         var ranges: [Range<String.Index>] = []
         var lineStart = start
         while lineStart < text.endIndex {
-            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+            let lineEnd = text[lineStart...].firstIndex(where: LineBreak.isTerminator) ?? text.endIndex
             if lineStart < lineEnd { ranges.append(lineStart..<lineEnd) }
             guard lineEnd < text.endIndex else { break }
             lineStart = text.index(after: lineEnd)

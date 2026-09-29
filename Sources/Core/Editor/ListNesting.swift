@@ -50,7 +50,7 @@ enum ListNesting {
 
         var lineStart = text.startIndex
         while lineStart < text.endIndex {
-            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+            let lineEnd = text[lineStart...].firstIndex(where: LineBreak.isTerminator) ?? text.endIndex
             let line = text[lineStart..<lineEnd]
 
             if !line.isEmpty {
@@ -81,16 +81,17 @@ enum ListNesting {
     ///
     /// `lineStart` is always the start of a line (indentation included, never mid-line) -
     /// both callers pass a value derived that way, so the character right before it is
-    /// either `"\n"` or nothing (`lineStart == text.startIndex`).
+    /// either a line terminator (`"\n"` or the one-grapheme `"\r\n"`, PG-274) or nothing
+    /// (`lineStart == text.startIndex`).
     private static func ancestorContentColumns(in text: String, before lineStart: String.Index) -> [Int] {
         var candidates: [(indent: Int, contentColumn: Int)] = []
 
         var searchEnd = lineStart
         while searchEnd > text.startIndex {
-            // The previous line ends right before `searchEnd`'s own leading "\n".
+            // The previous line ends right before `searchEnd`'s own leading line terminator.
             let previousLineEnd = text.index(before: searchEnd)
             let beforePreviousLineEnd = text[text.startIndex..<previousLineEnd]
-            let previousLineStart = beforePreviousLineEnd.lastIndex(of: "\n").map(text.index(after:))
+            let previousLineStart = beforePreviousLineEnd.lastIndex(where: LineBreak.isTerminator).map(text.index(after:))
                 ?? text.startIndex
 
             let line = String(text[previousLineStart..<previousLineEnd])

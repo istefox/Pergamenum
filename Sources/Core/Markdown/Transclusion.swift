@@ -139,7 +139,7 @@ enum Transclusion {
 
         var lineStart = bodyStart(of: text)
         while lineStart < text.endIndex {
-            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+            let lineEnd = text[lineStart...].firstIndex(where: LineBreak.isTerminator) ?? text.endIndex
             defer { lineStart = lineEnd < text.endIndex ? text.index(after: lineEnd) : text.endIndex }
 
             guard !fences.contains(where: { $0.range.overlaps(lineStart..<lineEnd) }) else { continue }
@@ -185,7 +185,7 @@ enum Transclusion {
 
         var lineStart = bodyStart(of: text)
         while lineStart < text.endIndex {
-            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+            let lineEnd = text[lineStart...].firstIndex(where: LineBreak.isTerminator) ?? text.endIndex
             defer { lineStart = lineEnd < text.endIndex ? text.index(after: lineEnd) : text.endIndex }
 
             guard !fences.contains(where: { $0.range.overlaps(lineStart..<lineEnd) }) else { continue }

@@ -76,7 +76,7 @@ struct CodeScanner {
             // string is unterminated for as long as it takes to type the closing quote,
             // and swallowing the rest of the note while someone types is the failure that
             // makes an editor feel broken.
-            if characters[index] == "\n" { return (index - cursor, .string) }
+            if LineBreak.isTerminator(characters[index]) { return (index - cursor, .string) }
             if language.escapesWithBackslash, characters[index] == "\\" {
                 index += 2
                 continue
@@ -169,12 +169,12 @@ struct CodeScanner {
     private mutating func takeUnquotedValue() {
         var index = cursor
         while index < characters.count, characters[index] == " " || characters[index] == ":" { index += 1 }
-        guard index < characters.count, characters[index] != "\n" else { return }
+        guard index < characters.count, !LineBreak.isTerminator(characters[index]) else { return }
         guard !language.stringDelimiters.contains(characters[index]) else { return }
 
         var end = index
         var lastNonSpace = index
-        while end < characters.count, characters[end] != "\n" {
+        while end < characters.count, !LineBreak.isTerminator(characters[end]) {
             // ` #` starts a comment even inside a value, so the value stops just before it.
             if characters[end] == "#", end > index, characters[end - 1] == " " { break }
             if characters[end] != " " { lastNonSpace = end }
@@ -229,7 +229,7 @@ struct CodeScanner {
 
     private func endOfLine() -> Int {
         var index = cursor
-        while index < characters.count, characters[index] != "\n" { index += 1 }
+        while index < characters.count, !LineBreak.isTerminator(characters[index]) { index += 1 }
         return index
     }
 
