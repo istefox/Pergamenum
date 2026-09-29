@@ -105,6 +105,17 @@ readonly TAG="v$version-$BUILD"
 gh release view "$TAG" --repo "$UPDATES_REPO" >/dev/null 2>&1 \
     && fail "la release $TAG esiste già su $UPDATES_REPO (vedi https://github.com/$UPDATES_REPO/releases/tag/$TAG)"
 
+# PG-271. Il tag contiene il numero di build, quindi il controllo sopra non vede una build
+# nuova con la stessa versione: la 1474 sarebbe uscita come seconda «1.9.1» accanto alla
+# 1339. Qualunque tag v$version-* già pubblicato vuol dire che marketingVersion va alzato.
+published_tags="$(gh release list --repo "$UPDATES_REPO" --limit 1000 --json tagName --jq '.[].tagName')" \
+    || fail "impossibile leggere le release di $UPDATES_REPO"
+while IFS= read -r published; do
+    case "$published" in
+        "v$version-"*) fail "la versione $version è già pubblicata come $published: alza marketingVersion in Project.swift" ;;
+    esac
+done <<< "$published_tags"
+
 step "Pergamenum build $BUILD, da $SHA"
 
 # --- Generate, archive, export ---------------------------------------------------
