@@ -68,7 +68,7 @@ extension NoteTextView.Coordinator {
 
         switch selector {
         case #selector(NSResponder.insertNewline(_:)):
-            guard replaceAtomically(NSRange(location: end, length: 0), with: "\n", in: textView)
+            guard Self.replaceAtomically(NSRange(location: end, length: 0), with: "\n", in: textView)
             else { return false }
             textView.setSelectedRange(NSRange(location: end + 1, length: 0))
             // The redirected caret does not visibly blink here - a known, currently-open
@@ -93,7 +93,7 @@ extension NoteTextView.Coordinator {
             // deleteForward, which would otherwise resolve to the same offset today's bug
             // report already established and eat the delimiter row's first `|`.
             guard end < text.length else { return true }
-            _ = replaceAtomically(NSRange(location: end, length: 1), with: "", in: textView)
+            _ = Self.replaceAtomically(NSRange(location: end, length: 1), with: "", in: textView)
             return true
         }
     }

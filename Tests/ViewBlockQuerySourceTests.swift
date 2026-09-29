@@ -192,7 +192,7 @@ private enum Fixture {
         let fixture = editor(Fixture.note)
         defer { fixture.window.orderOut(nil) }
 
-        let before = fixture.coordinator.drawnViewBlocks[Fixture.openingFenceOffset]?.source
+        let before = fixture.coordinator.viewBlocks.drawn[Fixture.openingFenceOffset]?.source
         #expect(before == Fixture.bodySource, "premessa: il fence deve essere già disegnato prima della modifica")
 
         // Appends a character to "dopo", well after the fence - never touches its source.
@@ -202,7 +202,7 @@ private enum Fixture {
         fixture.textView.textStorage?.replaceCharacters(in: insertionPoint, with: "!")
         fixture.textView.didChangeText()
 
-        let after = fixture.coordinator.drawnViewBlocks[Fixture.openingFenceOffset]?.source
+        let after = fixture.coordinator.viewBlocks.drawn[Fixture.openingFenceOffset]?.source
         #expect(
             after == before,
             "una modifica che non tocca il fence ha comunque cambiato la componente 'source' dell'id"
@@ -222,8 +222,8 @@ private enum Fixture {
         let fixture = editor(Fixture.note)
         defer { fixture.window.orderOut(nil) }
 
-        let hostBefore = fixture.coordinator.viewBlockHosts.host(for: 0, in: fixture.textView)
-        let sourceBefore = fixture.coordinator.drawnViewBlocks[Fixture.openingFenceOffset]?.source
+        let hostBefore = fixture.coordinator.viewBlocks.hosts.host(for: 0, in: fixture.textView)
+        let sourceBefore = fixture.coordinator.viewBlocks.drawn[Fixture.openingFenceOffset]?.source
         #expect(sourceBefore == Fixture.bodySource, "premessa: il fence deve essere già disegnato prima della modifica")
 
         let insertedLine = "una riga nuova\n"
@@ -233,8 +233,8 @@ private enum Fixture {
         fixture.textView.didChangeText()
 
         let shiftedOpening = Fixture.openingFenceOffset + (insertedLine as NSString).length
-        let hostAfter = fixture.coordinator.viewBlockHosts.host(for: 0, in: fixture.textView)
-        let sourceAfter = fixture.coordinator.drawnViewBlocks[shiftedOpening]?.source
+        let hostAfter = fixture.coordinator.viewBlocks.hosts.host(for: 0, in: fixture.textView)
+        let sourceAfter = fixture.coordinator.viewBlocks.drawn[shiftedOpening]?.source
 
         #expect(
             hostAfter === hostBefore,
@@ -376,7 +376,7 @@ private enum Fixture {
         )
 
         #expect(markers.isEmpty, "senza hidesMarkup è stato comunque registrato un marcatore")
-        #expect(coordinator.drawnViewBlocks.isEmpty, "senza hidesMarkup è stato comunque creato un host")
+        #expect(coordinator.viewBlocks.drawn.isEmpty, "senza hidesMarkup è stato comunque creato un host")
     }
 
     /// The other configuration a real vault can actually hand `DiaryView`/`TodayView`
@@ -393,8 +393,8 @@ private enum Fixture {
         let fixture = editor(Fixture.note, hidesMarkup: true, queries: nil)
         defer { fixture.window.orderOut(nil) }
 
-        #expect(fixture.coordinator.drawnViewBlocks[Fixture.openingFenceOffset]?.source == Fixture.bodySource)
-        _ = fixture.coordinator.viewBlockHosts.host(for: 0, in: fixture.textView)
+        #expect(fixture.coordinator.viewBlocks.drawn[Fixture.openingFenceOffset]?.source == Fixture.bodySource)
+        _ = fixture.coordinator.viewBlocks.hosts.host(for: 0, in: fixture.textView)
     }
 }
 
@@ -416,7 +416,7 @@ private enum Fixture {
         let fixture = editor(Fixture.note)
         defer { fixture.window.orderOut(nil) }
 
-        let host = fixture.coordinator.viewBlockHosts.host(for: 0, in: fixture.textView)
+        let host = fixture.coordinator.viewBlocks.hosts.host(for: 0, in: fixture.textView)
         #expect(host.rootView is AnyView, "il pass reale non ha prodotto un host reale")
 
         let storage = fixture.textView.textContentStorage!

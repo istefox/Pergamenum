@@ -155,7 +155,7 @@ extension NoteTextView.Coordinator {
     /// area under the source line.
     func openTransclusion(at point: CGPoint, in textView: NSTextView) -> Bool {
         guard !lastRenditions.isEmpty else { return false }
-        return decoration(in: textView) { (fragment: TranscludedLineFragment) in
+        return Self.decoration(in: textView) { (fragment: TranscludedLineFragment) in
             guard let rendition = fragment.rendition,
                   fragment.renditionFrame.contains(Self.inContainer(point, of: textView))
             else { return false }
@@ -176,7 +176,7 @@ extension NoteTextView.Coordinator {
     /// text* the heading is rather than *which position it holds in some earlier scan*.
     func unfold(at point: CGPoint, in textView: NSTextView) -> Bool {
         guard decorations.isFolding, let onToggleFold = parent.outline.onToggleFold else { return false }
-        return decoration(in: textView) { (fragment: FoldedHeadingFragment) in
+        return Self.decoration(in: textView) { (fragment: FoldedHeadingFragment) in
             guard fragment.badgeFrameInContainer.contains(Self.inContainer(point, of: textView))
             else { return false }
             onToggleFold(fragment.headingOffset)
@@ -192,7 +192,7 @@ extension NoteTextView.Coordinator {
     /// `NSTextLayoutFragment` rather than a dedicated subclass, so that caller
     /// instantiates `Fragment` as the base class itself and needs this from outside the
     /// file.
-    func decoration<Fragment: NSTextLayoutFragment>(
+    static func decoration<Fragment: NSTextLayoutFragment>(
         in textView: NSTextView,
         claimedBy claim: (Fragment) -> Bool
     ) -> Bool {

@@ -57,7 +57,7 @@ extension NoteTextView.Coordinator {
         let text = textView.string as NSString
         let origin = textView.textContainerOrigin
         var grabbed: GrabbedEmbed?
-        _ = decoration(in: textView) { (fragment: NSTextLayoutFragment) in
+        _ = Self.decoration(in: textView) { (fragment: NSTextLayoutFragment) in
             let paragraphStart = content.offset(
                 from: content.documentRange.location, to: fragment.rangeInElement.location
             )
@@ -279,7 +279,7 @@ extension NoteTextView.Coordinator {
             textView.setSelectedRange(run)
             return
         }
-        guard replaceAtomically(run, with: rewritten, in: textView) else { return }
+        guard Self.replaceAtomically(run, with: rewritten, in: textView) else { return }
         // Left on the rewritten run, which is where `selectEmbed(at:in:)` leaves a click and
         // what keeps ADR-0018 §D5's rule that the caret never enters a drawn embed. After
         // the write, never before: `didChangeText()` has just run the restyle chain, and a

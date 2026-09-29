@@ -183,9 +183,9 @@ import Testing
         textView.setSelectedRange(NSRange(location: 14, length: 0))
         coordinator.applyStyling(to: textView, theme: .emergency)
 
-        #expect(coordinator.lastTableRows == [6, 12])
+        #expect(coordinator.tables.hiddenRows == [6, 12])
         #expect(textView.selectedRange() == NSRange(location: 0, length: 0))
-        #expect(coordinator.pendingTableCaret == nil)
+        #expect(coordinator.tables.pendingCaret == nil)
     }
 
     @Test func aCaretInATableHeaderStaysWhereItIs() {
@@ -193,7 +193,7 @@ import Testing
         textView.setSelectedRange(NSRange(location: 3, length: 0))
         coordinator.applyStyling(to: textView, theme: .emergency)
 
-        #expect(coordinator.lastTableRows == [6, 12])
+        #expect(coordinator.tables.hiddenRows == [6, 12])
         #expect(textView.selectedRange() == NSRange(location: 3, length: 0))
     }
 

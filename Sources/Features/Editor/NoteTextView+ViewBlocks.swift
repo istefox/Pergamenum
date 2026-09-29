@@ -4,10 +4,10 @@ import SwiftUI
 /// A view block the editor is drawing right now: which fence of the note it is, and the
 /// source its host renders.
 ///
-/// Declared beside the Coordinator's view-block half rather than in
-/// `NoteTextView+Coordinator.swift`, `DrawnTable`'s own reason: the three phases that fill,
-/// read and clear it are all in this file, and the stored property that holds them is only a
-/// place to keep a value between two of them.
+/// Declared beside the view-block half rather than in `NoteTextView+Coordinator.swift`,
+/// `DrawnTable`'s own reason: the three phases that fill, read and clear it are all in this
+/// file, and the stored property that holds them is only a place to keep a value between two
+/// of them.
 ///
 /// The **ordinal** and not the offset is what reaches `ViewBlockHostStore` (ADR §D3): an
 /// offset key would rebuild the host - and re-run the query behind it - on every keystroke
@@ -22,29 +22,93 @@ struct DrawnViewBlock {
     let source: String
 }
 
-/// The Coordinator's own half of the view-block pass (ADR-0033 §D1/§D6/§D7/§D12/§D15; plan
+extension NoteTextView.Coordinator {
+    /// `ViewBlockController.apply(to:runs:markers:)`, under the name `applyStyling` calls in its
+    /// sequence (ADR-0071 §D5). The pass and its state are the controller's, below.
+    func applyViewBlocks(to textView: NSTextView, runs: [NSRange], markers: inout [Int: [HiddenMarker]]) {
+        viewBlocks.apply(to: textView, runs: runs, markers: &markers)
+    }
+}
+
+// MARK: - The controller (ADR-0071 §D2/§D3)
+
+/// The view-block half's state and passes (ADR-0033 §D1/§D6/§D7/§D12/§D15; plan
 /// `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 5): the styling pass that
 /// recognises a closed `pergamenum-view` fence and registers its opening line's own marker,
 /// the body/closing lines that leave the layout, and the host `ViewBlockHostStore` vends for
 /// it, plus the caret rescue a fence hiding a line the caret was sitting in needs.
 ///
-/// `NoteTextView+Tables.swift`'s `applyTables`/`refreshTableGrids`/`tableCaretRescue`/
-/// `clearTables` shape, diverging only where the sixth input
+/// `TableBlockController`'s shape, diverging only where the sixth input
 /// (`EditorDecorationDelegate.apply(viewBlockLines:)`/`apply(viewBlockHosts:)`, Task 2) and
 /// the ordinal-keyed host store (`ViewBlockHostStore`, Task 4, ADR §D3) say to. The line walk
 /// and the caret-rescue rule are not copied but shared: `HiddenBlockLines` and `CaretRescue`
 /// (ADR-0071 §D8).
-extension NoteTextView.Coordinator {
+///
+/// It holds no Coordinator (ADR-0071 §D3): the view's inputs come through `parent`, read at the
+/// moment a pass uses them, and `commitViewBlock` and `growToFitTheText` are handed to `refresh`.
+@MainActor
+final class ViewBlockController {
+    /// Read when a pass runs, never captured earlier (ADR-0071 §D3).
+    private let parent: () -> NoteTextView?
+    private let decorations: EditorDecorationDelegate
+
+    /// The `NSHostingView` every view block on screen is drawn in, by the fence's own ordinal
+    /// within the note (ADR-0033 §D3) - owned here for the reason `TableBlockController.grids`
+    /// is: `EditorDecorationDelegate` cannot be `@MainActor`, so it cannot build a view and is
+    /// handed finished ones through `decorations.apply(viewBlockHosts:)`.
+    ///
+    /// Keyed by ordinal and deliberately not by offset, which is where this store parts company
+    /// with `TableGridStore`: an offset key would rebuild the host on every keystroke typed
+    /// above the fence, and rebuilding it re-runs the query behind it (ADR-0009 §D7: never per
+    /// keystroke).
+    let hosts = ViewBlockHostStore()
+    /// Each view block on screen, by its opening fence's offset - filled by `apply` inside the
+    /// storage's editing transaction and read by `refresh` once it has closed.
+    private(set) var drawn: [Int: DrawnViewBlock] = [:]
+    /// The body and closing-fence lines already taken out of the layout, so an unchanged set
+    /// does not re-invalidate it on every keystroke - the view-block pass's own change check,
+    /// `TableBlockController.hiddenRows`' twin.
+    private(set) var hiddenLines: Set<Int> = []
+    /// Where the caret has to go once that transaction closes, when a line it was sitting in
+    /// has just left the layout (the table rescue's twin, ADR-0033 §D15).
+    private var pendingCaret: Int?
+    /// True between a measured view-block height being stored and the coalesced re-layout
+    /// running, so several fences reporting a height change within the same SwiftUI pass buy
+    /// one relayout, not one each.
+    private var pendingRelayout = false
+    /// Which fence the selection was inside the last time it moved, or nil for none - the
+    /// whole of ADR-0033 §D5's guard. A crossing into or out of a fence is the one selection
+    /// change that has to re-run `applyStyling`, because that pass is the only producer of what
+    /// a revealed fence looks like; every other arrow key pays one `NSRange?` comparison and
+    /// nothing else.
+    private var lastRevealed: NSRange?
+    /// `Coordinator.growToFitTheText` as `refresh` last handed it, for the deferred re-layout.
+    private var growToFit: ((NSTextView) -> Void)?
+
+    init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate) {
+        self.parent = parent
+        self.decorations = decorations
+    }
+
+    /// Whether the selection crossed into or out of a fence since last asked (ADR-0033 §D5),
+    /// recording the new answer when it did: `true` is what re-runs `applyStyling`.
+    func selectionCrossedFence(in textView: NSTextView) -> Bool {
+        let revealed = Self.revealedViewBlock(in: textView.string, selection: textView.selectedRange())
+        guard revealed != lastRevealed else { return false }
+        lastRevealed = revealed
+        return true
+    }
+
     /// Registers everything a view block needs drawn, from the `.viewBlockRun` spans
     /// `applyStyling` has just walked: the opening fence line's own `.viewBlock` marker, the
     /// body and closing-fence lines that leave the layout, and the host vended for each
     /// fence's ordinal.
     ///
-    /// **Its own guard and its own change check**, `applyTables`'s own reasoning: with
+    /// **Its own guard and its own change check**, the table pass's own reasoning: with
     /// `hidesMarkup` off this registers nothing and clears what it registered before (ADR
     /// §D12) - the escape hatch has to reach the enumeration refusal too, or the body lines
     /// would stay out of the layout with the backticks visible above them. `markers` is
-    /// `inout` for the same reason `applyTables`'s own is: the opening line's marker belongs
+    /// `inout` for the same reason the table pass's own is: the opening line's marker belongs
     /// in the same table `applyStyling` is about to hand over, and a second
     /// `apply(hiddenMarkers:)` call would be a second producer on one setter.
     ///
@@ -53,9 +117,9 @@ extension NoteTextView.Coordinator {
     /// own error card instead of a query result (ADR §D7 follow-up): a fence's ordinal must
     /// not depend on whether the fence *above* it happens to parse this keystroke, or fixing a
     /// typo in the first block would re-run the second block's query.
-    func applyViewBlocks(to textView: NSTextView, runs: [NSRange], markers: inout [Int: [HiddenMarker]]) {
-        guard parent.hidesMarkup else {
-            clearViewBlocks()
+    func apply(to textView: NSTextView, runs: [NSRange], markers: inout [Int: [HiddenMarker]]) {
+        guard parent()?.hidesMarkup == true else {
+            clear()
             return
         }
 
@@ -109,31 +173,31 @@ extension NoteTextView.Coordinator {
         // Pruned here and only here, `TableGridStore`'s own division of labour: a styling
         // pass is the one moment that knows every ordinal the note still spells, and a note
         // that loses a fence must not keep a live SwiftUI hierarchy over the index for it.
-        let hosts = viewBlockHosts.hosts(for: found.map(\.ordinal), in: textView)
+        let vended = hosts.hosts(for: found.map(\.ordinal), in: textView)
         var byOpening: [Int: NSView] = [:]
         var drawn: [Int: DrawnViewBlock] = [:]
         for entry in found {
-            guard let host = hosts[entry.ordinal] else { continue }
+            guard let host = vended[entry.ordinal] else { continue }
             // Keyed by paragraph offset on the way out, by ordinal on the way in: the
             // delegate is asked about a paragraph, the store must survive one moving (§D3).
             byOpening[entry.opening] = host
             drawn[entry.opening] = DrawnViewBlock(ordinal: entry.ordinal, source: entry.source)
         }
         decorations.apply(viewBlockHosts: byOpening)
-        drawnViewBlocks = drawn
+        self.drawn = drawn
 
-        guard lines != lastViewBlockLines else { return }
-        lastViewBlockLines = lines
+        guard lines != hiddenLines else { return }
+        hiddenLines = lines
         decorations.apply(viewBlockLines: lines)
-        pendingViewBlockCaret = viewBlockCaretRescue(in: textView, lines: lines, openings: openingOfLine)
+        pendingCaret = caretRescue(in: textView, lines: lines, openings: openingOfLine)
     }
 
     /// Pushes each drawn block's current source into the host already vended for it, and
     /// takes the caret out of a line that has just left the layout.
     ///
-    /// **After `storage.endEditing()`, never inside it** - `refreshTableGrids`'s own rule,
-    /// for both its reasons: a host lays SwiftUI out, and a caret rescue moves the selection,
-    /// and neither belongs inside an open editing transaction.
+    /// **After `storage.endEditing()`, never inside it** - the table refresh's own rule, for
+    /// both its reasons: a host lays SwiftUI out, and a caret rescue moves the selection, and
+    /// neither belongs inside an open editing transaction.
     ///
     /// A new root view rather than a new host (ADR §D3): SwiftUI diffs it against the old
     /// one, and `RenderedViewBlock`'s `.task(id:)` re-runs only when the source, the scan
@@ -158,7 +222,7 @@ extension NoteTextView.Coordinator {
     /// which is the offset this loop iterates by. §D4's range test then answers `true` for
     /// that fence, §D5's guard fires on the selection change, and the next pass draws the
     /// source instead of the attachment - the same landing the arrow keys reach from the line
-    /// above, and the same one `viewBlockCaretRescue` below aims at. Weakly held, the reason
+    /// above, and the same one `caretRescue` below aims at. Weakly held, the reason
     /// `TableGridStore.view(for:in:)`'s own `resignToTextView` closure is: the host outlives
     /// nothing here, but a root view kept by the store must not be what keeps a text view
     /// alive.
@@ -169,53 +233,62 @@ extension NoteTextView.Coordinator {
     /// `drawn.source` this pass last recorded, never a value captured on an earlier one. The
     /// commit closure carries `opening` and `[weak textView]`, `commitViewBlock`'s own currency
     /// (`ViewQueryCommitTests.swift`'s fixture uses the identical shape).
-    func refreshViewBlockHosts(in textView: NSTextView, theme: Theme) {
-        for (opening, drawn) in drawnViewBlocks {
-            let host = viewBlockHosts.host(for: drawn.ordinal, in: textView)
-            viewBlockHosts.update(
+    ///
+    /// `commit` is `Coordinator.commitViewBlock(_:at:in:)`; `growToFit` is `growToFitTheText`,
+    /// run by the coalesced relayout (ADR-0035 §D5).
+    func refresh(
+        in textView: NSTextView, theme: Theme,
+        commit: @escaping (String, Int, NSTextView) -> Bool,
+        growToFit: @escaping (NSTextView) -> Void
+    ) {
+        self.growToFit = growToFit
+        for (opening, drawn) in self.drawn {
+            guard let view = parent() else { continue }
+            let host = hosts.host(for: drawn.ordinal, in: textView)
+            hosts.update(
                 ViewBlockHostStore.rootView(
                     source: drawn.source,
-                    notePath: parent.vault.notePath,
-                    vaultRoot: parent.vault.vaultRoot,
-                    thumbnails: parent.vault.thumbnails,
-                    queries: parent.vault.queries,
+                    notePath: view.vault.notePath,
+                    vaultRoot: view.vault.vaultRoot,
+                    thumbnails: view.vault.thumbnails,
+                    queries: view.vault.queries,
                     onEditSource: { [weak textView] in
                         guard let textView, opening <= (textView.string as NSString).length else { return }
                         textView.setSelectedRange(NSRange(location: opening, length: 0))
                     },
-                    onOpenNote: parent.onFollowLink,
-                    onEditQuery: parent.vault.onEditQuery.map { onEditQuery in
+                    onOpenNote: view.onFollowLink,
+                    onEditQuery: view.vault.onEditQuery.map { onEditQuery in
                         { [weak textView] in
                             let request = ViewQueryEditRequest(id: UUID(), source: drawn.source) {
                                 [weak textView] body in
                                 guard let textView else { return false }
-                                return self.commitViewBlock(body, at: opening, in: textView)
+                                return commit(body, opening, textView)
                             }
                             onEditQuery(request)
                         }
                     },
                     onHeightChange: { [weak self, weak host, weak textView] height in
                         guard let self, let host, let textView else { return }
-                        self.viewBlockHeightChanged(height, on: host, in: textView)
+                        self.heightChanged(height, on: host, in: textView)
                     },
                     theme: theme
                 ),
                 forOrdinal: drawn.ordinal
             )
         }
-        guard let offset = pendingViewBlockCaret else { return }
-        pendingViewBlockCaret = nil
+        guard let offset = pendingCaret else { return }
+        pendingCaret = nil
         CaretRescue.place(offset, in: textView)
     }
 
     /// Records a host's freshly measured content height, and asks for a re-layout only when the
     /// rectangle TextKit would reserve for it actually changes (ADR-0035).
-    private func viewBlockHeightChanged(_ height: CGFloat, on host: ViewBlockHostView, in textView: NSTextView) {
+    private func heightChanged(_ height: CGFloat, on host: ViewBlockHostView, in textView: NSTextView) {
         guard let stored = ViewBlockAttachment.storableHeight(
             measured: height, current: host.measuredHeight.height
         ) else { return }
         host.measuredHeight.height = stored
-        scheduleViewBlockRelayout(in: textView)
+        scheduleRelayout(in: textView)
     }
 
     /// One re-layout per turn, however many fences reported a height change in it - and never on
@@ -225,23 +298,23 @@ extension NoteTextView.Coordinator {
     /// `applyFolding`/`applyTransclusion` already make in production, and `growToFitTheText`
     /// afterwards is the existing, already-safe resize path (never sets a frame directly - see
     /// its own doc comment on why that matters here).
-    private func scheduleViewBlockRelayout(in textView: NSTextView) {
-        guard !pendingViewBlockRelayout else { return }
-        pendingViewBlockRelayout = true
+    private func scheduleRelayout(in textView: NSTextView) {
+        guard !pendingRelayout else { return }
+        pendingRelayout = true
         Task { @MainActor [weak self, weak textView] in
             guard let self else { return }
-            self.pendingViewBlockRelayout = false
+            self.pendingRelayout = false
             guard let textView, let manager = textView.textLayoutManager else { return }
             manager.invalidateLayout(for: manager.documentRange)
-            self.growToFitTheText(textView)
+            self.growToFit?(textView)
         }
     }
 
-    /// `rescueCaret(in:from:)`'s and `tableCaretRescue`'s third twin (ADR §D15): a caret
-    /// inside a body or closing-fence line that has just become hidden is an insertion point
-    /// with nowhere to be drawn and nowhere to type. It goes to the opening fence line's own
-    /// offset, which is where the block is and where `onEditSource` puts it too - the same
-    /// offset, reached by the two doors §D10 names.
+    /// `rescueCaret(in:from:)`'s and the table rescue's third twin (ADR §D15): a caret inside a
+    /// body or closing-fence line that has just become hidden is an insertion point with
+    /// nowhere to be drawn and nowhere to type. It goes to the opening fence line's own offset,
+    /// which is where the block is and where `onEditSource` puts it too - the same offset,
+    /// reached by the two doors §D10 names.
     ///
     /// Nearly unreachable once reveal lands (a caret inside a fence keeps it revealed), and
     /// written anyway for the reason the ADR names: a programmatic selection - a find match,
@@ -249,7 +322,7 @@ extension NoteTextView.Coordinator {
     /// reveal path at all.
     ///
     /// The rule itself is `CaretRescue.target`'s; the owner is the opening fence.
-    private func viewBlockCaretRescue(
+    private func caretRescue(
         in textView: NSTextView, lines: Set<Int>, openings: [Int: Int]
     ) -> Int? {
         CaretRescue.target(
@@ -257,12 +330,12 @@ extension NoteTextView.Coordinator {
         ) { openings[$0] }
     }
 
-    /// Clears every view block this pass has registered - `NoteTextView+Tables.swift`'s
-    /// `clearTables()` twin, called both by `applyViewBlocks`'s own `hidesMarkup`-off guard
-    /// (ADR §D12) and whenever a note stops naming any `pergamenum-view` fence at all.
+    /// Clears every view block this pass has registered - the table pass's `clear()` twin,
+    /// called both by `apply`'s own `hidesMarkup`-off guard (ADR §D12) and whenever a note stops
+    /// naming any `pergamenum-view` fence at all.
     ///
-    /// **Unconditional, unlike `clearTables()`'s own `lastTableRows` early return.** D12's
-    /// escape hatch has to reach the delegate's enumeration refusal whatever this Coordinator
+    /// **Unconditional, unlike the table `clear()`'s own `hiddenRows` early return.** D12's
+    /// escape hatch has to reach the delegate's enumeration refusal whatever this controller
     /// last registered itself, or lines hidden by some earlier pass would stay out of the
     /// layout with the backticks visible above them - the exact trap that guard was written
     /// for, one object further along. The per-keystroke cost the early return used to buy is
@@ -272,11 +345,11 @@ extension NoteTextView.Coordinator {
     /// The host store itself is not pruned here: `hosts(for:in:)` needs a text view this call
     /// does not have, and the next pass with `hidesMarkup` on prunes to whatever the note
     /// still spells - a note with no fence left prunes to nothing.
-    func clearViewBlocks() {
-        drawnViewBlocks = [:]
-        pendingViewBlockCaret = nil
+    func clear() {
+        drawn = [:]
+        pendingCaret = nil
         decorations.apply(viewBlockHosts: [:])
-        lastViewBlockLines = []
+        hiddenLines = []
         decorations.apply(viewBlockLines: [])
     }
 }

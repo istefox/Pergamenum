@@ -39,7 +39,7 @@ extension NoteTextView.Coordinator {
               let edit = ListContinuation.newline(in: textView.string, at: textView.selectedRange())
         else { return false }
         let whole = NSRange(location: 0, length: (textView.string as NSString).length)
-        guard replaceAtomically(whole, with: edit.text, in: textView) else { return false }
+        guard Self.replaceAtomically(whole, with: edit.text, in: textView) else { return false }
         textView.setSelectedRange(edit.selection)
         return true
     }
@@ -62,7 +62,7 @@ extension NoteTextView.Coordinator {
         guard let renumbered = ListContinuation.renumbered(textView.string) else { return }
         let whole = NSRange(location: 0, length: (textView.string as NSString).length)
         let caret = textView.selectedRange().location
-        guard replaceAtomically(whole, with: renumbered, in: textView) else { return }
+        guard Self.replaceAtomically(whole, with: renumbered, in: textView) else { return }
         textView.setSelectedRange(NSRange(
             location: min(caret, (renumbered as NSString).length), length: 0
         ))

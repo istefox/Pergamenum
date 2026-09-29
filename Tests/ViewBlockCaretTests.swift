@@ -14,7 +14,7 @@ import Testing
 // rescued exactly as asserted.
 //
 // ADR-0033 §D4/§D5 (Task 6): reveal on the fence's whole source range, and the re-render on
-// exit. `Coordinator.revealedViewBlock(in:selection:)` is declared below **stubbed to always
+// exit. `ViewBlockController.revealedViewBlock(in:selection:)` is declared below **stubbed to always
 // return `nil`** (this task's own tester declaration, ADR-0049 - the coder implements the real
 // predicate and wires it into `applyViewBlocks`/`textViewDidChangeSelection`). Its own doc
 // comment explains why it takes a plain `String` and an `NSRange` rather than an `NSTextView`:
@@ -215,7 +215,7 @@ private func laidOutOffsets(of delegate: EditorDecorationDelegate, text: String)
 
 // MARK: - The reveal predicate, pure (ADR §D4; Task 6)
 
-/// `Coordinator.revealedViewBlock(in:selection:)` against a plain `String` - no `NSTextView`,
+/// `ViewBlockController.revealedViewBlock(in:selection:)` against a plain `String` - no `NSTextView`,
 /// no styling pass, `MarkupRevealTests.swift`'s own precedent for `MarkupReveal.paragraphs`.
 /// Stubbed to always return `nil` (this file's own header comment): every assertion below that
 /// expects a non-nil fence range is red against the stub; the two that expect `nil` (the lines
@@ -227,7 +227,7 @@ private func laidOutOffsets(of delegate: EditorDecorationDelegate, text: String)
     @Test func aCaretOnTheOpeningFenceLineRevealsTheFence() {
         let caret = NSRange(location: ViewBlockCaretFixture.openingFenceOffset + 3, length: 0)
         #expect(
-            NoteTextView.Coordinator.revealedViewBlock(in: ViewBlockCaretFixture.note, selection: caret)
+            ViewBlockController.revealedViewBlock(in: ViewBlockCaretFixture.note, selection: caret)
                 == ViewBlockCaretFixture.fenceRange
         )
     }
@@ -240,7 +240,7 @@ private func laidOutOffsets(of delegate: EditorDecorationDelegate, text: String)
     @Test func aCaretOnTheBodyLineRevealsTheFenceToo() {
         let caret = NSRange(location: ViewBlockCaretFixture.insideBodyLine, length: 0)
         #expect(
-            NoteTextView.Coordinator.revealedViewBlock(in: ViewBlockCaretFixture.note, selection: caret)
+            ViewBlockController.revealedViewBlock(in: ViewBlockCaretFixture.note, selection: caret)
                 == ViewBlockCaretFixture.fenceRange
         )
     }
@@ -250,7 +250,7 @@ private func laidOutOffsets(of delegate: EditorDecorationDelegate, text: String)
     @Test func aCaretOnTheClosingFenceLineRevealsTheFence() {
         let caret = NSRange(location: ViewBlockCaretFixture.closingFenceOffset + 1, length: 0)
         #expect(
-            NoteTextView.Coordinator.revealedViewBlock(in: ViewBlockCaretFixture.note, selection: caret)
+            ViewBlockController.revealedViewBlock(in: ViewBlockCaretFixture.note, selection: caret)
                 == ViewBlockCaretFixture.fenceRange
         )
     }
@@ -260,14 +260,14 @@ private func laidOutOffsets(of delegate: EditorDecorationDelegate, text: String)
     /// green once the real predicate lands.
     @Test func aCaretOnTheLineImmediatelyAboveTheFenceRevealsNothing() {
         let caret = NSRange(location: 2, length: 0) // inside "prima"
-        #expect(NoteTextView.Coordinator.revealedViewBlock(in: ViewBlockCaretFixture.note, selection: caret) == nil)
+        #expect(ViewBlockController.revealedViewBlock(in: ViewBlockCaretFixture.note, selection: caret) == nil)
     }
 
     /// The other boundary: the line right after the fence closes reveals nothing either.
     /// Already green with the stub and must stay green once the real predicate lands.
     @Test func aCaretOnTheLineImmediatelyBelowTheFenceRevealsNothing() {
         let caret = NSRange(location: ViewBlockCaretFixture.afterOffset + 1, length: 0) // inside "dopo"
-        #expect(NoteTextView.Coordinator.revealedViewBlock(in: ViewBlockCaretFixture.note, selection: caret) == nil)
+        #expect(ViewBlockController.revealedViewBlock(in: ViewBlockCaretFixture.note, selection: caret) == nil)
     }
 
     /// ADR-0018 §D2's trigger 2 arriving by a different road (ADR §D4): a non-empty selection
@@ -278,7 +278,7 @@ private func laidOutOffsets(of delegate: EditorDecorationDelegate, text: String)
         // 32, inside "render: table" (the body line, inside the fence).
         let selection = NSRange(location: 2, length: 30)
         #expect(
-            NoteTextView.Coordinator.revealedViewBlock(in: ViewBlockCaretFixture.note, selection: selection)
+            ViewBlockController.revealedViewBlock(in: ViewBlockCaretFixture.note, selection: selection)
                 == ViewBlockCaretFixture.fenceRange
         )
     }
@@ -301,15 +301,15 @@ private func laidOutOffsets(of delegate: EditorDecorationDelegate, text: String)
         defer { fixture.window.orderOut(nil) }
 
         #expect(
-            fixture.coordinator.drawnViewBlocks[ViewBlockCaretFixture.openingFenceOffset] == nil,
+            fixture.coordinator.viewBlocks.drawn[ViewBlockCaretFixture.openingFenceOffset] == nil,
             "il fence rivelato ha comunque un host/marcatore registrato"
         )
         #expect(
-            !fixture.coordinator.lastViewBlockLines.contains(ViewBlockCaretFixture.bodyLineOffset),
+            !fixture.coordinator.viewBlocks.hiddenLines.contains(ViewBlockCaretFixture.bodyLineOffset),
             "la riga del corpo è ancora nell'insieme delle righe nascoste"
         )
         #expect(
-            !fixture.coordinator.lastViewBlockLines.contains(ViewBlockCaretFixture.closingFenceOffset),
+            !fixture.coordinator.viewBlocks.hiddenLines.contains(ViewBlockCaretFixture.closingFenceOffset),
             "la riga di chiusura è ancora nell'insieme delle righe nascoste"
         )
         let laidOut = laidOutOffsets(of: fixture.coordinator.decorations, text: ViewBlockCaretFixture.note)
@@ -329,11 +329,11 @@ private func laidOutOffsets(of delegate: EditorDecorationDelegate, text: String)
         defer { fixture.window.orderOut(nil) }
 
         #expect(
-            fixture.coordinator.drawnViewBlocks[ViewBlockCaretFixture.openingFenceOffset] == nil,
+            fixture.coordinator.viewBlocks.drawn[ViewBlockCaretFixture.openingFenceOffset] == nil,
             "il fence non valido ma rivelato ha comunque un host/marcatore registrato"
         )
         #expect(
-            !fixture.coordinator.lastViewBlockLines.contains(ViewBlockCaretFixture.bodyLineOffset),
+            !fixture.coordinator.viewBlocks.hiddenLines.contains(ViewBlockCaretFixture.bodyLineOffset),
             "la riga del corpo è ancora nell'insieme delle righe nascoste"
         )
     }
@@ -350,7 +350,7 @@ private func laidOutOffsets(of delegate: EditorDecorationDelegate, text: String)
         defer { fixture.window.orderOut(nil) }
 
         #expect(
-            fixture.coordinator.drawnViewBlocks[ViewBlockCaretFixture.openingFenceOffset] == nil,
+            fixture.coordinator.viewBlocks.drawn[ViewBlockCaretFixture.openingFenceOffset] == nil,
             "il fence rivelato ha comunque un host/marcatore registrato prima della modifica"
         )
 
@@ -373,7 +373,7 @@ private func laidOutOffsets(of delegate: EditorDecorationDelegate, text: String)
         )
 
         #expect(
-            fixture.coordinator.drawnViewBlocks[ViewBlockCaretFixture.openingFenceOffset]?.source == "render: gallery",
+            fixture.coordinator.viewBlocks.drawn[ViewBlockCaretFixture.openingFenceOffset]?.source == "render: gallery",
             "il blocco non riflette la query modificata dopo l'uscita dal fence"
         )
     }
@@ -389,15 +389,15 @@ private func laidOutOffsets(of delegate: EditorDecorationDelegate, text: String)
         defer { fixture.window.orderOut(nil) }
 
         #expect(
-            fixture.coordinator.drawnViewBlocks[TwoViewBlockCaretFixture.firstOpening] == nil,
+            fixture.coordinator.viewBlocks.drawn[TwoViewBlockCaretFixture.firstOpening] == nil,
             "il primo fence rivelato ha comunque un host/marcatore registrato"
         )
         #expect(
-            fixture.coordinator.drawnViewBlocks[TwoViewBlockCaretFixture.secondOpening]?.source == "render: gallery",
+            fixture.coordinator.viewBlocks.drawn[TwoViewBlockCaretFixture.secondOpening]?.source == "render: gallery",
             "il secondo fence non è più disegnato mentre il primo è rivelato"
         )
         #expect(
-            fixture.coordinator.lastViewBlockLines.contains(TwoViewBlockCaretFixture.secondBody),
+            fixture.coordinator.viewBlocks.hiddenLines.contains(TwoViewBlockCaretFixture.secondBody),
             "la riga del corpo del secondo fence non è più nascosta: la rivelazione del primo ha soppresso anche lui"
         )
     }
