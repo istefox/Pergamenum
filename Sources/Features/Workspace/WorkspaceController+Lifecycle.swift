@@ -46,7 +46,7 @@ extension WorkspaceController {
         // Gesture transients, which name node ids of the board being left the same way.
         draggingIDs = []
         dragTranslation = .zero
-        dragAnchorID = nil
+        dragSnap = nil
         activeGuides = []
         resizingNodeID = nil
         resizedFrame = nil

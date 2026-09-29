@@ -14,7 +14,16 @@ extension WorkspaceController {
         guard draggingIDs.isEmpty else { return }
         // Moving a group moves what it holds (SPEC §6.5).
         draggingIDs = BoardGeometry.expandingGroups(nodeIDs, among: document.nodes)
-        dragAnchorID = anchor ?? nodeIDs.first
+        // What the anchor snaps to is captured here, once, rather than rebuilt from the whole
+        // document on every pointer event (ADR-0072 §D10, R-18). No anchor, no snap.
+        dragSnap = (anchor ?? nodeIDs.first).flatMap { anchorID in
+            document.node(id: anchorID).map { node in
+                BoardDragSnap(
+                    anchorID: anchorID, anchor: node.frame,
+                    others: document.nodes.filter { !draggingIDs.contains($0.id) }.map(\.frame)
+                )
+            }
+        }
         dragTranslation = .zero
         activeGuides = []
     }
@@ -23,24 +32,15 @@ extension WorkspaceController {
     /// pulls the card onto whatever it lines up with.
     func updateDrag(translation: CGSize) {
         guard !draggingIDs.isEmpty else { return }
-        guard let anchorID = dragAnchorID, let anchor = document.node(id: anchorID) else {
+        guard let dragSnap else {
             dragTranslation = translation
             return
         }
-
-        let proposed = anchor.frame.offsetBy(dx: translation.width, dy: translation.height)
-        let others = document.nodes
-            .filter { !draggingIDs.contains($0.id) }
-            .map(\.frame)
-        // The threshold is in board units, so the pull is the same handful of pixels
-        // whatever the zoom: a fixed board threshold would be imperceptible zoomed out
-        // and would fight the pointer zoomed in.
-        let (snapped, guides) = BoardGeometry.snapped(
-            proposed, to: others,
-            threshold: 6 / max(zoom, 0.01),
-            gridStep: snapsToGrid ? Self.gridStep : nil
+        // Zoom and the grid switch are read live: either can change during the gesture.
+        let (snapped, guides) = dragSnap.snapped(
+            translation: translation, zoom: zoom, gridStep: snapsToGrid ? Self.gridStep : nil
         )
-        dragTranslation = CGSize(width: snapped.minX - anchor.x, height: snapped.minY - anchor.y)
+        dragTranslation = snapped
         activeGuides = guides
     }
 
@@ -49,7 +49,7 @@ extension WorkspaceController {
         defer {
             draggingIDs = []
             dragTranslation = .zero
-            dragAnchorID = nil
+            dragSnap = nil
             activeGuides = []
         }
         guard !draggingIDs.isEmpty,

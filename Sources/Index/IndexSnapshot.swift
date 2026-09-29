@@ -34,6 +34,11 @@ struct IndexSnapshot: Sendable {
     /// links panel shows what the user typed rather than the lookup key.
     private var backlinkDisplayForm: [String: String] = [:]
 
+    /// Moves once per `replaceAll` and once per `update`, the only two ways the index changes
+    /// (ADR-0072 §D1). A UI refresh signal, never an ordering clock (§D3); views read it through
+    /// `VaultController.indexGeneration`, which keeps it monotonic across vaults (§D2).
+    private(set) var generation = 0
+
     init() {}
 
     // MARK: Population
@@ -45,6 +50,8 @@ struct IndexSnapshot: Sendable {
         lastScanDuration = duration
         reusedFromCache = outcome.reusedFromCache
         rebuildDerivedIndexes()
+        rebuildTaskList()
+        generation += 1
     }
 
     /// Applies a single file's change. Passing nil removes the note, which is what a
@@ -56,6 +63,8 @@ struct IndexSnapshot: Sendable {
             notes.removeValue(forKey: relativePath)
         }
         rebuildDerivedIndexes()
+        rebuildTaskList()
+        generation += 1
     }
 
     /// Rebuilds both derived maps from scratch.
@@ -114,13 +123,20 @@ struct IndexSnapshot: Sendable {
 
     /// Every link target that no note in the vault answers to, with the notes that
     /// point at it. Feeds the "Link non risolti" panel.
-    func unresolvedLinks() -> [(target: String, sources: [NoteRecord])] {
-        backlinkIndex.compactMap { key, sources in
-            guard titleIndex[key] == nil else { return nil }
-            let records = sources.compactMap { notes[$0] }
-            return records.isEmpty ? nil : (backlinkDisplayForm[key] ?? key, records)
+    ///
+    /// `limit` keeps the first entries of the same sort, and only those get their source list
+    /// built (ADR-0072 §D4): every caller takes the one path, so a limited answer is the prefix
+    /// of the full one by construction, ties included.
+    func unresolvedLinks(limit: Int? = nil) -> [(target: String, sources: [NoteRecord])] {
+        let members = backlinkIndex.compactMap { key, sources -> (target: String, key: String)? in
+            guard titleIndex[key] == nil, sources.contains(where: { notes[$0] != nil }) else { return nil }
+            return (backlinkDisplayForm[key] ?? key, key)
         }
         .sorted { $0.target.localizedStandardCompare($1.target) == .orderedAscending }
+        let kept = limit.map { members.prefix($0) } ?? members[...]
+        return kept.map { member in
+            (member.target, (backlinkIndex[member.key] ?? []).compactMap { notes[$0] })
+        }
     }
 
     /// The notes in the link neighbourhood of a title, in **both** directions: the ones
@@ -168,14 +184,19 @@ struct IndexSnapshot: Sendable {
     /// Every task in the vault, note-sourced and board-sourced alike, in path order. The
     /// single aggregation point every task query below reads - a board contributes here and
     /// nowhere else, so every one of them inherits board tasks for free.
-    var allTasks: [TaskItem] {
+    ///
+    /// Stored, rebuilt by both mutating doors and never lazily (ADR-0072 §D6): every reader
+    /// used to sort every note and flat-map every task on each read.
+    private(set) var allTasks: [TaskItem] = []
+
+    private mutating func rebuildTaskList() {
         let noteTasks = notes.values
             .sorted { $0.relativePath < $1.relativePath }
             .flatMap(\.tasks)
         let boardTaskItems = boardTasks.values
             .sorted { $0.relativePath < $1.relativePath }
             .flatMap(\.tasks)
-        return noteTasks + boardTaskItems
+        allTasks = noteTasks + boardTaskItems
     }
 
     /// Tasks whose text links to a title, for the "Task collegati" panel of a note or
@@ -220,176 +241,4 @@ struct IndexSnapshot: Sendable {
             total: children.count
         )
     }
-
-    /// The five views of SPEC §7.4.
-    enum TaskView: String, CaseIterable, Identifiable, Sendable {
-        case inbox, today, upcoming, byProject, all
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .inbox: "Inbox"
-            case .today: "Oggi"
-            case .upcoming: "Prossimi"
-            case .byProject: "Per progetto"
-            case .all: "Tutti"
-            }
-        }
-
-        /// How the view opens before anybody touches its controls (ADR-0013 §D6).
-        ///
-        /// Each one reproduces what that view already did, which is why they differ: the
-        /// controls are a way to change the list, not a reason to arrive at a different one.
-        /// The single exception is *Oggi*, which the ADR asks for flat and in hour order -
-        /// what slipped is still red, because that is the row's colour and not a heading.
-        var defaultListOptions: TaskListOptions {
-            switch self {
-            case .inbox: TaskListOptions(grouping: .none, sorting: .text)
-            case .today: TaskListOptions(grouping: .none, sorting: .schedule)
-            case .upcoming: TaskListOptions(grouping: .schedule, sorting: .schedule)
-            case .byProject: TaskListOptions(grouping: .project, sorting: .deadline)
-            case .all: TaskListOptions(grouping: .note, sorting: .text)
-            }
-        }
-
-        /// The view a captured task lands in, given the day it carries (ADR-0053 §D2 seam
-        /// #6). `TasksView.followLastCapture` calls this so the pane the composer worked
-        /// from ends up showing the task it just wrote.
-        ///
-        /// No date lands in Inbox, which is where SPEC §7.4 puts an undated task. A day
-        /// today or earlier lands in Oggi - a task that slipped is exactly what that view
-        /// exists to surface (SPEC §7.3). Anything later is Prossimi.
-        ///
-        /// Foundation-only: this file is in `sharedSources` (`Project.swift`) and compiles
-        /// into `perg` and `pergamenum-mcp` as well as the app (ADR-0001 §D1), and
-        /// `CalendarDate` is the only type this signature touches.
-        static func landing(forCapturedDay day: CalendarDate?, today: CalendarDate) -> TaskView {
-            switch day {
-            case .none: .inbox
-            case .some(let day) where day <= today: .today
-            default: .upcoming
-            }
-        }
-    }
-
-    /// Tasks for one view on a given day.
-    ///
-    /// `today` includes overdue tasks, because a task that slipped is exactly what the
-    /// day view has to surface; SPEC §7.3 rules out moving it silently.
-    /// `includingCompleted` widens every view to the tasks already done, which is what
-    /// the "mostra completati" filter turns on: what got finished today is part of the
-    /// day, and a list that hides it reads as a day where nothing happened.
-    func tasks(
-        for view: TaskView, on day: CalendarDate, includingCompleted: Bool = false
-    ) -> [TaskItem] {
-        let open = includingCompleted ? allTasks : allTasks.filter(\.state.isOpen)
-        switch view {
-        case .inbox:
-            return open.filter { $0.scheduled == nil && $0.due == nil && $0.project == nil }
-        case .today:
-            return open.filter {
-                $0.isScheduled(on: day) || $0.isOverdue(on: day) || $0.completed == day
-            }
-        case .upcoming:
-            return open
-                .filter { task in
-                    guard let scheduled = task.scheduled else { return false }
-                    return scheduled > day && daysBetween(day, scheduled) <= 7
-                }
-                .sorted { ($0.scheduled ?? day) < ($1.scheduled ?? day) }
-        case .byProject:
-            return open.filter { $0.project != nil }
-        case .all:
-            return open
-        }
-    }
-
-    /// The unfinished tasks of the days before this one, most recent first (ADR-0013 §D1).
-    ///
-    /// **Nothing here is rewritten and nothing is stored.** A rolled-over task is a task whose
-    /// `>date` still says Monday, computed on Thursday; the marker the row draws says which day
-    /// it belongs to, and that marker is the whole difference between surfacing a task and the
-    /// silent move SPEC §7.3 refuses.
-    ///
-    /// What `tasks(for: .today, on:)` already shows is excluded, and that exclusion is the
-    /// reason this is a separate list rather than a wider filter: a task late by its `!` date is
-    /// already on the day, and drawing it twice under two headings would make one list read as
-    /// two problems.
-    ///
-    /// - Parameter daysBack: how far back to look, from `VaultSettings.rolloverDays`. A window
-    ///   and not "everything before today", because a quiet fortnight would otherwise open on a
-    ///   list nobody reads - which is the failure mode that makes rollover unpopular elsewhere.
-    func rolledOverTasks(on day: CalendarDate, daysBack: Int) -> [TaskItem] {
-        guard daysBack > 0 else { return [] }
-        return allTasks
-            .filter(\.state.isOpen)
-            .filter { task in
-                guard let scheduled = task.scheduled, scheduled < day else { return false }
-                guard daysBetween(scheduled, day) <= daysBack else { return false }
-                // Already on the day under its own heading: a deadline that has passed is what
-                // `.today` calls overdue, and this list is about the `>` marker, not the `!`.
-                return !task.isOverdue(on: day)
-            }
-            // Most recent first: yesterday's is the one likely to be moved, and the oldest is
-            // the one likely to be reconsidered.
-            .sorted { ($0.scheduled ?? day, $0.id) > ($1.scheduled ?? day, $1.id) }
-    }
-
-    /// Open tasks carrying a `!` date on or after a day, soonest first.
-    ///
-    /// The day view's bell shows these: a deadline is the one date that matters before
-    /// it arrives, and until now the only way to see the next one was to page the
-    /// calendar until it turned up.
-    func dueTasks(from day: CalendarDate, within days: Int = 30) -> [TaskItem] {
-        allTasks
-            .filter(\.state.isOpen)
-            .filter { task in
-                guard let due = task.due else { return false }
-                return due >= day && daysBetween(day, due) <= days
-            }
-            .sorted { lhs, rhs in
-                let left = (lhs.due ?? day, lhs.dueTime?.minutes ?? -1)
-                let right = (rhs.due ?? day, rhs.dueTime?.minutes ?? -1)
-                return left.0 == right.0 ? left.1 < right.1 : left.0 < right.0
-            }
-    }
-
-    /// Every day an open task is due on, for the marks on the month grid.
-    var dueDays: Set<CalendarDate> {
-        Set(allTasks.filter(\.state.isOpen).compactMap(\.due))
-    }
-
-    /// Open task counts per view, for the sidebar badges.
-    ///
-    /// - Parameter rolloverDays: the window `.today` also surfaces (ADR-0013 §D1), or 0 when the
-    ///   setting is off. It is a parameter because the badge has to agree with the list: with
-    ///   rollover on and nothing scheduled for today, *Oggi* draws seven rows and a badge
-    ///   counting only what belongs to the day would leave them next to a blank number.
-    func taskCounts(on day: CalendarDate, rolloverDays: Int = 0) -> [TaskView: Int] {
-        let rolled = rolloverDays > 0
-            ? rolledOverTasks(on: day, daysBack: rolloverDays).count
-            : 0
-        return Dictionary(uniqueKeysWithValues: TaskView.allCases.map { view in
-            (view, tasks(for: view, on: day).count + (view == .today ? rolled : 0))
-        })
-    }
-
-    /// The calendar `daysBetween` measures in, built once: it is called from inside the
-    /// filter closures of the task views, so once per task per pass.
-    private static let dayCalendar: Calendar = {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
-        return calendar
-    }()
-
-    /// Whole days from one date to another, both at midnight.
-    private func daysBetween(_ from: CalendarDate, _ to: CalendarDate) -> Int {
-        let calendar = Self.dayCalendar
-        let start = DateComponents(calendar: calendar, year: from.year, month: from.month, day: from.day).date
-        let end = DateComponents(calendar: calendar, year: to.year, month: to.month, day: to.day).date
-        guard let start, let end else { return .max }
-        return calendar.dateComponents([.day], from: start, to: end).day ?? .max
-    }
-
 }

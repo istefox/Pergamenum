@@ -1,139 +1,186 @@
-Status: Approved (2026-09-28)
+Status: Approved (2026-09-29)
 
-# SPEC — Search and query correctness (Audit Fable chain 7, PG-260 / #574)
+# SPEC — Performance debt: index and view queries, mail pipeline, board gestures (PG-138, PG-141, PG-142)
 
 ## Destination
 
-One PR that closes #574: the five confirmed defects of ROADMAP §Chain 7 fixed, each pinned by a
-test, the chain 7 items ticked in the roadmap. No ADR.
+One PR that closes #238, #241 and #242: every finding of the three entries that still holds is
+fixed with no observable behaviour change (one deliberate exception, the BoardTray staleness fix),
+each fix pinned by an equivalence test or, where a natural boundary exists, a work-count test.
 
 ## Objectives
 
-Global search and the «Viste» pane give the answer the query asks for, and stay responsive while
-they compute it. Today `tag:client-acme` also returns `client-acme-industriale`, a phrase ending in a
-colon swallows the rest of the query, the search spinner disappears while a search is still pending
-and the window freezes during a search or a views scan, and a project parent living on a board shows
-no sub-tasks.
+The app does the same thing with less work on its hottest paths: the task sidebar and the note
+inspector stop re-deriving whole-vault aggregates on every redraw or keystroke, view blocks stop
+re-parsing and re-resolving per record, a pratica sync stops allocating per line and querying per
+conversation, the timeline and attachment chips stop hitting the disk several times per render,
+and a board drag stops rebuilding its snap candidates and stat-ing every visible node per frame.
+The test suite itself stops re-reading the source tree.
 
 ## Scope and non-goals
 
-In: the five items of ROADMAP §Chain 7, plus the search legend line that makes the new tag rule
-discoverable.
+In: the 19 findings of PG-138 (7), PG-141 (7 plus the formatter half of the MessageDocument item)
+and PG-142 (5, including the three test-only items), re-verified against the code on 2026-09-29
+(all still present, seven changed shape). Also in: the two neighbours found during that check on
+the same paths (the sorted `allNotes` read three times per view evaluation, the `.text` needle
+folded per record).
 
-Out: moving `VaultSession` reads off the main actor (ADR-0041 isolation stays), the §D7 watcher for
-the «Viste» pane, a text index for search, changes to the connectors' search behaviour beyond the
-tag rule they share.
+Out: PG-268 (Audit Fable chain 15 performance nits, a separate entry); time-based benchmarks; any
+new instrumentation in production code; a filesystem watch for board folders; a shared static
+formatter.
 
 ## Decisions
 
-- **One SPEC, one PR, no ADR** — the five items are independent, small, and touch no on-disk format,
-  schema or protected interface. Rejected: one PR per item — five review cycles for a size-S chain.
-- **Search `tag:` uses the views' rule** — exact when the term has no wildcard, glob when it has one
-  (`tag:client-*`), through the one shared predicate the views already use, and one test ties the two
-  matchers together so they cannot drift again. Negated `-tag:` follows the same rule. Search keeps
-  matching task tags as well as frontmatter tags: only the comparison changes. Rejected: exact match
-  only, no glob — loses the family search the prefix rule accidentally gave, with no way back;
-  keeping the prefix rule — it is the defect.
-- **Quote state is tracked explicitly** — an operator quote opens only when no quote is open; a quote
-  closes whichever quote is open. Rejected: special-casing a trailing colon inside a phrase — patches
-  the one symptom and keeps the ambiguous state.
-- **Search and the views scan stay on the main actor, cooperative** — both work in chunks, yield the
-  run loop between chunks and check cancellation, so the spinner draws, typing is accepted during a
-  search, and a superseded search stops early. Rejected: moving the read to a background actor —
-  reopens ADR-0041's decision that `VaultSession` reads stay main-actor bound, for a vault size that
-  does not need it.
-- **Two doors, one loop** — the synchronous search stays for `perg`, `pergamenum-mcp` and the tests;
-  the app gets a cooperative async variant built on the same per-candidate loop, so the two cannot
-  return different results. Rejected: making the one door async — changes the connectors' signature
-  for nothing they gain.
-- **Search spinner and validation ordered by generation** — invalid `regex:` patterns and the spinner
-  belong to the query being searched, set after the debounce, and a superseded search never clears the
-  spinner of the one that replaced it. Rejected: keeping the pre-debounce validation — flashes an
-  error for a pattern the user is still typing.
-- **Sub-tasks of a board-hosted parent come from that board** — a parent task whose source is a board
-  reads its children from the same board's task records, scoped by source path exactly as a note parent
-  reads them from its note. Rejected: a vault-wide lookup by local id — local ids are unique per file,
-  not per vault.
-- **The legend shows `tag:client-*`** — without it the change from prefix to exact is invisible.
-  Rejected: unchanged legend.
-- **One GUI test for the search spinner** (user choice). Justified here since the chain has no ADR:
-  whether the spinner is actually drawn while a search runs, and typing is accepted meanwhile, is
-  exactly what the in-process harness cannot observe (no run loop pressure, no real drawing).
-  Rejected: unit-only with the spinner's visibility as no-test.
+- **One SPEC, one PR** for the three entries. Rejected: three PRs (more review overhead for fixes
+  that share the same test seams); PG-138 alone first (splits one measured chain in two).
+- **Success is proven by deterministic tests, never by timing.** Equivalence everywhere, work
+  counts only at natural boundaries. Rejected: millisecond thresholds on a synthetic vault (flaky
+  on CI and on a busy machine); equivalence only (nothing would fail if an N+1 came back).
+- **Every cache invalidates exactly.** A cached value is recomputed on every change that can alter
+  it; no view ever shows data older than the index it reads. Rejected: tolerating one stale frame
+  in the UI (reopens the class of defect ADR-0043/0058/0067 closed).
+- **A new index generation that moves on every index change** (every `apply`, scan and watcher
+  update), and both LinkedTasksPanel and BoardTray key their caches on it. This also fixes
+  BoardTray, which today keys on the task generation and goes stale after an editor save or an
+  external edit. Rejected: keying LinkedTasksPanel on the task generation (it would inherit
+  BoardTray's staleness); fixing the panel only and filing BoardTray separately (same root cause,
+  same fix); dropping the panel item (the gain is smaller, but the latent BoardTray defect stays).
+- **Mail conversations, messages and recipients are fetched in batches** (chunked `IN` lists under
+  SQLite's bound-parameter limit), with an explicit order everywhere, recipients ordered by the
+  table's row id, the order SQLite returns in practice today. Rejected: keeping the N+1 and caching
+  only the per-mailbox directory listing (zero order risk, much smaller gain).
+- **Date formatters in MessageDocument are created once per parse or render call and reused across
+  keys.** Same class, same format, identical bytes. Rejected: a shared static (needs
+  `nonisolated(unsafe)`, the concurrency guard the audit marked report-only); `ISO8601FormatStyle`
+  (risks different output bytes).
+- **Board folder-ness is checked once per node per render**, shared between the card body and its
+  accessibility summary. Rejected: a per-load cache (breaks PG-054, which deliberately checks the
+  disk so a folder created later or outside the board's siblings is recognised); a cache with a
+  filesystem watch (new infrastructure; the watcher does not see folders today).
+- **View memoisation is per body evaluation, never across renders**, where caching across renders
+  would change when a newly arrived file or a new index state shows up (attachment chip, timeline,
+  view block's first frame).
+- **The three test-only items of PG-142 are in.** Rejected: leaving them open on #242.
 
 ## Constraints
 
-- **`VaultSession` reads stay main-actor bound** — origin: ADR-0041.
-- **The connectors' search signature and JSON do not change** — origin: ADR-0007, user decision in
-  this interview.
-- **Tag schema** (flat namespaced strings) is untouched — origin: SPEC §4.4.
-- **GUI tests: at most two or three per feature, run through `scripts/uitests.sh`, not a merge gate** —
-  origin: `CLAUDE.md` merge-gate rule.
-- **A UI test finds controls by `accessibilityIdentifier`, passes `-disableCalendar`,
-  `-disableUpdater` and `-mailStoreRoot`** — origin: `CLAUDE.md`.
-
-## Stack
-
-Swift 6, SwiftUI, Swift Testing, XCUITest for the one GUI test.
+- **Zero user-visible behaviour change**, except BoardTray now refreshing after an editor save or an
+  external edit — origin: user mandate (this interview).
+- **Mail output is byte-identical** on `EmailFixtureCorpus` and `FormatEdgeCorpus`, run before and
+  after every reducer or decoder change — origin: PG-141 (a CRLF divergence was measured during the
+  audit run).
+- **`Sources/Core` stays Foundation-only**; `perg` and `pergamenum-mcp` build unchanged — origin:
+  ADR-0001 §D1, ADR-0007.
+- **ADR-0043's sequence stays the ordering authority**; the new index generation is a UI refresh
+  signal, not a clock — origin: ADR-0043 §D1, ADR-0067 §D6.
+- **PG-054's disk check for board folders stays** — origin: existing behaviour, PG-054.
+- **Protected interfaces untouched** (`.claude/protected-interfaces`) — origin: repo rule.
+- **No test is weakened, skipped or deleted** — origin: CLAUDE.md.
+- **The UI-test change runs through `scripts/uitests.sh --affected`**, never a bare `xcodebuild` —
+  origin: CLAUDE.md working agreements.
 
 ## Data model
 
-No change. `IndexCache.schemaVersion` stays 5.
+One new derived value on the index side: an **index generation**, a monotonically increasing
+integer owned by the session's observable facade, incremented once per landed index change of any
+kind. Not persisted, not part of `IndexCache`; `IndexCache.schemaVersion` stays unchanged.
+
+The index snapshot gains a **stored task list** (all tasks, notes then boards, in path order: the
+order `allTasks` produces today), rebuilt inside every whole-snapshot replacement and every
+single-file update, never lazily.
 
 ## API / interfaces
 
-- Search gains an async cooperative variant beside the synchronous one; both share the matching loop.
-- The views scan becomes async and cooperative.
-- The sub-task lookup accepts a board-hosted parent.
-- The search progress indicator and results list gain accessibility identifiers for the GUI test.
-
-## UI flows
-
-Global search (Cmd+Shift+F): the spinner appears once the debounce has elapsed and stays until the
-current query's results are in; typing during a search is accepted and restarts the search. The
-«Viste» pane shows its progress indicator while a scan runs.
+- The session facade exposes the index generation read-only.
+- `taskCounts` keeps its signature and result; it reads the stored task list once.
+- MailStoreReader's public reads keep their signatures and results, including order.
+- No connector payload changes; `VaultAPI` shapes untouched.
 
 ## Edge cases
 
-- `tag:` with a wildcard (`*`, `?`) matches as a glob; without one, exactly, case-folded as today.
-- `-tag:status-a` excludes only notes tagged exactly `status-a`.
-- `"nota:" progetto forno` is one phrase plus two words.
-- `path:"01 Progetti"` still works (operator quote).
-- An unbalanced quote at the end of the query behaves as today.
-- A search cancelled mid-loop publishes nothing and leaves the newer search's spinner alone.
-- A views scan cancelled by a new scan generation or a day change publishes nothing stale.
-- A board parent with no children, or whose board is not indexed, returns no sub-tasks.
+- A single-file update that removes a note's last task, or adds the first, changes the stored task
+  list and the counts on the same update.
+- An editor save, an external edit arriving through the watcher, a move, a trash and a full rescan
+  each move the index generation.
+- A counterpart with more conversations than one batch holds (larger than the chunk size) returns
+  the same ordered result as with per-conversation queries.
+- A counterpart with zero conversations issues no batch query.
+- A deleted message stays filtered out in the batched query exactly as today.
+- An attachment file that arrives while the chip is on screen shows as usable on the next render.
+- A folder created on disk after a board is loaded is still recognised as a folder card.
+- A drag during which the board is reloaded from outside: the snap candidates captured at the start
+  of the drag are used until it ends (accepted; the model is documented as untouched during a
+  gesture).
+- MessageDocument frontmatter with a duplicated key: the first occurrence wins, as today; an
+  indented line is skipped, as today.
 
 ## Test seams
 
-Unit (`PergamenumTests`, the merge gate): `SearchQuery` tokenising and `Matcher` tag rule; one test
-feeding the same tag/term pairs to the search matcher and the views predicate; `IndexSnapshot`
-sub-tasks and project progress for a board parent; the async search variant (same results as the
-synchronous one, stops on cancellation); the cooperative views scan (same entries as before, stops on
-cancellation); the search state's ordering (validation and spinner after the debounce, a superseded
-generation never clears the current spinner), through a small state type extracted from the view.
-GUI: one test in a new class on a generated vault large enough for a search to take visible time.
+- **Equivalence, through the existing unit suite** (highest existing seam, no new harness):
+  - mail: `EmailFixtureCorpus` and `FormatEdgeCorpus`, byte for byte;
+  - pratiche: `MessageDocumentTests`, `PraticaTimelineTests`, `PraticheConnectorTests`;
+  - index and queries: `RolloverTests`, `TaskViewTests`, `ViewEvaluatorTests`, `ViewQueryTests`,
+    `SearchTagRuleTests`;
+  - board: `BoardInteractionTests`, `WorkspaceEnterFolderTests`.
+- **Work counts only at natural boundaries**, no production counter added for tests:
+  - SQL statements issued per counterpart, counted at the SQLite connection with `MailStoreFixture`;
+  - the stored task list equals a fresh recomputation after every `replaceAll` and `update`;
+  - the index generation observed moving on each kind of landed change.
+- **Pure model functions** where the fix creates one: the timeline's next-row map, the top-N
+  unresolved-links selection.
+- **The UI-test item** runs through `scripts/uitests.sh --affected`.
 
 ## Success criteria
 
-- [ ] R-01 — `tag:client-acme` matches a note tagged `client-acme` and not one tagged only `client-acme-industriale`.
-- [ ] R-02 — `-tag:status-a` excludes only notes tagged exactly `status-a`; notes tagged `status-attivo` stay.
-- [ ] R-03 — `tag:client-*` matches every `client-` tag; `?` matches one character.
-- [ ] R-04 — for a shared table of tag/term pairs, the search matcher and the views' tag predicate give the same answer.
-- [ ] R-05 — search tag matching still covers task tags as well as frontmatter tags.
-- [ ] R-06 — `"nota:" progetto forno` tokenises as the phrase `nota:` plus the words `progetto` and `forno`.
-- [ ] R-07 — `path:"01 Progetti"` still parses as one operator value.
-- [ ] R-08 — invalid `regex:` patterns and the spinner are set only after the debounce, for the query being searched.
-- [ ] R-09 — a superseded search never clears the spinner or overwrites the results of the search that replaced it.
-- [ ] R-10 — the async search variant returns exactly the synchronous search's results for the same query and limit.
-- [ ] R-11 — the async search variant yields between chunks and stops, publishing nothing, when cancelled.
-- [ ] R-12 — `perg` and `pergamenum-mcp` build and their search output is unchanged apart from the tag rule.
-- [ ] R-13 — the views scan is cooperative: same entries as before, yields between chunks, publishes nothing when cancelled.
-- [ ] R-14 — the «Viste» progress indicator is shown while a scan runs (no-test: visible drawing of the indicator is not observable in-process; R-13 pins the yield that makes it drawable).
-- [ ] R-15 — a project parent task living on a board lists its sub-tasks from that board, and its project progress counts them.
-- [ ] R-16 — the search legend shows a `tag:client-*` example.
-- [ ] R-17 — GUI: on a large generated vault, the search progress indicator appears while a search runs, and text typed during the search reaches the field before results arrive.
-- [ ] R-18 — ROADMAP §Chain 7 items 1-5 are marked done and the PR closes #574 (no-test: a process obligation on the roadmap file and the PR body).
+- [ ] R-01 — The index snapshot holds a stored task list rebuilt on every whole replacement and
+  every single-file update; after each, it equals a fresh recomputation, in the same order.
+- [ ] R-02 — `taskCounts` reads the stored task list once per call and every badge still equals
+  the count of its list.
+- [ ] R-03 — An index generation moves on every landed index change: editor save, external edit,
+  move, trash, rescan.
+- [ ] R-04 — LinkedTasksPanel and BoardTray refresh on the index generation; a task added by an
+  editor save or an external edit appears in both.
+- [ ] R-05 — The note inspector's unresolved-links and backlinks lists are not recomputed on a
+  keystroke that does not change the index, and show the same entries as today (the top-N
+  selection equals the prefix of the full sort).
+- [ ] R-06 — A view block parses its fence once per body evaluation and reuses that parse for its
+  evaluation; its first frame is unchanged. (no-test: per-body memoisation of a SwiftUI view,
+  proven by construction; results pinned by the existing view-block tests)
+- [ ] R-07 — One view evaluation reads the sorted note list once and resolves `linksTo`/
+  `linkedFrom` once per title, with identical results.
+- [ ] R-08 — Glob patterns and `.text` needles are case-folded once per evaluation or query, with
+  identical matches.
+- [ ] R-09 — The HTML reducer no longer lowercases per character nor copies the buffer per
+  paragraph break, and its output is byte-identical on both corpora.
+- [ ] R-10 — The MIME decoder compares boundary lines without per-line allocations, and decodes
+  every corpus message to identical parts.
+- [ ] R-11 — Reading a counterpart issues a number of SQL statements independent of its
+  conversation count (bounded by the number of batches), and returns conversations, messages and
+  recipients in the same order as today, across a batch boundary. The same holds for resolving a
+  pratica's followed conversations (widened at plan gate G4, 2026-09-29).
+- [ ] R-12 — A mailbox's store directory is listed at most once per reader.
+- [ ] R-13 — MessageDocument reads its frontmatter in one pass (first occurrence wins, indented
+  lines skipped) and creates its date formatters once per call; parse and render are identical on
+  `MessageDocumentTests` and both corpora.
+- [ ] R-14 — The connector's pratica timeline creates one date formatter per call, with identical
+  output.
+- [ ] R-15 — An attachment chip checks its file once per body evaluation, and a file that arrives
+  while the chip is visible shows as usable on the next render. (no-test: per-body memoisation,
+  proven by construction; model pinned by `AttachmentChipTests`)
+- [ ] R-16 — The timeline computes its entries once per body and finds the "insert here" target
+  from a precomputed next-row map, with the same target as today.
+- [ ] R-17 — A board card checks folder-ness once per node per render, and a folder created after
+  load is still recognised.
+- [ ] R-18 — A drag captures its snap candidates once at its start and does not scan the node list
+  linearly per tick, with the same snapping result.
+- [ ] R-19 — The source-purity and isolation tests walk the source tree once per run and reach the
+  same verdicts.
+- [ ] R-20 — `WorkspaceOpenStateUITests` scopes its queries and resolves the tree once per
+  assertion, green through `scripts/uitests.sh --affected`. (no-test: it is itself a UI test, verified by running it)
+- [ ] R-21 — `scripts/mcp-smoke.py` drains the server's stderr without accumulating it, and still
+  passes. (no-test: it is itself a script)
+- [ ] R-22 — Every existing test passes unchanged; none is weakened, skipped or deleted; `perg` and
+  `pergamenum-mcp` build.
 
 ## Not yet specified
 
@@ -141,6 +188,8 @@ _none_
 
 ## Out of scope
 
-- Moving reads off the main actor: ADR-0041 decided it; the cooperative loop gives responsiveness without reopening it.
-- The «Viste» §D7 watcher: a larger feature, not a correctness fix.
-- Chunk size tuning beyond a sensible constant: no measured need.
+- **PG-268** (chain 15 perf nits: outline reparse, per-row JSON decode, tag-rename preview): a
+  separate ledger entry with its own measurements.
+- **Timing benchmarks and a synthetic large-vault generator**: rejected as the proof method above.
+- **Cross-render caches** for chip, timeline and view block: they would change when new data shows.
+- **A folder watch for boards**: new infrastructure for a halved stat count that is already enough.
