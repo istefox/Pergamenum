@@ -27,10 +27,11 @@ struct ViewBoardRenderer: View {
     var queries: ViewQuerySource?
     /// Run after a write, so the block that owns the evaluation runs the query again.
     ///
-    /// Needed rather than automatic: `VaultSession.write` updates the index in place, but the
-    /// view is re-evaluated on `scanGeneration`, which counts *scans*. The app's own write is
-    /// deliberately not one (ADR-0001 §D3 has the watcher recognise it by hash and leave the
-    /// window alone), so without this the file moved and the card sprang back.
+    /// Written when the view was re-evaluated on `scanGeneration`, which counts *scans*: the
+    /// app's own write is deliberately not one (ADR-0001 §D3 has the watcher recognise it by
+    /// hash and leave the window alone), so without this the file moved and the card sprang
+    /// back. The editor's source now follows `indexGeneration` (ADR-0072 §D11), which that write
+    /// moves; this stays because a `ViewQuerySource` is not required to follow the index.
     var onWrite: () -> Void = {}
 
     @State private var lastDrop: Drop?

@@ -15,9 +15,15 @@
 # runs at merge time. What is here is everything about a run of this script which is easy
 # to get wrong:
 #
-#   - **Stale instances are killed first.** A full run started with one alive gives 18
-#     failures that are not real, every one at exactly 60.2 s - the launch timeout - and
-#     two hours went into blaming something else for that once already (PG-026).
+#   - **Debris from an earlier UI run is killed first**: a copy built into this script's own
+#     DerivedData (`build/uitests-dd`) or launched into the UI-test runner's container. A full
+#     run started with one alive gives 18 failures that are not real, every one at exactly
+#     60.2 s - the launch timeout - and two hours went into blaming something else for that
+#     once already (PG-026).
+#   - **A copy that is somebody else's is named once and left alone.** Another worktree's Debug
+#     build or the unit-test host of another xcodebuild is not this script's to kill: the sweep
+#     used to treat it as debris, which made it the likely sender of the SIGTERM that ended a
+#     unit run in progress (PG-308, PG-315).
 #   - **An instance you are using is not killed.** A copy running out of /Applications is
 #     yours, not debris, so this stops and asks rather than closing your window. It has to
 #     stop rather than continue: that instance holds the global hot key and the run would
@@ -604,6 +610,27 @@ log_window_around() {
         "$(date -r $((start + 5)) '+%Y-%m-%d %H:%M:%S')"
 }
 
+# MARK: whose copy of the app
+
+# The UI-test runner's container. A copy XCUITest launches is handed a vault inside it, so a
+# command line naming it belongs to a UI run, whichever worktree built the binary.
+readonly RUNNER_CONTAINER="/Library/Containers/it.stefer.pergamenum.uitests.xctrunner/"
+
+# Which of three a running copy of the app is, from its `ps` line: `yours` (out of /Applications,
+# the copy the person uses), `debris` (built into this script's own DerivedData, or launched by a
+# UI run into the runner's container) or `other` (anything else: another worktree's Debug build,
+# the unit-test host of somebody else's xcodebuild). Only debris is ever closed. Everything that
+# was not yours used to be debris, so the pre-run sweep sent SIGTERM to another worktree's
+# unit-test host (PG-315, the likely sender of PG-308's «signal term»). Pure, so `--self-test`
+# can drive it.
+instance_kind() {
+    case "$1" in
+        *"/Applications/"*) echo yours ;;
+        *"$DERIVED_DATA/"*|*"$RUNNER_CONTAINER"*) echo debris ;;
+        *) echo other ;;
+    esac
+}
+
 # MARK: --self-test
 
 # Asserts the verdict logic above with no build, no GUI and no app: logs, focus logs, display
@@ -691,7 +718,7 @@ selftest_cleanup() {
 }
 
 self_test() {
-    local d="$VERDICT_DIR" head_tree head_commit f before out rc s st_a
+    local d="$VERDICT_DIR" head_tree head_commit f before out rc s st_a app
     case "$d" in
         */pergamenum-uitests-selftest.*) ;;
         *) fail "--self-test senza la sua cartella temporanea: mi fermo prima di scrivere altrove" ;;
@@ -712,6 +739,21 @@ self_test() {
     done
     expect_eq "i segnali si scrivono sempre nello stesso ordine, senza doppioni" \
         "installed-copy focus-taken" "$(merge_signals "focus-taken installed-copy" "focus-taken")"
+
+    # PG-315: whose copy of the app a `ps` line is. Only debris is ever closed.
+    app="Pergamenum.app/Contents/MacOS/Pergamenum"
+    expect_eq "copia da /Applications: tua, mai chiusa" yours \
+        "$(instance_kind "123	/Applications/$app")"
+    expect_eq "copia nella DerivedData di questo script: residuo" debris \
+        "$(instance_kind "123	$DERIVED_DATA/Build/Products/Debug/$app")"
+    expect_eq "copia di un giro UI nel contenitore del runner: residuo, chiunque l'abbia compilata" debris \
+        "$(instance_kind "123	/altrove/build/uitests-dd/Build/Products/Debug/$app -recentVaults (\"$HOME$RUNNER_CONTAINER""Data/tmp/v\")")"
+    expect_eq "host dei test di unità di un altro xcodebuild: non di questo giro, mai chiuso" other \
+        "$(instance_kind "123	$HOME/Library/Developer/Xcode/DerivedData/Pergamenum-abc/Build/Products/Debug/$app")"
+    expect_eq "DerivedData dei giri UI di un altro worktree, fuori dal contenitore: non di questo giro" other \
+        "$(instance_kind "123	/altrove/build/uitests-dd/Build/Products/Debug/$app")"
+    expect_eq "una cartella che comincia soltanto come la DerivedData di questo script non è la sua" other \
+        "$(instance_kind "123	$DERIVED_DATA-vecchia/Build/Products/Debug/$app")"
 
     # R-03: the single rerun and what it settles.
     selftest_settle 12 0 ""
@@ -1004,24 +1046,29 @@ running_instances() {
         | sed -E 's/^ *([0-9]+) +(.*)$/\1	\2/' || true
 }
 
-# A copy out of /Applications is the one you use; anything under DerivedData or inside the
-# test runner's container is debris from an earlier run. Sorted into `yours` and `debris`
-# by this one function, called before the run and again after it, so the two moments cannot
-# disagree about which copy is whose (PG-175: the second one used to close both). Both strings
+# A copy out of /Applications is the one you use; one under this script's own DerivedData or
+# inside the test runner's container is debris from a UI run; anything else is somebody else's
+# and is left alone (`instance_kind`, PG-315). Sorted into `yours`, `debris` and `foreign` by
+# this one function, called before the run and again after it, so the two moments cannot
+# disagree about which copy is whose (PG-175: the second one used to close both). The strings
 # keep a newline after every line on purpose: `read` skips a final line without one, which is
 # how the old `$(running_instances)` here never closed the last instance it listed.
 yours=""
 debris=""
+foreign=""
 partition_instances() {
     yours=""
     debris=""
+    foreign=""
     local line
     while IFS= read -r line; do
         [ -n "$line" ] || continue
-        case "$line" in
-            *"/Applications/"*) yours="$yours$line
+        case "$(instance_kind "$line")" in
+            yours) yours="$yours$line
 " ;;
-            *) debris="$debris$line
+            debris) debris="$debris$line
+" ;;
+            *) foreign="$foreign$line
 " ;;
         esac
     done < <(running_instances)
@@ -1037,19 +1084,12 @@ close_debris() {
     done
 }
 
-partition_instances
-
-if [ -n "$yours" ]; then
-    printf 'uitests: una copia installata di Pergamenum è in esecuzione:\n%s\n' "$yours" >&2
-    fail "chiudila prima di lanciare la suite - tiene il tasto globale e il giro fallirebbe comunque"
-fi
-
-close_debris "uitests: istanze rimaste da un giro precedente, le chiudo:"
-
 # Another xcodebuild on this project - the Stop hook's unit run, a build in a terminal - is
 # not debris and is not this script's to kill. With its own DerivedData it could no longer
 # corrupt the run, but it still fights the run for the CPU and for the display's focus, and a
-# result taken beside it is not one to trust (PG-183).
+# result taken beside it is not one to trust (PG-183). Refused before the first sweep, together
+# with the lock below, so that sweep never runs while another run or test host is alive: it
+# used to come after it (PG-315).
 if other=$(pgrep -fl 'xcodebuild.*Pergamenum' 2>/dev/null) && [ -n "$other" ]; then
     printf 'uitests: un altro xcodebuild è in corso:\n%s\n' "$other" >&2
     fail "aspetta che finisca e rilancia"
@@ -1078,6 +1118,21 @@ if ! take_lock; then
     take_lock || fail "non riesco a prendere il lock dei giri"
 fi
 trap cleanup EXIT
+
+partition_instances
+
+if [ -n "$yours" ]; then
+    printf 'uitests: una copia installata di Pergamenum è in esecuzione:\n%s\n' "$yours" >&2
+    fail "chiudila prima di lanciare la suite - tiene il tasto globale e il giro fallirebbe comunque"
+fi
+
+# Named, never closed: not this script's to kill. A copy holding the global hot key can still
+# disturb the run, and this line is where to look when it does.
+if [ -n "$foreign" ]; then
+    printf 'uitests: copie di Pergamenum che non vengono da un giro UI, le lascio stare:\n%s\n' "$foreign"
+fi
+
+close_debris "uitests: istanze rimaste da un giro precedente, le chiudo:"
 
 # MARK: keep-focused
 

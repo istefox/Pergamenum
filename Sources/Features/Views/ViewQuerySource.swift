@@ -5,9 +5,10 @@
 /// generation are all a renderer needs, and a view drawn without a source says so rather than
 /// drawing an empty table - an empty result and no vault at all are different facts.
 ///
-/// `generation` is `VaultController.scanGeneration`, so a view is re-evaluated when the vault
-/// is rescanned and not when a key is pressed (§D7: on open, on an explicit refresh, on a
-/// debounced watcher change - never per keystroke).
+/// `generation` is `VaultController.indexGeneration` (ADR-0072 §D11; it was `scanGeneration`),
+/// so a view is re-evaluated when the index changes - a save, a debounced watcher change, a
+/// rescan - and not when a key is pressed (§D7: on open, on an explicit refresh, on a change to
+/// the vault - never per keystroke).
 struct ViewQuerySource {
     var evaluate: @MainActor (ViewBlock) -> ViewResult
     var generation: Int = 0
