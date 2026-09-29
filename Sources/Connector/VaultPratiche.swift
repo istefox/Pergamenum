@@ -188,14 +188,19 @@ private extension VaultAPI {
         // `praticaNotes` admits only paths ending in `/pratica.md`, so the root never
         // reaches the resolver.
         guard let directory = try? session.store.url(for: folder) else { return [] }
-        let rows = messageRows(in: directory, session: session) + manualEntryRows(in: directory)
+        // One formatter for every row of the call (ADR-0072 §D9, R-14).
+        let formatter = isoFormatter()
+        let rows = messageRows(in: directory, session: session, formatter: formatter)
+            + manualEntryRows(in: directory, formatter: formatter)
         return rows
             .sorted { $0.date == $1.date ? $0.id < $1.id : $0.date < $1.date }
             .map(\.entry)
     }
 
     @MainActor
-    static func messageRows(in praticaFolder: URL, session: VaultSession) -> [TimelineRow] {
+    static func messageRows(
+        in praticaFolder: URL, session: VaultSession, formatter: ISO8601DateFormatter
+    ) -> [TimelineRow] {
         let messages = praticaFolder.appending(path: messagesDirectoryName, directoryHint: .isDirectory)
         let names = (try? FileManager.default.contentsOfDirectory(
             atPath: messages.path(percentEncoded: false)
@@ -214,7 +219,7 @@ private extension VaultAPI {
             let date = mail.date == .distantPast ? (mail.received ?? mail.date) : mail.date
             return TimelineRow(date: date, id: name, entry: PraticaTimelinePayload.Entry(
                 kind: "message",
-                date: isoString(date),
+                date: formatter.string(from: date),
                 direction: mail.direction.rawValue,
                 from: mail.from,
                 subject: mail.subject,
@@ -239,7 +244,7 @@ private extension VaultAPI {
     ///
     /// `direction` and `from` stay `nil`: a manual entry has neither, and the
     /// counterpart lives in the heading, which is the entry's `subject`.
-    static func manualEntryRows(in praticaFolder: URL) -> [TimelineRow] {
+    static func manualEntryRows(in praticaFolder: URL, formatter: ISO8601DateFormatter) -> [TimelineRow] {
         let url = praticaFolder.appending(path: praticaFileName, directoryHint: .notDirectory)
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
 
@@ -255,7 +260,7 @@ private extension VaultAPI {
                     kind: entry.subject.hasPrefix(PraticaEntry.Kind.call.label)
                         ? PraticaEntry.Kind.call.rawValue
                         : PraticaEntry.Kind.note.rawValue,
-                    date: isoString(entry.date),
+                    date: formatter.string(from: entry.date),
                     direction: nil,
                     from: nil,
                     subject: entry.subject,
@@ -312,9 +317,15 @@ private extension VaultAPI {
     /// conformance, so a shared static of it would not compile under strict concurrency
     /// (`PlaudTimestamp`'s own note).
     static func isoString(_ date: Date) -> String {
+        isoFormatter().string(from: date)
+    }
+
+    /// The formatter `isoString(_:)` uses, for a caller writing many dates in one call: the
+    /// timeline builds it once per call (ADR-0072 §D9, R-14) and nothing ever changes it after.
+    static func isoFormatter() -> ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         formatter.timeZone = .current
-        return formatter.string(from: date)
+        return formatter
     }
 }

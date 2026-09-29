@@ -158,8 +158,11 @@ enum MailStorePreparation {
         var remap: [Int: Int] = [:]
         var unrecoverable: [Int] = []
         let resolved = MembershipStoreSnapshot(conversations: [:], messagesByID: messagesByID)
+        // One batched read for every followed conversation (ADR-0072 §D8, plan gate G4); only a
+        // recovered id, rare, is read on its own below.
+        let followed = reader.messages(inConversations: dossier.conversations)
         for conversation in dossier.conversations {
-            let rows = reader.messages(inConversation: conversation)
+            let rows = followed[conversation] ?? []
             guard rows.isEmpty else { conversations[conversation] = rows; continue }
             let members = PraticaLedger.memberMessageIDs(in: ledgerEntries, forConversation: conversation)
             guard !members.isEmpty else { conversations[conversation] = []; continue }

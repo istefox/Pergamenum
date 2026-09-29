@@ -19,8 +19,12 @@ struct LinkedTasksPanel: View {
     /// Shown when nothing links here yet.
     var emptyText = "nessuno"
 
+    /// The panel sits in the inspector, which redraws on every keystroke: the list is kept for
+    /// as long as the index and the title stay the same (ADR-0072 §D4).
+    @State private var memo = IndexKeyedMemo<String, [TaskItem]>()
+
     var body: some View {
-        let tasks = vault.index.tasks(linkingTo: title)
+        let tasks = memo.value(generation: vault.indexGeneration, input: title) { vault.index.tasks(linkingTo: title) }
         VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
             HStack(spacing: theme.spacing(.xs)) {
                 Text("TASK COLLEGATI").themedText(.caption, color: .textTertiary)

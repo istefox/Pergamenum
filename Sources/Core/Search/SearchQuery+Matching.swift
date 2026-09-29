@@ -20,6 +20,9 @@ extension SearchQuery {
         private let foldedWords: [String]
         private let foldedPhrases: [String]
         private let foldedNegated: [String]
+        /// `tag:` and `-tag:`, folded once for the same reason (ADR-0072).
+        private let tagPatterns: [Glob.Pattern]
+        private let negatedTagPatterns: [Glob.Pattern]
 
         init(_ query: SearchQuery) {
             self.query = query
@@ -28,6 +31,8 @@ extension SearchQuery {
             foldedWords = query.words.map(SearchQuery.fold)
             foldedPhrases = query.phrases.map(SearchQuery.fold)
             foldedNegated = (query.negatedWords + query.negatedPhrases).map(SearchQuery.fold)
+            tagPatterns = query.tags.map(Glob.Pattern.init)
+            negatedTagPatterns = query.negatedTags.map(Glob.Pattern.init)
             refusesEverything = !query.invalidPatterns.isEmpty
                 || required.count != query.patterns.count
                 || forbidden.count != query.negatedPatterns.count
@@ -77,9 +82,9 @@ extension SearchQuery {
             if !query.tags.isEmpty || !query.negatedTags.isEmpty {
                 let noteTags = Set(record.frontmatter.tags.map { $0.description.lowercased() })
                     .union(record.tasks.flatMap { $0.tags.map { $0.description.lowercased() } })
-                let carries = { (pattern: String) in noteTags.contains { Glob.matchesTag(pattern, $0) } }
-                for tag in query.tags where !carries(tag) { return false }
-                for tag in query.negatedTags where carries(tag) { return false }
+                let carries = { (pattern: Glob.Pattern) in noteTags.contains { pattern.matchesTag($0) } }
+                for pattern in tagPatterns where !carries(pattern) { return false }
+                for pattern in negatedTagPatterns where carries(pattern) { return false }
             }
 
             if let modified = query.modified, !modified.admits(CalendarDate(record.modifiedAt)) {
