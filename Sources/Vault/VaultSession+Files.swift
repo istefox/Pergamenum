@@ -12,12 +12,29 @@ import Foundation
 extension VaultSession {
     private var operations: NoteFileOperations { NoteFileOperations(store: store) }
 
+    /// The three note doors below act on notes only. A Contenitore file is not one: it is the
+    /// binary half of a pair, and the pair performers are what move, rename and trash it, from
+    /// its scheda. Acting on the file alone here would split the pair (ADR-0071 §D6), so a path
+    /// that is not a `.md` is refused before anything is planned.
+    private func requireNotePath(_ relativePath: String) throws {
+        guard relativePath.lowercased().hasSuffix(".md") else {
+            throw FileOperationError.failed("\(relativePath) non è una nota")
+        }
+    }
+
     /// Renames a note and every link that pointed at it (wikilink.md W-08).
     ///
     /// A refusal here (ADR-0046 §D1/§D6) is a stale wikilink that re-running the rename cannot
     /// repair, unlike the tag path: once the file has moved, `oldTitle` is derived from the
     /// *new* file name, so a second call computes `from: X, to: X` and rewrites nothing.
+    ///
+    /// A Contenitore scheda with its file beside it renames as a pair (ADR-0071 §D6, R-21):
+    /// both files take the new stem, and the file-name links follow too.
     func renameNote(at relativePath: String, to newTitle: String) async throws -> NoteFileOperations.Outcome {
+        try requireNotePath(relativePath)
+        if let companion = companion(ofScheda: relativePath) {
+            return try await renameDocumentPair(scheda: relativePath, companion: companion, to: newTitle)
+        }
         let plan = try operations.renamePlan(
             relativePath, to: newTitle, knownPaths: index.allNotes.map(\.relativePath)
         )
@@ -46,7 +63,14 @@ extension VaultSession {
     /// Moves a note between folders. Boards only: a wikilink names a note by title, not by
     /// path, so a move touches no note text (wikilink.md W-01) and a refusal here (ADR-0046
     /// §D6) is a `.canvas` card left pointing at the old path.
+    ///
+    /// A Contenitore scheda with its file beside it moves as a pair, or a collision refuses both
+    /// files (ADR-0071 §D6, R-20).
     func moveNote(at relativePath: String, toFolder folder: String) async throws -> NoteFileOperations.Outcome {
+        try requireNotePath(relativePath)
+        if let companion = companion(ofScheda: relativePath) {
+            return try await moveDocumentPair(scheda: relativePath, companion: companion, toFolder: folder)
+        }
         let plan = try operations.movePlan(relativePath, toFolder: folder)
         var outcome = NoteFileOperations.Outcome(newPath: plan.newPath, failures: plan.failures)
 
@@ -66,7 +90,14 @@ extension VaultSession {
     /// Moves a note to the Finder's trash and returns the notes now linking to nothing.
     ///
     /// The caller confirms first: this does the deleting, it does not ask.
+    ///
+    /// A Contenitore scheda with its file beside it goes to the trash with that file, in one
+    /// gesture (ADR-0071 §D6, R-22).
     func trashNote(at relativePath: String) async throws -> [String] {
+        try requireNotePath(relativePath)
+        if companion(ofScheda: relativePath) != nil {
+            return try await trashDocument(at: relativePath).orphaned
+        }
         let knownPaths = index.allNotes.map(\.relativePath)
         try await transaction("note trash") {
             try await trashFile(at: relativePath)

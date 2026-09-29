@@ -75,6 +75,10 @@ extension VaultSession {
     ///
     /// Not journalled, like the Pratiche trash it undoes, and the note-id registry is left
     /// alone: that trash never forgot the id (§D3, ADR-0059 §D6).
+    ///
+    /// Any file that is not a note (ADR-0071 §D3, the Contenitore trash rollback) passes the same
+    /// refusals, but its bytes are never read on the main actor: it has no self-write to record,
+    /// since the watcher reports only notes, and no text to announce.
     func restoreFromOutside(_ source: URL, to relativePath: String) async throws {
         let destination = try store.url(for: relativePath)
         guard !exists(relativePath) else { throw FileOperationError.alreadyExists(relativePath) }
@@ -87,28 +91,36 @@ extension VaultSession {
         }
         guard !isDryRun else { return }
 
-        let data: Data
-        do {
-            data = try Data(contentsOf: source)
-        } catch {
-            throw FileOperationError.failed("ripristino: \(error.localizedDescription)")
+        var data: Data?
+        var provisional: UInt64?
+        if VaultDisk.derivesNoteRecord(relativePath) {
+            let bytes: Data
+            do {
+                bytes = try Data(contentsOf: source)
+            } catch {
+                throw FileOperationError.failed("ripristino: \(error.localizedDescription)")
+            }
+            let sequence = reserveProvisionalSequence()
+            selfWrittenHashes[relativePath, default: []].append((sequence: sequence, hash: NoteStore.hash(bytes)))
+            data = bytes
+            provisional = sequence
         }
-        let provisional = reserveProvisionalSequence()
-        selfWrittenHashes[relativePath, default: []].append((sequence: provisional, hash: NoteStore.hash(data)))
 
         let mutation: VaultDisk.IndexMutation
         do {
             mutation = try await disk.restoreFile(from: source, to: relativePath)
         } catch {
-            removeSelfWrittenEntry(at: relativePath, sequence: provisional)
+            if let provisional { removeSelfWrittenEntry(at: relativePath, sequence: provisional) }
             if error is FileOperationError || error is WriteRefusal { throw error }
             throw FileOperationError.failed("ripristino: \(error.localizedDescription)")
         }
-        reconcileProvisionalSequence(at: relativePath, provisional: provisional, actual: mutation.sequence)
+        if let provisional {
+            reconcileProvisionalSequence(at: relativePath, provisional: provisional, actual: mutation.sequence)
+        }
         apply([mutation])
         // ADR-0067 §D1: last, once the restore is real. A file that is not UTF-8 is no note a
         // tab could show, so there is no text to announce for it.
-        if let text = NoteStore.decodedText(data) {
+        if let text = data.flatMap(NoteStore.decodedText) {
             announce(.written(WriteResult(path: relativePath, text: text), origin: nil))
         }
     }

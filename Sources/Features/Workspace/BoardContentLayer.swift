@@ -276,8 +276,9 @@ struct BoardContentLayer: View {
     ///
     /// Kept here rather than moved beside the menu builder that reads them: they are the
     /// submenu's contents, not the command list, and both surfaces read them from this one
-    /// table.
-    static let colorNames = ["Rosso", "Arancio", "Giallo", "Verde", "Ciano", "Viola"]
+    /// table. The names come from `StickyPreset.names`, the one list the Contenitore colours
+    /// read as well (ADR-0071 §D1).
+    static let colorNames = StickyPreset.names
 
     /// The presets of SPEC §10, "ridimensiona a preset".
     static let sizePresets: [(name: String, size: CGSize)] = [

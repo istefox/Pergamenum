@@ -163,7 +163,16 @@ extension VaultSession {
         // Read before the refusal to perform, not after: a dry run that skipped the read would
         // not discover an unreadable file, and the real thing would then fail where the
         // rehearsal had said it was fine.
-        let data = (try? store.url(for: relativePath)).flatMap { try? Data(contentsOf: $0) }
+        //
+        // A note or a board only (ADR-0071 §D3): any other file is never read on the main actor,
+        // and its removal is journalled with no text, so an undo declines it and the file stays in
+        // the Finder Trash. A `.canvas` keeps its text because a board's trash was journalled with
+        // it before, and §D3 changes no existing behaviour (`VaultAsyncCascadeTests` pins it).
+        let readsText = VaultDisk.derivesNoteRecord(relativePath)
+            || (relativePath as NSString).pathExtension.lowercased() == CanvasStore.fileExtension
+        let data = readsText
+            ? (try? store.url(for: relativePath)).flatMap { try? Data(contentsOf: $0) }
+            : nil
         guard !isDryRun else { return nil }
 
         // ADR-0043 §D1: the `trashItem` call moves inside `VaultDisk`, stamped from this
@@ -301,15 +310,22 @@ extension VaultSession {
     /// this plan and now takes it on the whole group it was given - the shared function is what
     /// stops the two from drifting onto different guards for the same three kinds.
     func preflightUndo(_ entries: [WriteJournal.Entry]) -> [String] {
-        entries.compactMap(preflightUndo(_:))
+        entries.enumerated().compactMap { index, entry in
+            // A move is followed, in the same gesture, by the rewrite of the file's own text at
+            // its new path (a scheda's `pergamenum-contenitore-file` key, a note's link to
+            // itself). The file is then rightly no longer what the move left, so the move is
+            // held to the hash of the last such rewrite - which its own entry checks in turn.
+            let later = entries[(index + 1)...].last { $0.kind == .textReplacement && $0.path == entry.path }
+            return preflightUndo(entry, movedHash: later?.hashAfter)
+        }
     }
 
     /// One entry's half of the guard above, split by kind into the three functions below so
     /// each stays plainly readable on its own rather than one switch doing all three at once.
-    private func preflightUndo(_ entry: WriteJournal.Entry) -> String? {
+    private func preflightUndo(_ entry: WriteJournal.Entry, movedHash: String?) -> String? {
         switch entry.kind {
         case .textReplacement: preflightTextReplacement(entry)
-        case .move: preflightMove(entry)
+        case .move: preflightMove(entry, expectedHash: movedHash ?? entry.hashAfter)
         case .removal: preflightRemoval(entry)
         }
     }
@@ -323,10 +339,18 @@ extension VaultSession {
         return nil
     }
 
-    private func preflightMove(_ entry: WriteJournal.Entry) -> String? {
+    private func preflightMove(_ entry: WriteJournal.Entry, expectedHash: String) -> String? {
         guard exists(entry.path) else { return "\(entry.path): non c'è più" }
-        guard currentHash(at: entry.path) == entry.hashAfter else {
-            return "\(entry.path): è cambiato dopo lo spostamento, non lo tocco"
+        // An empty `hashAfter` is a file the disk actor derived no record for: any non-`.md`,
+        // such as a Contenitore document's binary (ADR-0071 §D3), and a `.md` whose bytes it
+        // could not read or decode (`moveFile` journals `""` for both). There is no hash to
+        // compare and none to compute: reading it here would put a binary on the main actor,
+        // which §D3 forbids. Its existence and a free `pathBefore` are all this guard can ask
+        // of it. A move whose record was derived journals that record's hash.
+        if !expectedHash.isEmpty {
+            guard currentHash(at: entry.path) == expectedHash else {
+                return "\(entry.path): è cambiato dopo lo spostamento, non lo tocco"
+            }
         }
         guard let pathBefore = entry.pathBefore, !exists(pathBefore) else {
             return "\(entry.pathBefore ?? entry.path): occupato, non lo sovrascrivo"
