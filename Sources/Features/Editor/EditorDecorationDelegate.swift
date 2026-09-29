@@ -643,8 +643,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// characters since the last styling pass.
     private func embedParagraph(at range: NSRange, storage: NSTextStorage) -> NSTextParagraph? {
         guard let rendition = embedRenditions[range.location],
-              let marker = (hiddenMarkers[range.location] ?? []).first(where: { $0.kind == .embed }),
-              NSMaxRange(marker.range) <= range.length
+              let marker = marker(of: .embed, at: range)
         else { return nil }
 
         let text = storage.string as NSString
@@ -653,7 +652,6 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
 
         let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
         let attachmentRange = NSRange(location: marker.range.location, length: 1)
-        let restRange = NSRange(location: attachmentRange.location + 1, length: marker.range.length - 1)
 
         // An `EmbedAttachment` rather than a plain `NSTextAttachment`, so the picture is
         // drawn at the size the run itself asks for (ADR-0019 §D2). Both facts it needs
@@ -682,11 +680,10 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         }
         attachment.natural = attachment.image?.size ?? .zero
 
-        // A substitution, not an insertion: one character out, one in, the paragraph's
-        // own length unmoved - `NSTextContentManager.h:120`'s own constraint, the same one
-        // the hiding branch below keeps by never touching length at all.
-        copy.replaceCharacters(in: attachmentRange, with: "\u{FFFC}")
-        copy.addAttribute(.attachment, value: attachment, range: attachmentRange)
+        // A substitution, not an insertion (`substituteAttachment(_:over:in:)`): the
+        // paragraph's own length unmoved - `NSTextContentManager.h:120`'s own constraint, the
+        // same one the hiding branch below keeps by never touching length at all.
+        Self.substituteAttachment(attachment, over: marker, in: copy)
         // `.accessibilityAttachment`'s value is documented as "id - corresponding element"
         // (`NSAccessibilityConstants.h`), the same shape `NSAccessibilityLinkTextAttribute`
         // has - a plain label string here, not the element itself. It used to be an
@@ -703,9 +700,6 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // built from this same label the moment the real text view is asked, not pushed in
         // from here ahead of time.
         copy.addAttribute(.accessibilityAttachment, value: embed.alt ?? embed.target, range: attachmentRange)
-        if restRange.length > 0 {
-            copy.addAttribute(.font, value: Self.collapsedFont, range: restRange)
-        }
         return NSTextParagraph(attributedString: copy)
     }
 
