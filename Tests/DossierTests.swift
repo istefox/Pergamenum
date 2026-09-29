@@ -157,3 +157,90 @@ import Testing
         #expect(violations.contains(.statusNotAllowedOnNote(Tag("status-final")!)))
     }
 }
+
+// PG-275 (#614), ADR-0065 §D13.2: a quoted `DossierYAML` scalar escapes `\`, `"`, `\n` and
+// `\r`, and reads them back through the exact inverse (§D8.1's rule, applied here).
+
+@Suite struct DossierQuotingTests {
+    /// The whole `pratica.md` text a set of foreign keys produces, as the wizard writes it.
+    private static func text(of foreignKeys: [Frontmatter.ForeignKey]) -> String {
+        var frontmatter = Frontmatter.empty
+        frontmatter.foreignKeys = foreignKeys
+        return NoteDocument(frontmatter: frontmatter, body: "\n", hasFrontmatterBlock: true).serialized()
+    }
+
+    private static func dossier(carrying value: String) -> Dossier {
+        Dossier(
+            schemaVersion: 1, counterparts: [], conversations: [], keywords: [value],
+            included: [value], excluded: [value], ignored: []
+        )
+    }
+
+    @Test(arguments: [
+        "a\"b", #"x\y"#, #"x\\y"#, "riga\nriga", "riga\r\nriga", "a\rb", #"a\nb"#, #"a\rb"#,
+        #"fine\"#, #"\t"#, "\t", "\"", "\"\u{301}inizio", "\\\"\n\r",
+    ])
+    func aQuotedValueRoundTripsThroughAPraticaMd(_ value: String) throws {
+        let text = Self.text(of: Dossier.render(Self.dossier(carrying: value)))
+        let foreignKeys = NoteDocument.parse(text).frontmatter.foreignKeys
+        let parsed = try #require(Dossier.parse(foreignKeys))
+        #expect(parsed.keywords.map { Array($0.unicodeScalars) } == [Array(value.unicodeScalars)])
+        #expect(parsed.included == [value])
+        #expect(parsed.excluded == [value])
+        #expect(Self.text(of: Dossier.render(parsed)) == text)
+    }
+
+    @Test func aQuoteOrALineBreakStaysInsideItsOwnListItem() {
+        let lines = Dossier.render(Self.dossier(carrying: "OF \"118\"\nseconda\rterza"))
+            .first { $0.name == Dossier.keywordsKey }?.lines
+        #expect(lines == [
+            "pergamenum-dossier-keywords:",
+            #"  - "OF \"118\"\nseconda\rterza""#,
+        ])
+    }
+
+    @Test func aHandTypedBackslashThatEscapesNothingReadsAsWritten() throws {
+        let foreignKeys: [Frontmatter.ForeignKey] = [
+            .init(name: "pergamenum-dossier", lines: ["pergamenum-dossier: 1"]),
+            .init(name: "pergamenum-dossier-keywords", lines: [
+                "pergamenum-dossier-keywords:",
+                #"  - "C:\temp""#,
+            ]),
+        ]
+        #expect(try #require(Dossier.parse(foreignKeys)).keywords == [#"C:\temp"#])
+    }
+
+    @Test func aLinkTargetCarryingAQuoteOrABackslashRoundTrips() {
+        var links = PraticaLinks()
+        links.notes = [#"Offerta "Rossi" \ 2026"#]
+        links.tasks = [PraticaLinks.TaskReference(noteTitle: #"Nota "A""#, localID: 3)]
+        links.boards = [#"C:\nuovo.canvas"#]
+        let text = Self.text(of: PraticaLinks.render(links))
+        #expect(PraticaLinks.parse(NoteDocument.parse(text).frontmatter.foreignKeys) == links)
+    }
+
+    @Test func aCRLFPraticaMdStillParsesItsEscapedKeywords() throws {
+        let value = "OF \"118\"\nseconda\\"
+        let lf = Self.text(of: Dossier.render(Self.dossier(carrying: value)))
+        let crlf = lf.replacingOccurrences(of: "\n", with: "\r\n")
+        #expect(crlf.contains("\r\n"))
+        let foreignKeys = NoteDocument.parse(crlf).frontmatter.foreignKeys
+        let parsed = try #require(Dossier.parse(foreignKeys))
+        #expect(parsed.keywords == [value])
+        #expect(parsed.included == [value])
+        #expect(parsed.excluded == [value])
+    }
+
+    @Test func theInlineListFormReadsAnEscapedQuoteAndABackslash() {
+        let lines = [#"pergamenum-dossier-keywords: ["OF \"118\"", "C:\\dir", "plain"]"#]
+        #expect(DossierYAML.stringList(key: "pergamenum-dossier-keywords", lines: lines)
+            == ["OF \"118\"", #"C:\dir"#, "plain"])
+    }
+
+    @Test func aSingleQuotedValueIsOnlyStrippedNeverUnescaped() {
+        let block = ["k:", #"  - 'a\nb "q" \\'"#]
+        #expect(DossierYAML.stringList(key: "k", lines: block) == [#"a\nb "q" \\"#])
+        let inline = [#"k: ['x\ny', 'z']"#]
+        #expect(DossierYAML.stringList(key: "k", lines: inline) == [#"x\ny"#, "z"])
+    }
+}
