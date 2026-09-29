@@ -154,3 +154,25 @@ private func titles(_ text: String) -> [String] {
         }
     }
 }
+
+// MARK: - CRLF notes (PG-274)
+
+@Test func aCRLFNoteListsEveryHeadingWithNoCarriageReturn() {
+    // "\r\n" is one Character, so a walk for "\n" read the whole note as one line.
+    let lf = "# Uno\ntesto\n## Due\n### Tre\n"
+    let crlf = lf.replacingOccurrences(of: "\n", with: "\r\n")
+    #expect(titles(crlf) == ["Uno", "Due", "Tre"])
+    #expect(titles(crlf) == titles(lf))
+    #expect(NoteOutline.entries(in: crlf).map(\.kind) == NoteOutline.entries(in: lf).map(\.kind))
+}
+
+@Test func aCRLFNoteOutlineRangesExcludeTheLineBreak() {
+    let crlf = "# Uno\r\ntesto\r\n## Due\r\n"
+    let entries = NoteOutline.entries(in: crlf)
+    #expect(entries.map { String(crlf[$0.range]) } == ["# Uno", "## Due"])
+}
+
+@Test func aCRLFNoteWithFrontmatterAndAFenceKeepsTheOutlineRight() {
+    let crlf = "---\r\ndate: 2026-08-11\r\n---\r\n# Vero\r\n```sh\r\n# commento\r\n```\r\n## Dopo\r\n"
+    #expect(titles(crlf) == ["Vero", "Dopo"])
+}

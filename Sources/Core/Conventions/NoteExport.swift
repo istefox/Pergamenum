@@ -7,11 +7,12 @@ import Foundation
 /// (frontmatter.md 6.3), and the `## Note correlate` section, which points at notes
 /// the reader does not have (wikilink.md 6.3).
 enum NoteExport {
-    /// The note as markdown, ready to hand over.
+    /// The note as markdown, ready to hand over. The final line break is the note's own, so a
+    /// CRLF note is not handed over mixed (ADR-0065 §D3, PG-274).
     static func markdown(from text: String) -> String {
         let document = NoteDocument.parse(text)
         return strippingRelatedSection(from: document.body)
-            .trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
+            .trimmingCharacters(in: .whitespacesAndNewlines) + LineBreak.detected(in: text).characters
     }
 
     /// Removes `## Note correlate` and its bullets, up to the next heading of any level - the
@@ -137,7 +138,11 @@ enum MarkdownHTML {
         var inCode = false
         var codeLines: [String] = []
 
-        for rawLine in markdown.components(separatedBy: "\n") {
+        // `components(separatedBy:)` splits below the grapheme level, so a CRLF line arrives
+        // with its `\r` attached; one trailing `\r` goes, as `ViewCatalogue` does, so a blank
+        // CRLF line closes a block, a table row ends in `|` and a heading or a code line carries
+        // no `\r` into the page (ADR-0065 §D13.1, PG-274).
+        for rawLine in markdown.components(separatedBy: "\n").map({ FrontmatterSource.interpreted($0) }) {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
 
             if line.hasPrefix("```") {

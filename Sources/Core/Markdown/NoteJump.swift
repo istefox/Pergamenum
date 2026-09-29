@@ -11,7 +11,8 @@ import Foundation
 /// In `Core` and pure, beside `NoteOutline`, because it is the same conversion the
 /// outline makes and it should be wrong in at most one place.
 enum NoteJump {
-    /// The range of a line, counting from zero, newline excluded.
+    /// The range of a line, counting from zero, line terminator excluded: the `\n`, and the
+    /// `\r` before it in a CRLF note (`"\r\n"` is one `Character`, PG-274).
     ///
     /// Nil when the note no longer has that many lines - which happens: the index is a
     /// snapshot and the file may have been edited since it was taken. Jumping to a line
@@ -23,7 +24,7 @@ enum NoteJump {
         var line = 0
         var start = text.startIndex
         while true {
-            let end = text[start...].firstIndex(of: "\n") ?? text.endIndex
+            let end = text[start...].firstIndex(where: LineBreak.isTerminator) ?? text.endIndex
             if line == index { return start..<end }
             guard end < text.endIndex else { return nil }
             start = text.index(after: end)

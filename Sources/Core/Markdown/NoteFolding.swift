@@ -178,12 +178,13 @@ enum NoteFolding {
     }
 
     /// The start of every line, empty ones included - the paragraph numbering the text
-    /// view uses, which counts a blank line like any other.
+    /// view uses, which counts a blank line like any other. A CRLF pair is one `Character`
+    /// and one terminator (PG-274), so a CRLF note numbers its lines like its LF twin.
     private static func lineStarts(in text: String) -> [String.Index] {
         var starts: [String.Index] = [text.startIndex]
         var index = text.startIndex
         while index < text.endIndex {
-            if text[index] == "\n" { starts.append(text.index(after: index)) }
+            if LineBreak.isTerminator(text[index]) { starts.append(text.index(after: index)) }
             index = text.index(after: index)
         }
         return starts

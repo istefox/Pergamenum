@@ -693,3 +693,49 @@ func stylesAWholeThematicBreakLineAsOneHorizontalRule(rule: String) {
     #expect(MarkdownStyler.suppressesSpellCheck(.horizontalRule))
     #expect(MarkdownStyler.suppressesSpellCheck(.tableRun))
 }
+
+// MARK: - CRLF notes (PG-274)
+
+@Test func stylesTheFrontmatterBlockOfACRLFNote() {
+    let note = "---\r\ndate: 2026-08-11\r\n---\r\ncorpo"
+    #expect(styled(note, .frontmatter) == "---\r\ndate: 2026-08-11\r\n---")
+}
+
+@Test func aCRLFNoteStylesItsHeadingsOnTheirOwnLines() {
+    let lf = "# Uno\ntesto\n## Due\n"
+    let crlf = lf.replacingOccurrences(of: "\n", with: "\r\n")
+    // Raw text on purpose: stripping the "\r" before comparing hid a span that carried it.
+    let headings = { (text: String) in
+        MarkdownStyler.spans(in: text).compactMap { match -> String? in
+            if case .heading = match.span { return String(text[match.range]) }
+            return nil
+        }
+    }
+    #expect(headings(crlf) == ["# Uno", "## Due"])
+    #expect(headings(crlf) == headings(lf))
+    for match in MarkdownStyler.spans(in: crlf) {
+        #expect(!crlf[match.range].contains("\r\n"), "a span carries its line break: \(match.span)")
+        #expect(!crlf[match.range].unicodeScalars.contains("\r"), "a span carries a CR: \(match.span)")
+    }
+}
+
+@Test func theFrontmatterRangeOfACRLFNoteMatchesItsLFTwin() {
+    let lf = "---\ndate: 2026-08-11\ntags: []\n---\ncorpo\n---\naltro"
+    let crlf = lf.replacingOccurrences(of: "\n", with: "\r\n")
+    // The block ends at the first closing rule, not the later one in the body.
+    #expect(styled(lf, .frontmatter) == "---\ndate: 2026-08-11\ntags: []\n---")
+    #expect(styled(crlf, .frontmatter) == "---\r\ndate: 2026-08-11\r\ntags: []\r\n---")
+    // An empty block is still a block.
+    #expect(styled("---\n---\ncorpo", .frontmatter) == "---\n---")
+    #expect(styled("---\r\n---\r\ncorpo", .frontmatter) == "---\r\n---")
+}
+
+@Test func anUnclosedFrontmatterOpeningIsNoFrontmatterInEitherEnding() {
+    let lf = "---\ndate: 2026-08-11\ncorpo senza chiusura\n"
+    let crlf = lf.replacingOccurrences(of: "\n", with: "\r\n")
+    #expect(styled(lf, .frontmatter) == nil)
+    #expect(styled(crlf, .frontmatter) == nil)
+    // Nothing follows the opening rule at all.
+    #expect(styled("---", .frontmatter) == nil)
+    #expect(styled("---\r\n", .frontmatter) == nil)
+}

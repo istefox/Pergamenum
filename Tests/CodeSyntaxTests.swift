@@ -181,3 +181,40 @@ private func text(of token: CodeSyntax.Token, in code: String, _ language: Strin
         previous = span.range.upperBound
     }
 }
+
+// MARK: - CRLF code (PG-274)
+
+/// "\r\n" is one Swift `Character`: a scanner that looks for "\n" never ended a line comment,
+/// an unterminated string or an unquoted YAML value in CRLF code, and each swallowed the rest
+/// of the block. The token kinds and texts must match the LF twin's.
+@MainActor
+private func crlfParity(_ lf: String, _ language: String?) -> [(text: String, token: CodeSyntax.Token)] {
+    let crlf = lf.replacingOccurrences(of: "\n", with: "\r\n")
+    let expected = tokens(lf, language)
+    let actual = tokens(crlf, language)
+    #expect(actual.count == expected.count)
+    for (a, e) in zip(actual, expected) {
+        #expect(a.token == e.token)
+        #expect(a.text == e.text)
+    }
+    return actual
+}
+
+@MainActor
+@Test func aCRLFLineCommentEndsWithItsLine() {
+    let found = crlfParity("# c1\necho hi\nx=1\n", "sh")
+    #expect(found.filter { $0.token == .comment }.map(\.text) == ["# c1"])
+}
+
+@MainActor
+@Test func aCRLFUnterminatedStringEndsWithItsLine() {
+    let found = crlfParity("let a = \"aperta\nlet b = 2\n", "swift")
+    #expect(found.filter { $0.token == .string }.map(\.text) == ["\"aperta"])
+    #expect(found.filter { $0.token == .number }.map(\.text) == ["2"])
+}
+
+@MainActor
+@Test func aCRLFYamlValueEndsWithItsLine() {
+    let found = crlfParity("vault: ~/Labs\ntema: scuro\n", "yaml")
+    #expect(found.filter { $0.token == .string }.map(\.text) == ["~/Labs", "scuro"])
+}
