@@ -68,21 +68,19 @@ enum ViewCatalogue {
         var found: [Location] = []
         var heading: String?
         var isInsideFence = false
-        var isInFrontmatter = false
 
-        for (index, line) in text.components(separatedBy: "\n").enumerated() {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
+        // The walk skips exactly the block `NoteDocument.parse` recognises, through the same
+        // test (PG-276): `scan` pairs these locations by ordinal with the views of that body,
+        // so a block read any other way - a CRLF one kept, an unterminated one skipped - would
+        // pair a view with another view's line, or name it after a frontmatter comment.
+        let lines = text.components(separatedBy: "\n")
+        let bodyStart = FrontmatterSource.closingDelimiterIndex(in: lines).map { $0 + 1 } ?? 0
 
-            // The frontmatter's own `---` delimiters are not a horizontal rule and its
-            // keys are not headings; skipping it here keeps both out of the walk.
-            if index == 0, trimmed == "---" {
-                isInFrontmatter = true
-                continue
-            }
-            if isInFrontmatter {
-                if trimmed == "---" { isInFrontmatter = false }
-                continue
-            }
+        for (index, line) in lines.enumerated() where index >= bodyStart {
+            // One trailing `\r` goes, as the parser's `.newlines` split drops it, so a CRLF
+            // note's fences are found and its headings carry no `\r` (ADR-0065 §D1.2, PG-276).
+            // Not `isFirst`: the parser keeps a U+FEFF on a body's first line, so this does too.
+            let trimmed = FrontmatterSource.interpreted(line).trimmingCharacters(in: .whitespaces)
 
             if trimmed.hasPrefix("```") {
                 // **Exactly what `MarkdownBlockParser` does**, deliberately: any line

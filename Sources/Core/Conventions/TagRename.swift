@@ -16,7 +16,7 @@ enum TagRename {
     /// a caller skips a note without writing an identical file.
     static func apply(_ old: Tag, to new: Tag, in text: String) -> String? {
         let lines = text.components(separatedBy: "\n")
-        guard let closing = frontmatterEnd(of: lines) else { return nil }
+        guard let closing = FrontmatterSource.closingDelimiterIndex(in: lines) else { return nil }
 
         var result = lines
         var changed = false
@@ -114,7 +114,7 @@ enum TagRename {
     /// the same unasked-for rewrite this file exists to avoid.
     private static func adding(_ tag: Tag, in text: String) -> String? {
         let lines = text.components(separatedBy: "\n")
-        guard let closing = frontmatterEnd(of: lines) else { return nil }
+        guard let closing = FrontmatterSource.closingDelimiterIndex(in: lines) else { return nil }
         let indices = tagLineIndices(in: lines, upTo: closing)
 
         // A line this writes ends in the document's line break (ADR-0065 §D3).
@@ -149,7 +149,7 @@ enum TagRename {
     /// introduce a second problem while solving none.
     private static func removing(_ tag: Tag, in text: String) -> String? {
         let lines = text.components(separatedBy: "\n")
-        guard let closing = frontmatterEnd(of: lines) else { return nil }
+        guard let closing = FrontmatterSource.closingDelimiterIndex(in: lines) else { return nil }
         let indices = tagLineIndices(in: lines, upTo: closing)
         guard let header = indices.first else { return nil }
 
@@ -160,15 +160,6 @@ enum TagRename {
         result.remove(at: victim)
         if items.count == 1 { result.remove(at: header) }
         return result.joined(separator: "\n")
-    }
-
-    /// The closing delimiter's index. The test tolerates one trailing `\r` and a leading U+FEFF, the
-    /// way `NoteDocument.parse` reads them, so a CRLF note is not skipped (ADR-0065 §D3, G1.3).
-    private static func frontmatterEnd(of lines: [String]) -> Int? {
-        guard let first = lines.first,
-              FrontmatterSource.isDelimiter(FrontmatterSource.interpreted(first, isFirst: true))
-        else { return nil }
-        return lines.dropFirst().firstIndex { FrontmatterSource.isDelimiter(FrontmatterSource.interpreted($0)) }
     }
 
     /// `  - client-vibrofer` without its bullet, or an empty string for a line that is not one.

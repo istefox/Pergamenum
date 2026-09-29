@@ -7,6 +7,10 @@ import Foundation
 /// Patches a single top-level `pergamenum-mail-*` line of an already-rendered message
 /// file, leaving every other byte untouched - the same reason `MessageAttachmentPatch`
 /// exists instead of a re-render-and-diff (ADR-0040 §D6).
+///
+/// The delimiters are the note parser's, through `FrontmatterSource.closingDelimiterIndex`,
+/// so a CRLF or BOM-opened message file is patched where `MessageDocument.parse` reads it; a
+/// line this writes ends in the document's line break (ADR-0065 §D1.2, §D3; PG-276).
 enum MessageFrontmatterPatch {
     /// `nil` when `text` carries no `pergamenum-mail` frontmatter to patch: no opening
     /// `---` delimiter, no closing one, or a closed block that carries no top-level
@@ -21,23 +25,25 @@ enum MessageFrontmatterPatch {
     ///     when none is present.
     static func applying(line: String?, forKey key: String, before: [String], to text: String) -> String? {
         var lines = text.components(separatedBy: "\n")
-        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else { return nil }
-        guard let closing = lines.dropFirst().firstIndex(where: {
-            $0.trimmingCharacters(in: .whitespaces) == "---"
-        }) else { return nil }
+        guard let closing = FrontmatterSource.closingDelimiterIndex(in: lines) else { return nil }
 
         let block = 1..<closing
         guard lines[block].contains(where: { isTopLevelKey($0, named: "pergamenum-mail") })
         else { return nil }
 
+        let lineSuffix = LineBreak.detected(in: text).lineSuffix
         if let existing = lines[block].firstIndex(where: { isTopLevelKey($0, named: key) }) {
             if let line {
-                lines[existing] = line
+                // An unchanged value keeps its own line, ending included (ADR-0065 §D1.3.1), so a
+                // no-op patch equals the file on disk even when that file is mixed.
+                if FrontmatterSource.interpreted(lines[existing]) != line {
+                    lines[existing] = line + lineSuffix
+                }
             } else {
                 lines.remove(at: existing)
             }
         } else if let line {
-            lines.insert(line, at: insertionIndex(lines: lines, block: block, before: before))
+            lines.insert(line + lineSuffix, at: insertionIndex(lines: lines, block: block, before: before))
         }
 
         return lines.joined(separator: "\n")
@@ -56,6 +62,7 @@ enum MessageFrontmatterPatch {
     /// A top-level line is one that is not a continuation - the same
     /// `!hasPrefix(" ") && !hasPrefix("\t")` rule `MessageDocument.scalar` already
     /// applies - whose text before the first `:` trims to exactly `key`.
+    /// A CRLF line's trailing `\r` sits after the colon, so the raw line reads the same (PG-276).
     private static func isTopLevelKey(_ line: String, named key: String) -> Bool {
         guard !line.hasPrefix(" "), !line.hasPrefix("\t") else { return false }
         guard let colon = line.firstIndex(of: ":") else { return false }

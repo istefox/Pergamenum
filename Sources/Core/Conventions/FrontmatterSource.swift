@@ -76,6 +76,16 @@ struct FrontmatterSource: Equatable, Sendable {
         interpretedLine.trimmingCharacters(in: .whitespaces) == "---"
     }
 
+    /// The index of the closing delimiter in the raw lines of a `"\n"` split, when line 0 opens
+    /// a block; nil when there is no opening or no closing. The one block-extent test every
+    /// frontmatter reader uses (ADR-0065 §D1.2, §D3; PG-276): line 0 is interpreted as the first
+    /// line, later lines are not, and the first later delimiter wins. A reader that tests the
+    /// delimiters its own way drifts from `NoteDocument.parse`, which is how PG-276 happened.
+    static func closingDelimiterIndex(in lines: [String]) -> Int? {
+        guard let first = lines.first, isDelimiter(interpreted(first, isFirst: true)) else { return nil }
+        return lines.indices.dropFirst().first { isDelimiter(interpreted(lines[$0])) }
+    }
+
     /// Splits a note's text (§D1.2). `components(separatedBy:)` is Foundation's split, below the
     /// grapheme level, so a CRLF line arrives with its `\r` attached rather than merged with the
     /// next one (§D3).
@@ -90,9 +100,7 @@ struct FrontmatterSource: Equatable, Sendable {
                 lineBreak: lineBreak, parsed: .empty
             )
         )
-        guard let first = interpretedLines.first, isDelimiter(first),
-              let closing = interpretedLines.indices.dropFirst().first(where: { isDelimiter(interpretedLines[$0]) })
-        else {
+        guard let closing = closingDelimiterIndex(in: lines) else {
             // No block, or an opening delimiter with no closing one: the whole file is body
             // rather than a frontmatter that was never closed.
             return withoutBlock
@@ -294,13 +302,10 @@ extension FrontmatterRules {
     /// The body's first line is a delimiter, once one leading U+FEFF and one trailing `\r` are
     /// removed; a later line is one too; and a line between them reads as a key. A body that
     /// opens with a horizontal rule has no key line before the next one, and is not a block.
+    /// The raw lines go through the shared block-extent test, so each is interpreted once (PG-276).
     private static func opensWithSecondBlock(_ body: String) -> Bool {
-        let lines = body.components(separatedBy: "\n").map { FrontmatterSource.interpreted($0) }
-        guard let first = lines.first,
-              FrontmatterSource.isDelimiter(FrontmatterSource.interpreted(first, isFirst: true))
-        else { return false }
-        guard let closing = lines.indices.dropFirst().first(where: { FrontmatterSource.isDelimiter(lines[$0]) })
-        else { return false }
-        return lines[1..<closing].contains { FrontmatterParser.keyName(of: $0) != nil }
+        let lines = body.components(separatedBy: "\n")
+        guard let closing = FrontmatterSource.closingDelimiterIndex(in: lines) else { return false }
+        return lines[1..<closing].contains { FrontmatterParser.keyName(of: FrontmatterSource.interpreted($0)) != nil }
     }
 }
