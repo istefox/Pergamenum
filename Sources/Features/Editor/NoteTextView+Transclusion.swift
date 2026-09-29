@@ -88,7 +88,7 @@ extension NoteTextView.Coordinator {
         width: CGFloat,
         theme: Theme
     ) -> TranscludedRendition? {
-        guard let source = parent.transclusions else { return nil }
+        guard let source = parent.vault.transclusions else { return nil }
         let key = "\(occurrence.reference)#\(occurrence.section ?? "")@\(source.generation)|\(Int(width))"
         if let cached = renditionCache[key] { return cached }
 
@@ -175,7 +175,7 @@ extension NoteTextView.Coordinator {
     /// the wrong heading. `headingOffset` never goes stale, because it names *where in the
     /// text* the heading is rather than *which position it holds in some earlier scan*.
     func unfold(at point: CGPoint, in textView: NSTextView) -> Bool {
-        guard decorations.isFolding, let onToggleFold = parent.onToggleFold else { return false }
+        guard decorations.isFolding, let onToggleFold = parent.outline.onToggleFold else { return false }
         return decoration(in: textView) { (fragment: FoldedHeadingFragment) in
             guard fragment.badgeFrameInContainer.contains(Self.inContainer(point, of: textView))
             else { return false }

@@ -154,8 +154,8 @@ extension NoteTextView.Coordinator {
     /// 0.89ms round-trip `docs/20260817_TextKit2_live_editing.md` measured was for two
     /// paragraphs, not a document.
     func applyReveal(to textView: NSTextView) {
-        let currentMatch = parent.currentMatch.flatMap { index in
-            parent.matches.indices.contains(index) ? parent.matches[index] : nil
+        let currentMatch = parent.find.currentMatch.flatMap { index in
+            parent.find.matches.indices.contains(index) ? parent.find.matches[index] : nil
         }
         let selection = textView.selectedRange()
         let markedRange = textView.markedRange()

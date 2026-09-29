@@ -234,10 +234,10 @@ extension NoteTextView {
                 }
             }
             let caret = textView.selectedRange().location
-            let entry = parent.outlineRanges.lastIndex { $0.location <= caret }
+            let entry = parent.outline.outlineRanges.lastIndex { $0.location <= caret }
             guard lastOutlineEntry != .some(entry) else { return }
             lastOutlineEntry = entry
-            parent.onOutlineEntryChanged?(entry)
+            parent.outline.onOutlineEntryChanged?(entry)
         }
 
         /// The `pergamenum-view` fence (opening line through closing line, inclusive) whose
@@ -431,7 +431,7 @@ extension NoteTextView {
             case .external(let url):
                 NSWorkspace.shared.open(url)
             case .embed(let name):
-                parent.onOpenEmbed?(name)
+                parent.vault.onOpenEmbed?(name)
             case .note(let title):
                 parent.onFollowLink(title)
             }

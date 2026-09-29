@@ -61,7 +61,10 @@ extension NoteTextView.Coordinator {
     /// closing fence lines split off, `DrawnViewBlock.source`'s own currency
     /// (`NoteTextView+ViewBlocks.swift`), so the live buffer's body can be compared against
     /// what the last styling pass recorded without re-parsing the fence a second way.
-    private static func viewBlockBody(in text: NSString, range: NSRange) -> String {
+    ///
+    /// Not private because `NoteTextView+Update.swift`'s `consumeInsertion` reads the body of the
+    /// fence "Inserisci ▸ Vista…" just wrote through it.
+    static func viewBlockBody(in text: NSString, range: NSRange) -> String {
         let lines = text.substring(with: range).components(separatedBy: "\n")
         guard lines.count >= 2 else { return "" }
         return lines.dropFirst().dropLast().joined(separator: "\n")

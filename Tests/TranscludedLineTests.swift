@@ -39,7 +39,7 @@ import Testing
             noteTitles: [],
             tagSuggestions: [],
             onFollowLink: { _ in },
-            transclusions: transclusions
+            vault: .init(transclusions: transclusions)
         )
         let coordinator = view.makeCoordinator()
         let textView = CompletingTextView(usingTextLayoutManager: true)
@@ -120,7 +120,7 @@ import Testing
             noteTitles: [],
             tagSuggestions: [],
             onFollowLink: { followed = $0 },
-            transclusions: Self.source()
+            vault: .init(transclusions: Self.source())
         )
         let coordinator = view.makeCoordinator()
         let textView = CompletingTextView(usingTextLayoutManager: true)

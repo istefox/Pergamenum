@@ -84,7 +84,7 @@ private struct Editor {
 private func editor(_ text: String, hidesMarkup: Bool = true, queries: ViewQuerySource? = nil) -> Editor {
     let view = NoteTextView(
         text: .constant(text), theme: .emergency, noteTitles: [], tagSuggestions: [],
-        hidesMarkup: hidesMarkup, onFollowLink: { _ in }, queries: queries
+        hidesMarkup: hidesMarkup, onFollowLink: { _ in }, vault: .init(queries: queries)
     )
     let coordinator = view.makeCoordinator()
     let textView = CompletingTextView(usingTextLayoutManager: true)
@@ -362,7 +362,7 @@ private enum Fixture {
             text: .constant(Fixture.note), theme: .emergency, noteTitles: [], tagSuggestions: [],
             onFollowLink: { _ in }
         )
-        #expect(view.queries == nil, "il default di NoteTextView.queries deve restare nil")
+        #expect(view.vault.queries == nil, "il default di NoteTextView.queries deve restare nil")
         #expect(view.hidesMarkup == false, "premessa: il default di NoteTextView.hidesMarkup deve restare false")
 
         let coordinator = view.makeCoordinator()

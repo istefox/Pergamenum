@@ -163,8 +163,8 @@ private func syntheticImage(size: CGSize = CGSize(width: 64, height: 48)) -> NSI
     ) -> (NSTextView, NoteTextView.Coordinator) {
         let view = NoteTextView(
             text: .constant(text), theme: .emergency, noteTitles: [], tagSuggestions: [],
-            hidesMarkup: true, onFollowLink: { _ in }, vaultRoot: root, notePath: "Nota.md",
-            thumbnails: thumbnails
+            hidesMarkup: true, onFollowLink: { _ in },
+            vault: .init(vaultRoot: root, notePath: "Nota.md", thumbnails: thumbnails)
         )
         let coordinator = view.makeCoordinator()
         let textView = NSTextView(usingTextLayoutManager: true)

@@ -71,7 +71,7 @@ private func entryPointEditor(_ text: String, enabled: Bool = true) -> EntryPoin
         theme: .emergency, noteTitles: [], tagSuggestions: [],
         hidesMarkup: true, onFollowLink: { _ in }
     )
-    if enabled { view.onEditQuery = { model.requests.append($0) } }
+    if enabled { view.vault.onEditQuery = { model.requests.append($0) } }
     let coordinator = view.makeCoordinator()
     let textView = CompletingTextView(usingTextLayoutManager: true)
     textView.delegate = coordinator
@@ -139,7 +139,7 @@ struct ViewQueryEntryPointTests {
             text: .constant(""), theme: .emergency, noteTitles: [], tagSuggestions: [],
             onFollowLink: { _ in }
         )
-        #expect(view.onEditQuery == nil)
+        #expect(view.vault.onEditQuery == nil)
     }
 
     @Test(arguments: ["render: table", "outsider: invalid"])
@@ -261,7 +261,7 @@ private final class InsertionEditor {
             self.appliedCount += 1
             self.pending = nil
         }
-        editor.onEditQuery = { self.requests.append($0) }
+        editor.vault.onEditQuery = { self.requests.append($0) }
         return editor
     }
 

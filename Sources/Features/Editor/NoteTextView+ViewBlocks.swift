@@ -175,16 +175,16 @@ extension NoteTextView.Coordinator {
             viewBlockHosts.update(
                 ViewBlockHostStore.rootView(
                     source: drawn.source,
-                    notePath: parent.notePath,
-                    vaultRoot: parent.vaultRoot,
-                    thumbnails: parent.thumbnails,
-                    queries: parent.queries,
+                    notePath: parent.vault.notePath,
+                    vaultRoot: parent.vault.vaultRoot,
+                    thumbnails: parent.vault.thumbnails,
+                    queries: parent.vault.queries,
                     onEditSource: { [weak textView] in
                         guard let textView, opening <= (textView.string as NSString).length else { return }
                         textView.setSelectedRange(NSRange(location: opening, length: 0))
                     },
                     onOpenNote: parent.onFollowLink,
-                    onEditQuery: parent.onEditQuery.map { onEditQuery in
+                    onEditQuery: parent.vault.onEditQuery.map { onEditQuery in
                         { [weak textView] in
                             let request = ViewQueryEditRequest(id: UUID(), source: drawn.source) {
                                 [weak textView] body in

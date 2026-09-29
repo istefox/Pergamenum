@@ -67,8 +67,32 @@ extension EditorColumnView {
             editorCommands: slashCommands,
             onRunCommand: commandActions.run,
             onFollowLink: follow(title:),
-            onOpenEmbed: { name in preview(embed: name, in: note) },
+            vault: vaultInputs(for: note),
+            insertion: pendingInsertion,
+            onInsertionApplied: { pendingInsertion = nil },
+            find: findInputs(for: note),
+            focusRequest: focusRequest,
+            outline: outlineInputs(for: note),
+            // Clicking into the text is how a person says which half they are working in, and
+            // the column's own tap gesture never sees that click: the text view takes it.
+            onTakeFocus: { vault.focusColumn(columnIndex) }
+        )
+        .modifier(FindKeeping(
+            find: find,
+            navigation: navigation,
+            text: note.text,
+            isFocused: isFocused
+        ))
+    }
+
+    /// `editing(_:)`'s `vault:` group, out of line so that function stays inside SwiftLint's
+    /// function body length.
+    private func vaultInputs(for note: VaultController.OpenNote) -> NoteTextView.VaultInputs {
+        .init(
             vaultRoot: vault.root, notePath: note.relativePath, thumbnails: vault.thumbnails,
+            // The same source Lettura uses, so the two surfaces cannot resolve the same
+            // `![[nota]]` to two different notes (ADR-0010 §D3).
+            transclusions: transclusionSource,
             // Where a drawn `pergamenum-view` fence's rows come from (ADR-0033 §D9). The same
             // source `reading(_:)` used to hand `MarkdownReadingView`, so the editor and a
             // transclusion of the same note cannot answer one query two ways.
@@ -77,10 +101,15 @@ extension EditorColumnView {
             // builder for it. Kept as this column's own state, not a second one, so two
             // columns get two independent builders (ADR-0012 §D4's rule applied here too).
             onEditQuery: { request in editingViewQuery = request },
+            onOpenEmbed: { name in preview(embed: name, in: note) },
             onDropFile: { url in vault.importFileIntoVault(url, near: note.relativePath) },
-            onPasteImage: { data in save(pastedImage: data, in: note) },
-            insertion: pendingInsertion,
-            onInsertionApplied: { pendingInsertion = nil },
+            onPasteImage: { data in save(pastedImage: data, in: note) }
+        )
+    }
+
+    /// `editing(_:)`'s `find:` group, out of line for the same reason.
+    private func findInputs(for note: VaultController.OpenNote) -> NoteTextView.FindInputs {
+        .init(
             findRequest: findRequest,
             onFindApplied: { selection in
                 // The flags are cleared first: `open` bumps a focus request, and leaving them
@@ -95,10 +124,13 @@ extension EditorColumnView {
             currentMatch: find.matches.isEmpty ? nil : find.current,
             replacements: pendingReplacements,
             onReplacementsApplied: replacementsApplied,
-            matchJump: find.currentMatch,
-            focusRequest: focusRequest,
-            scrollRequest: pendingJump,
-            onScrollApplied: { pendingJump = nil },
+            matchJump: find.currentMatch
+        )
+    }
+
+    /// `editing(_:)`'s `outline:` group, out of line for the same reason.
+    private func outlineInputs(for note: VaultController.OpenNote) -> NoteTextView.OutlineInputs {
+        .init(
             // Computed here, once per rebuild, from the same `NoteOutline` the sidebar
             // draws: the text view needs the ranges only to say which one the caret is
             // in, and it must be the same list or the highlight lands a row off.
@@ -106,28 +138,18 @@ extension EditorColumnView {
                 NSRange($0.range, in: note.text)
             },
             onOutlineEntryChanged: { entry in focused { vault.currentOutlineEntry = entry } },
+            scrollRequest: pendingJump,
+            onScrollApplied: { pendingJump = nil },
             // `NoteTab.foldedEntries` is offsets; `NoteTextView`/`NoteFolding` still want the
             // ordinal `NoteOutline.entries(in:)` index. Translated here, fresh against this
             // render's own `note.text`, rather than trusting a value computed against a
             // possibly older version of it.
             foldedEntries: foldedOrdinals(ofOffsets: tab?.foldedEntries ?? [], in: note.text),
-            // The same source Lettura uses, so the two surfaces cannot resolve the same
-            // `![[nota]]` to two different notes (ADR-0010 §D3).
-            transclusions: transclusionSource,
             // `entry` here is the heading's own offset, straight from `NoteTextView`'s
             // fold-badge click (`unfold(at:in:)`) - never re-derived through `outlineRanges`,
             // which is exactly the stale lookup that used to name the wrong section.
-            onToggleFold: { entry in focused { vault.toggleFold(entry) } },
-            // Clicking into the text is how a person says which half they are working in, and
-            // the column's own tap gesture never sees that click: the text view takes it.
-            onTakeFocus: { vault.focusColumn(columnIndex) }
+            onToggleFold: { entry in focused { vault.toggleFold(entry) } }
         )
-        .modifier(FindKeeping(
-            find: find,
-            navigation: navigation,
-            text: note.text,
-            isFocused: isFocused
-        ))
     }
 
     /// Clears the applied replacements, and - for an outline move (PG-019) only - saves right
@@ -203,7 +225,7 @@ extension EditorColumnView {
     /// `scanGeneration` rides along so a view is re-evaluated when the vault is rescanned and
     /// not when a key is pressed.
     ///
-    /// **Handed to `NoteTextView.queries` by `editing(_:)` above** (ADR-0033 §D9, R-07). It
+    /// **Handed to `NoteTextView.vault.queries` by `editing(_:)` above** (ADR-0033 §D9, R-07). It
     /// stood unreferenced between ADR-0029 §D13, which removed `reading(_:)` - its only
     /// caller, which handed it to `MarkdownReadingView` - and ADR-0033, which made the editor
     /// itself the surface that draws an in-note `pergamenum-view` fence: exactly the "whichever
