@@ -40,6 +40,15 @@ enum LineBreak: Equatable, Sendable {
     static func isTerminator(_ character: Character) -> Bool {
         character == "\n" || character == "\r\n"
     }
+
+    /// `text` with every line break written as this one: `"\n"` and the one-grapheme `"\r\n"`
+    /// each count as one break, as `isTerminator` reads them. A lone `"\r"` is not a line
+    /// break anywhere else in this app, so it is kept as found rather than promoted to one -
+    /// though in `.lf` a lone `"\r"` right before a converted `"\r\n"` meets its `"\n"` and the
+    /// two read as one CRLF again, which no rewrite can avoid without touching the `"\r"`.
+    func normalised(_ text: String) -> String {
+        String(text.map { LineBreak.isTerminator($0) ? Character(characters) : $0 })
+    }
 }
 
 /// The frontmatter block exactly as it was read (ADR-0065 §D1.1).
