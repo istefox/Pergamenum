@@ -349,18 +349,17 @@ extension NoteTextView {
         ///
         /// The folded lines are not in the layout, so a caret left inside one is an
         /// insertion point with nowhere to be drawn and nowhere to type. It goes to the
-        /// heading that swallowed it, which is where a person would look for it.
+        /// heading that swallowed it, which is where a person would look for it. The rule is
+        /// `CaretRescue`'s (ADR-0071 §D8); the owner is the nearest folded heading at or
+        /// above the caret, and the caret is placed at once rather than after `endEditing`.
         private func rescueCaret(in textView: NSTextView, from layout: NoteFolding.Layout) {
-            guard !layout.hiddenLineOffsets.isEmpty else { return }
-            let text = textView.string as NSString
-            let caret = textView.selectedRange().location
-            guard caret <= text.length else { return }
-            let line = text.paragraphRange(for: NSRange(location: caret, length: 0)).location
-            guard layout.hiddenLineOffsets.contains(line) else { return }
-
-            let heading = layout.foldedHeadings.keys.filter { $0 <= caret }.max() ?? 0
-            textView.setSelectedRange(NSRange(location: heading, length: 0))
-            textView.scrollRangeToVisible(NSRange(location: heading, length: 0))
+            let selection = textView.selectedRange()
+            let heading = CaretRescue.target(
+                for: selection, hidden: layout.hiddenLineOffsets, in: textView.string as NSString
+            ) { _ in
+                layout.foldedHeadings.keys.filter { $0 <= selection.location }.max() ?? 0
+            }
+            CaretRescue.place(heading, in: textView)
         }
 
         func textDidChange(_ notification: Notification) {

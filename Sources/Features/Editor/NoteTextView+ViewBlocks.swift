@@ -29,9 +29,11 @@ struct DrawnViewBlock {
 /// it, plus the caret rescue a fence hiding a line the caret was sitting in needs.
 ///
 /// `NoteTextView+Tables.swift`'s `applyTables`/`refreshTableGrids`/`tableCaretRescue`/
-/// `clearTables` shape, copied and diverging only where the sixth input
+/// `clearTables` shape, diverging only where the sixth input
 /// (`EditorDecorationDelegate.apply(viewBlockLines:)`/`apply(viewBlockHosts:)`, Task 2) and
-/// the ordinal-keyed host store (`ViewBlockHostStore`, Task 4, ADR §D3) say to.
+/// the ordinal-keyed host store (`ViewBlockHostStore`, Task 4, ADR §D3) say to. The line walk
+/// and the caret-rescue rule are not copied but shared: `HiddenBlockLines` and `CaretRescue`
+/// (ADR-0071 §D8).
 extension NoteTextView.Coordinator {
     /// Registers everything a view block needs drawn, from the `.viewBlockRun` spans
     /// `applyStyling` has just walked: the opening fence line's own `.viewBlock` marker, the
@@ -82,39 +84,24 @@ extension NoteTextView.Coordinator {
                   !Self.selectionReveals(selection, fence: recognised.range)
             else { continue }
             let opening = run.location
-            var start = 0, end = 0, contentsEnd = 0
-            text.getParagraphStart(
-                &start, end: &end, contentsEnd: &contentsEnd,
-                for: NSRange(location: opening, length: 0)
-            )
-            guard contentsEnd > start else { continue }
-            // Anchored at the opening fence paragraph's own start and covering its backticks
-            // alone, never the whole run - the convention `.table` already uses, and the one
-            // the delegate can read back, since it is asked about one paragraph at a time.
-            markers[opening, default: []].append(
-                HiddenMarker(range: NSRange(location: 0, length: contentsEnd - start), kind: .viewBlock)
-            )
+            // The opening fence's own backticks are the marker; the body and the closing fence
+            // are the hidden lines (`HiddenBlockLines`, ADR-0071 §D8).
+            let walked = HiddenBlockLines(text: text, anchor: opening, range: recognised.range, kind: .viewBlock)
+            guard let marker = walked.marker else { continue }
+            markers[opening, default: []].append(marker)
 
             var body: [String] = []
-            var cursor = end
-            while cursor < NSMaxRange(recognised.range) {
-                var lineStart = 0, lineEnd = 0, lineContentsEnd = 0
-                text.getParagraphStart(
-                    &lineStart, end: &lineEnd, contentsEnd: &lineContentsEnd,
-                    for: NSRange(location: cursor, length: 0)
-                )
-                lines.insert(cursor)
-                openingOfLine[cursor] = opening
+            for line in walked.lines {
+                lines.insert(line.start)
+                openingOfLine[line.start] = opening
                 // The run ends at the closing fence line's own last character, so that line
                 // is the only one whose contents end where the run does - it leaves the
                 // layout with the body (C4) but is not part of what the block renders.
-                if lineContentsEnd < NSMaxRange(recognised.range) {
+                if line.contentsEnd < NSMaxRange(recognised.range) {
                     body.append(
-                        text.substring(with: NSRange(location: lineStart, length: lineContentsEnd - lineStart))
+                        text.substring(with: NSRange(location: line.start, length: line.contentsEnd - line.start))
                     )
                 }
-                guard lineEnd > cursor else { break }
-                cursor = lineEnd
             }
             found.append((opening, ordinal, body.joined(separator: "\n")))
         }
@@ -218,8 +205,7 @@ extension NoteTextView.Coordinator {
         }
         guard let offset = pendingViewBlockCaret else { return }
         pendingViewBlockCaret = nil
-        textView.setSelectedRange(NSRange(location: offset, length: 0))
-        textView.scrollRangeToVisible(NSRange(location: offset, length: 0))
+        CaretRescue.place(offset, in: textView)
     }
 
     /// Records a host's freshly measured content height, and asks for a re-layout only when the
@@ -261,16 +247,14 @@ extension NoteTextView.Coordinator {
     /// written anyway for the reason the ADR names: a programmatic selection - a find match,
     /// an outline jump, `onScrollApplied` - reaches a body line without going through the
     /// reveal path at all.
+    ///
+    /// The rule itself is `CaretRescue.target`'s; the owner is the opening fence.
     private func viewBlockCaretRescue(
         in textView: NSTextView, lines: Set<Int>, openings: [Int: Int]
     ) -> Int? {
-        guard !lines.isEmpty else { return nil }
-        let text = textView.string as NSString
-        let caret = textView.selectedRange().location
-        guard caret <= text.length else { return nil }
-        let line = text.paragraphRange(for: NSRange(location: caret, length: 0)).location
-        guard lines.contains(line) else { return nil }
-        return openings[line]
+        CaretRescue.target(
+            for: textView.selectedRange(), hidden: lines, in: textView.string as NSString
+        ) { openings[$0] }
     }
 
     /// Clears every view block this pass has registered - `NoteTextView+Tables.swift`'s

@@ -54,31 +54,15 @@ extension NoteTextView.Coordinator {
                   let recognised = EditorDecorationDelegate.tableRun(in: text, atParagraphStart: run.location)
             else { continue }
             let header = run.location
-            var start = 0, end = 0, contentsEnd = 0
-            text.getParagraphStart(
-                &start, end: &end, contentsEnd: &contentsEnd,
-                for: NSRange(location: header, length: 0)
-            )
-            guard contentsEnd > start else { continue }
-            // Anchored at the header paragraph's own start and covering its pipes alone, the
-            // convention `.list` and `.blockquote` already use - never the whole run, which
-            // spans paragraphs the delegate is asked about one at a time.
-            markers[header, default: []].append(
-                HiddenMarker(range: NSRange(location: 0, length: contentsEnd - start), kind: .table)
-            )
+            // The header's own pipes are the marker; the delimiter and body rows are the
+            // hidden lines (`HiddenBlockLines`, ADR-0071 §D8).
+            let walked = HiddenBlockLines(text: text, anchor: header, range: recognised.range, kind: .table)
+            guard let marker = walked.marker else { continue }
+            markers[header, default: []].append(marker)
             found.append((header, recognised.table))
-
-            var cursor = end
-            while cursor < NSMaxRange(recognised.range) {
-                rows.insert(cursor)
-                headerOfRow[cursor] = header
-                var rowStart = 0, rowEnd = 0, rowContentsEnd = 0
-                text.getParagraphStart(
-                    &rowStart, end: &rowEnd, contentsEnd: &rowContentsEnd,
-                    for: NSRange(location: cursor, length: 0)
-                )
-                guard rowEnd > cursor else { break }
-                cursor = rowEnd
+            for row in walked.starts {
+                rows.insert(row)
+                headerOfRow[row] = header
             }
         }
 
@@ -118,24 +102,19 @@ extension NoteTextView.Coordinator {
         }
         guard let offset = pendingTableCaret else { return }
         pendingTableCaret = nil
-        textView.setSelectedRange(NSRange(location: offset, length: 0))
-        textView.scrollRangeToVisible(NSRange(location: offset, length: 0))
+        CaretRescue.place(offset, in: textView)
     }
 
     /// `rescueCaret(in:from:)`'s table twin (§D5): a caret inside a row that has just become
     /// hidden is an insertion point with nowhere to be drawn and nowhere to type. It goes to
     /// the table's own header offset, which is where a person would look for it - and where
-    /// the grid is.
+    /// the grid is. The rule itself is `CaretRescue.target`'s; the owner is the header.
     private func tableCaretRescue(
         in textView: NSTextView, rows: Set<Int>, headers: [Int: Int]
     ) -> Int? {
-        guard !rows.isEmpty else { return nil }
-        let text = textView.string as NSString
-        let caret = textView.selectedRange().location
-        guard caret <= text.length else { return nil }
-        let line = text.paragraphRange(for: NSRange(location: caret, length: 0)).location
-        guard rows.contains(line) else { return nil }
-        return headers[line]
+        CaretRescue.target(
+            for: textView.selectedRange(), hidden: rows, in: textView.string as NSString
+        ) { headers[$0] }
     }
 
     private func clearTables() {
