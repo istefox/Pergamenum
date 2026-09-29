@@ -25,6 +25,10 @@
   is a note — untouched here), `docs/20260817_TextKit2_live_editing.md` for every measurement
   ADR-0018 quotes and this one relies on.
 
+**Amended 2026-09-29 (ADR-0071):** the owner named in §D6 is now `TableBlockController`
+(`NoteTextView+Tables.swift`), which holds the grid store; nothing this section decides about
+behaviour changes.
+
 ## Context
 
 **Two views of one note, and only one of them can be typed into.** `NoteTab.isReadingMode`
