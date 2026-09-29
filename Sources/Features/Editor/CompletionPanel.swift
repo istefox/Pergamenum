@@ -122,7 +122,9 @@ final class CompletionPanel {
         self.content = content
         self.theme = theme
 
-        let panel = panel ?? makePanel()
+        let panel = panel ?? NeverKeyPanel.make(
+            contentRect: NSRect(x: 0, y: 0, width: 340, height: 200), hasShadow: true
+        )
         self.panel = panel
         // The height first, because it decides the placement: a panel taller than the room
         // on either side of the caret has nowhere to go that is not on top of the caret.
@@ -138,7 +140,7 @@ final class CompletionPanel {
     }
 
     func hide() {
-        panel?.parent?.removeChildWindow(panel!)
+        if let panel { panel.parent?.removeChildWindow(panel) }
         panel?.orderOut(nil)
         content = Content(items: [], query: "", noMatch: nil)
         selectedIndex = 0
@@ -179,41 +181,4 @@ final class CompletionPanel {
     /// The last height the panel was rendered at, so an arrow key rebuilds it the same
     /// size rather than growing it back over the caret.
     private var lastMaxHeight: CGFloat = 320
-
-    // MARK: Building
-
-    /// A panel that cannot become key, enforced rather than assumed.
-    ///
-    /// `.nonactivatingPanel` stops the *app* being activated; it does not stop the panel
-    /// itself becoming this app's key window, and a key panel is a text view that has
-    /// stopped receiving keystrokes. The whole design rests on the text view keeping first
-    /// responder while the list is up, so the guarantee belongs in the type.
-    private final class NeverKeyPanel: NSPanel {
-        override var canBecomeKey: Bool { false }
-        override var canBecomeMain: Bool { false }
-    }
-
-    private func makePanel() -> NSPanel {
-        let panel = NeverKeyPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 340, height: 200),
-            // `.nonactivatingPanel` is the one that matters, for the same reason it does
-            // in the capture panel: showing this must not take focus from what is being
-            // typed into, or the next keystroke would go nowhere.
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        panel.isFloatingPanel = true
-        panel.level = .popUpMenu
-        panel.hasShadow = true
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.hidesOnDeactivate = true
-        panel.animationBehavior = .utilityWindow
-        panel.isReleasedWhenClosed = false
-        // Mouse events still arrive - a window that cannot become key can still be clicked -
-        // which is what makes a row clickable.
-        panel.ignoresMouseEvents = false
-        return panel
-    }
 }
