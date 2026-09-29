@@ -5,7 +5,7 @@ import Testing
 
 /// ADR-0018 slice 3, Step 3: the delegate branch that draws an embed's own picture in
 /// place of its `![[…]]`/`![alt](…)` syntax - offscreen, on the model of
-/// `MarkupHidingTests.swift`'s own `substitutedParagraph(_:note:)`, since what is under
+/// `MarkupHidingFixture.swift`'s own `substitutedParagraph(_:note:)`, since what is under
 /// test here is a new branch on the same `NSTextContentStorageDelegate` hook, not a new
 /// mechanism: probe 6 (`EmbedAttachmentProbeTests`) already measured that the mechanism
 /// itself - a substituted paragraph's own character swapped for `NSAttachmentCharacter` -

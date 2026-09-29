@@ -76,7 +76,7 @@ private func makeCard(
     coordinator.applyStyling(to: textView)
     // `applyStyling` rewrites every attribute in the storage, and on a text view with no window
     // that leaves the selection at the end of the text rather than at the start - the harness
-    // artifact `MarkupHidingTests.MarkupCoordinator.editor(hidesMarkup:)` records for the note
+    // artifact `MarkupCoordinatorTests.MarkupCoordinator.editor(hidesMarkup:)` records for the note
     // editor. Pinned here so each test below starts from a known caret and then moves it itself.
     textView.setSelectedRange(NSRange(location: 0, length: 0))
     return Card(scrollView: scrollView, textView: textView, coordinator: coordinator)
@@ -290,7 +290,7 @@ private func makeCard(
 // no marker at all in a card, so the flag changes nothing for them.
 //
 // Reads the span table back through `coordinator.lastRevealedSpans`, the same indirection
-// `Tests/MarkupHidingTests.swift`'s `MarkupCoordinatorInlineSpans` suite uses for the note
+// `Tests/MarkupCoordinatorTests.swift`'s `MarkupCoordinatorInlineSpans` suite uses for the note
 // editor: `EditorDecorationDelegate.revealedSpans` has no test accessor, and that file is out
 // of this task's budget, but `lastRevealedSpans` is assigned the very value handed to
 // `decorations.apply(revealedSpans:)` right before that call, in `CardTextView+Reveal.swift`,
@@ -307,7 +307,7 @@ private func makeCard(
     /// R-01, adapted to the card harness: with the flag on and the card editable, a caret in
     /// the first of two bold runs reveals exactly that run's span - which is what licenses the
     /// other run's markers staying collapsed, since `EditorDecorationDelegate.collapsing`
-    /// (already tested in `MarkupHidingTests.swift`) folds every span this table does not name.
+    /// (already tested in `MarkupHidingInlineSpanTests.swift`) folds every span this table does not name.
     @Test func aCaretInOneBoldRunRevealsOnlyThatRunsSpan() throws {
         let card = try makeCard(Self.note, editable: true, revealsInlineSpans: true)
         card.textView.setSelectedRange(NSRange(location: Self.insideFirstRun, length: 0))
