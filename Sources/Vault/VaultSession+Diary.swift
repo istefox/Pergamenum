@@ -72,7 +72,10 @@ extension VaultSession {
         prose: String, entries: [DiaryEntry], on day: CalendarDate, over disk: DiaryDiskState
     ) async -> WriteOutcome {
         let relativePath = diaryNotePath(for: day)
-        let text = DiarySection.write(entries, into: prose)
+        // The break of the note as it stands on disk, for a prose that shows none (PG-321): the
+        // hash `over:` carries refuses the write below if these bytes have moved on since.
+        let noteBreak = (try? read(relativePath)).map { LineBreak.detected(in: $0.text) } ?? .lf
+        let text = DiarySection.write(entries, into: prose, noteBreak: noteBreak)
         do {
             switch disk {
             case .present(let hash):
