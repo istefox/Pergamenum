@@ -108,11 +108,15 @@ extension VaultSession {
     func append(text: String, to relativePath: String) async -> WriteOutcome {
         do {
             let existing = try read(relativePath)
+            // The note's own line break, and a closing `"\r\n"` counts as one: it is a single
+            // `Character`, which `hasSuffix("\n")` never matched, so a CRLF note kept its tail
+            // and gained bare LFs after it (PG-320).
+            let lineBreak = LineBreak.detected(in: existing.text).characters
             var body = existing.text
-            while body.hasSuffix("\n") { body.removeLast() }
-            let separator = body.isEmpty ? "" : "\n\n"
+            while body.last.map(LineBreak.isTerminator) == true { body.removeLast() }
+            let separator = body.isEmpty ? "" : lineBreak + lineBreak
             return .written(try await write(
-                body + separator + text + "\n", to: relativePath, expecting: existing.record.contentHash
+                body + separator + text + lineBreak, to: relativePath, expecting: existing.record.contentHash
             ))
         } catch is VaultSession.WriteRefusal {
             return .stale
