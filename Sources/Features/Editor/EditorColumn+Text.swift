@@ -200,8 +200,8 @@ extension EditorColumnView {
     ///
     /// The index answers everything but `text()`, which reads the files - the same work the
     /// global search does, and the reason §D7 states the cost as a rule rather than a number.
-    /// `scanGeneration` rides along so a view is re-evaluated when the vault is rescanned and
-    /// not when a key is pressed.
+    /// `viewQueryGeneration(for:)` rides along so a view is re-evaluated when the index changes
+    /// and not when a key is pressed.
     ///
     /// **Handed to `NoteTextView.queries` by `editing(_:)` above** (ADR-0033 §D9, R-07). It
     /// stood unreferenced between ADR-0029 §D13, which removed `reading(_:)` - its only
@@ -220,13 +220,24 @@ extension EditorColumnView {
                     try? vault.session?.read(record.relativePath).text
                 }
             },
-            generation: vault.scanGeneration,
+            generation: Self.viewQueryGeneration(for: vault),
             // The one write a view makes (§D5). Offered here, where there is a vault and a
             // person looking at it; a note card on the canvas passes no source and its board
             // never invites the drag.
             move: { path, old, new in await vault.moveOnBoard(path, from: old, to: new) },
             undo: { id in await vault.undoJournalledWrites([id]).failures.isEmpty }
         )
+    }
+
+    // Internal, not private: read by `Tests/IndexGenerationFollowUpTests.swift`.
+    /// The generation a drawn fence re-runs its query on: `indexGeneration` (ADR-0072 §D11,
+    /// PG-325), which every index change moves - a save, an external edit, a rescan. It was
+    /// `scanGeneration` (ADR-0033 §D7), so a fence listing a note did not re-run when that note
+    /// was saved, since the app's own write is not a scan. Still never per keystroke: the index
+    /// changes when a note is written, not when a key is pressed. Pure, so a test can check it
+    /// without rendering (the shape of `BoardTray.refreshKey`).
+    static func viewQueryGeneration(for vault: VaultController) -> Int {
+        vault.indexGeneration
     }
 
     /// Where a `![[nota]]` gets the note it names (ADR-0010 §D1: read fresh, never copied).

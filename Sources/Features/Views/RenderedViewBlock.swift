@@ -77,8 +77,8 @@ struct RenderedViewBlock: View {
                 .stroke(theme.color(.borderSubtle), lineWidth: 1)
         )
         .accessibilityIdentifier("rendered-view")
-        // The id is what §D7 turns into a re-evaluation: the source itself, the scan
-        // generation, and the refresh. Not a timer, and not every redraw.
+        // The id is what §D7 turns into a re-evaluation: the source itself, the query
+        // source's generation, and the refresh. Not a timer, and not every redraw.
         .task(id: Self.taskID(source: source, generation: queries?.generation ?? -1, reloads: reloads)) {
             evaluate(block)
         }
@@ -92,9 +92,10 @@ struct RenderedViewBlock: View {
         result = (try? block.get()).flatMap { parsed in queries?.evaluate(parsed) }
     }
 
-    /// The id `.task(id:)` is keyed on (§D7): the fence's own source, the vault's scan
-    /// generation, and the explicit-refresh counter. Extracted as a pure, static function -
-    /// value-preserving against the inline string it replaces - so a test can assert on the
+    /// The id `.task(id:)` is keyed on (§D7): the fence's own source, the query source's
+    /// generation (the editor's is `indexGeneration`, ADR-0072 §D11), and the explicit-refresh
+    /// counter. Extracted as a pure, static function - value-preserving against the inline
+    /// string it replaces - so a test can assert on the
     /// composition without a live SwiftUI render (Task 7's own tester ask; R-07, R-13's third
     /// named case: a generation bump must change this string, or the query never re-runs on a
     /// vault rescan).
