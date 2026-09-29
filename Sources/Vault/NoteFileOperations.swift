@@ -171,15 +171,25 @@ struct NoteFileOperations {
         from oldPath: String, to newPath: String, titleChange: (old: String, new: String)? = nil
     ) -> (changes: [VaultFileChange], failures: [String]) {
         guard oldPath != newPath else { return ([], []) }
+        return repointBoardsPlan(repoints: [(from: oldPath, to: newPath)], titleChanges: titleChange.map { [$0] } ?? [])
+    }
+
+    /// The same plan for several files at once (ADR-0071 §D6): a document pair repoints both
+    /// its scheda and its file, and a text card may name both the old title and the old file
+    /// name. One `VaultFileChange` per board, so the second guarded write is never refused by
+    /// the hash the first one changed (ADR-0046 §D1).
+    ///
+    /// Internal, not private: read by `NoteFileOperations+Pairs.swift`.
+    func repointBoardsPlan(
+        repoints: [(from: String, to: String)], titleChanges: [(old: String, new: String)]
+    ) -> (changes: [VaultFileChange], failures: [String]) {
         var changes: [VaultFileChange] = []
         var failures: [String] = []
         for boardPath in boardPaths() {
             guard let url = try? store.url(for: boardPath),
                   let data = try? Data(contentsOf: url),
                   let decoded = try? CanvasDocument(data: data),
-                  let document = repointedDocument(
-                      decoded, from: oldPath, to: newPath, titleChange: titleChange
-                  )
+                  let document = repointedDocument(decoded, repoints: repoints, titleChanges: titleChanges)
             else { continue }
 
             guard let before = String(bytes: data, encoding: .utf8) else {
@@ -202,33 +212,39 @@ struct NoteFileOperations {
 
     /// The node-rewrite rule itself, in one place: `repointBoardsPlan` above is its only caller
     /// now (ADR-0055 §D6 deleted the direct-write `repointBoards` this used to serve too), and
-    /// this stays the one place that owns what a repoint means.
+    /// this stays the one place that owns what a repoint means. It takes a list of repoints and
+    /// title changes (ADR-0071 §D6), applied in one pass so a card naming two of them is
+    /// rewritten once.
     ///
-    /// Returns `nil` when the board mentions neither `oldPath` nor - for a rename -
-    /// `titleChange.old`, which is the "nothing to write here" case both callers skip.
+    /// Returns `nil` when the board mentions none of the repointed paths nor - for a rename -
+    /// any old title, which is the "nothing to write here" case the caller skips.
     private func repointedDocument(
         _ document: CanvasDocument,
-        from oldPath: String, to newPath: String,
-        titleChange: (old: String, new: String)?
+        repoints: [(from: String, to: String)],
+        titleChanges: [(old: String, new: String)]
     ) -> CanvasDocument? {
         var document = document
         var changed = false
         for index in document.nodes.indices {
             switch document.nodes[index].kind {
-            case .file(let path, let subpath) where path == oldPath:
-                document.nodes[index].kind = .file(path: newPath, subpath: subpath)
+            case .file(let path, let subpath):
+                guard let target = repoints.first(where: { $0.from == path })?.to else { continue }
+                document.nodes[index].kind = .file(path: target, subpath: subpath)
                 changed = true
             case .text(let body):
                 // A card has no `related:` frontmatter to preserve, so this must not run
                 // NoteRename's quoted-related fallback (`includeQuotedRelated: false`) -
                 // otherwise an unrelated quoted bullet line that happens to fold-match the
                 // old title would be silently rewritten too.
-                guard let titleChange,
-                      let updated = NoteRename.rewritingLinks(
-                          in: body, from: titleChange.old, to: titleChange.new,
-                          includeQuotedRelated: false
-                      )
-                else { continue }
+                var updated = body
+                for titleChange in titleChanges {
+                    if let rewritten = NoteRename.rewritingLinks(
+                        in: updated, from: titleChange.old, to: titleChange.new, includeQuotedRelated: false
+                    ) {
+                        updated = rewritten
+                    }
+                }
+                guard updated != body else { continue }
                 document.nodes[index].kind = .text(updated)
                 changed = true
             default:
@@ -240,7 +256,9 @@ struct NoteFileOperations {
 
     /// A boundary violation answers `false` (ADR-0041 §D2, Task 2's decision for the
     /// `Bool`-returning sites).
-    private func exists(_ relativePath: String) -> Bool {
+    ///
+    /// Internal, not private: read by `NoteFileOperations+Pairs.swift`.
+    func exists(_ relativePath: String) -> Bool {
         guard let url = try? store.url(for: relativePath) else { return false }
         return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }

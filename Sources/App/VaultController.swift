@@ -379,6 +379,13 @@ final class VaultController {
         await session.clearCache()
         await thumbnails?.forgetAll()
         try? await thumbnails?.clearCacheOnDisk()
+        // ADR-0071 §D8: the extracted text is the same kind of disposable derived state, and it
+        // is extracted again at the next vault open. No vault file is touched.
+        do {
+            try session.extractedTexts.removeAll()
+        } catch {
+            session.recordProblem("testo estratto non eliminato: \(error.localizedDescription)")
+        }
         scanGeneration += 1
         taskGeneration += 1
     }

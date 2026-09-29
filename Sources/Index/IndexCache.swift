@@ -210,8 +210,9 @@ struct IndexCache {
     /// none of `foreignKeys` and a reused record would otherwise lose `pergamenum-category`
     /// from the second scan onward. This chain gets no second bump (ADR-0047 "Risks"). 5
     /// (ADR-0065 §D12): meaning only - version 4 rows hold an empty frontmatter for a CRLF note
-    /// and count `.canvas` link targets.
-    static let schemaVersion: Int32 = 5
+    /// and count `.canvas` link targets. 6 (ADR-0071 §D2): adds `StoredRecord.contenitore`, the
+    /// scheda facts a reused record would otherwise lose from the second scan onward.
+    static let schemaVersion: Int32 = 6
 
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
@@ -272,6 +273,8 @@ struct StoredRecord: Codable, Sendable {
     /// Added by schema 4 (ADR-0047 §D5). Defaulted for the reason `embedTargets` is: a
     /// row this field is missing from decodes rather than taking the whole cache down.
     var categorySlug: String?
+    /// Added by schema 6 (ADR-0071 §D2). Defaulted for the reason `categorySlug` is.
+    var contenitore: ContenitoreFacts?
     var tasks: [StoredTask]
     var modifiedAt: Date
     var byteSize: Int
@@ -284,6 +287,7 @@ struct StoredRecord: Codable, Sendable {
         linkTargets = record.linkTargets
         embedTargets = record.embedTargets
         categorySlug = record.categorySlug
+        contenitore = record.contenitore
         tasks = record.tasks.map(StoredTask.init)
         modifiedAt = record.modifiedAt
         byteSize = record.byteSize
@@ -298,6 +302,7 @@ struct StoredRecord: Codable, Sendable {
             linkTargets: linkTargets,
             embedTargets: embedTargets,
             categorySlug: categorySlug,
+            contenitore: contenitore,
             tasks: tasks.compactMap(\.task),
             modifiedAt: modifiedAt,
             byteSize: byteSize,

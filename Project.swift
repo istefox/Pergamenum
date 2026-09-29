@@ -100,6 +100,9 @@ let sharedSources: [SourceFileGlob] = [
     // Its absence broke `perg` and `pergamenum-mcp` outright - the failure CLAUDE.md's
     // "a file outside those globs that a tool needs must be added by hand" predicts.
     "Sources/Index/IndexSnapshot+Search.swift",
+    // ADR-0071 §D2: the Contenitore schede and the duplicate check, which the shared session
+    // doors (`VaultSession+Contenitore.swift`) read.
+    "Sources/Index/IndexSnapshot+Contenitore.swift",
     "Sources/Calendar/TimeBlock.swift",
     "Sources/Vault/BoardTaskRecord.swift",
     "Sources/Vault/CanvasStore.swift",
@@ -108,6 +111,8 @@ let sharedSources: [SourceFileGlob] = [
     // the glob only covers `Sources/Core/**` and `Sources/Connector/**`.
     "Sources/Vault/CategoryRegistryStore.swift",
     "Sources/Vault/NoteFileOperations.swift",
+    // Its pair planning (ADR-0071 §D6), split out in ADR-0045's `Type+Aspect` shape.
+    "Sources/Vault/NoteFileOperations+Pairs.swift",
     "Sources/Vault/NoteHistory.swift",
     "Sources/Vault/NoteStore.swift",
     // `NoteFileOperations.swift` above calls `store.text(_:)`, declared here, not in
@@ -128,6 +133,13 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Vault/VaultScanner.swift",
     "Sources/Vault/VaultSession.swift",
     "Sources/Vault/VaultSession+Categories.swift",
+    // ADR-0071 §D6: `renameNote`/`moveNote`/`trashNote` (`VaultSession+Files.swift`, below)
+    // route a Contenitore scheda through the pair performers declared here. The ingest door,
+    // `VaultSession+Adopt.swift`, stays app-only on purpose (§D14).
+    "Sources/Vault/VaultSession+Contenitore.swift",
+    // ADR-0071 §D9: `VaultSession+Search.swift` (shared) reads a scheda's extracted text
+    // through this store, so both connectors find a document by it.
+    "Sources/Vault/ExtractedTextStore.swift",
     "Sources/Vault/VaultSession+Diary.swift",
     "Sources/Vault/VaultSession+Files.swift",
     "Sources/Vault/VaultSession+Identity.swift",
