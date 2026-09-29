@@ -32,8 +32,11 @@ enum DailyNoteMirror {
     /// what somebody else wrote.
     static func appending(_ entry: Entry, to existingText: String, isEnabled: Bool) -> String? {
         guard isEnabled else { return nil }
+        // The note's own line break; a closing `"\r\n"` is one `Character`, which
+        // `hasSuffix("\n")` never matched (PG-318).
+        let lineBreak = LineBreak.detected(in: existingText).characters
         var text = existingText
-        if !text.isEmpty, !text.hasSuffix("\n") { text += "\n" }
-        return text + line(for: entry) + "\n"
+        if !text.isEmpty, text.last.map(LineBreak.isTerminator) != true { text += lineBreak }
+        return text + line(for: entry) + lineBreak
     }
 }

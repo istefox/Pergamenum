@@ -43,11 +43,14 @@ struct PraticaTimelineView: View {
     private var entries: [PraticaTimelineEntry] { pratiche.filteredTimeline }
 
     var body: some View {
+        // Read once per body (ADR-0072 §D7, R-16): `filteredTimeline` filters the whole
+        // timeline on every read.
+        let entries = self.entries
         VStack(spacing: 0) {
             if entries.isEmpty {
                 empty
             } else {
-                list
+                list(entries)
             }
             Divider()
             countsBar
@@ -58,12 +61,14 @@ struct PraticaTimelineView: View {
         .accessibilityIdentifier("pratiche-timeline")
     }
 
-    private var list: some View {
-        List(selection: selection) {
-            ForEach(sections, id: \.day) { section in
+    private func list(_ entries: [PraticaTimelineEntry]) -> some View {
+        // «Inserisci qui»'s neighbours, found in one pass rather than one search per row menu.
+        let next = PraticaTimelineModel.nextRows(in: entries)
+        return List(selection: selection) {
+            ForEach(Self.sections(of: entries), id: \.day) { section in
                 Section {
                     ForEach(section.entries) { entry in
-                        row(entry)
+                        row(entry, next: next[entry.id])
                             .listRowSeparator(.hidden)
                     }
                 } header: {
@@ -107,7 +112,7 @@ struct PraticaTimelineView: View {
     private static let noteSlotWidth: CGFloat = 200
 
     @ViewBuilder
-    private func row(_ entry: PraticaTimelineEntry) -> some View {
+    private func row(_ entry: PraticaTimelineEntry, next: PraticaTimelineEntry?) -> some View {
         let lane = PraticaTimelineModel.lane(for: entry)
         let gutter = theme.spacing(.m)
         HStack(alignment: .top, spacing: gutter) {
@@ -156,7 +161,7 @@ struct PraticaTimelineView: View {
                 .frame(width: Self.noteSlotWidth, alignment: .topLeading)
             }
         }
-        .contextMenu { menu(for: entry) }
+        .contextMenu { menu(for: entry, next: next) }
         .tag(entry.id)
     }
 
@@ -164,14 +169,14 @@ struct PraticaTimelineView: View {
     /// qui» under both - a manual entry has no `MessageCommand` at all (no files, no
     /// `Message-ID`), which the catalogue says by not being asked for one.
     @ViewBuilder
-    private func menu(for entry: PraticaTimelineEntry) -> some View {
+    private func menu(for entry: PraticaTimelineEntry, next: PraticaTimelineEntry?) -> some View {
         if entry.kind == .message {
             MessageMenuItems.menu(
                 for: entry, detail: pratiche.details[entry.id], actions: rowActions
             )
             Divider()
         }
-        insertHere(after: entry)
+        insertHere(after: entry, next: next)
     }
 
     /// R-28's «Inserisci qui», as a submenu of the row above the gap rather than as a
@@ -180,8 +185,8 @@ struct PraticaTimelineView: View {
     /// midpoint needs two neighbours, and «at the end» is what the counts bar's own
     /// «Nota»/«Telefonata» already mean.
     @ViewBuilder
-    private func insertHere(after entry: PraticaTimelineEntry) -> some View {
-        if let onInsertBetween, let next = following(entry) {
+    private func insertHere(after entry: PraticaTimelineEntry, next: PraticaTimelineEntry?) -> some View {
+        if let onInsertBetween, let next {
             Menu("Inserisci qui") {
                 ForEach(PraticaEntry.Kind.allCases, id: \.self) { kind in
                     Button(kind.label) { onInsertBetween(entry, next, kind) }
@@ -190,13 +195,6 @@ struct PraticaTimelineView: View {
             }
             .accessibilityIdentifier("pratiche-insert-here")
         }
-    }
-
-    private func following(_ entry: PraticaTimelineEntry) -> PraticaTimelineEntry? {
-        guard let index = entries.firstIndex(where: { $0.id == entry.id }),
-              entries.indices.contains(index + 1)
-        else { return nil }
-        return entries[index + 1]
     }
 
     /// The shared runner with this view's own Quick Look host attached, so «Anteprima
@@ -291,7 +289,7 @@ struct PraticaTimelineView: View {
     /// Day sections in the timeline's own ascending order (R-23). Built by walking the
     /// already-ordered array rather than by grouping into a dictionary and sorting it
     /// again: the order is `PraticaTimelineModel.ordered`'s and must not be re-derived.
-    private var sections: [DaySection] {
+    private static func sections(of entries: [PraticaTimelineEntry]) -> [DaySection] {
         var sections: [DaySection] = []
         let calendar = Calendar.current
         for entry in entries {

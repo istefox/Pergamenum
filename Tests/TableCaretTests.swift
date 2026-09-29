@@ -207,6 +207,38 @@ private func pressForwardDelete(_ fixture: Editor) {
         #expect(recognised?.table.rows == [["1", "2"], ["3", "4"]])
     }
 
+    /// PG-316: the same redirect in a CRLF note. The styler now finds a CRLF table, so the trap
+    /// exists there too, and the character after the table is a `\r\n` pair: it goes whole,
+    /// never leaving a bare LF behind its `\r`.
+    @Test func forwardDeleteAfterACRLFTableRemovesTheWholeLineBreak() {
+        let crlfTable = Self.note.replacingOccurrences(of: "\n", with: "\r\n")
+        // "prima\r\n" is seven UTF-16 units and "| a | b |" nine: the header's content end.
+        let fixture = editor(crlfTable + "\r\ndopo", caret: 7 + 9)
+        defer { fixture.window.orderOut(nil) }
+
+        pressForwardDelete(fixture)
+
+        #expect(fixture.textView.string == crlfTable + "dopo")
+    }
+
+    /// PG-319: Return redirected past a CRLF table writes the note's own `\r\n`, never a bare
+    /// LF - both when the table closes the note and when a paragraph follows it, where the new
+    /// line break copies the last row's own.
+    @Test func returnAfterACRLFTableInsertsACRLFLineBreak() {
+        let crlfTable = Self.note.replacingOccurrences(of: "\n", with: "\r\n")
+        let tableEnd = (crlfTable as NSString).length
+        for after in ["", "\r\ndopo"] {
+            // "prima\r\n" is seven UTF-16 units and "| a | b |" nine: the header's content end.
+            let fixture = editor(crlfTable + after, caret: 7 + 9)
+            defer { fixture.window.orderOut(nil) }
+
+            pressReturn(fixture)
+
+            #expect(fixture.textView.string == crlfTable + "\r\n" + after)
+            #expect(fixture.textView.selectedRange() == NSRange(location: tableEnd + 2, length: 0))
+        }
+    }
+
     /// A table with an ordinary paragraph directly after it, no blank line - the case the
     /// fix must not regress: the caret there is on a real, separately laid-out paragraph,
     /// never the header's own end, so Return behaves exactly as it always has.

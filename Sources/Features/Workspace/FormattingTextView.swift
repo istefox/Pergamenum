@@ -379,9 +379,15 @@ final class FormattingTextView: NSTextView {
 
     /// The zero-based line number of the paragraph starting at `offset` - `TaskParser`'s own
     /// counting, so the index handed to `onToggleTask` is the one `TaskItem.lineIndex` means.
-    private static func lineIndex(atParagraphOffset offset: Int, in text: String) -> Int {
+    ///
+    /// `offset` is a paragraph start in UTF-16, so the prefix never splits a `\r\n` pair, and the
+    /// count walks `Character`s, where that pair is one: `LineBreak.isTerminator` counts it, a
+    /// `"\n"` comparison never did and sent every CRLF checkbox to line 0 (PG-316).
+    ///
+    /// Not private since PG-316: `Tests/CRLFLineWalkTests.swift` reads it.
+    static func lineIndex(atParagraphOffset offset: Int, in text: String) -> Int {
         (text as NSString).substring(to: offset).reduce(into: 0) { count, character in
-            if character == "\n" { count += 1 }
+            if LineBreak.isTerminator(character) { count += 1 }
         }
     }
 

@@ -48,7 +48,9 @@ final class MailStoreConnection {
     /// memory at `sqlite3_step` - intermittently wrong rows, never a crash.
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-    private var handle: OpaquePointer?
+    // Internal, not private: read by `Tests/MailStoreReaderBatchTests.swift`, which counts
+    // statements with a trace attached to it (ADR-0072 §D8).
+    private(set) var handle: OpaquePointer?
 
     private init(handle: OpaquePointer?) {
         self.handle = handle

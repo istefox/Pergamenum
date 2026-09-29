@@ -112,14 +112,16 @@ extension WorkspaceController {
         }
 
         let lines = text.components(separatedBy: "\n")
-        guard lines.indices.contains(lineIndex),
-              let task = TaskParser.parse(line: lines[lineIndex], sourcePath: id, lineIndex: lineIndex)
-        else { return }
+        guard lines.indices.contains(lineIndex) else { return }
+        // A CRLF line arrives from the split with its `\r`; the task is read without it, as
+        // `TaskParser.tasks` reads one, and `rewrite` puts it back (PG-316).
+        let line = lines[lineIndex].hasSuffix("\r") ? String(lines[lineIndex].dropLast()) : lines[lineIndex]
+        guard let task = TaskParser.parse(line: line, sourcePath: id, lineIndex: lineIndex) else { return }
 
         let newState: TaskItem.State = task.state == .done ? .open : .done
         let newLine = TaskParser.line(for: task, settingState: newState, today: .today)
         guard let updated = TaskParser.rewrite(
-            text, at: lineIndex, expecting: lines[lineIndex], with: newLine
+            text, at: lineIndex, expecting: line, with: newLine
         ) else { return }
 
         if isEditingThisCard {

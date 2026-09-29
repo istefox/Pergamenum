@@ -61,10 +61,12 @@ enum ViewEvaluator {
         today: CalendarDate = .today,
         body: (NoteRecord) -> String? = { _ in nil }
     ) -> ViewResult {
-        let context = Context(corpus: corpus, today: today)
+        // Read once: a corpus computes its records on each read (ADR-0072).
+        let records = corpus.records
+        let context = Context(records: records, corpus: corpus, block: block, today: today)
         var rows: [ViewResult.Row] = []
 
-        for record in corpus.records where context.isInScope(record, of: block) {
+        for record in records where context.isInScope(record) {
             var loaded: String??
             let read = { () -> String? in
                 if let loaded { return loaded }
@@ -72,7 +74,7 @@ enum ViewEvaluator {
                 loaded = .some(text)
                 return text
             }
-            guard context.matches(block.filter, record, read) else { continue }
+            guard context.matches(record, read) else { continue }
             var values: [ViewField: ViewValue] = [:]
             for field in block.columns { values[field] = field.value(of: record, in: context.graph) }
             rows.append(ViewResult.Row(record: record, values: values))
@@ -116,11 +118,13 @@ enum ViewEvaluator {
         _ rows: [ViewResult.Row], by grouping: ViewBlock.Grouping?, in graph: ViewGraph
     ) -> [ViewResult.Group] {
         guard let grouping else { return [ViewResult.Group(label: nil, rows: rows)] }
+        // A `.tag` grouping's pattern, folded once for every row rather than once per tag.
+        let tagPattern: Glob.Pattern? = if case .tag(let glob) = grouping { Glob.Pattern(glob) } else { nil }
 
         var named: [String: [ViewResult.Row]] = [:]
         var unnamed: [ViewResult.Row] = []
         for row in rows {
-            let labels = self.labels(for: row, by: grouping, in: graph)
+            let labels = self.labels(for: row, by: grouping, tagPattern: tagPattern, in: graph)
             // §D5: a note carrying two `status-*` tags appears in **both** columns. The
             // file really does say both, and a board that showed it once would be a board
             // that lies about the file to keep itself tidy.
@@ -138,11 +142,12 @@ enum ViewEvaluator {
     }
 
     private static func labels(
-        for row: ViewResult.Row, by grouping: ViewBlock.Grouping, in graph: ViewGraph
+        for row: ViewResult.Row, by grouping: ViewBlock.Grouping, tagPattern: Glob.Pattern?, in graph: ViewGraph
     ) -> [String] {
         switch grouping {
         case .tag(let glob):
-            row.record.frontmatter.tags.map(\.description).filter { Glob.matchesTag(glob, $0) }.sorted()
+            row.record.frontmatter.tags.map(\.description)
+                .filter { (tagPattern ?? Glob.Pattern(glob)).matchesTag($0) }.sorted()
         case .field(let field):
             switch field.value(of: row.record, in: graph) {
             case .absent: []
@@ -156,53 +161,138 @@ enum ViewEvaluator {
 
     // MARK: Matching
 
+    /// A `ViewFilter` with its per-evaluation work done: titles resolved, patterns and
+    /// needles folded, a relative bound read against the day (ADR-0072). Built once per
+    /// evaluation, so the row loop only compares.
+    private indirect enum PreparedFilter {
+        case all
+        case and(PreparedFilter, PreparedFilter)
+        case or(PreparedFilter, PreparedFilter)
+        case not(PreparedFilter)
+        case path(Glob.Pattern)
+        case tag(Glob.Pattern)
+        /// The paths the title resolves to.
+        case linksTo(Set<String>)
+        /// The paths the title resolves to that are notes of the corpus.
+        case linkedFrom([String])
+        case task(TaskItem.State)
+        case has(ViewField)
+        /// The folded needle.
+        case text(String)
+        case comparison(ViewField, ViewFilter.Comparison, CalendarDate)
+    }
+
     /// The graph facts, the lookups, and the one decision per term.
     ///
     /// A value built once per evaluation: `linkedFrom` and `unresolved` are each a pass
     /// over every record, and asking them inside the row loop is the quadratic version of
-    /// the same answer.
+    /// the same answer. Every title is resolved once here and never again (ADR-0072).
     private struct Context {
         let graph: ViewGraph
         /// The day a relative bound means. Carried here rather than reached for, which is the
         /// whole of ADR-0014 §D3.
         let today: CalendarDate
-        private let byPath: [String: NoteRecord]
-        private let resolve: @Sendable (String) -> [String]
+        /// Per note path, every path its link targets resolve to, self-links included -
+        /// unlike `graph.incoming`, which leaves them out.
+        private let reaches: [String: Set<String>]
+        private let scope: [Glob.Pattern]
+        private let filter: PreparedFilter
 
-        init(corpus: some ViewCorpus, today: CalendarDate) {
+        init(records: [NoteRecord], corpus: some ViewCorpus, block: ViewBlock, today: CalendarDate) {
             self.today = today
+            var resolved: [String: [String]] = [:]
+            func resolve(_ title: String) -> [String] {
+                if let paths = resolved[title] { return paths }
+                let paths = corpus.paths(forTitle: title)
+                resolved[title] = paths
+                return paths
+            }
+
             var graph = ViewGraph()
             var byPath: [String: NoteRecord] = [:]
-            for record in corpus.records { byPath[record.relativePath] = record }
-
-            for record in corpus.records {
+            var reaches: [String: Set<String>] = [:]
+            for record in records {
+                byPath[record.relativePath] = record
+                var reached: Set<String> = []
                 for target in record.linkTargets {
-                    let paths = corpus.paths(forTitle: target)
+                    let paths = resolve(target)
                     if paths.isEmpty {
                         graph.unresolved[record.relativePath, default: []].append(target)
                         continue
                     }
+                    reached.formUnion(paths)
                     for path in paths where path != record.relativePath {
                         graph.incoming[path, default: []].append(record.title)
                     }
                 }
+                // The last record for a path wins, as it does in `byPath`.
+                reaches[record.relativePath] = reached
             }
             for key in graph.incoming.keys { graph.incoming[key] = Array(Set(graph.incoming[key] ?? [])).sorted() }
 
             self.graph = graph
-            self.byPath = byPath
-            resolve = { corpus.paths(forTitle: $0) }
+            self.reaches = reaches
+            scope = block.scope.map(Glob.Pattern.init)
+            filter = Self.prepare(block.filter, today: today, resolve: resolve, byPath: byPath)
         }
 
         /// `from`: a scope, so an empty one is the whole vault rather than nothing.
-        func isInScope(_ record: NoteRecord, of block: ViewBlock) -> Bool {
-            block.scope.isEmpty || block.scope.contains { Glob.matchesPath($0, record.relativePath) }
+        func isInScope(_ record: NoteRecord) -> Bool {
+            scope.isEmpty || scope.contains { $0.matchesPath(record.relativePath) }
         }
+
+        func matches(_ record: NoteRecord, _ body: () -> String?) -> Bool {
+            matches(filter, record, body)
+        }
+
+        // MARK: Preparing
+
+        /// The connectives here, the terms next door, for the same complexity reason as
+        /// `matches` below.
+        private static func prepare(
+            _ filter: ViewFilter, today: CalendarDate,
+            resolve: (String) -> [String], byPath: [String: NoteRecord]
+        ) -> PreparedFilter {
+            func recurse(_ inner: ViewFilter) -> PreparedFilter {
+                prepare(inner, today: today, resolve: resolve, byPath: byPath)
+            }
+            return switch filter {
+            case .all: .all
+            case .and(let lhs, let rhs): .and(recurse(lhs), recurse(rhs))
+            case .or(let lhs, let rhs): .or(recurse(lhs), recurse(rhs))
+            case .not(let inner): .not(recurse(inner))
+            default: prepareTerm(filter, today: today, resolve: resolve, byPath: byPath)
+            }
+        }
+
+        private static func prepareTerm(
+            _ filter: ViewFilter, today: CalendarDate,
+            resolve: (String) -> [String], byPath: [String: NoteRecord]
+        ) -> PreparedFilter {
+            switch filter {
+            case .path(let glob): .path(Glob.Pattern(glob))
+            case .tag(let glob): .tag(Glob.Pattern(glob))
+            // Resolved rather than spelled: `linksTo("Nota")` is about the note that link
+            // reaches, so an alias or a different capitalisation is the same edge.
+            case .linksTo(let title): .linksTo(Set(resolve(title)))
+            case .linkedFrom(let title): .linkedFrom(resolve(title).filter { byPath[$0] != nil })
+            case .task(let state): .task(state)
+            case .has(let field): .has(field)
+            case .text(let needle): .text(SearchQuery.fold(needle))
+            case .comparison(let field, let comparison, let bound):
+                .comparison(field, comparison, bound.resolved(on: today))
+            // Listed rather than defaulted, so a term added to the grammar is a compile
+            // error here and not a filter that silently lets every note through.
+            case .all, .and, .or, .not: .all
+            }
+        }
+
+        // MARK: Matching
 
         /// The connectives here, the terms next door: one function over twelve cases
         /// scores 13 on SwiftLint's complexity rule, and `CommandActions.run` records why
         /// this codebase splits rather than disables.
-        func matches(_ filter: ViewFilter, _ record: NoteRecord, _ body: () -> String?) -> Bool {
+        private func matches(_ filter: PreparedFilter, _ record: NoteRecord, _ body: () -> String?) -> Bool {
             switch filter {
             case .all: true
             case .and(let lhs, let rhs): matches(lhs, record, body) && matches(rhs, record, body)
@@ -212,42 +302,24 @@ enum ViewEvaluator {
             }
         }
 
-        private func matchesTerm(_ filter: ViewFilter, _ record: NoteRecord, _ body: () -> String?) -> Bool {
+        private func matchesTerm(_ filter: PreparedFilter, _ record: NoteRecord, _ body: () -> String?) -> Bool {
             switch filter {
-            case .path(let glob): Glob.matchesPath(glob, record.relativePath)
-            case .tag(let glob): record.frontmatter.tags.contains { Glob.matchesTag(glob, $0.description) }
-            case .linksTo(let title): linksTo(title, from: record)
-            case .linkedFrom(let title): linkedFrom(title, to: record)
+            case .path(let pattern): pattern.matchesPath(record.relativePath)
+            case .tag(let pattern): record.frontmatter.tags.contains { pattern.matchesTag($0.description) }
+            case .linksTo(let targets): !targets.isDisjoint(with: reaches[record.relativePath] ?? [])
+            case .linkedFrom(let sources): sources.contains { reaches[$0]?.contains(record.relativePath) ?? false }
             case .task(let state): record.tasks.contains { state == .open ? $0.state.isOpen : $0.state == state }
             case .has(let field): !field.value(of: record, in: graph).isEmpty
-            case .text(let needle): body().map { SearchQuery.fold($0).contains(SearchQuery.fold(needle)) } ?? false
+            case .text(let needle): body().map { SearchQuery.fold($0).contains(needle) } ?? false
             case .comparison(let field, let comparison, let bound):
                 if case .day(let day) = field.value(of: record, in: graph) {
-                    comparison.admits(day, against: bound.resolved(on: today))
+                    comparison.admits(day, against: bound)
                 } else {
                     false
                 }
-            // Listed rather than defaulted, so a term added to the grammar is a compile
-            // error here and not a filter that silently lets every note through.
             case .all, .and, .or, .not:
                 true
             }
-        }
-
-        /// Resolved rather than spelled: `linksTo("Nota")` is about the note that link
-        /// reaches, so an alias or a different capitalisation is the same edge.
-        private func linksTo(_ title: String, from record: NoteRecord) -> Bool {
-            let targets = Set(resolve(title))
-            guard !targets.isEmpty else { return false }
-            return record.linkTargets.contains { !targets.isDisjoint(with: resolve($0)) }
-        }
-
-        private func linkedFrom(_ title: String, to record: NoteRecord) -> Bool {
-            resolve(title)
-                .compactMap { byPath[$0] }
-                .contains { source in
-                    source.linkTargets.contains { resolve($0).contains(record.relativePath) }
-                }
         }
     }
 }

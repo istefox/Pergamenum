@@ -19,6 +19,10 @@ final class VaultController {
     var settings: VaultSettings { session?.settings ?? .default }
     var vocabulary: Vocabulary { session?.vocabulary ?? .empty }
     var index: IndexSnapshot { session?.index ?? IndexSnapshot() }
+    /// What an index-derived cache keys on (ADR-0072 §D2, §D4): moves on every index change,
+    /// and the base, raised on every open and close, keeps it from repeating across vaults.
+    var indexGeneration: Int { indexGenerationBase + index.generation }
+    private(set) var indexGenerationBase = 0
     /// The vault's category registry (ADR-0047 §D2), read straight through the same way
     /// `index` is - `CategoryPicker` and Task 5's sidebar/editor/view read it live, never
     /// a copy captured once.
@@ -223,6 +227,7 @@ final class VaultController {
             guard let self, let newSession, self.session === newSession else { return }
             self.landed(change)
         }
+        indexGenerationBase = indexGeneration + 1
         session = newSession
         // Owned here, not by the Workspace that used to create it: the cache belongs
         // to the vault, and reading mode needs the same renderer to draw a picture
@@ -254,6 +259,7 @@ final class VaultController {
         watcher = nil
         // ADR-0067 §D4: a session somebody else still holds must not keep calling back here.
         session?.landedChangeSubscriber = nil
+        indexGenerationBase = indexGeneration + 1
         session = nil
         thumbnails = nil
         columns = [EditorColumn()]

@@ -79,12 +79,13 @@ final class WorkspaceOpenStateUITests: XCTestCase {
     /// row at all. The identifier is unchanged, `workspace-board-<boardPath>`, which is
     /// exactly why every assertion below still resolves after that rewrite.
     private var rootBoardRow: XCUIElement {
-        app.descendants(matching: .any)
-            .matching(identifier: "workspace-board-\(vault.lastPathComponent).canvas").firstMatch
+        row(identifier: "workspace-board-\(vault.lastPathComponent).canvas")
     }
 
+    /// Searched inside `workspace-tree`, not across the whole app: every identifier this file
+    /// asks for is a row `WorkspaceRow` draws inside that list (R-20).
     private func row(identifier: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+        tree.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
     private var tree: XCUIElement {
@@ -97,7 +98,7 @@ final class WorkspaceOpenStateUITests: XCTestCase {
     /// plan's SPEC-claims table note on R-13: whether `.accessibilityAddTraits(.isSelected)`
     /// on custom `List` row content reaches XCUITest's trait on macOS is unverified here,
     /// so the label is the one thing an assertion may depend on.
-    private var selectedRowsInTree: XCUIElementQuery {
+    private func selectedRows(in tree: XCUIElement) -> XCUIElementQuery {
         tree.descendants(matching: .any).matching(
             NSPredicate(format: "label ENDSWITH ', aperta' OR label ENDSWITH ', selezionata'")
         )
@@ -114,12 +115,13 @@ final class WorkspaceOpenStateUITests: XCTestCase {
     /// to select gives XCUITest's own retrying wait a chance to observe the settled
     /// state before the count below is taken as final.
     private func assertExactlyOneRowSelected(identifier: String, suffix: String, file: StaticString = #filePath, line: UInt = #line) {
+        let tree = self.tree
         let expected = tree.descendants(matching: .any).matching(
             NSPredicate(format: "identifier == %@ AND label ENDSWITH %@", identifier, suffix)
         ).firstMatch
         XCTAssertTrue(expected.waitForExistence(timeout: 5),
                       "la riga «\(identifier)» non riporta lo stato selezionato", file: file, line: line)
-        XCTAssertEqual(selectedRowsInTree.count, 1,
+        XCTAssertEqual(selectedRows(in: tree).count, 1,
                         "esattamente una riga dell'albero deve riportare lo stato selezionato", file: file, line: line)
     }
 

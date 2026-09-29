@@ -133,8 +133,7 @@ enum MIMEDecoder {
 
         while offset <= bytes.count {
             let lineEnd = bytes[offset...].firstIndex(of: 0x0A) ?? bytes.count
-            let line = Array(bytes[offset..<lineEnd])
-            switch delimiter(line, open: open) {
+            switch delimiter(bytes[offset..<lineEnd], open: open) {
             case .none:
                 break
             case .some(let isClosing):
@@ -162,13 +161,15 @@ enum MIMEDecoder {
     }
 
     /// `nil` when the line is not a delimiter for this boundary; `true` when it is the
-    /// closing one.
-    private static func delimiter(_ line: [UInt8], open: [UInt8]) -> Bool? {
-        guard line.count >= open.count, Array(line.prefix(open.count)) == open else { return nil }
-        var rest = Array(line.dropFirst(open.count))
-        while let last = rest.last, last == 0x0D || last == 0x20 || last == 0x09 { rest.removeLast() }
-        if rest.isEmpty { return false }
-        if rest == [0x2D, 0x2D] { return true }
+    /// closing one. Compared in place, over the slice's own indices: it runs once per line of
+    /// every multipart body, so it allocates nothing.
+    private static func delimiter(_ line: ArraySlice<UInt8>, open: [UInt8]) -> Bool? {
+        guard line.starts(with: open) else { return nil }
+        let start = line.startIndex + open.count
+        var end = line.endIndex
+        while end > start, line[end - 1] == 0x0D || line[end - 1] == 0x20 || line[end - 1] == 0x09 { end -= 1 }
+        if end == start { return false }
+        if end - start == 2, line[start] == 0x2D, line[start + 1] == 0x2D { return true }
         return nil
     }
 

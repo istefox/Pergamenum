@@ -10,10 +10,6 @@ import Foundation
 /// and every modern client write a non-ASCII attachment name) nor its continuations
 /// (`filename*0*=…; filename*1*=…`, how a long one is folded).
 enum MIMEParameter {
-    /// The parameter's value, or nil when absent. The name matches case-insensitively; the value
-    /// comes back verbatim, so a file name keeps its capitals. When both forms are present the
-    /// extended one wins: `name*`, then the joined `name*0`, `name*1`, … continuations, then the
-    /// plain `name`.
     /// One `name*N` or `name*N*` continuation (RFC 2231 §3).
     private struct Segment {
         var number: Int
@@ -21,6 +17,10 @@ enum MIMEParameter {
         var encoded: Bool
     }
 
+    /// The parameter's value, or nil when absent. The name matches case-insensitively; the value
+    /// comes back verbatim, so a file name keeps its capitals. When both forms are present the
+    /// extended one wins: `name*`, then the joined `name*0`, `name*1`, … continuations, then the
+    /// plain `name`.
     static func value(_ name: String, in raw: String) -> String? {
         let wanted = name.lowercased()
         var plain: String?

@@ -55,6 +55,9 @@ struct RenderedViewBlock: View {
     }
 
     var body: some View {
+        // Parsed once per body evaluation, and that parse is the one the task evaluates
+        // (ADR-0072, R-06): the fence used to be parsed again inside `evaluate()`.
+        let block = self.block
         VStack(alignment: .leading, spacing: theme.spacing(.s)) {
             switch block {
             case .failure(let error):
@@ -77,7 +80,7 @@ struct RenderedViewBlock: View {
         // The id is what §D7 turns into a re-evaluation: the source itself, the scan
         // generation, and the refresh. Not a timer, and not every redraw.
         .task(id: Self.taskID(source: source, generation: queries?.generation ?? -1, reloads: reloads)) {
-            evaluate()
+            evaluate(block)
         }
         // A block carrying a relative bound means a different set of notes tomorrow, with no
         // file having changed (ADR-0014 §D4). Bumping the same counter the refresh button
@@ -85,7 +88,7 @@ struct RenderedViewBlock: View {
         .onDayChange { reloads += 1 }
     }
 
-    private func evaluate() {
+    private func evaluate(_ block: Result<ViewBlock, ViewBlockError>) {
         result = (try? block.get()).flatMap { parsed in queries?.evaluate(parsed) }
     }
 
@@ -186,7 +189,7 @@ struct RenderedViewBlock: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: 1) {
-                ForEach(Array(source.components(separatedBy: .newlines).enumerated()), id: \.offset) { offset, line in
+                ForEach(Array(ViewBlock.lines(of: source).enumerated()), id: \.offset) { offset, line in
                     Text(line)
                         .themedText(.mono, color: offset + 1 == error.line ? .taskOverdue : .textSecondary)
                 }

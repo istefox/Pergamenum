@@ -144,11 +144,15 @@ private enum HTMLTokenizer {
     /// HTML element and comment/bracket tokens are case-insensitive by spec - a
     /// `</STYLE>` sent by a real mail client discarded the rest of the body when this
     /// compared case-sensitively, since the search then ran to end-of-text.
-    private static func matches(_ needle: String, at index: Int, in characters: [Character]) -> Bool {
-        let needleCharacters = Array(needle)
-        guard index + needleCharacters.count <= characters.count else { return false }
-        return zip(characters[index..<(index + needleCharacters.count)], needleCharacters)
-            .allSatisfy { $0.lowercased() == $1.lowercased() }
+    private static func matches(_ needle: some Sequence<Character>, at index: Int, in characters: [Character]) -> Bool {
+        characters[index...].starts(with: needle, by: sameLetter)
+    }
+
+    /// ASCII on one ASCII scalar a side, `lowercased()` otherwise: exact for the Kelvin sign.
+    private static func sameLetter(_ lhs: Character, _ rhs: Character) -> Bool {
+        guard lhs.utf8.count == 1, rhs.utf8.count == 1, let left = lhs.asciiValue, let right = rhs.asciiValue
+        else { return lhs.lowercased() == rhs.lowercased() }
+        return left == right || (left ^ right == 0x20 && (0x61...0x7A).contains(left | 0x20))
     }
 
     private static func firstIndex(of character: Character, from index: Int, in characters: [Character]) -> Int? {
@@ -163,12 +167,10 @@ private enum HTMLTokenizer {
     /// The index just past `needle`, or the end of the input when it never appears -
     /// an unterminated comment eats the rest, which is what a browser does too.
     private static func end(of needle: String, from index: Int, in characters: [Character]) -> Int {
+        let needle = Array(needle)
         var cursor = max(index, 0)
-        while cursor < characters.count {
-            if matches(needle, at: cursor, in: characters) { return cursor + needle.count }
-            cursor += 1
-        }
-        return characters.count
+        while cursor < characters.count, !matches(needle, at: cursor, in: characters) { cursor += 1 }
+        return cursor < characters.count ? cursor + needle.count : characters.count
     }
 }
 
@@ -359,16 +361,14 @@ private struct HTMLWalk {
     }
 
     private mutating func breakLine() {
-        let current = buffers[buffers.count - 1]
-        guard !current.isEmpty, !current.hasSuffix("\n") else { return }
+        guard !buffers[buffers.count - 1].isEmpty, !buffers[buffers.count - 1].hasSuffix("\n") else { return }
         buffers[buffers.count - 1] += "\n"
     }
 
     private mutating func breakParagraph() {
-        let current = buffers[buffers.count - 1]
-        guard !current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        if current.hasSuffix("\n\n") { return }
-        buffers[buffers.count - 1] += current.hasSuffix("\n") ? "\n" : "\n\n"
+        let last = buffers.count - 1
+        guard !buffers[last].unicodeScalars.allSatisfy(CharacterSet.whitespacesAndNewlines.contains) else { return }
+        if !buffers[last].hasSuffix("\n\n") { buffers[last] += buffers[last].hasSuffix("\n") ? "\n" : "\n\n" }
     }
 
     private mutating func pushBuffer(for element: String) {
