@@ -4,6 +4,7 @@ import Foundation
 import ImageIO
 import Testing
 import UniformTypeIdentifiers
+import Vision
 @testable import Pergamenum
 
 // ADR-0071 (Contenitore) §D8, plan docs/plans/contenitore.md, Task 5 - R-09, with the real
@@ -74,6 +75,18 @@ private func words(_ text: String) -> String {
     text.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
 }
 
+/// Cancels the calling test, with the reason, when this machine cannot run Vision's text
+/// recognition at all. On the hosted CI runner the model load fails with `e5rtError` before any
+/// pixel is read (measured on PR #691's `build-and-test`); on a Mac the probe succeeds and the
+/// OCR tests run for real. A cancelled test is reported as such, never as a pass.
+private func requireVisionOCR() async throws {
+    do {
+        _ = try await RecognizeTextRequest().perform(on: try phraseImage())
+    } catch {
+        try Test.cancel("Vision text recognition is unavailable on this machine: \(error)")
+    }
+}
+
 private final class PageLog: @unchecked Sendable {
     private let lock = NSLock()
     private var entries: [(Int, Int)] = []
@@ -98,6 +111,7 @@ private final class PageLog: @unchecked Sendable {
 }
 
 @Test func aBitmapYieldsItsWordsByOCR() async throws {
+    try await requireVisionOCR()
     let directory = try scratchDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let url = directory.appending(path: "scansione.png")
@@ -111,6 +125,7 @@ private final class PageLog: @unchecked Sendable {
 }
 
 @Test func anImageOnlyPDFYieldsOCR() async throws {
+    try await requireVisionOCR()
     let directory = try scratchDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let url = directory.appending(path: "scansione.pdf")
