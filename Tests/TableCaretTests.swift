@@ -207,6 +207,20 @@ private func pressForwardDelete(_ fixture: Editor) {
         #expect(recognised?.table.rows == [["1", "2"], ["3", "4"]])
     }
 
+    /// PG-316: the same redirect in a CRLF note. The styler now finds a CRLF table, so the trap
+    /// exists there too, and the character after the table is a `\r\n` pair: it goes whole,
+    /// never leaving a bare LF behind its `\r`.
+    @Test func forwardDeleteAfterACRLFTableRemovesTheWholeLineBreak() {
+        let crlfTable = Self.note.replacingOccurrences(of: "\n", with: "\r\n")
+        // "prima\r\n" is seven UTF-16 units and "| a | b |" nine: the header's content end.
+        let fixture = editor(crlfTable + "\r\ndopo", caret: 7 + 9)
+        defer { fixture.window.orderOut(nil) }
+
+        pressForwardDelete(fixture)
+
+        #expect(fixture.textView.string == crlfTable + "dopo")
+    }
+
     /// A table with an ordinary paragraph directly after it, no blank line - the case the
     /// fix must not regress: the caret there is on a real, separately laid-out paragraph,
     /// never the header's own end, so Return behaves exactly as it always has.

@@ -186,6 +186,10 @@ extension NoteTextView.Coordinator {
         // change is not a write. Without this, Cmd+Z would have a step in it that undoes
         // nothing (R-08 is about one step per *change*, not one per click).
         guard edited != live.table else { return false }
-        return replaceAtomically(live.range, with: edited.serialised(), in: textView)
+        // The rows go back with the table's own ending, read off its first line break: a CRLF
+        // table stays CRLF instead of being rewritten as LF rows (ADR-0065 §D3, PG-316).
+        let source = (textView.string as NSString).substring(with: live.range)
+        let lineBreak = LineBreak.detected(in: source)
+        return replaceAtomically(live.range, with: edited.serialised(lineBreak: lineBreak), in: textView)
     }
 }

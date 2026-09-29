@@ -11,6 +11,9 @@ enum TaskParser {
     ///
     /// Fenced code blocks are skipped: a shell snippet containing `- [ ]` is not a
     /// task, the same reason `[[ ]]` in bash is not a wikilink.
+    ///
+    /// A CRLF line ends before its `\r\n`, one `Character`: each line is a task of its own,
+    /// `lineIndex` counts it like its LF twin, and `rawLine` carries no `\r` (PG-316).
     static func tasks(in text: String, sourcePath: String) -> [TaskItem] {
         let codeRanges = WikilinkParser.codeRanges(in: text)
         var results: [TaskItem] = []
@@ -18,7 +21,7 @@ enum TaskParser {
         var lineStart = text.startIndex
         var lineIndex = 0
         while lineStart < text.endIndex {
-            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+            let lineEnd = text[lineStart...].firstIndex(where: LineBreak.isTerminator) ?? text.endIndex
             defer {
                 lineIndex += 1
                 lineStart = lineEnd < text.endIndex ? text.index(after: lineEnd) : text.endIndex

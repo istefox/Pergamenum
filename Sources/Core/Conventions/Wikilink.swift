@@ -107,13 +107,17 @@ enum WikilinkParser {
     /// An unterminated fence runs to the end of the note, which is what a reader sees
     /// too: everything after it is rendered as code, so treating it as prose would
     /// disagree with the note's own appearance.
+    ///
+    /// Both walks end a line at `LineBreak.isTerminator`: a CRLF pair is one `Character`, so a
+    /// search for `"\n"` read a CRLF note as one line - no fence found past the first line,
+    /// and backticks paired across the whole note (PG-316).
     static func codeRanges(in text: String) -> [Range<String.Index>] {
         var ranges: [Range<String.Index>] = []
 
         var fenceStart: String.Index?
         var lineStart = text.startIndex
         while lineStart < text.endIndex {
-            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+            let lineEnd = text[lineStart...].firstIndex(where: LineBreak.isTerminator) ?? text.endIndex
             let line = text[lineStart..<lineEnd].trimmingCharacters(in: .whitespaces)
 
             if line.hasPrefix("```") || line.hasPrefix("~~~") {
@@ -142,7 +146,7 @@ enum WikilinkParser {
         // version of this.
         var line = text.startIndex
         while line < text.endIndex {
-            let lineEnd = text[line...].firstIndex(of: "\n") ?? text.endIndex
+            let lineEnd = text[line...].firstIndex(where: LineBreak.isTerminator) ?? text.endIndex
             defer { line = lineEnd < text.endIndex ? text.index(after: lineEnd) : text.endIndex }
 
             if ranges.contains(where: { $0.contains(line) }) { continue }

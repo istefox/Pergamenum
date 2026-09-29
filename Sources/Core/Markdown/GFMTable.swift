@@ -96,11 +96,14 @@ struct GFMTable: Equatable, Sendable {
     /// writes and what makes `parse(serialised()) == self` hold for a table read out of an
     /// ordinary note: a wider or narrower spelling of the same cells would round-trip the
     /// values and not the ranges.
-    func serialised() -> String {
+    ///
+    /// `lineBreak` is the ending the rows are joined with: a table rewritten inside a CRLF
+    /// note keeps CRLF rows rather than coming back as LF ones (ADR-0065 §D3, PG-316).
+    func serialised(lineBreak: LineBreak = .lf) -> String {
         var lines = [Self.serialised(row: header)]
         lines.append("|" + alignments.map(\.delimiter).joined(separator: "|") + "|")
         lines.append(contentsOf: rows.map(Self.serialised(row:)))
-        return lines.joined(separator: "\n")
+        return lines.joined(separator: lineBreak.characters)
     }
 
     private static func serialised(row cells: [String]) -> String {
@@ -209,12 +212,13 @@ struct GFMTable: Equatable, Sendable {
 
     /// Line ranges from `start`, the newline excluded and **empty lines kept** - unlike
     /// `MarkdownStyler`'s own helper, which skips them because it has nothing to style on
-    /// one. Here a blank line is load-bearing: it is where a table ends.
+    /// one. Here a blank line is load-bearing: it is where a table ends. A CRLF line ends
+    /// before its `\r\n`, one `Character`, so a CRLF table is read row by row (PG-316).
     private static func lineRanges(in text: String, from start: String.Index) -> [Range<String.Index>] {
         var ranges: [Range<String.Index>] = []
         var lineStart = start
         while lineStart <= text.endIndex {
-            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+            let lineEnd = text[lineStart...].firstIndex(where: LineBreak.isTerminator) ?? text.endIndex
             ranges.append(lineStart..<lineEnd)
             guard lineEnd < text.endIndex else { break }
             lineStart = text.index(after: lineEnd)
