@@ -620,6 +620,11 @@ Each item is out of the SPEC's scope and is filed as a follow-up:
 2. `DossierYAML` writes keywords without escaping `"` or a line break.
 3. `MessageFrontmatterPatch.swift:24-26` (app-written files) and `ViewCatalogue.swift:78,83` keep the
    whitespace-only delimiter test.
+
+   > Cross-reference, 2026-09-29 (PG-276, #615): closed by PR #N (merge `<merge hash>`). Both
+   > readers now find a block through the note parser's own test; no decision above changes. See
+   > «Implementation notes», «Follow-up: PG-276» and `docs/plans/pg-276-crlf-delimiter-parsers.md`.
+
 4. A canvas's required keys with a wrong JSON type (`"x": "12"`, `"text": 42`) are replaced by their
    defaults (`JSONCanvas.swift:171-189`).
 
@@ -947,6 +952,72 @@ Named, not addressed: more opaque elements make `PG-281` (#605, an opaque elemen
 stale after an insert or delete before it) more reachable, with order changing and no content
 lost; a generated id colliding with an opaque node's id stays a 2^-64 event, pre-existing for every
 §D5.4 element; a number outside `Double`'s range was not examined.
+
+### Follow-up: PG-276
+
+Written 2026-09-29, closing §D13.3 (PG-276, #615, PR #N, merge `<merge hash>`). Plan:
+`docs/plans/pg-276-crlf-delimiter-parsers.md`. It applies §D1.2's line interpretation and §D3's
+line-ending rule to two more readers and changes no decision of this ADR: no on-disk format, no
+`IndexCache.schemaVersion`, no protected interface.
+
+**The rule, as the note parser has it.** A text is split on `"\n"`; each line is interpreted with
+one trailing `\r` removed and, on line 0 only, one leading U+FEFF; a delimiter is an interpreted
+line that trims (`CharacterSet.whitespaces`: Zs plus U+0009, never `\r` or U+FEFF) to exactly
+`---`. The opening is line 0, the closing the first later delimiter, and an opening with no
+closing is no block: the whole text is body.
+
+| Line | As the opening (line 0) | As the closing (a later line) |
+|---|---|---|
+| `"---"`, `"--- "`, `"\t---"`, `"  ---  "`, `"\u{00A0}---"` | delimiter | delimiter |
+| `"---\r"`, `"--- \r"`, `"\t---\r"` | delimiter | delimiter |
+| `"\u{FEFF}---"`, `"\u{FEFF}---\r"` | delimiter | not a delimiter |
+| `"---\r\r"`, `"----"`, `"--- x"`, `"-- -"` | not a delimiter | not a delimiter |
+| an opening with no closing line | no block, the whole text is body | — |
+
+**One helper, five adopters.** `FrontmatterSource.closingDelimiterIndex(in:)` takes the raw lines
+of a `"\n"` split and answers the closing delimiter's index, or `nil` when there is no opening or
+no closing. It composes `interpreted` and `isDelimiter`, which stay module-visible for their other
+callers. It is Foundation only, compiled by `perg` and `pergamenum-mcp` through `Sources/Core/**`.
+Its adopters:
+
+- `FrontmatterSource.document(from:)`, behind `NoteDocument.parse`, with semantics identical;
+- `TagRename`, whose private `frontmatterEnd(of:)` is deleted and whose three call sites use the
+  helper, with semantics identical;
+- `FrontmatterRules.opensWithSecondBlock(_:)` (§D11), which now interprets the body's first line
+  once. It used to interpret it twice, so a body opening with `"---\r\r"` counted as a second
+  block, against §D11's "one trailing `\r` removed";
+- `MessageFrontmatterPatch.applying(line:forKey:before:to:)`, which returned `nil` on a CRLF or
+  BOM-opened message file. The sync's pending-attachment retry, its inline-image resolution and
+  the corrupt-attachment repair skipped such a file silently; «Collega nota» reported «frontmatter
+  non valido» in the app, `perg` and `pergamenum-mcp`;
+- `ViewCatalogue.locations(in:)`, which kept a CRLF frontmatter as body (a YAML comment line became
+  the first view's heading) and skipped the whole file behind an unterminated opening, where the
+  parser reads it as body. `scan` pairs these locations by ordinal with `ViewBlock.blocks(in:)` of
+  the parsed body, so the walk must skip exactly the block the parser recognises.
+
+**The written line in the patch (§D3, §D1.3.1).** An inserted line, and a replaced line whose value
+changes, end in the document's line break (`LineBreak.detected(in:)`), so a CRLF message stays
+all-CRLF. A replaced line whose interpreted text already equals the new line is left verbatim, so a
+no-op patch equals the input on a mixed file too and ADR-0040 §D6's "a patch identical to the file
+on disk is never written" stays true. A removal removes the raw line, its `\r` included. The
+signature is unchanged.
+
+**Body lines in `ViewCatalogue` (the plan's R-06, G1 accepted).** Each body line is read through
+`FrontmatterSource.interpreted` before it is trimmed, so a CRLF note's `pergamenum-view` fences are
+located on their whole-file line index and its headings carry no `\r`. Before, no view in an
+all-CRLF note was ever located. The body lines are interpreted without `isFirst`: when a note has no
+block, its body starts on line 0 and `MarkdownBlockParser` keeps a leading U+FEFF there, so the walk
+keeps it too.
+
+Named, not addressed:
+
+- `MarkdownStyler.frontmatterRange(in:)` (`hasPrefix("---")` plus a `"\n---"` search) is looser than
+  the rule, but it only decides where styling starts and never writes. Its function's line walks
+  are §D13.1's class, so it goes to `PG-274` (#613) with them.
+- `NoteJump.lineRange` and `CodeFence.lineRanges` search for a `"\n"` `Character`, so a located view
+  in a CRLF note still opens without moving the caret. Same class as §D13.1, reported for `PG-274`.
+- `MarkdownBlockParser` splits on `.newlines`, so a lone `\r`, U+2028, U+2029 and U+0085 break a
+  line there and not in `ViewCatalogue`. Pre-existing, and not a delimiter test.
 
 ## References
 
