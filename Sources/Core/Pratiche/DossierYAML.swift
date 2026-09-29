@@ -116,8 +116,9 @@ enum DossierYAML {
     /// A keyword, a message id or a link is text a person or a mailer chose: a `"` in it
     /// would close the scalar early, and a line break would end the list item and leave
     /// the rest as a stray line the next read drops. `MessageDocument.quoted`'s escaping
-    /// (ADR-0065 §D8.1), plus `\r` as its own pair: that codec folds `\r\n` into `\n`,
-    /// which is not an inverse, and a lone `\r` it leaves raw.
+    /// (ADR-0065 §D8.1), with `\r` as its own pair: folding `\r\n` into `\n` is not an
+    /// inverse, and a lone `\r` left raw ends the line. `MessageDocument` adopted the
+    /// same `\r` pair in PG-314.
     ///
     /// Walks unicode scalars, not `Character`s: `"\r\n"` is one `Character`, so a
     /// `Character`-level replacement of `"\n"` never finds the LF of a CRLF pair.

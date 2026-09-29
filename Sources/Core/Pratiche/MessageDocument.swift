@@ -219,13 +219,23 @@ struct MessageDocument: Equatable, Sendable {
 
     /// A header value is somebody else's text: a `"` or a line break in it would close
     /// the scalar early and let the rest be read as new frontmatter keys (the same
-    /// escaping `TranscriptNote` pays for the Plaud service's strings).
+    /// escaping `TranscriptNote` pays for the Plaud service's strings). `\r` is its own
+    /// pair (PG-314, `DossierYAML.quoted`'s shape): folding `\r\n` into `\n` is not an
+    /// inverse, and a lone `\r` left raw ends the line for a CRLF-aware reader.
+    ///
+    /// Walks unicode scalars, not `Character`s: `"\r\n"` is one `Character`, so a
+    /// `Character`-level replacement of `"\n"` never finds the LF of a CRLF pair.
     private static func quoted(_ value: String) -> String {
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\r\n", with: "\\n")
-            .replacingOccurrences(of: "\n", with: "\\n")
+        var escaped = ""
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\\": escaped += "\\\\"
+            case "\"": escaped += "\\\""
+            case "\n": escaped += "\\n"
+            case "\r": escaped += "\\r"
+            default: escaped.unicodeScalars.append(scalar)
+            }
+        }
         return "\"\(escaped)\""
     }
 
