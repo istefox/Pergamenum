@@ -108,11 +108,20 @@ struct ViewBlockError: Error, CustomStringConvertible, Equatable {
 extension ViewBlock {
     private static let keys = ["from", "where", "sort", "group", "render", "columns", "limit"]
 
+    /// The lines of a fence body, in the numbering `ViewBlockError.line` counts: the parser and
+    /// the error card that highlights the line it names both split here, so the two agree.
+    /// `Character.isNewline` rather than `components(separatedBy: .newlines)`: the same
+    /// separators, but a `"\r\n"` pair ends one line instead of two, so a CRLF body numbers its
+    /// lines as its LF twin does (PG-317).
+    static func lines(of source: String) -> [String] {
+        source.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
+    }
+
     /// Parses the body of a fence, without the fence lines themselves.
     static func parse(_ source: String) throws -> ViewBlock {
         var keys: [String: (line: Int, value: String)] = [:]
 
-        for (offset, raw) in source.components(separatedBy: .newlines).enumerated() {
+        for (offset, raw) in lines(of: source).enumerated() {
             let line = offset + 1
             let text = raw.trimmingCharacters(in: .whitespaces)
             guard !text.isEmpty else { continue }

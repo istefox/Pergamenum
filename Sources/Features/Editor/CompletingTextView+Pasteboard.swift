@@ -366,9 +366,11 @@ extension CompletingTextView {
         guard TaskParser.parse(line: line, sourcePath: "", lineIndex: 0) != nil else { return false }
         guard !line.contains("[[\(title)]]") else { return true }
 
-        // Before the newline, so the link joins the task rather than starting a line.
-        let trimmed = line.hasSuffix("\n") ? String(line.dropLast()) : line
-        let replacement = trimmed + " [[\(title)]]" + (line.hasSuffix("\n") ? "\n" : "")
+        // Before the newline, so the link joins the task rather than starting a line. A CRLF
+        // line ends in one `"\r\n"` `Character`, which `hasSuffix("\n")` never matched (PG-319).
+        let terminator = line.last.flatMap { LineBreak.isTerminator($0) ? String($0) : nil } ?? ""
+        let trimmed = terminator.isEmpty ? line : String(line.dropLast())
+        let replacement = trimmed + " [[\(title)]]" + terminator
         insertText(replacement, replacementRange: lineRange)
         return true
     }
