@@ -1,7 +1,7 @@
 # ADR-0072: One index generation keys every index-derived cache; a disk-derived value is cached for one body evaluation, never longer
 
-- Status: **proposed**. The implementation is not on `main` yet; the flip to `accepted` names the
-  PR and its merge commit (`docs/adr/README.md` §2).
+- Status: **accepted**. Merged to `main` via PR #684 (`fe149dce`, 2026-09-29), closing `PG-138`/#238,
+  `PG-141`/#241 and `PG-142`/#242.
 - Date: 2026-09-29. Written before the implementation, against `3cdc97fb` on
   `kepler/fix-fable-chain-debt`. `origin/main` at `e653cbdc` changes none of the files below: it
   adds PG-274's CRLF line walk (`Sources/Core/Markdown`, `Sources/Core/Conventions`,
