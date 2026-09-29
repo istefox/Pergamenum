@@ -24,21 +24,14 @@ import Testing
     ]
 
     @Test func noGuardedSharedSourceFileImportsSparkle() throws {
-        let repoRoot = try resolvedRepoRoot()
         var offendingFiles: [String] = []
 
+        // The tree is read once per test run, shared with the other source guards (R-19).
         for directory in Self.guardedDirectories {
-            let directoryURL = repoRoot.appendingPathComponent(directory)
-            guard let enumerator = FileManager.default.enumerator(
-                at: directoryURL,
-                includingPropertiesForKeys: nil
-            ) else {
-                continue
-            }
-            for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {
-                guard let contents = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
+            for file in try SourceTreeSnapshot.files(under: directory) {
+                guard let contents = file.contents else { continue }
                 if contents.contains("import Sparkle") {
-                    offendingFiles.append(fileURL.path)
+                    offendingFiles.append(file.path)
                 }
             }
         }
@@ -66,28 +59,20 @@ import Testing
     // "import AppKit" (as `InlineFormat.swift`/`CodeSyntax.swift` do, explaining why
     // they must not) is not a violation, so comment lines are skipped.
     @Test func noCoreOrConnectorFileImportsAppKitOrSwiftUI() throws {
-        let repoRoot = try resolvedRepoRoot()
         var offendingFiles: [String] = []
         let exceptions: Set<String> = ["MailLink.swift"]
 
         for directory in ["Sources/Core", "Sources/Connector"] {
-            let directoryURL = repoRoot.appendingPathComponent(directory)
-            guard let enumerator = FileManager.default.enumerator(
-                at: directoryURL,
-                includingPropertiesForKeys: nil
-            ) else {
-                continue
-            }
-            for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {
-                guard !exceptions.contains(fileURL.lastPathComponent) else { continue }
-                guard let contents = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
+            for file in try SourceTreeSnapshot.files(under: directory) {
+                guard !exceptions.contains((file.relativePath as NSString).lastPathComponent) else { continue }
+                guard let contents = file.contents else { continue }
                 let importsAppKitOrSwiftUI = contents
                     .components(separatedBy: .newlines)
                     .map { $0.trimmingCharacters(in: .whitespaces) }
                     .filter { !$0.hasPrefix("//") }
                     .contains { $0 == "import AppKit" || $0 == "import SwiftUI" }
                 if importsAppKitOrSwiftUI {
-                    offendingFiles.append(fileURL.path)
+                    offendingFiles.append(file.path)
                 }
             }
         }

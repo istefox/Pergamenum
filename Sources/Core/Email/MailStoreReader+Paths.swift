@@ -27,7 +27,8 @@ extension MailStoreReader {
     /// `EMLXLocator`, Task 2.
     func emlxPath(forRow row: MailMessageRow) -> URL? {
         guard let mailbox = Self.mailboxDirectory(for: row.mailbox.url, under: mailRoot) else { return nil }
-        var directory = Self.storeDirectory(in: mailbox).appending(path: "Data", directoryHint: .isDirectory)
+        var directory = storeDirectories.directory(in: mailbox, listing: Self.storeDirectory(in:))
+            .appending(path: "Data", directoryHint: .isDirectory)
         for digit in Self.fanOut(forRowID: row.rowID) {
             directory = directory.appending(path: digit, directoryHint: .isDirectory)
         }
@@ -70,14 +71,14 @@ extension MailStoreReader {
     /// The UUID directory inside a `.mbox`, when there is one. Read rather than
     /// derived: PROBE 2 measured it identical across both accounts and all three
     /// mailboxes, but nothing in the index carries it, so guessing it would be
-    /// guessing.
-    private static func storeDirectory(in mailbox: URL) -> URL {
+    /// guessing. `nil` when the mailbox holds none, and the path is then the mailbox's own.
+    private static func storeDirectory(in mailbox: URL) -> URL? {
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: mailbox, includingPropertiesForKeys: nil
-        ) else { return mailbox }
+        ) else { return nil }
 
         guard let store = entries.first(where: { UUID(uuidString: $0.lastPathComponent) != nil }) else {
-            return mailbox
+            return nil
         }
         return mailbox.appending(path: store.lastPathComponent, directoryHint: .isDirectory)
     }
@@ -87,5 +88,25 @@ extension MailStoreReader {
         let quotient = rowID / 1000
         guard quotient > 0 else { return [] }
         return String(quotient).reversed().map(String.init)
+    }
+}
+
+/// The store directory found in each mailbox, remembered for the life of one reader (ADR-0072
+/// §D8, R-12): the listing it replaces ran once per message path, over a directory that does not
+/// change during a sync. Only a found directory is kept. A mailbox where none was found is listed
+/// again next time, so a store directory Mail creates during a sync is still seen (plan gate G2).
+///
+/// A class, so the `let` on the value-typed reader can fill it. Not `Sendable`, and it does not
+/// need to be: the reader owns a live, non-`Sendable` connection and is never shared across threads.
+final class StoreDirectoryCache {
+    private var found: [URL: URL] = [:]
+
+    /// The store directory in `mailbox`, from memory when it was found before, else from
+    /// `listing`; the mailbox itself when there is none.
+    func directory(in mailbox: URL, listing: (URL) -> URL?) -> URL {
+        if let known = found[mailbox] { return known }
+        guard let store = listing(mailbox) else { return mailbox }
+        found[mailbox] = store
+        return store
     }
 }

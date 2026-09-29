@@ -13,19 +13,14 @@ import Testing
 // (ADR-0031 §D2's shape for the same kind of claim about Sparkle).
 @Suite struct PlaudIsolationTests {
     @Test func urlSessionAppearsInExactlyOneFileUnderSources() throws {
-        let sourcesRoot = try Self.resolvedSourcesRoot()
         var filesMentioningURLSession: [String] = []
 
-        guard let enumerator = FileManager.default.enumerator(
-            at: sourcesRoot, includingPropertiesForKeys: nil
-        ) else {
-            Issue.record("Could not enumerate \(sourcesRoot.path)")
-            return
-        }
-        for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {
-            guard let contents = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
+        // The tree is read once per test run, shared with the other source guards (R-19). A tree
+        // that could not be walked throws here, as the enumerator's `nil` recorded an issue.
+        for file in try SourceTreeSnapshot.files(under: "Sources") {
+            guard let contents = file.contents else { continue }
             if contents.contains("URLSession") {
-                filesMentioningURLSession.append(fileURL.path)
+                filesMentioningURLSession.append(file.path)
             }
         }
 
@@ -43,11 +38,5 @@ import Testing
         #expect(base.scheme == "http")
         #expect(base.host == "127.0.0.1")
         #expect(base.port == 3777)
-    }
-
-    /// The repository root, then down into `Sources`. `resolvedRepoRoot()` has already checked
-    /// that `Sources` exists, so this cannot hand back a path that is not there.
-    private static func resolvedSourcesRoot() throws -> URL {
-        try resolvedRepoRoot().appendingPathComponent("Sources")
     }
 }

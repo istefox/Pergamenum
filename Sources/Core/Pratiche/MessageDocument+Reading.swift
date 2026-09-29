@@ -7,40 +7,45 @@ extension MessageDocument {
     /// collision rule (does an existing file carry this `Message-ID`?) and by the
     /// sync's "already on disk" dedup (SPEC "Membership rule", item 5) when the
     /// ledger does not have the answer.
+    ///
+    /// The frontmatter is scanned once into a first-occurrence field map and every key is a lookup
+    /// in it, and one date formatter serves the whole file (ADR-0072 §D9, R-13).
     static func parse(_ text: String) -> MessageDocument? {
         let note = NoteDocument.parse(text)
         let lines = note.frontmatter.foreignKeys.flatMap(\.lines)
-        guard let schemaVersion = scalar("pergamenum-mail", lines).flatMap(Int.init),
-              let messageID = scalar("pergamenum-mail-message-id", lines).map(unquoted)
+        let fields = scalars(in: lines)
+        guard let schemaVersion = fields["pergamenum-mail"].flatMap(Int.init),
+              let messageID = fields["pergamenum-mail-message-id"].map(unquoted)
         else { return nil }
 
+        let formatter = ISO8601DateFormatter()
         let body = splitBody(note.body)
         return MessageDocument(
             frontmatter: MailFrontmatter(
                 schemaVersion: schemaVersion,
                 messageID: messageID,
-                conversationID: scalar("pergamenum-mail-conversation-id", lines).flatMap(Int.init),
-                direction: scalar("pergamenum-mail-direction", lines)
+                conversationID: fields["pergamenum-mail-conversation-id"].flatMap(Int.init),
+                direction: fields["pergamenum-mail-direction"]
                     .flatMap { Direction(rawValue: unquoted($0)) } ?? .received,
                 // A message whose date this app cannot read still has to be findable by
                 // its `Message-ID`: it sorts to the beginning rather than disappearing.
-                date: scalar("pergamenum-mail-date", lines).flatMap(isoDate) ?? .distantPast,
-                dateOffset: scalar("pergamenum-mail-date", lines).flatMap(isoOffset),
-                received: scalar("pergamenum-mail-received", lines).flatMap(isoDate),
-                from: scalar("pergamenum-mail-from", lines).map(unquoted) ?? "",
-                to: list("pergamenum-mail-to", lines),
-                cc: list("pergamenum-mail-cc", lines),
+                date: fields["pergamenum-mail-date"].flatMap { isoDate($0, formatter) } ?? .distantPast,
+                dateOffset: fields["pergamenum-mail-date"].flatMap(isoOffset),
+                received: fields["pergamenum-mail-received"].flatMap { isoDate($0, formatter) },
+                from: fields["pergamenum-mail-from"].map(unquoted) ?? "",
+                to: list(fields["pergamenum-mail-to"]),
+                cc: list(fields["pergamenum-mail-cc"]),
                 // A message file written before this key existed reads back with an
                 // empty subject rather than failing to parse: the file is still a
                 // message, and its `Message-ID` is what every caller matches on.
-                subject: scalar("pergamenum-mail-subject", lines).map(unquoted) ?? "",
-                attachments: list(attachmentsKey, lines),
+                subject: fields["pergamenum-mail-subject"].map(unquoted) ?? "",
+                attachments: list(fields[attachmentsKey]),
                 storeReferences: storeReferences(in: lines),
-                pendingInlineImages: list(inlinePendingKey, lines),
-                linkedNote: scalar(noteKey, lines).map(unquoted),
-                body: scalar("pergamenum-mail-body", lines)
+                pendingInlineImages: list(fields[inlinePendingKey]),
+                linkedNote: fields[noteKey].map(unquoted),
+                body: fields["pergamenum-mail-body"]
                     .flatMap { BodyState(rawValue: unquoted($0)) } ?? .complete,
-                original: scalar("pergamenum-mail-original", lines).map(unquoted)
+                original: fields["pergamenum-mail-original"].map(unquoted)
             ),
             newText: body.newText,
             quotedHistory: body.quotedHistory,
@@ -48,8 +53,9 @@ extension MessageDocument {
         )
     }
 
-    private static func isoDate(_ text: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
+    /// `formatter` is the caller's, shared across the file's dates: its options are set at the
+    /// start of every call, so the fractional fallback of one date never leaks into the next.
+    private static func isoDate(_ text: String, _ formatter: ISO8601DateFormatter) -> Date? {
         formatter.formatOptions = [.withInternetDateTime]
         if let date = formatter.date(from: text) { return date }
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -69,18 +75,21 @@ extension MessageDocument {
         return seconds == 0 ? nil : seconds
     }
 
-    private static func scalar(_ key: String, _ lines: [String]) -> String? {
+    /// Every non-indented line holding a colon, as key → value, both trimmed of spaces and tabs.
+    /// The first occurrence of a key wins, as the per-key scan this replaced answered it.
+    private static func scalars(in lines: [String]) -> [String: String] {
+        var fields: [String: String] = [:]
         for line in lines where !line.hasPrefix(" ") && !line.hasPrefix("\t") {
             guard let colon = line.firstIndex(of: ":") else { continue }
-            guard String(line[line.startIndex..<colon]).trimmingCharacters(in: .whitespaces) == key
-            else { continue }
-            return String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+            let key = String(line[line.startIndex..<colon]).trimmingCharacters(in: .whitespaces)
+            guard fields[key] == nil else { continue }
+            fields[key] = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
         }
-        return nil
+        return fields
     }
 
-    private static func list(_ key: String, _ lines: [String]) -> [String] {
-        guard let raw = scalar(key, lines), raw.hasPrefix("["), raw.hasSuffix("]") else { return [] }
+    private static func list(_ raw: String?) -> [String] {
+        guard let raw, raw.hasPrefix("["), raw.hasSuffix("]") else { return [] }
         let inner = raw.dropFirst().dropLast().trimmingCharacters(in: .whitespaces)
         guard !inner.isEmpty else { return [] }
         return splitOutsideQuotes(String(inner), on: ",")

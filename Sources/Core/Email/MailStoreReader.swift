@@ -32,7 +32,8 @@ struct MailStoreReader {
         case notResolvableFromIndex
     }
 
-    private let connection: MailStoreConnection
+    // Internal, not private: read by `MailStoreReader+Batches.swift` (ADR-0045 §D3).
+    let connection: MailStoreConnection
 
     /// The `~/Library/Mail/V10`-shaped directory the `.emlx` fan-out is resolved
     /// against. Never the published copy: the copy holds one file, `Envelope Index`,
@@ -41,17 +42,27 @@ struct MailStoreReader {
     /// Not `private`: `MailStoreReader+Paths.swift`'s `emlxPath(forRow:)` is this struct's
     /// extension in a separate file, and reads it directly (ADR-0045 §D3).
     let mailRoot: URL
+    /// How many conversation ids one `IN` list carries (ADR-0072 §D8). A parameter so a test
+    /// can cross a batch boundary with five conversations rather than five hundred.
+    let batchSize: Int
+    /// The store directories found so far, one listing per mailbox per reader (ADR-0072 §D8,
+    /// R-12; `MailStoreReader+Paths.swift`).
+    let storeDirectories: StoreDirectoryCache
 
-    init(connection: MailStoreConnection) {
+    init(connection: MailStoreConnection, batchSize: Int = 500) {
         self.connection = connection
         mailRoot = MailStoreLocation.resolve()
+        self.batchSize = batchSize
+        storeDirectories = StoreDirectoryCache()
     }
 
     /// Opens `storeURL` (a published generation's `Envelope Index`,
     /// `MailStoreCopy.PublishResult`'s payload) read-only and wraps it.
-    init(storeURL: URL) throws {
+    init(storeURL: URL, batchSize: Int = 500) throws {
         connection = try MailStoreConnection.open(at: storeURL, readOnly: true)
         mailRoot = Self.mailRoot(forStoreAt: storeURL)
+        self.batchSize = batchSize
+        storeDirectories = StoreDirectoryCache()
     }
 
     // MARK: - R-35: own-address pre-fill (Task 9)
@@ -98,28 +109,20 @@ struct MailStoreReader {
 
     /// Every non-deleted message whose `conversation_id` matches (R-03) - Mail's own
     /// threading (SPEC "Verified facts"), which membership evaluation follows
-    /// (`MembershipRule`, Task 3) rather than reinventing.
+    /// (`MembershipRule`, Task 3) rather than reinventing. A batch of one
+    /// (`MailStoreReader+Batches.swift`, ADR-0072 §D8).
     func messages(inConversation conversationID: Int) -> [MailMessageRow] {
-        let sql = """
-        \(Self.rowSelect)
-        WHERE m.conversation_id = ?1 AND m.deleted = 0
-        ORDER BY m.date_sent
-        """
-        var messages = (try? rows(sql) { connection.bindInt($0, 1, conversationID) }) ?? []
-        let recipientsByMessage = recipients(forConversation: conversationID)
-        for index in messages.indices {
-            messages[index].recipients = recipientsByMessage[messages[index].rowID] ?? []
-        }
-        return messages
+        messages(inConversations: [conversationID])[conversationID] ?? []
     }
 
     /// Conversations with at least one message from/to `address`, dated within
     /// `window` (R-03) - the tray's own candidate query (ADR §D2 / SPEC "Membership
     /// rule").
     ///
-    /// Two statements, never one: the candidate ids are collected and the statement
-    /// finalized before each conversation is read, rather than nesting a second query
-    /// inside a stepping loop that is still open.
+    /// Never one statement: the candidate ids are collected and the statement finalized
+    /// before the conversations are read, rather than nesting a second query inside a
+    /// stepping loop that is still open. The conversations are read in batches, two
+    /// statements per `batchSize` ids (ADR-0072 §D8).
     func conversations(counterpart address: String, within window: ClosedRange<Date>) -> [MailConversation] {
         let sql = """
         SELECT m.conversation_id, MAX(m.date_sent) AS last_sent
@@ -150,7 +153,8 @@ struct MailStoreReader {
             return []
         }
 
-        return identifiers.map { MailConversation(conversationID: $0, messages: messages(inConversation: $0)) }
+        let byConversation = messages(inConversations: identifiers)
+        return identifiers.map { MailConversation(conversationID: $0, messages: byConversation[$0] ?? []) }
     }
 
     /// A row by RFC `Message-ID` (R-03), through `message_global_data.message_id_header`
@@ -199,43 +203,16 @@ struct MailStoreReader {
         return found
     }
 
-    /// §D24.2: the recipients join for a whole conversation, one extra statement
-    /// per conversation (never per message) - folded onto `messages(inConversation:)`'s
-    /// already-built rows by the caller. Fails closed (an unpreparable statement, e.g.
-    /// no `recipients` table, answers "no recipients" for everyone) rather than
-    /// throwing (§D24.4).
-    private func recipients(forConversation conversationID: Int) -> [Int: [String]] {
-        let sql = """
-        SELECT r.message, a.address
-        FROM recipients AS r
-        JOIN addresses AS a ON a.ROWID = r.address
-        JOIN messages AS m ON m.ROWID = r.message
-        WHERE m.conversation_id = ?1
-        """
-        let rows = (try? collect(sql) { statement in
-            connection.bindInt(statement, 1, conversationID)
-        } read: { statement -> (Int, String)? in
-            guard let message = connection.columnInt(statement, 0),
-                  let address = connection.columnText(statement, 1)
-            else { return nil }
-            return (message, address.lowercased())
-        }) ?? []
-
-        var byMessage: [Int: [String]] = [:]
-        for (message, address) in rows {
-            byMessage[message, default: []].append(address)
-        }
-        return byMessage
-    }
-
     /// §D24.2's other `WHERE` variant, for a single message (`row(forMessageID:)`,
-    /// `row(rowID:)`) - same fail-closed behavior as the conversation form above.
+    /// `row(rowID:)`) - same fail-closed behavior and row order as the conversation form
+    /// in `MailStoreReader+Batches.swift`.
     private func recipients(forMessage rowID: Int) -> [String] {
         let sql = """
         SELECT r.message, a.address
         FROM recipients AS r
         JOIN addresses AS a ON a.ROWID = r.address
         WHERE r.message = ?1
+        ORDER BY r.ROWID
         """
         return (try? collect(sql) { statement in
             connection.bindInt(statement, 1, rowID)
@@ -261,7 +238,9 @@ struct MailStoreReader {
 
     // MARK: - The shared row shape
 
-    private static let rowSelect = """
+    // Internal, not private: `rowSelect`, `rows` and `collect` are read by
+    // `MailStoreReader+Batches.swift` (ADR-0045 §D3).
+    static let rowSelect = """
     SELECT m.ROWID, m.message_id, m.global_message_id, s.subject, a.address,
            m.date_sent, m.date_received, m.mailbox, mb.url, m.conversation_id, m.deleted
     FROM messages AS m
@@ -270,7 +249,7 @@ struct MailStoreReader {
     LEFT JOIN mailboxes AS mb ON mb.ROWID = m.mailbox
     """
 
-    private func rows(_ sql: String, bind: (OpaquePointer) -> Void) throws -> [MailMessageRow] {
+    func rows(_ sql: String, bind: (OpaquePointer) -> Void) throws -> [MailMessageRow] {
         try collect(sql, bind: bind) { statement in
             MailMessageRow(
                 rowID: connection.columnInt(statement, 0) ?? 0,
@@ -295,7 +274,7 @@ struct MailStoreReader {
 
     /// Prepare, bind, step to `SQLITE_DONE`, finalize - the one place a statement's
     /// lifetime is managed, so no caller can leak one.
-    private func collect<Element>(
+    func collect<Element>(
         _ sql: String,
         bind: (OpaquePointer) -> Void,
         read: (OpaquePointer) -> Element?
