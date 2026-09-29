@@ -153,32 +153,37 @@ extension MessageDocument {
     }
 
     /// The exact inverse of `quoted()` (ADR-0065 §D8.1, R-14): one left-to-right scan that
-    /// decodes `\\`, `\"` and `\n` as pairs and leaves any other backslash as it is. Chained
-    /// replacements are not an inverse in either order: `C:\nuovo` is written `C:\\nuovo`, and
-    /// once `\\` is back to `\`, the `\n` that follows reads as a line break.
+    /// decodes `\\`, `\"`, `\n` and `\r` (PG-314) as pairs and leaves any other backslash as
+    /// it is. Chained replacements are not an inverse in either order: `C:\nuovo` is written
+    /// `C:\\nuovo`, and once `\\` is back to `\`, the `\n` that follows reads as a line break.
+    ///
+    /// Walks unicode scalars, as `quoted()` does, so a decoded `\r` followed by a decoded `\n`
+    /// comes back as the CRLF pair it was written from.
     private static func unquoted(_ value: String) -> String {
-        guard value.count >= 2, value.hasPrefix("\""), value.hasSuffix("\"") else { return value }
-        var result = ""
+        let scalars = value.unicodeScalars
+        guard scalars.count >= 2, scalars.first == "\"", scalars.last == "\"" else { return value }
+        var result = String.UnicodeScalarView()
         var pendingBackslash = false
-        for character in value.dropFirst().dropLast() {
+        for scalar in scalars.dropFirst().dropLast() {
             if pendingBackslash {
                 pendingBackslash = false
-                switch character {
+                switch scalar {
                 case "\\": result.append("\\")
                 case "\"": result.append("\"")
                 case "n": result.append("\n")
+                case "r": result.append("\r")
                 default:
                     result.append("\\")
-                    result.append(character)
+                    result.append(scalar)
                 }
-            } else if character == "\\" {
+            } else if scalar == "\\" {
                 pendingBackslash = true
             } else {
-                result.append(character)
+                result.append(scalar)
             }
         }
         if pendingBackslash { result.append("\\") }
-        return result
+        return String(result)
     }
 
     /// The three parts `splitBody` reads a body back into - a named type rather than a

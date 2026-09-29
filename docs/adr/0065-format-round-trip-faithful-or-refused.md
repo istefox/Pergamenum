@@ -618,6 +618,12 @@ Each item is out of the SPEC's scope and is filed as a follow-up:
    `"\n"` `Character`, so they treat a CRLF note as one line. Headings, the outline and the export
    come out wrong. The file is never damaged by it.
 2. `DossierYAML` writes keywords without escaping `"` or a line break.
+
+   > Cross-reference, 2026-09-29 (PG-275, #614): closed by PR #671 (merge `a242b3ea`). Quoted
+   > values now escape `\`, `"`, `\n` and `\r` and read back through the exact inverse; no
+   > decision above changes. See `Sources/Core/Pratiche/DossierYAML.swift` and
+   > `docs/plans/burn-down-2026-09-29-pg-275.md`.
+
 3. `MessageFrontmatterPatch.swift:24-26` (app-written files) and `ViewCatalogue.swift:78,83` keep the
    whitespace-only delimiter test.
 
