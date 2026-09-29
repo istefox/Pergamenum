@@ -13,6 +13,10 @@ extension TaskParser {
     ///
     /// Returns nil when the line is not the task it was told to change, which is what
     /// stops a stale index from rewriting the wrong line after the note moved on.
+    ///
+    /// The split on `"\n"` runs below the grapheme level, so a CRLF line arrives with its `\r`
+    /// attached while `original` (a `rawLine`) has none: the line is compared without it and
+    /// the new line keeps it, so the note's own ending survives the rewrite (PG-316).
     static func rewrite(
         _ text: String,
         at lineIndex: Int,
@@ -20,9 +24,16 @@ extension TaskParser {
         with newLine: String
     ) -> String? {
         var lines = text.components(separatedBy: "\n")
-        guard lines.indices.contains(lineIndex), lines[lineIndex] == original else { return nil }
-        lines[lineIndex] = newLine
+        guard lines.indices.contains(lineIndex) else { return nil }
+        let (content, ending) = splitCarriageReturn(lines[lineIndex])
+        guard content == original else { return nil }
+        lines[lineIndex] = newLine + ending
         return lines.joined(separator: "\n")
+    }
+
+    /// A line split on `"\n"`, parted from the `\r` a CRLF pair leaves at its end, if any.
+    private static func splitCarriageReturn(_ line: String) -> (content: String, ending: String) {
+        line.hasSuffix("\r") ? (String(line.dropLast()), "\r") : (line, "")
     }
 
     /// The line for a task with a new state, preserving indentation, bullet and any
@@ -228,9 +239,14 @@ extension TaskParser {
     /// parent in turn without a rewrite.
     static func insertingSubtask(in text: String, below parent: TaskItem, draft: SubtaskDraft) -> String? {
         var lines = text.components(separatedBy: "\n")
-        guard lines.indices.contains(parent.lineIndex),
-              lines[parent.lineIndex] == parent.rawLine
-        else { return nil }
+        guard lines.indices.contains(parent.lineIndex) else { return nil }
+        // `rewrite`'s CRLF rule (PG-316): the parent is matched without its `\r`. The line
+        // break the insertion adds after the parent is the parent's own, or the note's when
+        // the parent is the last line and has none; the child then ends as the parent did.
+        let (parentContent, parentEnding) = splitCarriageReturn(lines[parent.lineIndex])
+        guard parentContent == parent.rawLine else { return nil }
+        let isLastLine = parent.lineIndex == lines.count - 1
+        let separatorEnding = isLastLine ? LineBreak.detected(in: text).lineSuffix : parentEnding
 
         var nextID = nextLocalID(in: text)
         var parentLine = parent.rawLine
@@ -257,8 +273,8 @@ extension TaskParser {
             recurrence: draft.recurrence
         ) + " ^parent(\(parentID)) ^id(\(childID))"
 
-        lines[parent.lineIndex] = parentLine
-        lines.insert(childLine, at: parent.lineIndex + 1)
+        lines[parent.lineIndex] = parentLine + separatorEnding
+        lines.insert(childLine + parentEnding, at: parent.lineIndex + 1)
         return lines.joined(separator: "\n")
     }
 }

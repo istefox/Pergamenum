@@ -210,8 +210,11 @@ struct IndexCache {
     /// none of `foreignKeys` and a reused record would otherwise lose `pergamenum-category`
     /// from the second scan onward. This chain gets no second bump (ADR-0047 "Risks"). 5
     /// (ADR-0065 §D12): meaning only - version 4 rows hold an empty frontmatter for a CRLF note
-    /// and count `.canvas` link targets.
-    static let schemaVersion: Int32 = 5
+    /// and count `.canvas` link targets. 6 (PG-316): meaning only - version 5 rows hold a CRLF
+    /// note's tasks and links as read by a `"\n"`-Character walk, one line for the whole note
+    /// (`VaultScanner` reuses a row whose size and mtime match, so without a bump they would
+    /// stay stale until the file changed).
+    static let schemaVersion: Int32 = 6
 
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
