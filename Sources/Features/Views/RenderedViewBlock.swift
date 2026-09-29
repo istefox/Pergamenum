@@ -186,7 +186,7 @@ struct RenderedViewBlock: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: 1) {
-                ForEach(Array(source.components(separatedBy: .newlines).enumerated()), id: \.offset) { offset, line in
+                ForEach(Array(ViewBlock.lines(of: source).enumerated()), id: \.offset) { offset, line in
                     Text(line)
                         .themedText(.mono, color: offset + 1 == error.line ? .taskOverdue : .textSecondary)
                 }

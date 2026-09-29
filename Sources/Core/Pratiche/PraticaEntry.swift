@@ -84,15 +84,22 @@ enum PraticaEntry {
 
         // One blank line between whatever the note already says and the new heading,
         // and never two: `pratica.md` is a file a person also reads in Obsidian.
+        // In the note's own line break, tested with `LineBreak.isTerminator`: a `"\r\n"` pair
+        // is one `Character`, which `hasSuffix("\n")` never matched, so a CRLF note gained
+        // two blank lines and bare LFs (PG-318).
+        let lineBreak = LineBreak.detected(in: source).characters
         var text = source
         if !text.isEmpty {
-            if !text.hasSuffix("\n") { text += "\n" }
-            if !text.hasSuffix("\n\n") { text += "\n" }
+            if text.last.map(LineBreak.isTerminator) != true { text += lineBreak }
+            if text.dropLast().last.map(LineBreak.isTerminator) != true { text += lineBreak }
         }
         let headingEnd = (text as NSString).length + (heading as NSString).length
-        text += heading + "\n\n"
-        // Just past the heading's own newline, which is the start of the empty body
+        text += heading + lineBreak + lineBreak
+        // Just past the heading's own line break, which is the start of the empty body
         // line - a zero-length range, because nothing is selected, only placed.
-        return Insertion(text: text, cursorRange: NSRange(location: headingEnd + 1, length: 0))
+        return Insertion(
+            text: text,
+            cursorRange: NSRange(location: headingEnd + (lineBreak as NSString).length, length: 0)
+        )
     }
 }
