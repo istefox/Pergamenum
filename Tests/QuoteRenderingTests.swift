@@ -105,4 +105,46 @@ private func quoteParagraph(
         let displayed = quoteParagraph("corpo\ndopo\n", markers: [stale])
         #expect(displayed == nil)
     }
+
+    /// G2 H4 (ADR-0074): the quote branch returns early, so a link inside a quoted line has to
+    /// get its tooltip from that branch itself - the non-quote twin is
+    /// `MarkupHiding.aConcealedWikilinkCarriesATooltipWithTheResolvedTitle`.
+    @Test func aConcealedWikilinkInsideAQuoteStillCarriesItsTooltip() {
+        let note = "> vedi [[Curva]] qui\n"
+        let markers = [
+            HiddenMarker(range: NSRange(location: 0, length: 2), kind: .blockquote),
+            HiddenMarker(range: NSRange(location: 7, length: 2), kind: .link),
+            HiddenMarker(range: NSRange(location: 14, length: 2), kind: .link)
+        ]
+
+        let displayed = quoteParagraph(note, markers: markers)
+
+        #expect(displayed?.attributedString.string.first == "▏")
+        var found = false
+        displayed?.attributedString.enumerateAttribute(
+            .toolTip, in: NSRange(location: 0, length: displayed?.attributedString.length ?? 0)
+        ) { value, _, _ in
+            if let title = value as? String, title == "Curva" { found = true }
+        }
+        #expect(found, "nessun .toolTip \"Curva\" trovato nel paragrafo di citazione")
+    }
+
+    @Test func aConcealedCommonMarkLinkInsideAQuoteCarriesTheURLAsItsTooltip() {
+        let note = "> vedi [testo](https://x.it) qui\n"
+        let markers = [
+            HiddenMarker(range: NSRange(location: 0, length: 2), kind: .blockquote),
+            HiddenMarker(range: NSRange(location: 7, length: 1), kind: .link),
+            HiddenMarker(range: NSRange(location: 13, length: 15), kind: .link)
+        ]
+
+        let displayed = quoteParagraph(note, markers: markers)
+
+        var found = false
+        displayed?.attributedString.enumerateAttribute(
+            .toolTip, in: NSRange(location: 0, length: displayed?.attributedString.length ?? 0)
+        ) { value, _, _ in
+            if let url = value as? String, url == "https://x.it" { found = true }
+        }
+        #expect(found, "nessun .toolTip \"https://x.it\" trovato nel paragrafo di citazione")
+    }
 }

@@ -408,6 +408,33 @@ nobody may edit.
   content-storage and layout delegates are still `decorations`, and every substitution still keeps
   the paragraph's length.
 
+## Implementation notes
+
+- **2026-09-30, G2 automated after the merge.** PR #717 merged without the hand check G2 (plan
+  Task 8). Its rows are pinned by tests instead, each confirmed red against a mutation of the line
+  it pins. A "one undo restores" assertion catches a missing undo registration, not a split
+  within one event, which event grouping merges in production too: H2 `NoteListEditingTests`, H3 `CheckboxToggleTests`, H4 `QuoteRenderingTests`, H5 the new
+  `TableGridCommitTests` (the grid's own delegate path into `commitTable`), H7
+  `EmbedContextMenuTests` (`menu(for:)` in and outside an embed), H8 `TranscludedLineTests`, H10
+  `NoteFindTests` (replace-all is one undo step), H11 `NoteOutlineTests`, H14 `InlineFormatTests`,
+  H15 `ReadableWidthTests` (the frame observer), H17 `CardFormattingTests`. H1, H6, H9, H12, H13,
+  H18 and the fold half of H17 were already pinned.
+- **Two GUI tests, on purpose** (CLAUDE.md's merge-gate rule): `UITests/EditorHandCheckUITests`
+  holds H10's focus check, typing into the find field never reaching the note, which only a real
+  key window reproduces (the 2026-08-18 defect was a SwiftUI update cycle while typing); and H16,
+  list continuation in the Diario and Oggi panes, whose wiring no other test reaches; concealment
+  (H1) in those panes is not automated, since the editor code is the note editor's own. The Oggi
+  editor gains `today-editor` and its open button `today-open-daily-note`, identifiers only
+  (ADR-0053's seam rule). `scripts/uitests.sh --affected` selects the class for Diario and Oggi
+  changes; editor changes already select every class.
+- **Not reachable by either kind:** the outline's click and drag, the card's fold-badge click and
+  a click on a format-bar button are SwiftUI gestures the hosted harness cannot deliver; the logic
+  under each is pinned above. `FormatBarPanel` builds its panel inside `show()`, so "never key"
+  stays pinned on the shared factory (`NeverKeyPanelTests`).
+- **Two plan rows were wrong and are corrected in the plan:** the note editor has no Tab list
+  indent (H2), Diario and Oggi have no find bar (H16), and a table commit does not move the caret
+  to the end of the table (H5).
+
 ## References
 
 - `TODO.md` `PG-144`, GitHub #244; the audit findings it lists.

@@ -230,10 +230,12 @@ struct TodayView: View {
                 )
             )
             .frame(minHeight: 320)
+            .accessibilityIdentifier("today-editor")
         } else {
             Button("Apri la nota di \(day.compactForm)") { controller.openDailyNote() }
                 .buttonStyle(.plain)
                 .themedText(.body, color: .accentPrimary)
+                .accessibilityIdentifier("today-open-daily-note")
         }
     }
 

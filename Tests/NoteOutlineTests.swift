@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import Pergamenum
@@ -175,4 +176,37 @@ private func titles(_ text: String) -> [String] {
 @Test func aCRLFNoteWithFrontmatterAndAFenceKeepsTheOutlineRight() {
     let crlf = "---\r\ndate: 2026-08-11\r\n---\r\n# Vero\r\n```sh\r\n# commento\r\n```\r\n## Dopo\r\n"
     #expect(titles(crlf) == ["Vero", "Dopo"])
+}
+
+// MARK: - The pane's move reaches the note (ADR-0074 G2 H11)
+
+/// G2 H11, second half: `OutlinePane`'s drop hands its replacements to
+/// `Navigation.moveOutlineSection`, `EditorColumnView` forwards `navigation.outlineMove` as the
+/// column's pending replacements and the coordinator's `apply(_:to:)` writes them. The
+/// SwiftUI `.onChange` hop between the last two cannot run in-process; everything either side
+/// of it can, and `OutlineMoveTests` only applies the replacements to an `NSMutableString`
+/// rather than to a real text view. The first half of H11 (the selection reporting a new
+/// entry) is already pinned by `OutlineEntryCallbackFiresOnChangeOnly` in
+/// `EditorControllerReadTimingRemainingTests`. The undo half catches a missing undo registration,
+/// not a split within one event (event grouping merges those in production too).
+@MainActor
+@Test func anOutlineDropRewritesTheNoteInTheEditorAndOneUndoRestoresIt() throws {
+    let note = "# A\ntesto di A\n# B\ntesto di B"
+    let fixture = EmbedEditorFixtures.editor(text: note, hidesMarkup: false, root: nil, thumbnails: nil)
+    defer { fixture.window.orderOut(nil) }
+    let undo = try #require(fixture.textView.undoManager)
+    let navigation = Navigation()
+    let dropped = try #require(OutlineMove.replacements(in: note, moving: 0, toPrecede: nil))
+
+    navigation.moveOutlineSection(dropped)
+    let request = try #require(navigation.outlineMove)
+    fixture.coordinator.apply(request.replacements.map { ($0.range, $0.text) }, to: fixture.textView)
+
+    #expect(navigation.pane == .notes)
+    #expect(fixture.textView.string == "# B\ntesto di B\n# A\ntesto di A")
+
+    undo.undo()
+
+    #expect(fixture.textView.string == note)
+    #expect(!undo.canUndo, "one undo must have consumed the whole section move")
 }

@@ -201,6 +201,29 @@ private func fullRange(_ text: String) -> NSRange {
     #expect((view.string as NSString).substring(with: view.selectedRange()) == "parola")
 }
 
+/// G2 H17 (ADR-0074): the pill's press is `CardTextSelection.toggle(_:)` (the type behind
+/// `BoardFormatBar`'s `onToggleInline`), which acts on the live text view it last read a
+/// selection from. `toggleInlineFormat` itself is pinned above; this is the hop the bar takes to
+/// it, and the `isApplied` the lit button reads after each press.
+@MainActor
+@Test func theBoardFormatBarsSelectionModelBoldsAndUnboldsTheLiveSelection() {
+    let text = "prima parola dopo"
+    let view = makeView(text, selecting: range(of: "parola", in: text))
+    let selection = CardTextSelection()
+    selection.update(nodeID: "n", from: view)
+    #expect(!selection.isApplied(.bold))
+
+    selection.toggle(.bold)
+
+    #expect(view.string == "prima **parola** dopo")
+    #expect(selection.isApplied(.bold))
+
+    selection.toggle(.bold)
+
+    #expect(view.string == text)
+    #expect(!selection.isApplied(.bold))
+}
+
 @MainActor
 @Test func toggleLineFormatTwiceRoundTripsTextAndKeepsSelectionOnTheWords() {
     let text = "primo secondo"

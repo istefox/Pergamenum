@@ -677,10 +677,10 @@ re-pointed.
   | Id | Area | What to verify |
   |---|---|---|
   | H1 | Concealment | Heading `#` and emphasis markers hide; the caret reveals the paragraph; with inline-span reveal on, only the span |
-  | H2 | Lists | Glyphs draw. Return continues an item; Return on an empty item ends the list; Tab and Shift+Tab indent; an ordered list renumbers after a deletion |
+  | H2 | Lists | Glyphs draw. Return continues an item; Return on an empty item ends the list; an ordered list renumbers after a deletion |
   | H3 | Checkboxes | A click toggles `[ ]`/`[x]`; Cmd+Z undoes it in one step |
   | H4 | Quotes | Quote bars and tooltips |
-  | H5 | Tables | The grid draws. A cell edit commits on Tab and Return; the caret lands right after a commit; add or remove a row; Cmd+Z undoes one step |
+  | H5 | Tables | The grid draws. A cell edit commits on Tab and Return and the keyboard returns to the note; add or remove a row; Cmd+Z undoes one step |
   | H6 | View fences | The fence renders; the caret inside reveals the source; leaving renders it again; Inserisci ▸ Vista opens the query builder; «Modifica query» commits |
   | H7 | Embeds | The picture draws. Dragging the resize handle writes `\|W` on release as one undo step; Backspace removes the whole embed; right-click shows the embed menu |
   | H8 | Transclusion | A `![[Nota#Sezione]]` line renders; a click opens the note |
@@ -691,9 +691,18 @@ re-pointed.
   | H13 | Completion panel | `[[` opens it; typing filters; the panel never takes the keyboard; Esc closes it |
   | H14 | Format bar | A selection shows the bar; bold toggles; the bar never takes the keyboard |
   | H15 | Readable width | Resizing the window keeps the column centred |
-  | H16 | Diario and Oggi | H1, H2 and H10 in both panes |
+  | H16 | Diario and Oggi | H1 and H2 in both panes (automated: list continuation on Return only; concealment there shares the note editor's code) |
   | H17 | Workspace text card | Concealment, reveal, lists, the format bar, folding in a card |
   | H18 | Spelling | Spell check does not underline markdown syntax |
+
+  **Corrected and automated 2026-09-30, after the merge (PR #717).** Two rows asked for behaviour
+  the editor does not have: the note editor has no Tab/Shift+Tab list indent (`insertTab` serves
+  completion, table cells and the card only) and the find bar is not in Diario or Oggi (only
+  `EditorColumn+Text.swift` passes `find:`); both rows are corrected above. H5 also claimed the
+  caret lands right after the table on a commit: no code places it there (measured: it stays where
+  it was), so the row now asks that the keyboard returns to the note. The check was not
+  performed by hand; the rows are pinned by tests instead, recorded in ADR-0074's implementation
+  notes.
 
 - **At merge, advisory:** `scripts/uitests.sh --status`, then `--affected`. It selects every class
   for an editor change. That run does not block the merge (CLAUDE.md's merge-gate rule), and a
