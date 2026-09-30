@@ -11,8 +11,9 @@ import SwiftUI
 // ascending).
 //
 // One Quick Look host for the whole column and not one per chip: the panel is a
-// single responder, and `QuickLookPresenter`'s target re-asserts first responder for
-// whatever it is given (`Sources/Features/QuickLook/QuickLookPresenter.swift`).
+// single responder (`Sources/Features/QuickLook/QuickLookPresenter.swift`). Here the
+// host takes first responder only to present (`claimsFocus: false`, ADR-0070 §D4):
+// its standing claim held the keyboard from the timeline's `List` for good.
 struct PraticaTimelineView: View {
     @Environment(\.theme) private var theme
     @Environment(PraticheController.self) private var pratiche
@@ -33,35 +34,41 @@ struct PraticaTimelineView: View {
 
     @State private var previewURLs: [URL] = []
     @State private var isPreviewing = false
-    /// Which row has key focus, and whether the list holds it at all: Backspace maps to
-    /// «Escludi» **only** while the timeline is focused (the plan's own rule), or the
-    /// key would delete a message while somebody types in the filter field.
+    /// Written, never read as a guard (ADR-0070): a click on a macOS `List` row selects it
+    /// but makes nobody first responder, so a selection sets this to hand the `List`'s
+    /// table the keyboard. Backspace needs no guard of its own: `.onDeleteCommand` only
+    /// runs while focus is inside the `List`, never in the filter field or the inspector.
     @FocusState private var isListFocused: Bool
 
     private var entries: [PraticaTimelineEntry] { pratiche.filteredTimeline }
 
     var body: some View {
+        // Read once per body (ADR-0072 §D7, R-16): `filteredTimeline` filters the whole
+        // timeline on every read.
+        let entries = self.entries
         VStack(spacing: 0) {
             if entries.isEmpty {
                 empty
             } else {
-                list
+                list(entries)
             }
             Divider()
             countsBar
         }
         .background(theme.color(.backgroundPrimary))
-        .quickLook(urls: previewURLs, isPresented: $isPreviewing)
+        .quickLook(urls: previewURLs, isPresented: $isPreviewing, claimsFocus: false)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pratiche-timeline")
     }
 
-    private var list: some View {
-        List(selection: selection) {
-            ForEach(sections, id: \.day) { section in
+    private func list(_ entries: [PraticaTimelineEntry]) -> some View {
+        // «Inserisci qui»'s neighbours, found in one pass rather than one search per row menu.
+        let next = PraticaTimelineModel.nextRows(in: entries)
+        return List(selection: selection) {
+            ForEach(Self.sections(of: entries), id: \.day) { section in
                 Section {
                     ForEach(section.entries) { entry in
-                        row(entry)
+                        row(entry, next: next[entry.id])
                             .listRowSeparator(.hidden)
                     }
                 } header: {
@@ -75,12 +82,22 @@ struct PraticaTimelineView: View {
         // scroll-to-id dance and no `ScrollViewReader` (SPEC "Timeline model").
         .defaultScrollAnchor(.bottom)
         .focused($isListFocused)
-        // Backspace is «Escludi», and only here: the plan pins the key to the timeline
-        // having key focus, so the same key still deletes characters in the filter
-        // field and rows in every other list of the app.
-        .onKeyPress(.delete) {
-            guard isListFocused, excludeSelectedRow() else { return .ignored }
-            return .handled
+        .onChange(of: pratiche.selectedEntryID) { _, selected in
+            if selected != nil { isListFocused = true }
+        }
+        // Backspace is «Escludi», and only while the timeline has key focus, so the same
+        // key still deletes characters in the filter field and the inspector. Measured
+        // (ADR-0070): `.onKeyPress(.delete)` never sees Backspace on a macOS `List`, the
+        // table sends it down the Delete command, so forward delete and Modifica ▸ Elimina
+        // exclude too (G1). The body is the row menu's own (ADR-0023 §D1). A press that
+        // excludes nothing (a manual entry, a repeat after the exclusion) beeps, as the
+        // system already does for a row the filter hides (PG-306).
+        .onDeleteCommand {
+            guard let entry = pratiche.takeDeleteKeyTarget() else {
+                NSSound.beep()
+                return
+            }
+            actions.run(.exclude, on: entry, detail: pratiche.details[entry.id])
         }
     }
 
@@ -94,28 +111,13 @@ struct PraticaTimelineView: View {
         )
     }
 
-    /// «Escludi» on whatever row holds focus, or `false` when that row is a manual
-    /// entry - a `## …` heading in `pratica.md` is not a message and has no files to
-    /// trash (the command is absent from its menu for the same reason).
-    private func excludeSelectedRow() -> Bool {
-        guard let id = pratiche.selectedEntryID,
-              let entry = entries.first(where: { $0.id == id }),
-              entry.kind == .message
-        else { return false }
-        // The `true` answers the *key*, not the exclusion: the command has been accepted
-        // and goes through the one asynchronous write door (ADR-0043 §D2), and its own
-        // failures were always reported on `pratiche.report` rather than through here.
-        Task { @MainActor in await actions.exclude(entry, detail: pratiche.details[entry.id]) }
-        return true
-    }
-
     /// ADR-0049 §D8: the aligned column's own fixed width - `BoardTray`'s own
     /// fixed-width column (`frame(width: 200)`), reused as this feature's own number
     /// since nothing narrower fits a note's title and no wider is asked for.
     private static let noteSlotWidth: CGFloat = 200
 
     @ViewBuilder
-    private func row(_ entry: PraticaTimelineEntry) -> some View {
+    private func row(_ entry: PraticaTimelineEntry, next: PraticaTimelineEntry?) -> some View {
         let lane = PraticaTimelineModel.lane(for: entry)
         let gutter = theme.spacing(.m)
         HStack(alignment: .top, spacing: gutter) {
@@ -164,7 +166,7 @@ struct PraticaTimelineView: View {
                 .frame(width: Self.noteSlotWidth, alignment: .topLeading)
             }
         }
-        .contextMenu { menu(for: entry) }
+        .contextMenu { menu(for: entry, next: next) }
         .tag(entry.id)
     }
 
@@ -172,14 +174,14 @@ struct PraticaTimelineView: View {
     /// qui» under both - a manual entry has no `MessageCommand` at all (no files, no
     /// `Message-ID`), which the catalogue says by not being asked for one.
     @ViewBuilder
-    private func menu(for entry: PraticaTimelineEntry) -> some View {
+    private func menu(for entry: PraticaTimelineEntry, next: PraticaTimelineEntry?) -> some View {
         if entry.kind == .message {
             MessageMenuItems.menu(
                 for: entry, detail: pratiche.details[entry.id], actions: rowActions
             )
             Divider()
         }
-        insertHere(after: entry)
+        insertHere(after: entry, next: next)
     }
 
     /// R-28's «Inserisci qui», as a submenu of the row above the gap rather than as a
@@ -188,8 +190,8 @@ struct PraticaTimelineView: View {
     /// midpoint needs two neighbours, and «at the end» is what the counts bar's own
     /// «Nota»/«Telefonata» already mean.
     @ViewBuilder
-    private func insertHere(after entry: PraticaTimelineEntry) -> some View {
-        if let onInsertBetween, let next = following(entry) {
+    private func insertHere(after entry: PraticaTimelineEntry, next: PraticaTimelineEntry?) -> some View {
+        if let onInsertBetween, let next {
             Menu("Inserisci qui") {
                 ForEach(PraticaEntry.Kind.allCases, id: \.self) { kind in
                     Button(kind.label) { onInsertBetween(entry, next, kind) }
@@ -198,13 +200,6 @@ struct PraticaTimelineView: View {
             }
             .accessibilityIdentifier("pratiche-insert-here")
         }
-    }
-
-    private func following(_ entry: PraticaTimelineEntry) -> PraticaTimelineEntry? {
-        guard let index = entries.firstIndex(where: { $0.id == entry.id }),
-              entries.indices.contains(index + 1)
-        else { return nil }
-        return entries[index + 1]
     }
 
     /// The shared runner with this view's own Quick Look host attached, so «Anteprima
@@ -299,7 +294,7 @@ struct PraticaTimelineView: View {
     /// Day sections in the timeline's own ascending order (R-23). Built by walking the
     /// already-ordered array rather than by grouping into a dictionary and sorting it
     /// again: the order is `PraticaTimelineModel.ordered`'s and must not be re-derived.
-    private var sections: [DaySection] {
+    private static func sections(of entries: [PraticaTimelineEntry]) -> [DaySection] {
         var sections: [DaySection] = []
         let calendar = Calendar.current
         for entry in entries {

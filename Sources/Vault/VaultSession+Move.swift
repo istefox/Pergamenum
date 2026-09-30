@@ -100,7 +100,19 @@ extension VaultSession {
             // (`VaultSession+Starred.swift`) for how its call below neutralizes that.
             var pendingNewStarredPaths: [String] = []
 
-            for move in moves {
+            // ADR-0071 §D6: a Contenitore scheda moves with its file, so when both are selected
+            // the file is carried by the scheda's own move and skipped here, rather than failing
+            // on a source that has already gone. Decided before the loop, from the batch as it
+            // was dropped.
+            let batchPaths = Set(moves.map { $0.item.path.lowercased() })
+            let carried = Set(moves.compactMap { move -> String? in
+                guard move.item.kind == .note, let companion = companion(ofScheda: move.item.path),
+                      batchPaths.contains(companion.lowercased())
+                else { return nil }
+                return companion.lowercased()
+            })
+
+            for move in moves where !carried.contains(move.item.path.lowercased()) {
                 // Set only for a `.note` item whose star was taken out ahead of the move
                 // below - the one case that can still throw *after* the extraction, and so
                 // the one case that needs putting back if it does.

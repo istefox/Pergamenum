@@ -10,8 +10,8 @@ import Testing
 /// the app died on a stack overflow.
 ///
 /// **What changed since, and what this test can and cannot still prove.** `complete(nil)`
-/// itself is gone: the completion trigger today is `CompletionPanel.refreshCompletion`
-/// (`NoteTextView+Coordinator.swift:389-399`), whose own comment says why it cannot
+/// itself is gone: the completion trigger today is `CompletingTextView.refreshCompletion`
+/// (called from `textDidChange` in `NoteTextView+Coordinator.swift`), whose own comment says why it cannot
 /// recur - "the panel writes nothing until a row is chosen, so there is no edit to come
 /// back". That is a structural difference from the code `b52c3ed` fixed, not only a
 /// guarded one, so there is no longer a single line whose reversion reproduces the

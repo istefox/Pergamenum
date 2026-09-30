@@ -57,8 +57,11 @@ struct BoardContentLayer: View {
         // The frame a resize in flight is showing, which is the node's own frame the
         // rest of the time.
         let frame = workspace.displayFrame(for: node)
+        // Asked once per card per render (ADR-0072 §D7, R-17): it reads the disk, and both the
+        // accessibility summary and the card body need the answer.
+        let subfolder = workspace.subfolder(for: node)
 
-        cardBody(node)
+        cardBody(node, subfolder: subfolder)
             .frame(width: frame.width, height: frame.height)
             // After `.frame`, not before: `.accessibilityElement` can freeze the
             // container's frame at its unsized content rather than the card's laid-out
@@ -76,7 +79,7 @@ struct BoardContentLayer: View {
             // (testDraggingTheMiddleOfAGroupLeavesItWhereItIs). A group already has its
             // own readable label from that header `Text`; it does not need this one.
             .modifier(NodeAccessibility(
-                summary: Self.accessibilitySummary(for: node, isFolder: workspace.subfolder(for: node) != nil),
+                summary: Self.accessibilitySummary(for: node, isFolder: subfolder != nil),
                 isGroup: node.isGroup
             ))
             // Stable regardless of render state: the placeholder branch below carries
@@ -217,7 +220,7 @@ struct BoardContentLayer: View {
     /// Below a quarter zoom the content is illegible anyway, and rendering a hundred
     /// PDF thumbnails costs the frame rate the board needs while panning.
     @ViewBuilder
-    private func cardBody(_ node: CanvasNode) -> some View {
+    private func cardBody(_ node: CanvasNode, subfolder: String?) -> some View {
         if BoardGeometry.drawsPlaceholder(at: workspace.zoom) {
             RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous)
                 .fill(theme.color(node.isNote ? .surfaceRaised : .surfaceCard))
@@ -227,7 +230,7 @@ struct BoardContentLayer: View {
                 )
         } else {
             NodeCard(
-                node: node, subfolder: workspace.subfolder(for: node), workspace: workspace,
+                node: node, subfolder: subfolder, workspace: workspace,
                 modifiers: modifiers
             )
         }
@@ -273,8 +276,9 @@ struct BoardContentLayer: View {
     ///
     /// Kept here rather than moved beside the menu builder that reads them: they are the
     /// submenu's contents, not the command list, and both surfaces read them from this one
-    /// table.
-    static let colorNames = ["Rosso", "Arancio", "Giallo", "Verde", "Ciano", "Viola"]
+    /// table. The names come from `StickyPreset.names`, the one list the Contenitore colours
+    /// read as well (ADR-0071 §D1).
+    static let colorNames = StickyPreset.names
 
     /// The presets of SPEC §10, "ridimensiona a preset".
     static let sizePresets: [(name: String, size: CGSize)] = [

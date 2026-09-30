@@ -14,8 +14,9 @@ import AppKit
 extension CardTextView.Coordinator {
     /// Recomputes this card's fold and makes the layout read it again.
     ///
-    /// The card's half of `NoteTextView+Coordinator.applyFolding(to:folded:theme:)`
-    /// (`:148-166`), the same three moves in the same order: the pure layout, the shared
+    /// The card's half of the note editor's `FoldController.apply(to:folded:theme:)`
+    /// (`NoteTextView+Folding.swift`, reached through the Coordinator's `applyFolding`), the
+    /// same three moves in the same order: the pure layout, the shared
     /// delegate, and the document-wide `edited(.editedAttributes,…)` that re-runs the content
     /// manager's enumeration without a character changing - the only way a paragraph already laid
     /// out is asked again whether it should be enumerated at all. `invalidateLayout` after it,

@@ -19,6 +19,10 @@ final class VaultController {
     var settings: VaultSettings { session?.settings ?? .default }
     var vocabulary: Vocabulary { session?.vocabulary ?? .empty }
     var index: IndexSnapshot { session?.index ?? IndexSnapshot() }
+    /// What an index-derived cache keys on (ADR-0072 §D2, §D4): moves on every index change,
+    /// and the base, raised on every open and close, keeps it from repeating across vaults.
+    var indexGeneration: Int { indexGenerationBase + index.generation }
+    private(set) var indexGenerationBase = 0
     /// The vault's category registry (ADR-0047 §D2), read straight through the same way
     /// `index` is - `CategoryPicker` and Task 5's sidebar/editor/view read it live, never
     /// a copy captured once.
@@ -41,6 +45,8 @@ final class VaultController {
     /// `replaceOpenNote` has always made.
     var columns: [EditorColumn] = [EditorColumn()]
     var focusedColumnIndex = 0
+    /// Cmd+W's dirty tab until its column raises the dialog; written only by the doors (ADR-0073 §D11).
+    var closeRequest: NoteTab.ID?
 
     /// The tab the person is looking at.
     var focusedTab: NoteTab? {
@@ -149,6 +155,8 @@ final class VaultController {
     /// which `AppDelegate` cannot see; the board registers itself in `attach` and clears
     /// this in `detach`. Weak: the view owns the board, not the vault.
     @ObservationIgnored weak var openBoard: WorkspaceController?
+    /// Reopens the main window for a cancelled quit (ADR-0073 §D7); set by `RootView`'s `openWindow`.
+    @ObservationIgnored var reopenMainWindow: (() -> Void)?
 
     /// Everything the `pergamenum://` routes hold between arriving and being acted on
     /// (SPEC §9). The type is declared beside the extension that uses it.
@@ -223,6 +231,27 @@ final class VaultController {
             guard let self, let newSession, self.session === newSession else { return }
             self.landed(change)
         }
+        // PG-334 is not fixed here, but the quit must never write a previous vault's tab into
+        // this one (ADR-0073 §D5): a tab still open when a *different* vault replaces the
+        // session records the root it belongs to, once (the first time it is found foreign), and
+        // the record is dropped when that same root opens again. `showing(_:)` also drops it,
+        // since the tab then shows a note of the current vault. This is the only place a foreign
+        // tab is born, so no tab-creation site tracks a root.
+        // Compared and stored under `vaultKey` (symlinks resolved), the key the rest of the app
+        // identifies a vault by: the open panel hands over an unresolved URL and Recents a
+        // resolved one, and `standardizedFileURL` alone tells a link from its target.
+        let incoming = url.vaultKey
+        let outgoing = root?.resolvingSymlinksInPath().standardizedFileURL
+        for column in columns.indices {
+            for tab in columns[column].tabs.indices {
+                if let origin = columns[column].tabs[tab].previousVaultRoot {
+                    if origin.vaultKey == incoming { columns[column].tabs[tab].previousVaultRoot = nil }
+                } else if let outgoing, outgoing.vaultKey != incoming {
+                    columns[column].tabs[tab].previousVaultRoot = outgoing
+                }
+            }
+        }
+        indexGenerationBase = indexGeneration + 1
         session = newSession
         // Owned here, not by the Workspace that used to create it: the cache belongs
         // to the vault, and reading mode needs the same renderer to draw a picture
@@ -254,6 +283,7 @@ final class VaultController {
         watcher = nil
         // ADR-0067 §D4: a session somebody else still holds must not keep calling back here.
         session?.landedChangeSubscriber = nil
+        indexGenerationBase = indexGeneration + 1
         session = nil
         thumbnails = nil
         columns = [EditorColumn()]
@@ -379,6 +409,13 @@ final class VaultController {
         await session.clearCache()
         await thumbnails?.forgetAll()
         try? await thumbnails?.clearCacheOnDisk()
+        // ADR-0071 §D8: the extracted text is the same kind of disposable derived state, and it
+        // is extracted again at the next vault open. No vault file is touched.
+        do {
+            try session.extractedTexts.removeAll()
+        } catch {
+            session.recordProblem("testo estratto non eliminato: \(error.localizedDescription)")
+        }
         scanGeneration += 1
         taskGeneration += 1
     }

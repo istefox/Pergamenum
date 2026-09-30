@@ -37,13 +37,13 @@ import Testing
             // came back `nil`, and the loop's own `guard ... else { continue }` made
             // that read as "nothing to scan", never as "the guard did not run".
             let directoryURL = repoRoot.appendingPathComponent(directory)
-            guard let enumerator = FileManager.default.enumerator(
-                at: directoryURL, includingPropertiesForKeys: nil
-            ) else {
+            // The files come from the shared snapshot (R-19); a guarded directory that is not
+            // there is still recorded as an issue, as the enumerator's `nil` was.
+            guard FileManager.default.fileExists(atPath: directoryURL.path) else {
                 Issue.record("Could not enumerate guarded directory: \(directoryURL.path)")
                 continue
             }
-            for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {
+            for file in try SourceTreeSnapshot.files(under: directory) {
                 scannedAnyFile = true
                 // The file's NAME alone missed a forbidden reference sitting inside an
                 // ordinarily named file - an innocuous `VaultPratiche.swift` importing
@@ -51,10 +51,10 @@ import Testing
                 // instead, with comments and string literals stripped first so an
                 // explanatory mention (this very file's own header, or a doc comment
                 // quoting the forbidden name) never counts as a violation.
-                guard let text = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
+                guard let text = file.contents else { continue }
                 let source = Self.strippingCommentsAndStringLiterals(text)
                 if Self.forbiddenNameFragments.contains(where: { source.contains($0) }) {
-                    offendingFiles.append(fileURL.path)
+                    offendingFiles.append(file.path)
                 }
             }
         }

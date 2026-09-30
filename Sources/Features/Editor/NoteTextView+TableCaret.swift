@@ -68,9 +68,19 @@ extension NoteTextView.Coordinator {
 
         switch selector {
         case #selector(NSResponder.insertNewline(_:)):
-            guard replaceAtomically(NSRange(location: end, length: 0), with: "\n", in: textView)
+            // The last row's own line break, so the row keeps its ending and the new line takes
+            // the same; the note's own when the table closes the note. A bare `"\n"` here gave a
+            // CRLF table an LF row (PG-319).
+            var start = 0, paragraphEnd = 0, contentsEnd = 0
+            text.getParagraphStart(
+                &start, end: &paragraphEnd, contentsEnd: &contentsEnd, for: NSRange(location: end, length: 0)
+            )
+            let lineBreak = paragraphEnd > end
+                ? text.substring(with: NSRange(location: end, length: paragraphEnd - end))
+                : LineBreak.detected(in: textView.string).characters
+            guard Self.replaceAtomically(NSRange(location: end, length: 0), with: lineBreak, in: textView)
             else { return false }
-            textView.setSelectedRange(NSRange(location: end + 1, length: 0))
+            textView.setSelectedRange(NSRange(location: end + (lineBreak as NSString).length, length: 0))
             // The redirected caret does not visibly blink here - a known, currently-open
             // AppKit/TextKit 2 platform limitation (Apple FB17103305: a TextKit-2-backed
             // `NSTextView`'s caret is drawn by an internal `NSTextInsertionIndicator`
@@ -93,7 +103,15 @@ extension NoteTextView.Coordinator {
             // deleteForward, which would otherwise resolve to the same offset today's bug
             // report already established and eat the delimiter row's first `|`.
             guard end < text.length else { return true }
-            _ = replaceAtomically(NSRange(location: end, length: 1), with: "", in: textView)
+            // The last row's whole terminator, not one code unit: a CRLF table ends in a `\r\n`
+            // pair, and deleting its `\r` alone would leave a bare LF there (PG-316). NSString's
+            // composed-sequence ranges split that pair, so the paragraph's own bounds measure it.
+            var start = 0, paragraphEnd = 0, contentsEnd = 0
+            text.getParagraphStart(
+                &start, end: &paragraphEnd, contentsEnd: &contentsEnd, for: NSRange(location: end, length: 0)
+            )
+            let terminator = paragraphEnd > end ? paragraphEnd - end : 1
+            _ = Self.replaceAtomically(NSRange(location: end, length: terminator), with: "", in: textView)
             return true
         }
     }

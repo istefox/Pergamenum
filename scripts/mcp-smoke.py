@@ -128,6 +128,13 @@ def find_binary(argv):
     return found[-1]
 
 
+def drain(stream):
+    """Reads a stream to its end and keeps nothing: the server's stderr is read so the pipe
+    never fills and blocks it, not so anything is shown."""
+    for _ in stream:
+        pass
+
+
 class Server:
     """One server process, spoken to one request at a time."""
 
@@ -137,8 +144,9 @@ class Server:
             arguments, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True)
         self.identifier = 0
-        # Drained rather than ignored: a full stderr pipe would block the server.
-        threading.Thread(target=lambda: [None for _ in self.process.stderr], daemon=True).start()
+        # Drained rather than ignored: a full stderr pipe would block the server. Nothing is
+        # kept, so a long run does not grow a list line by line (R-21).
+        threading.Thread(target=drain, args=(self.process.stderr,), daemon=True).start()
         self.send("initialize", {"protocolVersion": "2025-11-25", "capabilities": {},
                                  "clientInfo": {"name": "mcp-smoke", "version": "0"}})
         self.notify("notifications/initialized")

@@ -45,109 +45,27 @@ struct NoteTextView: NSViewRepresentable {
     var editorCommands: [EditorCommand] = []
     var onRunCommand: ((ShortcutCommand) -> Void)?
     let onFollowLink: (String) -> Void
-    /// Called with the file name inside `![[foto.png]]` when its raw syntax is clicked -
-    /// `hidesMarkup` off, or the run not yet collapsed into a picture. Once ADR-0018
-    /// slice 3 draws the picture in the run's place, a click there selects it instead
-    /// (`selectEmbed(at:in:)`) and never reaches this callback; unlike a heading or
-    /// emphasis marker, the caret alone never brings the raw text back (D5).
-    var onOpenEmbed: ((String) -> Void)?
-    /// The vault an embed's target is resolved in (ADR-0018 slice 3). Nil where there is
-    /// no vault behind the editor - the same permissive default `spellCheck` and
-    /// `hidesMarkup` take - and then `![[foto.png]]` stays unresolved, exactly today's
-    /// behaviour.
-    var vaultRoot: URL?
-    /// The open note's own path, so a relative embed target is looked up beside it
-    /// first, the same as `Attachment.resolve` already does for reading mode
-    /// (`MarkdownReadingView.notePath`).
-    var notePath = ""
-    /// The vault's render cache for embedded files - the same `ThumbnailStore` reading
-    /// mode's `EmbeddedFileView` reads, so a picture is rendered once and shared between
-    /// the two surfaces rather than duplicated.
-    var thumbnails: ThumbnailStore?
-    /// Where a `pergamenum-view` fence's rows come from (ADR-0033 §D9, plan
-    /// `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 7). Nil where there is no
-    /// vault behind the editor - the same permissive default `vaultRoot`/`thumbnails` take,
-    /// and deliberately what `DiaryView`/`TodayView` and every existing call site still get
-    /// without change, since neither passes this property (ADR Consequences).
-    ///
-    /// Handed in by `EditorColumn+Text.swift`'s `editing(_:)`, which owns the app's only
-    /// `ViewQuerySource`, and read by `NoteTextView+ViewBlocks.swift`'s
-    /// `refreshViewBlockHosts`, which passes it - with `notePath`/`vaultRoot`/`thumbnails`,
-    /// `onFollowLink` as the block's `onOpenNote` and a caret-placing `onEditSource` - into
-    /// `ViewBlockHostStore.rootView(...)` on every styling pass. That call is the whole of
-    /// what makes a drawn fence run its query in the editor (R-04, R-07, R-09); without it
-    /// the block draws its "Nessun vault dietro questa vista" branch.
-    var queries: ViewQuerySource?
-    /// Raised when "Modifica query" is tapped in a drawn `pergamenum-view` fence's header
-    /// (ADR-0034 §D1/§D2, R-01/R-02/R-03). Nil where there is no vault behind the editor - the
-    /// same permissive default `queries` takes - and then the control simply is not drawn
-    /// (`RenderedViewBlock.onEditQuery`'s own nil-means-no-control rule).
-    ///
-    /// Built per fence, per styling pass, by `NoteTextView+ViewBlocks.swift`'s
-    /// `refreshViewBlockHosts`, which is the one place that turns `ViewBlockHostStore.rootView`'s
-    /// plain `() -> Void` trigger into a `ViewQueryEditRequest` carrying the fence's current body
-    /// and a commit closure anchored on its opening offset.
-    var onEditQuery: ((ViewQueryEditRequest) -> Void)?
-    /// Where a dropped file should be copied to, returning its file name for the
-    /// embed (SPEC §5). Nil disables dropping.
-    var onDropFile: ((URL) -> String?)?
-    /// Called with the PNG bytes of an image pasted from the clipboard, returning the
-    /// name it was written into the vault under. A screenshot has no file to drop, so
-    /// without this it could not enter a note at all.
-    var onPasteImage: ((Data) -> String?)?
+    /// What the vault behind the editor provides: where embeds, transclusions and view
+    /// fences resolve, and the drop, paste, embed-click and "Modifica query" callbacks
+    /// (`NoteTextView+Inputs.swift`). Empty by default, so a text view with no vault behind
+    /// it behaves exactly as before.
+    var vault = VaultInputs()
     /// Text the Inserisci menu asked for, applied at the cursor and then reported as
     /// applied so it is not inserted twice on the next view update (SPEC §10). Carries
     /// `opensQueryBuilder` for the insert-view command (R-04, ADR-0034 §D10): true only
-    /// for the stub it writes, applied below alongside the ordinary insertion.
+    /// for the stub it writes, applied alongside the ordinary insertion
+    /// (`NoteTextView+Update.swift`'s `consumeInsertion`).
     var insertion: Navigation.Insertion?
     var onInsertionApplied: () -> Void = {}
-    /// Raised by the Modifica menu; opens the find bar (SPEC §10, M8). Answered with the
-    /// selection there was at that moment, which is the search's scope - captured once, the
-    /// way AppKit's own bar did it, rather than followed: a scope tracking the caret would
-    /// shrink to nothing as soon as the search moved the selection onto a match.
-    var findRequest: FindRequest?
-    var onFindApplied: (NSRange) -> Void = { _ in }
-    /// What the find bar found, and which one the stepper is on. Drawn as a colour on the
-    /// layout manager rather than on the text - see `NoteTextView+Matches`.
-    var matches: [NSRange] = []
-    var currentMatch: Int?
-    /// Replacements to perform, and then report as performed. The one-shot shape `insertion`
-    /// already has. **Ordered last match first** by whoever builds them, so that applying one
-    /// does not move the ranges of those still to come.
-    var replacements: [(range: NSRange, text: String)]?
-    var onReplacementsApplied: () -> Void = {}
-    /// The match the stepper moved onto, to be brought into view. Its own input rather than
-    /// the index's `scrollRequest`: that one carries an `ordinal` the reading view counts
-    /// blocks by, and a find match has no position in the index to report. Borrowing the type
-    /// would mean filling that field with a number that means nothing.
-    var matchJump: NSRange?
+    /// The find bar's request, matches, replacements and match jump
+    /// (`NoteTextView+Inputs.swift`).
+    var find = FindInputs()
     /// Bumped when the cursor should move into the editor, which is what makes a note
     /// created in the composer open ready to be typed into.
     var focusRequest = 0
-    /// A line the index asked to be taken to (M8). The fourth one-shot input, and it
-    /// follows the same shape as the other three: consumed once, then reported as applied.
-    var scrollRequest: Navigation.OutlineJump?
-    var onScrollApplied: () -> Void = {}
-    /// The index's entries, as line ranges. Handed to the text view so it can say which
-    /// one the caret is in without the caret's position having to travel up on every
-    /// arrow key.
-    var outlineRanges: [NSRange] = []
-    var onOutlineEntryChanged: ((Int?) -> Void)?
-    /// The index entries whose sections are folded (M8). Held by each heading's own UTF-16
-    /// character offset, not by ordinal position: an edit elsewhere in the note can shift
-    /// which array position a heading sits at between one SwiftUI render pass and the next,
-    /// and a fold anchored to a position rather than to the heading itself would silently
-    /// re-target the wrong section (PG-021 follow-up, `FoldStateOrdinalIndexStalenessTests`).
-    var foldedEntries: Set<Int> = []
-    /// How a `![[nota]]` reaches the note it names (ADR-0010). Nil where there is no vault
-    /// behind the editor, and then the line stays the plain link it was.
-    var transclusions: TransclusionSource?
-    /// Called with the UTF-16 offset of the heading whose fold badge was clicked (PG-021) -
-    /// the folded heading's own live layout offset, never re-derived through `outlineRanges`.
-    /// `OutlinePane`'s chevron reaches the same `VaultController.toggleFold`, so a section
-    /// opened from the editor and one opened from the sidebar are one gesture with two doors,
-    /// both handing it an offset.
-    var onToggleFold: ((Int) -> Void)?
+    /// The outline's entry ranges, its jump request and the folded sections
+    /// (`NoteTextView+Inputs.swift`).
+    var outline = OutlineInputs()
     /// Called when the editor takes the keyboard. The split view uses it to move the focus
     /// to the column that was clicked into (ADR-0012 D4).
     var onTakeFocus: (() -> Void)?
@@ -210,7 +128,7 @@ struct NoteTextView: NSViewRepresentable {
         context.coordinator.applyEmbeds(to: textView)
         context.coordinator.applyTransclusions(to: textView, theme: theme)
         context.coordinator.applyMatches(
-            to: textView, matches: matches, current: currentMatch, theme: theme
+            to: textView, matches: find.matches, current: find.currentMatch, theme: theme
         )
         return scrollView
     }
@@ -224,7 +142,9 @@ struct NoteTextView: NSViewRepresentable {
     /// Grammar checking follows the same switch instead of getting one of its own. It is the
     /// same underline in the same places, and a second toggle for it would be a setting
     /// nobody could describe.
-    private func apply(_ spellCheck: SpellCheck, to textView: NSTextView) {
+    ///
+    /// Not private because `NoteTextView+Update.swift`'s `pushInputs` re-applies it on every update.
+    func apply(_ spellCheck: SpellCheck, to textView: NSTextView) {
         textView.isContinuousSpellCheckingEnabled = spellCheck.isEnabled
         textView.isGrammarCheckingEnabled = spellCheck.isEnabled
         guard spellCheck.isEnabled else { return }
@@ -257,14 +177,14 @@ struct NoteTextView: NSViewRepresentable {
         // rendition would fail to find - `NoteOutline` strips the markdown from a heading,
         // which is exactly the form `Transclusion.excerpt` matches against.
         textView.noteSections = { reference in
-            guard let resolved = coordinator.parent.transclusions?.resolve(reference) else { return [] }
+            guard let resolved = coordinator.parent.vault.transclusions?.resolve(reference) else { return [] }
             return NoteOutline.entries(in: resolved.text).compactMap { entry in
                 guard case .heading = entry.kind else { return nil }
                 return entry.title
             }
         }
-        textView.onDropFile = { url in coordinator.parent.onDropFile?(url) }
-        textView.onPasteImage = { data in coordinator.parent.onPasteImage?(data) }
+        textView.onDropFile = { url in coordinator.parent.vault.onDropFile?(url) }
+        textView.onPasteImage = { data in coordinator.parent.vault.onPasteImage?(data) }
         textView.onRunCommand = { command in coordinator.parent.onRunCommand?(command) }
         textView.onTakeFocus = { coordinator.parent.onTakeFocus?() }
         // Three claimants, asked in turn the way the `onClickInMargin` chain below is:
@@ -318,128 +238,16 @@ struct NoteTextView: NSViewRepresentable {
         }
     }
 
+    /// Four steps, in this order and no other (`NoteTextView+Update.swift`): the text sync
+    /// before every pass, the passes before the insertion (which must not be overwritten by the
+    /// model value that predates it), and the insertion before the one-shots.
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? CompletingTextView else { return }
-        context.coordinator.parent = self
-        context.coordinator.undoManager = textView.window?.undoManager
-        textView.noteTitles = noteTitles
-        textView.boardTitles = boardTitles
-        textView.tagSuggestions = tagSuggestions
-        textView.editorCommands = editorCommands
-        // Re-applied on every update rather than only at build time: turning the checker on
-        // in Impostazioni has to reach the note already open, not the next one.
-        apply(spellCheck, to: textView)
-        // The same reason, for the readable-width column: the frame observation answers a
-        // resize, and this answers the setting being turned on or off (ADR-0030 §D6, R-10).
-        // Before the styling below, since the inset decides where the text wraps and every
-        // height measured after it depends on that.
-        context.coordinator.applyReadableWidth(to: textView)
-
-        // Only touch the text when the model diverges from what is on screen:
-        // reassigning it unconditionally would reset the cursor on every keystroke.
-        if textView.string != text {
-            // This view is one persistent instance per editor column (never rebuilt per
-            // note), so a genuine note switch and the same note's content changing
-            // externally (undo, sync) both land here. Carrying the old raw offset forward
-            // is right for the second case but wrong for the first: with no per-note caret
-            // bookmark anywhere in this app, a switched-to note's caret at whatever numeric
-            // offset the previous note happened to leave behind can - and did (issue #188)
-            // - land inside a paragraph whose markup reveal-on-caret (ADR-0018 §D2) then
-            // never gets a reason to re-hide. `notePath` is the one signal available to
-            // tell the two cases apart.
-            let isNoteSwitch = context.coordinator.lastNotePath != notePath
-            let selection = textView.selectedRange()
-            textView.string = text
-            textView.setSelectedRange(NSRange(
-                location: isNoteSwitch ? 0 : min(selection.location, (text as NSString).length),
-                length: 0
-            ))
-        }
-        context.coordinator.lastNotePath = notePath
-        context.coordinator.applyStyling(to: textView, theme: theme)
-        context.coordinator.applyEmbeds(to: textView)
-        context.coordinator.applyTransclusions(to: textView, theme: theme)
-        context.coordinator.applyFolding(to: textView, folded: foldedEntries, theme: theme)
-        // After the styling, always: `applyStyling` rewrites every attribute in the storage
-        // and invalidates the layout with them, so a highlight painted before it would be
-        // gone by the time anything was drawn.
-        context.coordinator.applyMatches(
-            to: textView, matches: matches, current: currentMatch, theme: theme
-        )
-        // After the matches, so the find bar's current match is a reveal trigger too
-        // (ADR-0018 §D2), and before growing the view so a reveal's height change is
-        // already accounted for.
-        context.coordinator.applyReveal(to: textView)
-        context.coordinator.growToFitTheText(textView)
-
-        if let insertion {
-            // After the text sync above, so the insertion is not overwritten by the
-            // model value that predates it.
-            let insertionRange = textView.selectedRange()
-            textView.insertText(insertion.text, replacementRange: insertionRange)
-            let cursor = textView.selectedRange().location - insertion.cursorBack
-            textView.setSelectedRange(NSRange(location: max(0, cursor), length: 0))
-            onInsertionApplied()
-
-            // R-04: "Inserisci ▸ Vista…" opens the query builder on the fence it just wrote,
-            // in the same gesture (ADR-0034 §D10). The opening offset is the stub's own
-            // convention (`ViewQueryText.stub`'s `head`/`openingOffset`): a leading `\n` -
-            // needed only when the caret was mid-line - moves the fence one character in,
-            // nothing else does. Read from the live characters rather than from
-            // `drawnViewBlocks`, which is gated on `hidesMarkup` (ADR-0033 §D12) and would
-            // stay empty for an editor with markup-hiding off.
-            if insertion.opensQueryBuilder, let onEditQuery {
-                let openingOffset = insertionRange.location + (insertion.text.hasPrefix("\n") ? 1 : 0)
-                let nsText = textView.string as NSString
-                if let recognised = EditorDecorationDelegate.viewBlockRun(
-                    in: nsText, atParagraphStart: openingOffset
-                ) {
-                    // The body alone, opening and closing fence lines split off -
-                    // `NoteTextView+ViewBlockEditing.swift`'s `viewBlockBody(in:range:)` own
-                    // convention, re-read here rather than shared since that helper is
-                    // `private` to its own file.
-                    let lines = nsText.substring(with: recognised.range).components(separatedBy: "\n")
-                    let source = lines.count >= 2 ? lines.dropFirst().dropLast().joined(separator: "\n") : ""
-                    let coordinator = context.coordinator
-                    let request = ViewQueryEditRequest(id: UUID(), source: source) { [weak textView] body in
-                        guard let textView else { return false }
-                        return coordinator.commitViewBlock(body, at: openingOffset, in: textView)
-                    }
-                    onEditQuery(request)
-                }
-            }
-        }
-
-        if focusRequest != context.coordinator.lastFocusRequest {
-            context.coordinator.lastFocusRequest = focusRequest
-            context.coordinator.takeFocus()
-        }
-
-        if findRequest != nil {
-            // The selection as it is *now*, before anything else in this pass moves it. This
-            // is the whole of the scope: `FindSession.open` decides whether it is wide enough
-            // to be one.
-            onFindApplied(textView.selectedRange())
-        }
-
-        if let replacements, !context.coordinator.alreadyApplied(replacements) {
-            context.coordinator.apply(replacements, to: textView)
-            onReplacementsApplied()
-        }
-
-        // Consumed by location, so stepping onto a different match scrolls and every other
-        // view update does not - the same guard `lastFocusRequest` and `lastScrollRequest`
-        // are. Cleared when the bar closes, so reopening on the same match scrolls again.
-        if matchJump?.location != context.coordinator.lastMatchLocation {
-            context.coordinator.lastMatchLocation = matchJump?.location
-            if let matchJump { context.coordinator.scroll(textView, to: matchJump, takingFocus: false) }
-        }
-
-        if let scrollRequest, scrollRequest.id != context.coordinator.lastScrollRequest {
-            context.coordinator.lastScrollRequest = scrollRequest.id
-            context.coordinator.scroll(textView, to: scrollRequest.range)
-            onScrollApplied()
-        }
+        let coordinator = context.coordinator
+        pushInputs(to: textView, coordinator: coordinator)
+        runPasses(on: textView, coordinator: coordinator)
+        consumeInsertion(in: textView, coordinator: coordinator)
+        consumeOneShots(in: textView, coordinator: coordinator)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }

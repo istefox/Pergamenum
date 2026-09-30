@@ -87,12 +87,13 @@ enum CodeFence {
     }
 
     /// Line ranges excluding the newline, empty lines included - unlike the styler's own
-    /// helper, which skips them because it has nothing to style on an empty line.
+    /// helper, which skips them because it has nothing to style on an empty line. A CRLF
+    /// line ends before its `\r\n`, one `Character` (PG-274).
     private static func lineRanges(in text: String) -> [Range<String.Index>] {
         var ranges: [Range<String.Index>] = []
         var start = text.startIndex
         while start <= text.endIndex {
-            let end = text[start...].firstIndex(of: "\n") ?? text.endIndex
+            let end = text[start...].firstIndex(where: LineBreak.isTerminator) ?? text.endIndex
             ranges.append(start..<end)
             guard end < text.endIndex else { break }
             start = text.index(after: end)

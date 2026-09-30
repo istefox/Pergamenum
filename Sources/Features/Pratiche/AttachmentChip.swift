@@ -45,24 +45,29 @@ struct AttachmentChip: View {
     let onQuickLook: (URL) -> Void
 
     var body: some View {
+        // Each file's state is read from disk at most once per body (ADR-0072 §D7, R-15): the
+        // symbol, the colour, the tooltip and the accessibility actions all used to ask again.
+        // Local to this body on purpose, never `@State`, which would outlive it. The actions
+        // below keep asking `state(_:)` live, when they run.
+        let resolved = FileStateMemo(name: name)
         Button(action: preview) {
             HStack(spacing: theme.spacing(.xs)) {
-                Image(systemName: symbol)
+                Image(systemName: AttachmentChipModel.symbol(for: content, state: resolved.state))
                 Text(label).lineLimit(1)
             }
-            .themedText(.caption, color: isMissing ? .textTertiary : .textSecondary)
+            .themedText(.caption, color: isMissing(resolved.state) ? .textTertiary : .textSecondary)
             .padding(.horizontal, theme.spacing(.xs))
             .padding(.vertical, 2)
             .background(theme.color(.backgroundTertiary))
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help(helpText)
+        .help(helpText(resolved.state))
         .accessibilityLabel(accessibilityText)
         .accessibilityIdentifier(identifier)
         // The menu's non-pointer route (ADR-0069 §D5): the same catalogue, enabled entries only.
         .accessibilityActions {
-            let enabled = AttachmentChipModel.menuEntries(for: content, state: state).filter(\.isEnabled)
+            let enabled = AttachmentChipModel.menuEntries(for: content, state: resolved.state).filter(\.isEnabled)
             ForEach(enabled, id: \.command) { entry in
                 Button(entry.title) { run(entry.command) }
             }
@@ -126,11 +131,7 @@ struct AttachmentChip: View {
     /// is not on disk - both are chips with nothing to preview.
     private var previewURL: URL? { AttachmentChipModel.previewURL(for: content, state: state) }
 
-    /// The default-app / double-click target (R-27): the local copy, or a store
-    /// reference's own store path when it is still there.
-    private var openURL: URL? { AttachmentChipModel.openURL(for: content, state: state) }
-
-    /// The "Mostra nel Finder" target (R-27): the same rule as `openURL`.
+    /// The "Mostra nel Finder" target (R-27): the same rule as `AttachmentChipModel.openURL`.
     private var revealURL: URL? { AttachmentChipModel.revealURL(for: content, state: state) }
 
     /// The chip's visible text (R-08): `.pending` shows «In attesa», not the file name -
@@ -145,19 +146,17 @@ struct AttachmentChip: View {
     /// A file whose copy is not on disk: the difference between it and a store reference
     /// is the message the tooltip carries, not this flag, which only ever asks "is this a
     /// file reference with nothing to preview".
-    private var isMissing: Bool {
+    private func isMissing(_ state: (URL) -> AttachmentChipModel.FileState) -> Bool {
         guard case .file = content else { return true }
-        return previewURL == nil
+        return AttachmentChipModel.previewURL(for: content, state: state) == nil
     }
 
-    private var symbol: String { AttachmentChipModel.symbol(for: content, state: state) }
-
-    private var helpText: String {
+    private func helpText(_ state: (URL) -> AttachmentChipModel.FileState) -> String {
         switch content {
         case .file:
-            if previewURL == nil {
+            if AttachmentChipModel.previewURL(for: content, state: state) == nil {
                 "\(name) — il file non è in allegati/"
-            } else if openURL == nil {
+            } else if AttachmentChipModel.openURL(for: content, state: state) == nil {
                 "\(name) — file eseguibile: si apre solo dal Finder"
             } else {
                 name
@@ -255,5 +254,23 @@ struct AttachmentChip: View {
     private func showInFinder() {
         guard let revealURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([revealURL])
+    }
+
+    /// One body evaluation's answers to `fileState(of:named:)`, one per URL (R-15). Made fresh at
+    /// the top of every `body`, so a file that changed on disk is seen at the next render.
+    private final class FileStateMemo {
+        private let name: String
+        private var states: [URL: AttachmentChipModel.FileState] = [:]
+
+        init(name: String) {
+            self.name = name
+        }
+
+        func state(_ url: URL) -> AttachmentChipModel.FileState {
+            if let known = states[url] { return known }
+            let state = AttachmentChip.fileState(of: url, named: name)
+            states[url] = state
+            return state
+        }
     }
 }

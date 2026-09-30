@@ -25,56 +25,10 @@ extension NoteTextView {
         /// Guards the delegate callback from re-entering while styling rewrites
         /// attributes.
         private var isStyling = false
-        /// The focus request already honoured, so the cursor is not stolen back on
-        /// every subsequent update.
-        var lastFocusRequest = 0
-        /// The same, for the index's jumps: without it every later view update would
-        /// scroll back to the last heading clicked.
-        var lastScrollRequest = 0
-        /// And for the find bar's, which is a location rather than a counter: the stepper
-        /// moves between matches and it is arriving at a *different* one that scrolls.
-        var lastMatchLocation: Int?
-        /// The replacements batch already applied, so a `updateNSView` pass that runs again
-        /// before `onReplacementsApplied()`'s `pendingReplacements = nil` has propagated back
-        /// down does not replay the same edits a second time against text they already
-        /// changed (PG-093: an Outline nest/move applied twice this way, its second pass
-        /// deleting and re-inserting ranges that no longer meant what they meant when
-        /// computed, corrupting the note). Compared by value, not identity - two genuinely
-        /// distinct requests never compute the same ranges and text, since `OutlineMove`
-        /// already refuses a move that would be a no-op.
-        var lastAppliedReplacements: [NSRange] = []
-        var lastAppliedReplacementTexts: [String] = []
         /// What the editor draws besides the note's characters - folds and transcluded
         /// notes. Here rather than on the view: it is a fact about this text view's layout,
         /// and the view struct is rebuilt on every update (M8).
         let decorations = EditorDecorationDelegate()
-        /// The fold already applied, so an unchanged one does not invalidate the layout on
-        /// every view update.
-        private var lastFoldLayout = NoteFolding.Layout()
-        /// The transcluded notes already drawn, for the same reason as `lastFoldLayout`.
-        var lastRenditions: [Int: TranscludedRendition] = [:]
-        /// Renditions by reference, section, scan generation and width. Not private
-        /// because the code that fills it lives in `NoteTextView+Transclusion`, and not
-        /// unbounded in practice: a note names as many targets as it names.
-        var renditionCache: [String: TranscludedRendition] = [:]
-        /// The revealed paragraphs already applied (ADR-0018 §D2), so an unchanged set
-        /// does not invalidate the layout on every view update. Not private for the same
-        /// reason as `lastRenditions`: the mutator, `applyReveal`, lives in
-        /// `NoteTextView+Reveal`.
-        var lastRevealed: Set<Int> = []
-        /// The revealed inline spans (emphasis/strikethrough/link, ADR-0037 §D6) already
-        /// applied, for the same reason as `lastRevealed` above and kept beside it rather
-        /// than folded into it: the two are computed by two different `MarkupReveal`
-        /// functions and compared independently in `applyReveal`'s early-return guard.
-        var lastRevealedSpans: [Int: [NSRange]] = [:]
-        /// The note path `updateNSView` last saw, so it can tell a genuine note switch
-        /// apart from the same note's content changing externally (issue #188 fix 2): this
-        /// view is one persistent instance per editor column, never rebuilt per note, so
-        /// there is no other signal available for "this is a different note now."
-        var lastNotePath: String?
-        /// The index entry the caret was last reported to be in. Kept so the callback
-        /// fires when it *changes*, not on every arrow key.
-        private var lastOutlineEntry: Int??
         /// The ranges the spell checker must leave alone: markdown syntax, not prose (M8).
         /// Filled by `applyStyling`, which already knows what every range of the note is,
         /// so recognising them costs no second parse.
@@ -90,64 +44,41 @@ extension NoteTextView {
         /// inline: filling it calls `ThumbnailStore`, an actor, and that delegate cannot
         /// be `@MainActor` at all (Step 2).
         let embeds = EmbedTable()
-        /// The embed resize drag in flight, or nil when there is none (ADR-0019 §D6:
-        /// the gesture's state lives here rather than on the text view, which owns no
-        /// decoration's state and knows about none of them). Not private for the same
-        /// reason as `lastRenditions` and `lastRevealed` above: the three phases that
-        /// fill, rewrite and clear it are `resizeEmbed(_:in:)`'s own, in
-        /// `NoteTextView+EmbedResize.swift`, where `EmbedDrag` itself is declared.
-        var embedDrag: EmbedDrag?
-        /// The grid every table on screen is drawn with, by table identity (ADR-0029 §D6) -
-        /// owned here for the reason `embeds` above is: `EditorDecorationDelegate` cannot be
-        /// `@MainActor` and so cannot build an `NSView`, and it is handed finished values
-        /// through `decorations.apply(tableViews:)`. Grew out of the Step 4.5 tracer-bullet
-        /// probe's single fixed `tableProbeGrid`, which answered §D16 probe 2 and is gone.
-        let tableGrids = TableGridStore()
-        /// The delimiter and body rows already taken out of the layout, so an unchanged set
-        /// does not re-invalidate it on every keystroke - the table pass's own change check,
-        /// which `applyFolding`'s early return does not cover (§D5). Not private for the
-        /// reason `lastRenditions` is not: the pass that fills it, `applyTables`, lives in
-        /// `NoteTextView+Tables.swift`.
-        var lastTableRows: Set<Int> = []
-        /// Each table on screen and the grid drawing it, by header offset - filled by
-        /// `applyTables` inside the storage's editing transaction and read by
-        /// `refreshTableGrids` once it has closed.
-        var drawnTables: [Int: DrawnTable] = [:]
-        /// Where the caret has to go once that transaction closes, when a row it was sitting
-        /// in has just left the layout (`rescueCaret`'s table twin, §D5).
-        var pendingTableCaret: Int?
-        /// The `NSHostingView` every view block on screen is drawn in, by the fence's own
-        /// ordinal within the note (ADR-0033 §D3) - owned here for the reason `tableGrids`
-        /// above is: `EditorDecorationDelegate` cannot be `@MainActor`, so it cannot build a
-        /// view and is handed finished ones through `decorations.apply(viewBlockHosts:)`.
-        ///
-        /// Keyed by ordinal and deliberately not by offset, which is where this store parts
-        /// company with `TableGridStore`: an offset key would rebuild the host on every
-        /// keystroke typed above the fence, and rebuilding it re-runs the query behind it
-        /// (ADR-0009 §D7: never per keystroke).
-        let viewBlockHosts = ViewBlockHostStore()
-        /// The body and closing-fence lines already taken out of the layout, so an unchanged
-        /// set does not re-invalidate it on every keystroke - the view-block pass's own
-        /// change check, `lastTableRows`' twin and not private for the same reason: the pass
-        /// that fills it, `applyViewBlocks`, lives in `NoteTextView+ViewBlocks.swift`.
-        var lastViewBlockLines: Set<Int> = []
-        /// Each view block on screen, by its opening fence's offset - filled by
-        /// `applyViewBlocks` inside the storage's editing transaction and read by
-        /// `refreshViewBlockHosts` once it has closed.
-        var drawnViewBlocks: [Int: DrawnViewBlock] = [:]
-        /// Where the caret has to go once that transaction closes, when a line it was sitting
-        /// in has just left the layout (`tableCaretRescue`'s twin, ADR-0033 §D15).
-        var pendingViewBlockCaret: Int?
-        /// True between a measured view-block height being stored and the coalesced re-layout
-        /// running, so several fences reporting a height change within the same SwiftUI pass buy
-        /// one relayout, not one each.
-        var pendingViewBlockRelayout = false
-        /// Which fence the selection was inside the last time it moved, or nil for none - the
-        /// whole of ADR-0033 §D5's guard. A crossing into or out of a fence is the one
-        /// selection change that has to re-run `applyStyling`, because that pass is the only
-        /// producer of what a revealed fence looks like; every other arrow key pays one
-        /// `NSRange?` comparison and nothing else.
-        private var lastRevealedViewBlock: NSRange?
+        /// The table grids, their hidden rows and the table pass (ADR-0074 §D2,
+        /// `NoteTextView+Tables.swift`). `lazy` only because its provider captures `self`,
+        /// which an initial value cannot; `parent` is read through it when a pass runs.
+        private(set) lazy var tables = TableBlockController(
+            parent: { [weak self] in self?.parent }, decorations: decorations
+        )
+        /// The view-block hosts, their hidden lines, the reveal crossing and the view-block
+        /// pass (ADR-0074 §D2, `NoteTextView+ViewBlocks.swift`). `lazy` for `tables`' reason.
+        private(set) lazy var viewBlocks = ViewBlockController(
+            parent: { [weak self] in self?.parent }, decorations: decorations
+        )
+        /// The embed resize drag and its three phases (ADR-0074 §D2, ADR-0019 §D6,
+        /// `NoteTextView+EmbedResize.swift`). `lazy` for `tables`' reason.
+        private(set) lazy var embedResize = EmbedResizeController(
+            parent: { [weak self] in self?.parent }, embeds: embeds, decorations: decorations
+        )
+        /// The transcluded renditions, their cache and the click that opens one (ADR-0074
+        /// §D2, `NoteTextView+Transclusion.swift`). `lazy` for `tables`' reason.
+        private(set) lazy var transclusion = TransclusionController(
+            parent: { [weak self] in self?.parent }, decorations: decorations
+        )
+        /// The last fold layout and the folding pass (ADR-0074 §D2,
+        /// `NoteTextView+Folding.swift`). `lazy` for `tables`' reason.
+        private(set) lazy var folding = FoldController(
+            parent: { [weak self] in self?.parent }, decorations: decorations
+        )
+        /// The revealed paragraphs and spans and the reveal pass (ADR-0074 §D2, ADR-0018 §D2,
+        /// `NoteTextView+Reveal.swift`). `lazy` for `tables`' reason.
+        private(set) lazy var reveal = RevealController(
+            parent: { [weak self] in self?.parent }, decorations: decorations
+        )
+        /// The one-shot requests already honoured, the last replacement batch, note path and
+        /// outline entry (ADR-0074 §D2, `NoteTextView+Requests.swift`). `lazy` for `tables`'
+        /// reason.
+        private(set) lazy var requests = RequestLedger(parent: { [weak self] in self?.parent })
         /// The observation that keeps the readable-width inset right as the pane is resized
         /// (ADR-0030 §D6). It has to exist because `updateNSView` does **not** run on a
         /// window resize - nothing in the SwiftUI graph changed - so without it a column
@@ -219,91 +150,18 @@ extension NoteTextView {
             //
             // **Never while a pass is already in flight.** `isStyling` is a flag and not a
             // counter, and this notification is posted by any programmatic selection change -
-            // including the caret rescues `refreshTableGrids`/`refreshViewBlockHosts` perform
-            // at the end of `applyStyling`, where the flag is still set by its own `defer`.
-            // A pass entered from there would clear the flag on its way out and leave the rest
-            // of the outer one unguarded; the answer is recomputed on the next selection change
+            // including the caret rescues `tables.refresh`/`viewBlocks.refresh` perform at the
+            // end of `applyStyling`, where the flag is still set by its own `defer`. A pass
+            // entered from there would clear the flag on its way out and leave the rest of the
+            // outer one unguarded; the answer is recomputed on the next selection change
             // anyway, and the stored one is deliberately left stale so that comparison sees it.
-            if !isStyling {
-                let revealedBlock = Self.revealedViewBlock(
-                    in: textView.string, selection: textView.selectedRange()
-                )
-                if revealedBlock != lastRevealedViewBlock {
-                    lastRevealedViewBlock = revealedBlock
-                    applyStyling(to: textView, theme: parent.theme)
-                }
+            if !isStyling, viewBlocks.selectionCrossedFence(in: textView) {
+                applyStyling(to: textView, theme: parent.theme)
             }
             let caret = textView.selectedRange().location
-            let entry = parent.outlineRanges.lastIndex { $0.location <= caret }
-            guard lastOutlineEntry != .some(entry) else { return }
-            lastOutlineEntry = entry
-            parent.onOutlineEntryChanged?(entry)
-        }
-
-        /// The `pergamenum-view` fence (opening line through closing line, inclusive) whose
-        /// source range `selection` currently intersects, or `nil` when it sits outside every
-        /// fence in `text` (ADR-0033 §D4).
-        ///
-        /// Pure offset arithmetic against the note's own source - `text`/`selection` and not an
-        /// `NSTextView`, `MarkupReveal.paragraphs(in:selection:markedRange:currentMatch:)`'s own
-        /// shape (`NoteTextView+Reveal.swift`) - which is also why this construct's reveal
-        /// survives the caret moving from the opening fence line into the body it has just
-        /// revealed, unlike a paragraph-keyed reveal: the answer stays the same non-nil range for
-        /// every position inside the block, body lines included (Context finding 3).
-        ///
-        /// Read in two places, which are two questions asked of one rule: the §D5 guard in
-        /// `textViewDidChangeSelection` asks whether the answer *changed* since the last
-        /// selection change - the one thing that makes a crossing re-run `applyStyling` - and
-        /// `applyViewBlocks` asks, of each fence it is about to register, whether that one is
-        /// revealed (`selectionReveals(_:fence:)` below, the same intersection applied per
-        /// fence, which is how §D4 states it).
-        ///
-        /// `nonisolated`, deliberately: pure text/range arithmetic touches no actor-isolated
-        /// state at all, and `ViewBlockRevealPredicate` (`Tests/ViewBlockCaretTests.swift`)
-        /// calls it from a plain, non-`@MainActor` test - the "no `NSTextView`" half of this
-        /// task's own tester brief also means no forced hop to the main actor to ask it a
-        /// question about a `String`.
-        nonisolated static func revealedViewBlock(in text: String, selection: NSRange) -> NSRange? {
-            viewBlockRanges(in: text).first { selectionReveals(selection, fence: $0) }
-        }
-
-        /// Every closed `pergamenum-view` fence's whole source range in `text`, in document
-        /// order - `MarkdownStyler.viewBlockRuns(outside:)`' own two filters over
-        /// `CodeFence.regions(in:)`, which is this app's single rule for where a fence begins
-        /// and ends. `EditorDecorationDelegate.viewBlockRun(in:atParagraphStart:)` reads the
-        /// same boundary from the live characters one block at a time, and the two agree
-        /// because both stop at the closing fence line's own last character.
-        ///
-        /// **Closed fences only** (ADR §D6): a `CodeFence.Region` synthesised for an unclosed
-        /// fence has `body.upperBound == range.upperBound`, and an unclosed fence draws nothing
-        /// at all - so there is nothing to reveal, and nothing to re-render on leaving it.
-        ///
-        /// Deliberately **not** gated on `ViewBlock.parse` the way `viewBlockRun` is: whether a
-        /// body parses decides what is *drawn* (ADR §D7), not where the block's source starts
-        /// and stops, and a reveal that blinked off while a `render:` line is half-typed would
-        /// re-style the note on every keystroke inside it.
-        nonisolated static func viewBlockRanges(in text: String) -> [NSRange] {
-            // A note that never spells the language holds no view block, and this is asked on
-            // every arrow key (ADR §D5: "a note with no fence pays one comparison"): one
-            // substring search over the characters, rather than `CodeFence.regions`' line-range
-            // array for the whole note.
-            guard text.contains(ViewBlock.language) else { return [] }
-            return CodeFence.regions(in: text)
-                .filter { $0.language == ViewBlock.language && $0.body.upperBound != $0.range.upperBound }
-                .map { NSRange($0.range, in: text) }
-                .filter { $0.location != NSNotFound }
-        }
-
-        /// Whether `selection` puts the caret - or any part of a non-empty selection - inside
-        /// `fence`'s own source range, both delimiter lines included (ADR §D4).
-        ///
-        /// Inclusive at both ends: an empty selection at the run's last character is a caret on
-        /// the closing fence line, and one at its first is a caret on the opening line. ADR-0018
-        /// §D2's trigger 2 arrives here as a non-empty range starting outside and ending inside,
-        /// which is the same test rather than a second one.
-        nonisolated static func selectionReveals(_ selection: NSRange, fence: NSRange) -> Bool {
-            guard selection.location != NSNotFound else { return false }
-            return selection.location <= NSMaxRange(fence) && NSMaxRange(selection) >= fence.location
+            let entry = parent.outline.outlineRanges.lastIndex { $0.location <= caret }
+            guard requests.claimOutlineEntry(entry) else { return }
+            parent.outline.onOutlineEntryChanged?(entry)
         }
 
         /// Puts the cursor in the editor.
@@ -319,48 +177,10 @@ extension NoteTextView {
             }
         }
 
-        /// Recomputes the fold and makes the layout read it again.
-        ///
-        /// `edited(.editedAttributes,…)` is what re-runs the content manager's enumeration
-        /// without a character changing - the same trick the reveal-on-caret probe used in
-        /// the TextKit study. Skipped entirely when nothing is folded and nothing was, so
-        /// an ordinary note pays nothing for this.
+        /// `FoldController.apply(to:folded:theme:)`, kept here under the name `updateNSView`
+        /// calls (ADR-0074 §D5, `NoteTextView+Folding.swift`).
         func applyFolding(to textView: NSTextView, folded: Set<Int>, theme: Theme) {
-            guard decorations.isFolding || !folded.isEmpty else { return }
-            let layout = NoteFolding.layout(in: textView.string, foldedEntries: folded)
-            guard layout != lastFoldLayout else { return }
-            lastFoldLayout = layout
-
-            decorations.badgeColor = NSColor(theme.color(.textTertiary))
-            decorations.badgeBackground = NSColor(theme.color(.backgroundTertiary))
-            decorations.apply(hiddenLines: layout.hiddenLineOffsets, foldedHeadings: layout.foldedHeadings)
-
-            let length = (textView.string as NSString).length
-            textView.textContentStorage?.textStorage?.edited(
-                .editedAttributes, range: NSRange(location: 0, length: length), changeInLength: 0
-            )
-            if let manager = textView.textLayoutManager {
-                manager.invalidateLayout(for: manager.documentRange)
-            }
-            rescueCaret(in: textView, from: layout)
-        }
-
-        /// Moves the caret out of a section that has just been folded.
-        ///
-        /// The folded lines are not in the layout, so a caret left inside one is an
-        /// insertion point with nowhere to be drawn and nowhere to type. It goes to the
-        /// heading that swallowed it, which is where a person would look for it.
-        private func rescueCaret(in textView: NSTextView, from layout: NoteFolding.Layout) {
-            guard !layout.hiddenLineOffsets.isEmpty else { return }
-            let text = textView.string as NSString
-            let caret = textView.selectedRange().location
-            guard caret <= text.length else { return }
-            let line = text.paragraphRange(for: NSRange(location: caret, length: 0)).location
-            guard layout.hiddenLineOffsets.contains(line) else { return }
-
-            let heading = layout.foldedHeadings.keys.filter { $0 <= caret }.max() ?? 0
-            textView.setSelectedRange(NSRange(location: heading, length: 0))
-            textView.scrollRangeToVisible(NSRange(location: heading, length: 0))
+            folding.apply(to: textView, folded: folded, theme: theme)
         }
 
         func textDidChange(_ notification: Notification) {
@@ -432,7 +252,7 @@ extension NoteTextView {
             case .external(let url):
                 NSWorkspace.shared.open(url)
             case .embed(let name):
-                parent.onOpenEmbed?(name)
+                parent.vault.onOpenEmbed?(name)
             case .note(let title):
                 parent.onFollowLink(title)
             }
@@ -507,7 +327,8 @@ extension NoteTextView {
             }
             // A drawn embed's resize handle, from a token (ADR-0019 §D5) - the same
             // one-line hand-over `decorations.badgeColor = NSColor(theme.color(...))`
-            // makes in `applyFolding` above. Here rather than threaded through
+            // makes in the folding pass (`FoldController.apply`, `NoteTextView+Folding.swift`).
+            // Here rather than threaded through
             // `applyEmbeds(to:)`, which has no theme and would need one at three call
             // sites; and here rather than beside `badgeColor`, because `applyFolding`
             // returns early for a note with nothing folded, which is most notes.
@@ -557,10 +378,12 @@ extension NoteTextView {
             self.embedRuns = embedRuns
             // After the transaction, deliberately: a grid resizes itself and a caret rescue
             // moves the selection, and neither belongs inside an open editing session.
-            refreshTableGrids(in: textView, theme: theme)
+            tables.refresh(in: textView, theme: theme)
             // Same rule, same reason (ADR-0033 §D15): a host lays SwiftUI out and the caret
-            // rescue moves the selection.
-            refreshViewBlockHosts(in: textView, theme: theme)
+            // rescue moves the selection. The commit holds `self` strongly, as the edit request
+            // it ends up in always has; the resize path does not.
+            viewBlocks.refresh(in: textView, theme: theme, commit: { self.commitViewBlock($0, at: $1, in: $2) },
+                               growToFit: { [weak self] in self?.growToFitTheText($0) })
             // `.editorLink` spans can have moved without the view resizing (an edit above or
             // beside one, a reveal toggling a marker's width) - a tracking area does not
             // follow that on its own the way it follows a resize, so this is the seam that asks

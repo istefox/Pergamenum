@@ -6,8 +6,16 @@ import Foundation
 /// and the linter's whole job is to report what is on disk. A stale row would return a
 /// hit for text that is no longer there, or call a note clean after someone edited it
 /// in Obsidian.
+///
+/// Search has two doors over one loop (PG-260). `search` is synchronous and is what `perg`,
+/// `pergamenum-mcp` and the tests call: their signature and JSON stay as they were
+/// (ADR-0007). `searchCooperatively` is the app's: the same plan and the same per-candidate
+/// step, run in chunks with a pause between them, so the window keeps drawing and a
+/// superseded search stops early. Both read on the main actor, where ADR-0041 §D12 keeps
+/// `read`; the pause is what makes that responsive, not a second thread. Sharing the plan
+/// and the step is what keeps the two doors from ever returning different results.
 extension VaultSession {
-    struct SearchResult: Identifiable, Sendable {
+    struct SearchResult: Identifiable, Equatable, Sendable {
         var id: String { path }
         var path: String
         var title: String
@@ -15,29 +23,82 @@ extension VaultSession {
         var excerpt: String
     }
 
+    /// What both doors decide before reading a single file.
+    private struct SearchPlan {
+        /// One matcher for the whole loop: it compiles the query's `regex:` patterns, and
+        /// compiling them once per note is the difference between a search and a pause.
+        let matcher: SearchQuery.Matcher
+        /// Captured once, so a watcher update mid-search cannot change which notes are
+        /// considered.
+        let candidates: [NoteRecord]
+    }
+
     /// Full-text search across the vault (SPEC §12).
     func search(_ query: SearchQuery, limit: Int = 200) -> [SearchResult] {
-        guard !query.isEmpty else { return [] }
-        // The loop appends before it tests the limit, so without this `0` answered one
-        // hit (ADR-0063 §D1.6).
-        guard limit > 0 else { return [] }
-
-        // One matcher for the whole loop: it compiles the query's `regex:` patterns, and
-        // compiling them once per note is the difference between a search and a pause.
-        let matcher = SearchQuery.Matcher(query)
+        guard let plan = searchPlan(query, limit: limit) else { return [] }
         var results: [SearchResult] = []
-        for record in candidates(for: query) {
-            guard let (_, text) = try? read(record.relativePath) else { continue }
-            guard matcher.matches(record: record, text: text) else { continue }
-
-            results.append(SearchResult(
-                path: record.relativePath,
-                title: record.title,
-                excerpt: matcher.excerpt(in: text)
-            ))
+        for record in plan.candidates {
+            guard let hit = hit(for: record, matcher: plan.matcher) else { continue }
+            results.append(hit)
             if results.count >= limit { break }
         }
         return results
+    }
+
+    /// The same search as `search`, cooperative: after every `chunkSize` candidates, when
+    /// more remain, it awaits `pause` and checks for cancellation. A cancelled search throws
+    /// `CancellationError` and returns nothing, so a superseded query never publishes.
+    func searchCooperatively(
+        _ query: SearchQuery, limit: Int = 200,
+        chunkSize: Int = CooperativeLoop.chunkSize,
+        pause: @MainActor () async -> Void = CooperativeLoop.pause
+    ) async throws -> [SearchResult] {
+        guard let plan = searchPlan(query, limit: limit) else { return [] }
+        try Task.checkCancellation()
+
+        let chunkSize = max(chunkSize, 1)
+        var results: [SearchResult] = []
+        for (offset, record) in plan.candidates.enumerated() {
+            if offset > 0, offset.isMultiple(of: chunkSize) {
+                await pause()
+                try Task.checkCancellation()
+            }
+            guard let hit = hit(for: record, matcher: plan.matcher) else { continue }
+            results.append(hit)
+            if results.count >= limit { break }
+        }
+        return results
+    }
+
+    /// The guards and the candidates both doors share. Nil when the answer is empty
+    /// without reading anything.
+    private func searchPlan(_ query: SearchQuery, limit: Int) -> SearchPlan? {
+        guard !query.isEmpty else { return nil }
+        // The loop appends before it tests the limit, so without this `0` answered one
+        // hit (ADR-0063 §D1.6).
+        guard limit > 0 else { return nil }
+        return SearchPlan(matcher: SearchQuery.Matcher(query), candidates: candidates(for: query))
+    }
+
+    /// One candidate: read, matched, and given its excerpt. Nil when it cannot be read or
+    /// does not match.
+    ///
+    /// A Contenitore scheda is matched and excerpted together with its document's extracted
+    /// text, looked up by the hash the scheda records (ADR-0071 §D9), so a word found only in a
+    /// scanned PDF finds the scheda and shows the line it sits on.
+    private func hit(for record: NoteRecord, matcher: SearchQuery.Matcher) -> SearchResult? {
+        guard let (_, noteText) = try? read(record.relativePath) else { return nil }
+        var text = noteText
+        if let hash = record.contenitore?.sha256,
+           let extracted = extractedTexts.read(sha256: hash), !extracted.text.isEmpty {
+            text += "\n\n" + extracted.text
+        }
+        guard matcher.matches(record: record, text: text) else { return nil }
+        return SearchResult(
+            path: record.relativePath,
+            title: record.title,
+            excerpt: matcher.excerpt(in: text)
+        )
     }
 
     /// The notes worth reading for a query.

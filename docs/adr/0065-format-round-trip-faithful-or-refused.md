@@ -618,10 +618,27 @@ Each item is out of the SPEC's scope and is filed as a follow-up:
    `"\n"` `Character`, so they treat a CRLF note as one line. Headings, the outline and the export
    come out wrong. The file is never damaged by it.
 2. `DossierYAML` writes keywords without escaping `"` or a line break.
+
+   > Cross-reference, 2026-09-29 (PG-275, #614): closed by PR #671 (merge `a242b3ea`). Quoted
+   > values now escape `\`, `"`, `\n` and `\r` and read back through the exact inverse; no
+   > decision above changes. See `Sources/Core/Pratiche/DossierYAML.swift` and
+   > `docs/plans/burn-down-2026-09-29-pg-275.md`.
+
 3. `MessageFrontmatterPatch.swift:24-26` (app-written files) and `ViewCatalogue.swift:78,83` keep the
    whitespace-only delimiter test.
+
+   > Cross-reference, 2026-09-29 (PG-276, #615): closed by PR #667 (merge `3106f44e`). Both
+   > readers now find a block through the note parser's own test; no decision above changes. See
+   > «Implementation notes», «Follow-up: PG-276» and `docs/plans/pg-276-crlf-delimiter-parsers.md`.
+
 4. A canvas's required keys with a wrong JSON type (`"x": "12"`, `"text": 42`) are replaced by their
    defaults (`JSONCanvas.swift:171-189`).
+
+   > Cross-reference, 2026-09-28 (PG-277, #616): closed by PR #658 (merge `58810e0e`). Such a
+   > node is now kept opaque under §D5.4; no decision above changes. See
+   > «Implementation notes», «Follow-up: PG-277» and
+   > `docs/plans/pg-277-canvas-wrong-type-required-keys.md`.
+
 5. A `## Note correlate` line inside a fenced code block is still taken as the heading.
 6. `JSONValue` holds numbers as `Double`, so an integer beyond 2^53 loses precision. This is
    pre-existing.
@@ -871,6 +888,142 @@ byte cases, canvases, mail, message documents). Each one either round-trips byte
 refused with a named error. None is dropped. The per-case red state before each fix was not
 measured case by case; the plan's «Today» column is the prediction, and it was not re-checked
 individually.
+
+### Follow-up: PG-277
+
+Written 2026-09-28, closing §D13.4 (PG-277, #616, PR #658, merge `58810e0e`). Plan:
+`docs/plans/pg-277-canvas-wrong-type-required-keys.md`. It applies §D5.4's rule to one more input
+class and changes no decision of this ADR: no on-disk format, no `IndexCache.schemaVersion`, no
+protected interface.
+
+**The widened §D5.4 set.** A node is also unreadable, so kept opaque at its index and written back
+verbatim, when a required key is present with a wrong JSON type. JSON Canvas 1.0's required keys
+are `id`, `type`, `x`, `y`, `width` and `height` on every node, `text` on a text node, `file` on a
+file node and `url` on a link node; an edge's are `id`, `fromNode` and `toNode`. "Present" means
+the key exists after `JSONSerialization`, so a JSON `null` is present. The type is judged through
+`JSONValue(_:)`, which tells a boolean from a number:
+
+- `x`, `y`, `width`, `height`, on every node including an `.unknown` kind: any JSON number is
+  read; anything else, a boolean or `null` included, makes the node opaque.
+- `text`, `file`, `url`, each only on its own kind: a string is read; anything else makes the
+  node opaque.
+- A node's `id`/`type` and an edge's `id`/`fromNode`/`toNode` were already opaque on a wrong type,
+  and still are.
+- Optional keys are unchanged (§D5.3): a wrong-typed `subpath`, `color`, `label`, side, end or
+  `pergamenum-*` key stays in `unknown`, and its element stays readable. Another kind's payload
+  key stays in `unknown` whatever its type (§D5.1).
+
+The reader is `CanvasRequiredKey` (`Sources/Core/Canvas/CanvasRequiredKey.swift`, Foundation only,
+compiled by `perg` and `pergamenum-mcp` through the `Sources/Core/**` glob). `CanvasNode.init?`
+keeps its signature; only the set of inputs it answers `nil` for widens. The encode and
+`reconcile` are unchanged. A node that `base` reads and `theirs` has made malformed now diverges
+naming both its id and its opaque index (`nodes[i]`), under §D6.3.
+
+**Three boundary choices.**
+
+- "Integer" is not enforced. The spec types geometry as an integer, but this app writes
+  `Double(x)` and can carry fractional geometry on its own boards; enforcing it would make the
+  app's own cards opaque.
+- A boolean is not a number, although `NSNumber` carries both. `"width": true` used to read as 1
+  and be written back as `1`, the same loss as a default.
+- An absent required key keeps its default (0, 0, 260, 120 and `""`). Nothing is on disk for a save
+  to overwrite, and a generated canvas that omits geometry still opens drawn. The encode then adds
+  the key with the value the card was drawn with. That is a repair, not a round-trip, so no
+  absent-key case is in `FormatEdgeCorpus`.
+
+**Alternatives rejected.**
+
+- Refusing the open, `DecodingError` style. §D5.5 reserves refusal for a shape that cannot be
+  written back, and a malformed element can be, through the opaque path. Every background reader
+  also decodes with `try?` (`VaultScanner`, the note and folder rename repoints), so a refusal
+  there skips the whole board: one bad key would stop every other file node on it from being
+  repointed and would drop every board task on it from the index.
+- Keeping the element readable and carrying only the bad key. The card would be drawn at a frame
+  or with a text the file never had, it needs per-property provenance on `CanvasNode`, a third
+  carrying tier beside §D5.3 and §D5.4, and the first move, resize or keystroke on the card would
+  replace the value anyway.
+- Coercing leniently (`"12"` to 12, `true` to 1). It is a guess, and it changes the value's JSON
+  type on the next write, which fails the canonical round-trip. `true` to 1 was the defect itself.
+
+**Consequences (the plan's G1, accepted).** A node made opaque by this rule is carried, not
+interpreted. It is not drawn, and neither are its edges, which stay readable `CanvasEdge` values
+and are written back unchanged. It keeps its old path when the file it names is renamed or moved.
+A task line it holds does not reach the Tasks views. Its file is offered again in the board's
+tray, and it is not listed among the board's referenced notes. Before the fix the same node was
+drawn with a default value that the next write destroyed. Whether a board should say that it holds
+opaque elements applies to every §D5.4 element and is not decided here; this follow-up keeps
+§D5.4's silence.
+
+Named, not addressed: more opaque elements make `PG-281` (#605, an opaque element's index going
+stale after an insert or delete before it) more reachable, with order changing and no content
+lost; a generated id colliding with an opaque node's id stays a 2^-64 event, pre-existing for every
+§D5.4 element; a number outside `Double`'s range was not examined.
+
+### Follow-up: PG-276
+
+Written 2026-09-29, closing §D13.3 (PG-276, #615, PR #667, merge `3106f44e`). Plan:
+`docs/plans/pg-276-crlf-delimiter-parsers.md`. It applies §D1.2's line interpretation and §D3's
+line-ending rule to two more readers and changes no decision of this ADR: no on-disk format, no
+`IndexCache.schemaVersion`, no protected interface.
+
+**The rule, as the note parser has it.** A text is split on `"\n"`; each line is interpreted with
+one trailing `\r` removed and, on line 0 only, one leading U+FEFF; a delimiter is an interpreted
+line that trims (`CharacterSet.whitespaces`: Zs plus U+0009, never `\r` or U+FEFF) to exactly
+`---`. The opening is line 0, the closing the first later delimiter, and an opening with no
+closing is no block: the whole text is body.
+
+| Line | As the opening (line 0) | As the closing (a later line) |
+|---|---|---|
+| `"---"`, `"--- "`, `"\t---"`, `"  ---  "`, `"\u{00A0}---"` | delimiter | delimiter |
+| `"---\r"`, `"--- \r"`, `"\t---\r"` | delimiter | delimiter |
+| `"\u{FEFF}---"`, `"\u{FEFF}---\r"` | delimiter | not a delimiter |
+| `"---\r\r"`, `"----"`, `"--- x"`, `"-- -"` | not a delimiter | not a delimiter |
+| an opening with no closing line | no block, the whole text is body | — |
+
+**One helper, five adopters.** `FrontmatterSource.closingDelimiterIndex(in:)` takes the raw lines
+of a `"\n"` split and answers the closing delimiter's index, or `nil` when there is no opening or
+no closing. It composes `interpreted` and `isDelimiter`, which stay module-visible for their other
+callers. It is Foundation only, compiled by `perg` and `pergamenum-mcp` through `Sources/Core/**`.
+Its adopters:
+
+- `FrontmatterSource.document(from:)`, behind `NoteDocument.parse`, with semantics identical;
+- `TagRename`, whose private `frontmatterEnd(of:)` is deleted and whose three call sites use the
+  helper, with semantics identical;
+- `FrontmatterRules.opensWithSecondBlock(_:)` (§D11), which now interprets the body's first line
+  once. It used to interpret it twice, so a body opening with `"---\r\r"` counted as a second
+  block, against §D11's "one trailing `\r` removed";
+- `MessageFrontmatterPatch.applying(line:forKey:before:to:)`, which returned `nil` on a CRLF or
+  BOM-opened message file. The sync's pending-attachment retry, its inline-image resolution and
+  the corrupt-attachment repair skipped such a file silently; «Collega nota» reported «frontmatter
+  non valido» in the app, `perg` and `pergamenum-mcp`;
+- `ViewCatalogue.locations(in:)`, which kept a CRLF frontmatter as body (a YAML comment line became
+  the first view's heading) and skipped the whole file behind an unterminated opening, where the
+  parser reads it as body. `scan` pairs these locations by ordinal with `ViewBlock.blocks(in:)` of
+  the parsed body, so the walk must skip exactly the block the parser recognises.
+
+**The written line in the patch (§D3, §D1.3.1).** An inserted line, and a replaced line whose value
+changes, end in the document's line break (`LineBreak.detected(in:)`), so a CRLF message stays
+all-CRLF. A replaced line whose interpreted text already equals the new line is left verbatim, so a
+no-op patch equals the input on a mixed file too and ADR-0040 §D6's "a patch identical to the file
+on disk is never written" stays true. A removal removes the raw line, its `\r` included. The
+signature is unchanged.
+
+**Body lines in `ViewCatalogue` (the plan's R-06, G1 accepted).** Each body line is read through
+`FrontmatterSource.interpreted` before it is trimmed, so a CRLF note's `pergamenum-view` fences are
+located on their whole-file line index and its headings carry no `\r`. Before, no view in an
+all-CRLF note was ever located. The body lines are interpreted without `isFirst`: when a note has no
+block, its body starts on line 0 and `MarkdownBlockParser` keeps a leading U+FEFF there, so the walk
+keeps it too.
+
+Named, not addressed:
+
+- `MarkdownStyler.frontmatterRange(in:)` (`hasPrefix("---")` plus a `"\n---"` search) is looser than
+  the rule, but it only decides where styling starts and never writes. Its function's line walks
+  are §D13.1's class, so it goes to `PG-274` (#613) with them.
+- `NoteJump.lineRange` and `CodeFence.lineRanges` search for a `"\n"` `Character`, so a located view
+  in a CRLF note still opens without moving the caret. Same class as §D13.1, reported for `PG-274`.
+- `MarkdownBlockParser` splits on `.newlines`, so a lone `\r`, U+2028, U+2029 and U+0085 break a
+  line there and not in `ViewCatalogue`. Pre-existing, and not a delimiter test.
 
 ## References
 

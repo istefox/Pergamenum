@@ -118,12 +118,12 @@ enum OutlineMove {
     /// from whatever `extent` happened to carry, which is a fact about the OLD position.
     ///
     /// Dropped before another line: that line's own start is always either the very start
-    /// of the note or immediately after a "\n" already there (every `NoteOutline` line
-    /// range starts that way), so only a trailing "\n" has to be supplied, separating the
+    /// of the note or immediately after a terminator already there (every `NoteOutline` line
+    /// range starts that way), so only a trailing terminator has to be supplied, separating the
     /// moved section from the line that now follows it.
     ///
     /// Appended at the end of the note: nothing follows it to separate it from, so instead
-    /// a LEADING "\n" is supplied when needed - and "needed" depends on what will actually
+    /// a LEADING terminator is supplied when needed - and "needed" depends on what will actually
     /// end up right before it once the section is gone, which is the character before the
     /// note's own end when the section was moved from elsewhere, or the character before
     /// the section's own extent when the section was the last thing in the note already
@@ -134,8 +134,12 @@ enum OutlineMove {
         extent: Range<String.Index>,
         before destinationGiven: Bool
     ) -> String {
-        let body = extracted.hasSuffix("\n") ? String(extracted.dropLast()) : extracted
-        guard !destinationGiven else { return body + "\n" }
+        // A CRLF pair is one `Character` (PG-274): `hasSuffix("\n")` never sees it, so the
+        // trailing terminator is tested with the shared predicate and re-emitted as the note's
+        // own line break, never a hard-coded "\n".
+        let body = extracted.last.map(LineBreak.isTerminator) == true ? String(extracted.dropLast()) : extracted
+        let lineBreak = LineBreak.detected(in: text).characters
+        guard !destinationGiven else { return body + lineBreak }
 
         let precedingCharacter: Character?
         if extent.upperBound == text.endIndex {
@@ -145,7 +149,8 @@ enum OutlineMove {
         } else {
             precedingCharacter = text.isEmpty ? nil : text[text.index(before: text.endIndex)]
         }
-        return (precedingCharacter == nil || precedingCharacter == "\n") ? body : "\n" + body
+        let endsLine = precedingCharacter.map(LineBreak.isTerminator) ?? true
+        return endsLine ? body : lineBreak + body
     }
 
     /// The section's own text extent, its trailing newline included when there is one - so
@@ -155,7 +160,7 @@ enum OutlineMove {
     /// extends it for a caller that does.
     private static func extentIncludingNewline(in text: String, headingAt entry: Int) -> Range<String.Index>? {
         guard let range = NoteFolding.sectionRange(in: text, headingAt: entry) else { return nil }
-        guard range.upperBound < text.endIndex, text[range.upperBound] == "\n" else { return range }
+        guard range.upperBound < text.endIndex, LineBreak.isTerminator(text[range.upperBound]) else { return range }
         return range.lowerBound..<text.index(after: range.upperBound)
     }
 
@@ -205,10 +210,11 @@ enum OutlineMove {
         var result = ""
         var index = extracted.startIndex
         while index < extracted.endIndex {
-            let lineEnd = extracted[index...].firstIndex(of: "\n") ?? extracted.endIndex
+            let lineEnd = extracted[index...].firstIndex(where: LineBreak.isTerminator) ?? extracted.endIndex
             result += rewrittenLine(extracted[index..<lineEnd], delta: delta)
             guard lineEnd < extracted.endIndex else { break }
-            result += "\n"
+            // The line's own terminator ("\n" or the one-grapheme "\r\n"), kept as found.
+            result += String(extracted[lineEnd])
             index = extracted.index(after: lineEnd)
         }
         return result

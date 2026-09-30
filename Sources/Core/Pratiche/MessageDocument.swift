@@ -143,11 +143,13 @@ struct MessageDocument: Equatable, Sendable {
             add("pergamenum-mail-conversation-id", "\(conversationID)")
         }
         add("pergamenum-mail-direction", mail.direction.rawValue)
-        add("pergamenum-mail-date", isoString(mail.date, offset: mail.dateOffset))
+        // One formatter for the file's dates (ADR-0072 §D9, R-14).
+        let formatter = ISO8601DateFormatter()
+        add("pergamenum-mail-date", isoString(mail.date, offset: mail.dateOffset, formatter))
         if let received = mail.received {
             // ADR-0065 §D8.4 (G1.5): the Envelope Index stores an epoch, so there is no sender
             // zone to use, and the machine's own would make the line depend on the Mac.
-            add("pergamenum-mail-received", isoString(received, offset: nil))
+            add("pergamenum-mail-received", isoString(received, offset: nil, formatter))
         }
         add("pergamenum-mail-from", quoted(mail.from))
         if !mail.to.isEmpty { add("pergamenum-mail-to", inlineList(mail.to)) }
@@ -219,13 +221,23 @@ struct MessageDocument: Equatable, Sendable {
 
     /// A header value is somebody else's text: a `"` or a line break in it would close
     /// the scalar early and let the rest be read as new frontmatter keys (the same
-    /// escaping `TranscriptNote` pays for the Plaud service's strings).
+    /// escaping `TranscriptNote` pays for the Plaud service's strings). `\r` is its own
+    /// pair (PG-314, `DossierYAML.quoted`'s shape): folding `\r\n` into `\n` is not an
+    /// inverse, and a lone `\r` left raw ends the line for a CRLF-aware reader.
+    ///
+    /// Walks unicode scalars, not `Character`s: `"\r\n"` is one `Character`, so a
+    /// `Character`-level replacement of `"\n"` never finds the LF of a CRLF pair.
     private static func quoted(_ value: String) -> String {
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\r\n", with: "\\n")
-            .replacingOccurrences(of: "\n", with: "\\n")
+        var escaped = ""
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\\": escaped += "\\\\"
+            case "\"": escaped += "\\\""
+            case "\n": escaped += "\\n"
+            case "\r": escaped += "\\r"
+            default: escaped.unicodeScalars.append(scalar)
+            }
+        }
         return "\"\(escaped)\""
     }
 
@@ -239,8 +251,10 @@ struct MessageDocument: Equatable, Sendable {
     /// The zone is the sender's, never the machine's (ADR-0065 §D8.2, R-15): the machine's
     /// zone made the same message read differently on a second Mac, after travel, or on a CI
     /// runner in UTC. With no offset the instant is written in UTC, `Z`.
-    private static func isoString(_ date: Date, offset: Int?) -> String {
-        let formatter = ISO8601DateFormatter()
+    ///
+    /// `formatter` is shared across one render: the zone is set before every string, so the
+    /// sender's zone of the date never carries over to the received line.
+    private static func isoString(_ date: Date, offset: Int?, _ formatter: ISO8601DateFormatter) -> String {
         formatter.formatOptions = [.withInternetDateTime]
         formatter.timeZone = offset.flatMap(TimeZone.init(secondsFromGMT:)) ?? TimeZone(secondsFromGMT: 0)
         return formatter.string(from: date)

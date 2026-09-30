@@ -23,8 +23,7 @@ extension NoteTextView.Coordinator {
     /// would ignore an unsaved edit sitting in this buffer.
     func toggleCheckbox(at point: CGPoint, in textView: NSTextView) -> Bool {
         guard let manager = textView.textLayoutManager else { return false }
-        let origin = textView.textContainerOrigin
-        let inContainer = CGPoint(x: point.x - origin.x, y: point.y - origin.y)
+        let inContainer = Self.inContainer(point, of: textView)
         let text = textView.string as NSString
 
         var handled = false
@@ -92,15 +91,16 @@ extension NoteTextView.Coordinator {
         // contract), so it has to come off here or `TaskParser.line(for:settingState:today:)`
         // appends `@done(...)` after an embedded `\n` instead of after the task's own text -
         // `trimmingTrailingWhitespace()` strips spaces and tabs, never a newline sitting mid-
-        // string once another line's `" @done(...)"` prefix is added.
-        let hasTrailingNewline = line.hasSuffix("\n")
-        let content = hasTrailingNewline ? String(line.dropLast()) : line
+        // string once another line's `" @done(...)"` prefix is added. The terminator is a
+        // `Character`: `"\n"`, or `"\r\n"` in a CRLF note, which `hasSuffix("\n")` never saw, so
+        // the `@done` landed on the next line (PG-316). It goes back exactly as it was found.
+        let terminator = line.last.flatMap { LineBreak.isTerminator($0) ? String($0) : nil } ?? ""
+        let content = terminator.isEmpty ? line : String(line.dropLast())
         guard let task = TaskParser.parse(line: content, sourcePath: "", lineIndex: 0) else { return false }
 
         let newState: TaskItem.State = task.state == .done ? .open : .done
-        var newLine = TaskParser.line(for: task, settingState: newState, today: .today)
-        if hasTrailingNewline { newLine += "\n" }
+        let newLine = TaskParser.line(for: task, settingState: newState, today: .today) + terminator
 
-        return replaceAtomically(lineRange, with: newLine, in: textView)
+        return Self.replaceAtomically(lineRange, with: newLine, in: textView)
     }
 }

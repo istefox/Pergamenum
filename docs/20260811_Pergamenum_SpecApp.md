@@ -203,6 +203,16 @@ L'architettura harness vigente (ADR 20/07/2026, emendata 30/07/2026) assegna i t
   stesso meccanismo dei colori (§11.3): resta un file DTCG nel vault, mai uno stato dell'app.
   Una famiglia dichiarata da un tema e non installata degrada al carattere di sistema, senza
   errore e senza crash.
+- *Emendato 2026-09-29 (ADR-0012 §D3, ADR-0073).* **Una nota si salva in modo esplicito**:
+  Cmd+S, il pulsante «Salva» nella barra delle tab, oppure «Salva» nel dialogo che chiudere una
+  tab con modifiche non salvate apre («Salva / Non salvare / Annulla»). Nessun salvataggio
+  automatico: la barra in alto dice «Non salvato» finché la nota ha modifiche, «Salvato»
+  altrimenti. **Uscire dall'app con note non salvate chiede prima**, con un solo avviso che le
+  elenca tutte, di entrambe le colonne e anche delle tab in secondo piano: «Salva tutto / Non
+  salvare / Annulla» («Salva» con una nota sola). Una nota cambiata anche su disco non viene mai
+  scritta da «Salva tutto»: l'app resta aperta e mostra il suo avviso di conflitto. Il
+  salvataggio automatico continuo di §6.1 (~1 s) vale per le board del Workspace, non per le
+  note.
 - Requisiti minimi:
   - CommonMark + tabelle GFM + task list `- [ ]`
   - Liste puntate e numerate rese con glifo/ordinale al posto del marcatore, nidificazione
@@ -401,6 +411,7 @@ Registrato via `CFBundleURLTypes`; gestito in `onOpenURL`. Route idempotenti, ap
 | `pergamenum://search?q=<query>` | Ricerca globale con la query |
 | `pergamenum://capture?text=<testo>&note=<path>` | Appende testo alla nota indicata (default: daily di oggi) senza portare l'app in primo piano |
 | `pergamenum://task?add=<testo>` | Crea un task nell'Inbox |
+| `pergamenum://contenitore?id=<uuid>` | Seleziona il documento nel pannello Contenitore; un ID sconosciuto apre il pannello senza selezione (ADR-0071 §D10) |
 
 Ogni nota, canvas e card espone "Copia link Pergamenum" nel menu contestuale, per incollare il link in Obsidian, DEVONthink, Mail o Calendario.
 

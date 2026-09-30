@@ -538,8 +538,8 @@ final class WorkspaceController {
 
     var isDragging: Bool { !draggingIDs.isEmpty }
 
-    /// The card the pointer is on, whose edges the alignment guides work from.
-    var dragAnchorID: String?
+    /// The card the pointer is on and what it snaps to, captured when the drag begins.
+    var dragSnap: BoardDragSnap?
     /// Guides to draw while a drag is in flight (SPEC §6.3).
     var activeGuides: [BoardGeometry.Guide] = []
 

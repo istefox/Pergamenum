@@ -33,7 +33,7 @@ private func substitutedParagraph(
 
 /// The UTF-16 offsets of every paragraph a real layout pass actually lays out - what a
 /// table's own `shouldEnumerate` refusal must remove the delimiter and body rows from,
-/// the same measured-frames approach `Tests/MarkupHidingTests.swift`'s own `frames(...)`
+/// the same measured-frames approach `Tests/MarkupHidingFixture.swift`'s own `frames(...)`
 /// helper already uses for folding.
 @MainActor
 private func laidOutOffsets(of delegate: EditorDecorationDelegate, text: String) -> Set<Int> {

@@ -196,18 +196,30 @@ enum MarkdownStyler {
     }
 
     /// The `---`-delimited block, only when it opens on the very first line.
+    ///
+    /// The closing `---` is the first line after the opening that starts with it, whichever
+    /// ending the line before it has: a `"\n---"` search never matched in a CRLF note, where
+    /// `"\r\n"` is one `Character`, so its frontmatter was styled as body (PG-274).
     private static func frontmatterRange(in text: String) -> Range<String.Index>? {
         guard text.hasPrefix("---") else { return nil }
-        let afterOpening = text.index(text.startIndex, offsetBy: 3)
-        guard let closing = text.range(of: "\n---", range: afterOpening..<text.endIndex) else { return nil }
-        return text.startIndex..<closing.upperBound
+        var index = text.index(text.startIndex, offsetBy: 3)
+        while let lineEnd = text[index...].firstIndex(where: LineBreak.isTerminator) {
+            let lineStart = text.index(after: lineEnd)
+            if text[lineStart...].hasPrefix("---") {
+                return text.startIndex..<text.index(lineStart, offsetBy: 3)
+            }
+            index = lineStart
+        }
+        return nil
     }
 
+    /// A CRLF line ends before its `\r\n`, one `Character`, so it is styled as a line of its own
+    /// and never carries the `\r` into a span (PG-274).
     private static func lineRanges(in text: String, from start: String.Index) -> [Range<String.Index>] {
         var ranges: [Range<String.Index>] = []
         var lineStart = start
         while lineStart < text.endIndex {
-            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+            let lineEnd = text[lineStart...].firstIndex(where: LineBreak.isTerminator) ?? text.endIndex
             if lineStart < lineEnd { ranges.append(lineStart..<lineEnd) }
             guard lineEnd < text.endIndex else { break }
             lineStart = text.index(after: lineEnd)

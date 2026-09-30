@@ -20,6 +20,9 @@ extension SearchQuery {
         private let foldedWords: [String]
         private let foldedPhrases: [String]
         private let foldedNegated: [String]
+        /// `tag:` and `-tag:`, folded once for the same reason (ADR-0072).
+        private let tagPatterns: [Glob.Pattern]
+        private let negatedTagPatterns: [Glob.Pattern]
 
         init(_ query: SearchQuery) {
             self.query = query
@@ -28,6 +31,8 @@ extension SearchQuery {
             foldedWords = query.words.map(SearchQuery.fold)
             foldedPhrases = query.phrases.map(SearchQuery.fold)
             foldedNegated = (query.negatedWords + query.negatedPhrases).map(SearchQuery.fold)
+            tagPatterns = query.tags.map(Glob.Pattern.init)
+            negatedTagPatterns = query.negatedTags.map(Glob.Pattern.init)
             refusesEverything = !query.invalidPatterns.isEmpty
                 || required.count != query.patterns.count
                 || forbidden.count != query.negatedPatterns.count
@@ -71,12 +76,15 @@ extension SearchQuery {
 
             // The set is the note's whole tag vocabulary, frontmatter plus tasks, and it is
             // consulted by these two loops alone - a query asking about no tag at all must
-            // not pay for building it.
+            // not pay for building it. The comparison is the views' own (`Glob.matchesTag`):
+            // exact without a wildcard, glob with one, so `tag:client-acme` does not take
+            // `client-acme-industriale` and `tag:client-*` still finds the family.
             if !query.tags.isEmpty || !query.negatedTags.isEmpty {
                 let noteTags = Set(record.frontmatter.tags.map { $0.description.lowercased() })
                     .union(record.tasks.flatMap { $0.tags.map { $0.description.lowercased() } })
-                for tag in query.tags where !noteTags.contains(where: { $0.hasPrefix(tag) }) { return false }
-                for tag in query.negatedTags where noteTags.contains(where: { $0.hasPrefix(tag) }) { return false }
+                let carries = { (pattern: Glob.Pattern) in noteTags.contains { pattern.matchesTag($0) } }
+                for pattern in tagPatterns where !carries(pattern) { return false }
+                for pattern in negatedTagPatterns where carries(pattern) { return false }
             }
 
             if let modified = query.modified, !modified.admits(CalendarDate(record.modifiedAt)) {

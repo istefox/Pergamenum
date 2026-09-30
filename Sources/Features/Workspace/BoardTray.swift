@@ -18,11 +18,12 @@ struct BoardTray: View {
 
     /// The tasks assigned to this board, and how many of them are still open.
     ///
-    /// Held rather than queried per draw: `index.tasks(assignedToWorkspace:)` sorts every
-    /// note in the vault and flat-maps every task out of it, and this tray redraws on every
+    /// Held rather than queried per draw: `index.tasks(assignedToWorkspace:)` filters every
+    /// task in the vault (ADR-0072 §D6's stored list), and this tray redraws on every
     /// observable change it reads - a card dragged across the board included. Refreshed on
-    /// `taskGeneration`, the same counter `TasksView` and `TodayView` watch, which every
-    /// completed scan and every task line the app writes bumps.
+    /// `indexGeneration` (ADR-0072 §D5), which every index change moves: a task assigned by an
+    /// editor save or an external edit reaches the tray when the index takes it in, not at the
+    /// next rescan, as it did while this keyed on `taskGeneration`.
     @State private var assigned = AssignedTasks()
 
     /// The notes this board carries, held rather than derived per draw.
@@ -35,11 +36,18 @@ struct BoardTray: View {
     /// commits, so this recomputes once per real mutation rather than once per redraw.
     @State private var references: [String] = []
 
+    // Internal, not private: read by `Tests/BoardTrayRefreshTests.swift`.
     /// What `assigned` was computed from. A type rather than an interpolated string so the
     /// two parts of the key cannot run into each other.
-    private struct AssignedKey: Equatable {
+    struct AssignedKey: Equatable {
         let generation: Int
         let board: String
+    }
+
+    /// The key `assigned` refreshes on, pure so a test can check it without rendering
+    /// (ADR-0072 §D5, the shape of `RenderedViewBlock.taskID`).
+    static func refreshKey(for vault: VaultController, board: String) -> AssignedKey {
+        AssignedKey(generation: vault.indexGeneration, board: board)
     }
 
     /// The count comes out of the same pass that collects the tasks: a second `filter` over
@@ -135,7 +143,7 @@ struct BoardTray: View {
                 TaskPanelRow(task: task, identifierPrefix: "assigned-task")
             }
         }
-        .task(id: AssignedKey(generation: vault.taskGeneration, board: boardFileName)) {
+        .task(id: Self.refreshKey(for: vault, board: boardFileName)) {
             refreshAssignedTasks()
         }
     }

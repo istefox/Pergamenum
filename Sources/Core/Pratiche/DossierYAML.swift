@@ -46,7 +46,7 @@ enum DossierYAML {
     static func renderStringList(key: String, values: [String], quoted: Bool) -> [String] {
         guard !values.isEmpty else { return [] }
         var rendered = ["\(key):"]
-        rendered.append(contentsOf: values.map { quoted ? "  - \"\($0)\"" : "  - \($0)" })
+        rendered.append(contentsOf: values.map { quoted ? "  - \(Self.quoted($0))" : "  - \($0)" })
         return rendered
     }
 
@@ -111,9 +111,64 @@ enum DossierYAML {
         return unquoted(String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces))
     }
 
+    // MARK: - Double-quoted scalars (PG-275, ADR-0065 §D13.2)
+
+    /// A keyword, a message id or a link is text a person or a mailer chose: a `"` in it
+    /// would close the scalar early, and a line break would end the list item and leave
+    /// the rest as a stray line the next read drops. `MessageDocument.quoted`'s escaping
+    /// (ADR-0065 §D8.1), with `\r` as its own pair: folding `\r\n` into `\n` is not an
+    /// inverse, and a lone `\r` left raw ends the line. `MessageDocument` adopted the
+    /// same `\r` pair in PG-314.
+    ///
+    /// Walks unicode scalars, not `Character`s: `"\r\n"` is one `Character`, so a
+    /// `Character`-level replacement of `"\n"` never finds the LF of a CRLF pair.
+    private static func quoted(_ value: String) -> String {
+        var escaped = ""
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\\": escaped += "\\\\"
+            case "\"": escaped += "\\\""
+            case "\n": escaped += "\\n"
+            case "\r": escaped += "\\r"
+            default: escaped.unicodeScalars.append(scalar)
+            }
+        }
+        return "\"\(escaped)\""
+    }
+
+    /// The exact inverse of `quoted()`, `MessageDocument.unquoted`'s shape (ADR-0065
+    /// §D8.1): one left-to-right scan decoding `\\`, `\"`, `\n` and `\r` as pairs and
+    /// leaving any other backslash as it is, so a hand-typed `"C:\temp"` still reads as
+    /// written. Chained replacements are not an inverse in either order.
+    ///
+    /// A single-quoted value is only stripped, as before: this app never writes one.
     private static func unquoted(_ value: String) -> String {
-        guard value.count >= 2, let first = value.first, let last = value.last else { return value }
-        guard (first == "\"" && last == "\"") || (first == "'" && last == "'") else { return value }
-        return String(value.dropFirst().dropLast())
+        let scalars = value.unicodeScalars
+        guard scalars.count >= 2, let first = scalars.first, let last = scalars.last else { return value }
+        if first == "'" && last == "'" { return String(value.dropFirst().dropLast()) }
+        guard first == "\"" && last == "\"" else { return value }
+
+        var result = String.UnicodeScalarView()
+        var pendingBackslash = false
+        for scalar in scalars.dropFirst().dropLast() {
+            if pendingBackslash {
+                pendingBackslash = false
+                switch scalar {
+                case "\\": result.append("\\")
+                case "\"": result.append("\"")
+                case "n": result.append("\n")
+                case "r": result.append("\r")
+                default:
+                    result.append("\\")
+                    result.append(scalar)
+                }
+            } else if scalar == "\\" {
+                pendingBackslash = true
+            } else {
+                result.append(scalar)
+            }
+        }
+        if pendingBackslash { result.append("\\") }
+        return String(result)
     }
 }

@@ -217,6 +217,39 @@ enum PraticaTimelineModel {
     /// string rather than two copies that can drift apart.
     static let notInMailCaption = "non più in Mail"
 
+    // MARK: - PG-298, ADR-0070 §D2: Backspace's own target
+
+    /// The pure rule behind Backspace («Escludi»): the selected row is the target only
+    /// when it is a message the person can currently see. A manual entry (`.note`/
+    /// `.call`), no selection, or an id naming no row of `entries` - a row the filter
+    /// hides, or another pratica's path - all answer `nil` (R-04).
+    ///
+    /// `entries` is the caller's `filteredTimeline`, never the unfiltered `timeline`:
+    /// a row hidden by the filter must not be excludable by a key the person cannot
+    /// see land on it.
+    static func deleteKeyTarget(
+        selectedID: String?, in entries: [PraticaTimelineEntry]
+    ) -> PraticaTimelineEntry? {
+        guard let selectedID,
+              let entry = entries.first(where: { $0.id == selectedID }),
+              entry.kind == .message
+        else { return nil }
+        return entry
+    }
+
+    // MARK: - R-16, ADR-0072 §D7: «Inserisci qui»'s neighbours
+
+    /// Each row's successor in `entries`, keyed by the row's id; the last row has none. One pass
+    /// per body, where every row menu used to search the array for its own row. An id that
+    /// appears twice keeps its first row's successor, as that search did.
+    static func nextRows(in entries: [PraticaTimelineEntry]) -> [PraticaTimelineEntry.ID: PraticaTimelineEntry] {
+        var next: [PraticaTimelineEntry.ID: PraticaTimelineEntry] = [:]
+        for index in entries.indices.dropLast() where next[entries[index].id] == nil {
+            next[entries[index].id] = entries[index + 1]
+        }
+        return next
+    }
+
     // MARK: - R-24: expansion (chevron / Opt+click expand-collapse-all)
 
     /// Per-window expansion state (SPEC "Timeline model" Chevron paragraph):

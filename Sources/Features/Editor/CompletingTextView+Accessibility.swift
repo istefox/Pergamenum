@@ -141,7 +141,7 @@ extension CompletingTextView {
     /// The arithmetic is exactly `NoteTextView.Coordinator.selectEmbed(at:in:)`'s own
     /// (`NoteTextView+EmbedCaret.swift`), read here rather than duplicated: the same
     /// fragment enumeration `decoration(in:claimedBy:)` uses
-    /// (`NoteTextView+Transclusion.swift:182-196`), the same
+    /// (`NoteTextView+Transclusion.swift`), the same
     /// `drawnEmbedRange(atParagraphStart:in:)` as the one source of truth for "this embed
     /// is on screen right now", the same `frameForTextAttachment(at:)` plus
     /// `layoutFragmentFrame` two-step `selectEmbed` already does.
@@ -190,7 +190,7 @@ extension CompletingTextView {
     /// The frame is computed fresh on every call even for a reused element: `local` comes
     /// from the fragment's own current layout, `layoutFragmentFrame` translates it into
     /// the text container, `textContainerOrigin` undoes
-    /// `NoteTextView.Coordinator.inContainer(_:of:)` (`NoteTextView+Transclusion.swift:204`)
+    /// `NoteTextView.Coordinator.inContainer(_:of:)` (`NoteTextView+Transclusion.swift`)
     /// to reach this view's own coordinates, and `convert(_:to: nil)` plus
     /// `window.convertToScreen(_:)` reach the screen - `NSAccessibilityElement`'s own
     /// `accessibilityFrame` is documented "in screen coordinates", the same pair

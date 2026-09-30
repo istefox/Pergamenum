@@ -139,60 +139,89 @@ enum DiarySection {
         var reader = Reader()
         for line in text.components(separatedBy: "\n") { reader.read(line) }
         reader.closeEntry()
-        return (reader.proseLines.joined(separator: "\n"), reader.entries.sorted(by: isBefore))
+        var prose = reader.proseLines.joined(separator: "\n")
+        // A prose line keeps its `\r`, so the join gives each one its own break back - except
+        // the last, when the section took what followed it: its `"\n"` goes, as in an LF note,
+        // and the `\r` left without it goes too (PG-321).
+        if !reader.proseReachesTheEnd, prose.last == "\r" { prose.removeLast() }
+        return (prose, reader.entries.sorted(by: isBefore))
     }
 
     /// Reads a diary note one line at a time, deciding for each whether it belongs to
     /// the section or to the prose above it.
     ///
-    /// A type rather than a closure over local variables: the loop needs six pieces of
+    /// A type rather than a closure over local variables: the loop needs seven pieces of
     /// state and a way to close the entry it is in, and written inline it was longer
     /// than any function in this codebase.
     private struct Reader {
         var proseLines: [String] = []
         var entries: [DiaryEntry] = []
+        /// Whether the last line read went to the prose, so that nothing the section took
+        /// follows the prose's last line.
+        private(set) var proseReachesTheEnd = false
         private var current: DiaryEntry?
         private var noteLines: [String] = []
         private var pendingBlankLines = 0
         private var inSection = false
 
+        /// `line` comes from a `"\n"` split, so a CRLF line still ends in its `\r`. The
+        /// section is read without it - a heading, a time or a colour marker followed by `\r`
+        /// matched nothing, and a CRLF section was all prose (PG-321) - and a line kept as
+        /// prose keeps it, so the prose comes back with its own line breaks.
         mutating func read(_ line: String) {
+            let content = line.hasSuffix("\r") ? String(line.dropLast()) : line
+            proseReachesTheEnd = false
             guard inSection else {
-                if line.trimmingCharacters(in: .whitespaces) == heading {
+                if content.trimmingCharacters(in: .whitespaces) == heading {
                     inSection = true
                 } else {
-                    proseLines.append(line)
+                    keepAsProse(line)
                 }
                 return
             }
-            readInsideSection(line)
+            readInsideSection(line, content: content)
         }
 
-        private mutating func readInsideSection(_ line: String) {
-            // A heading closes the section: what follows is somebody else's.
-            if line.hasPrefix("#") {
+        private mutating func keepAsProse(_ line: String) {
+            proseLines.append(line)
+            proseReachesTheEnd = true
+        }
+
+        private mutating func readInsideSection(_ line: String, content: String) {
+            // A second `## Diario` heading continues the section instead of closing it: it is
+            // the same section again, and its entries join the timeline, so the next write
+            // leaves one section. Read as prose it would have hidden them from the timeline,
+            // and the next write would have dropped them, since `write` strips a section from
+            // the prose it is given. After another heading the section already reopened this
+            // way, so this makes the two positions agree.
+            if content.hasPrefix("#"), content.trimmingCharacters(in: .whitespaces) == heading {
                 closeEntry()
-                inSection = false
-                proseLines.append(line)
                 return
             }
-            if let entry = parseEntryLine(line) {
+            // Any other heading closes the section: what follows is somebody else's.
+            if content.hasPrefix("#") {
+                closeEntry()
+                inSection = false
+                keepAsProse(line)
+                return
+            }
+            if let entry = parseEntryLine(content) {
                 closeEntry()
                 current = entry
                 return
             }
-            if current != nil, let noteLine = noteContinuation(line) {
+            if current != nil, let noteLine = noteContinuation(content) {
                 noteLines.append(contentsOf: Array(repeating: "", count: pendingBlankLines))
                 pendingBlankLines = 0
                 noteLines.append(noteLine)
                 return
             }
-            if line.trimmingCharacters(in: .whitespaces).isEmpty {
+            if content.trimmingCharacters(in: .whitespaces).isEmpty {
                 pendingBlankLines += 1
                 return
             }
             closeEntry()
-            proseLines.append(line)
+            keepAsProse(line)
         }
 
         /// The blank-line count is cleared whether or not there was an entry to close:
@@ -219,16 +248,24 @@ enum DiarySection {
     ///
     /// The prose is stripped again first: called with a whole note rather than with a
     /// prose half, this would otherwise leave two sections in the file.
-    static func write(_ entries: [DiaryEntry], into prose: String) -> String {
+    ///
+    /// The section takes the note's own line break, and the prose's tail is stripped with
+    /// `LineBreak.isTerminator`: a closing `"\r\n"` is one `Character`, which `hasSuffix("\n")`
+    /// never matched, so a CRLF diary gained LF-joined blocks on every write (PG-321). A prose
+    /// with no line break at all takes `noteBreak`, the break of the whole note it came from:
+    /// `split` drops the closing break of the prose, so a one-line prose above the section, or a
+    /// note that is only the section, shows none of its own (LF when the caller has no note).
+    static func write(_ entries: [DiaryEntry], into prose: String, noteBreak: LineBreak = .lf) -> String {
+        let lineBreak = (prose.unicodeScalars.contains("\n") ? LineBreak.detected(in: prose) : noteBreak).characters
         var body = split(prose).prose
-        while body.hasSuffix("\n") { body.removeLast() }
+        while body.last.map(LineBreak.isTerminator) == true { body.removeLast() }
 
-        guard !entries.isEmpty else { return body.isEmpty ? "" : body + "\n" }
-        let section = render(entries)
-        return body.isEmpty ? section + "\n" : body + "\n\n" + section + "\n"
+        guard !entries.isEmpty else { return body.isEmpty ? "" : body + lineBreak }
+        let section = render(entries, lineBreak: lineBreak)
+        return body.isEmpty ? section + lineBreak : body + lineBreak + lineBreak + section + lineBreak
     }
 
-    private static func render(_ entries: [DiaryEntry]) -> String {
+    private static func render(_ entries: [DiaryEntry], lineBreak: String) -> String {
         var lines = [heading, ""]
         for entry in entries.sorted(by: isBefore) {
             let title = entry.title.trimmingCharacters(in: .whitespaces)
@@ -242,7 +279,7 @@ enum DiarySection {
                 lines.append(noteLine.isEmpty ? "" : "  " + noteLine)
             }
         }
-        return lines.joined(separator: "\n")
+        return lines.joined(separator: lineBreak)
     }
 
     /// `- 09:00-11:30 Sopralluogo pressa 4 [colore:verde]`, and nothing else.

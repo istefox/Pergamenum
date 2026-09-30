@@ -20,7 +20,8 @@ import Testing
 /// A real, titled, never-shown `NSWindow` is required here and that sibling test needs
 /// none: `CardTextView.Coordinator` owns a private `UndoManager()` of its own
 /// (`CardTextView.swift:199`), but `NoteTextView.Coordinator.undoManager` is captured from
-/// `textView.window?.undoManager` (`NoteTextView.swift:324`) precisely because it is the
+/// `textView.window?.undoManager` (`NoteTextView+Update.swift`'s `pushInputs(to:coordinator:)`,
+/// run by `updateNSView`) precisely because it is the
 /// *window's* shared stack this bug is about - a windowless text view would exercise a
 /// different undo manager than production ever shares with the sidebar.
 ///
@@ -77,8 +78,9 @@ import Testing
     let scrollView = NSScrollView(frame: textView.frame)
     scrollView.documentView = textView
     window.contentView = scrollView
-    // The line `updateNSView` runs on every SwiftUI update (`NoteTextView.swift:324`),
-    // taken here once by hand since this harness never calls `updateNSView` itself.
+    // The line `updateNSView` runs on every SwiftUI update (`NoteTextView+Update.swift`'s
+    // `pushInputs(to:coordinator:)`), taken here once by hand since this harness never calls
+    // `updateNSView` itself.
     coordinator.undoManager = textView.window?.undoManager
     let storage = try #require(textView.textStorage)
 

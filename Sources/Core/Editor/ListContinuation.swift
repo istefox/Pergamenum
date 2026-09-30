@@ -35,7 +35,7 @@ enum ListContinuation {
         guard selection.length == 0 else { return nil }
         let haystack = text as NSString
         let caret = min(max(selection.location, 0), haystack.length)
-        let all = lines(in: haystack)
+        let all = LineScan.lines(in: haystack)
         let fenced = codeFenceFlags(in: all, haystack: haystack)
 
         // The line a bare caret sits on is the last one starting at or before it, so a caret on a
@@ -107,7 +107,7 @@ enum ListContinuation {
     /// pushing an undo step nobody asked for.
     static func renumbered(_ text: String) -> String? {
         let haystack = text as NSString
-        let all = lines(in: haystack)
+        let all = LineScan.lines(in: haystack)
         let fenced = codeFenceFlags(in: all, haystack: haystack)
 
         var settled: Set<Int> = []
@@ -150,7 +150,7 @@ enum ListContinuation {
 
     /// The edit that makes `line`'s ordinal `ordinal`, or nil when it already is - only the digits
     /// are rewritten, so the delimiter the line was written with (`.` or `)`) is preserved.
-    private static func renumberEdit(on line: Line, to ordinal: Int, in haystack: NSString) -> Edit? {
+    private static func renumberEdit(on line: LineScan.Line, to ordinal: Int, in haystack: NSString) -> Edit? {
         guard let ordered = ordered(on: line, in: haystack) else { return nil }
         let replacement = String(ordinal)
         guard haystack.substring(with: ordered.digits) != replacement else { return nil }
@@ -173,7 +173,7 @@ enum ListContinuation {
     /// Scanned in both directions, because a caret continuing the *last* item of a run needs the
     /// run's first ordinal, which is above it.
     private static func orderedRun(
-        containing index: Int, level: Int, in all: [Line], haystack: NSString, fenced: [Bool]
+        containing index: Int, level: Int, in all: [LineScan.Line], haystack: NSString, fenced: [Bool]
     ) -> [Int] {
         var above: [Int] = []
         var cursor = index - 1
@@ -207,11 +207,11 @@ enum ListContinuation {
     /// content: it is carried over without breaking the run and gets its own run, at its own
     /// level, on its own iteration.
     private static func role(
-        of index: Int, level: Int, in all: [Line], haystack: NSString, fenced: [Bool]
+        of index: Int, level: Int, in all: [LineScan.Line], haystack: NSString, fenced: [Bool]
     ) -> RunRole {
         guard !fenced[index] else { return .boundary }
         let line = all[index]
-        let indent = indentLength(on: line, in: haystack)
+        let indent = LineScan.indentLength(on: line, in: haystack)
         guard line.start + indent < line.contentEnd else { return .boundary }
         guard indent <= level else { return .inside }
         guard indent == level,
@@ -223,50 +223,12 @@ enum ListContinuation {
 
     // MARK: Lines
 
-    /// One line of the text: `start ..< contentEnd` is what is written on it, `start ..< end`
-    /// includes its terminator.
-    private struct Line {
-        var start: Int
-        var contentEnd: Int
-        var end: Int
-    }
-
-    /// Every line of `haystack`, including the empty one after a trailing newline.
-    ///
-    /// Line boundaries come from `NSString` itself rather than from splitting on `"\n"`, so a
-    /// `\r\n` pasted in from somewhere else is one terminator and not two.
-    private static func lines(in haystack: NSString) -> [Line] {
-        var found: [Line] = []
-        var index = 0
-        while index < haystack.length {
-            var start = 0, end = 0, contentEnd = 0
-            haystack.getLineStart(
-                &start, end: &end, contentsEnd: &contentEnd,
-                for: NSRange(location: index, length: 0)
-            )
-            found.append(Line(start: start, contentEnd: contentEnd, end: end))
-            index = end
-        }
-        // Text ending in a terminator has one more line - empty, and the one a caret parked at
-        // the very end sits on. Empty text is that same line and nothing else.
-        if let last = found.last {
-            if last.contentEnd < last.end {
-                found.append(
-                    Line(start: haystack.length, contentEnd: haystack.length, end: haystack.length)
-                )
-            }
-        } else {
-            found.append(Line(start: 0, contentEnd: 0, end: 0))
-        }
-        return found
-    }
-
     /// Which lines are code, fence delimiters included.
     ///
     /// A `- item` inside a fenced block is a character of somebody's shell script, not a list:
     /// continuing it would write a marker into their code, and renumbering would rewrite their
     /// digits.
-    private static func codeFenceFlags(in all: [Line], haystack: NSString) -> [Bool] {
+    private static func codeFenceFlags(in all: [LineScan.Line], haystack: NSString) -> [Bool] {
         var flags = [Bool](repeating: false, count: all.count)
         var open = false
         for (index, line) in all.enumerated() {
@@ -280,20 +242,10 @@ enum ListContinuation {
         return flags
     }
 
-    private static func isFenceDelimiter(_ line: Line, in haystack: NSString) -> Bool {
-        let start = line.start + indentLength(on: line, in: haystack)
-        return matches("```", in: haystack, at: start, limit: line.contentEnd)
-            || matches("~~~", in: haystack, at: start, limit: line.contentEnd)
-    }
-
-    private static func indentLength(on line: Line, in haystack: NSString) -> Int {
-        var cursor = line.start
-        while cursor < line.contentEnd {
-            let character = haystack.character(at: cursor)
-            guard character == 0x20 || character == 0x09 else { break }  // space or tab
-            cursor += 1
-        }
-        return cursor - line.start
+    private static func isFenceDelimiter(_ line: LineScan.Line, in haystack: NSString) -> Bool {
+        let start = line.start + LineScan.indentLength(on: line, in: haystack)
+        return LineScan.matches("```", in: haystack, at: start, limit: line.contentEnd)
+            || LineScan.matches("~~~", in: haystack, at: start, limit: line.contentEnd)
     }
 
     // MARK: Markers
@@ -324,8 +276,8 @@ enum ListContinuation {
         var end: Int
     }
 
-    private static func marker(on line: Line, in haystack: NSString) -> Marker? {
-        let start = line.start + indentLength(on: line, in: haystack)
+    private static func marker(on line: LineScan.Line, in haystack: NSString) -> Marker? {
+        let start = line.start + LineScan.indentLength(on: line, in: haystack)
         if let ordered = ordered(on: line, in: haystack) {
             return Marker(start: start, end: ordered.end, kind: .ordered(delimiter: ordered.delimiter))
         }
@@ -334,7 +286,7 @@ enum ListContinuation {
         guard bullet == 0x2D || bullet == 0x2A || bullet == 0x2B,  // "-", "*" or "+"
               haystack.character(at: start + 1) == 0x20            // " "
         else { return nil }
-        guard isChecklistMarker(in: haystack, at: start + 2, limit: line.contentEnd) else {
+        guard LineScan.isChecklistMarker(in: haystack, at: start + 2, limit: line.contentEnd) else {
             return Marker(start: start, end: start + 2, kind: .bullet)
         }
         // A box written without a trailing space is still a checkbox line; its text simply begins
@@ -347,11 +299,11 @@ enum ListContinuation {
     /// The ordered marker on `line`: its number, the range of its digits - the only part a
     /// renumbering rewrites - the delimiter it was written with, and where the item's text begins.
     private static func ordered(
-        on line: Line, in haystack: NSString
+        on line: LineScan.Line, in haystack: NSString
     ) -> Ordered? {
-        let start = line.start + indentLength(on: line, in: haystack)
+        let start = line.start + LineScan.indentLength(on: line, in: haystack)
         var cursor = start
-        while cursor < line.contentEnd, isDigit(haystack.character(at: cursor)) { cursor += 1 }
+        while cursor < line.contentEnd, LineScan.isDigit(haystack.character(at: cursor)) { cursor += 1 }
         guard cursor > start, cursor + 1 < line.contentEnd else { return nil }
         guard haystack.character(at: cursor) == 0x2E || haystack.character(at: cursor) == 0x29,  // "." or ")"
               haystack.character(at: cursor + 1) == 0x20  // " "
@@ -363,26 +315,5 @@ enum ListContinuation {
             delimiter: haystack.substring(with: NSRange(location: cursor, length: 1)),
             end: cursor + 2
         )
-    }
-
-    /// Whether `"[X]"` sits at `index`, `X` being one of `TaskParser.state(for:)`'s markers: a
-    /// space (open), `x`/`X` (done), `>` (rescheduled) or `-` (cancelled).
-    private static func isChecklistMarker(in haystack: NSString, at index: Int, limit: Int) -> Bool {
-        guard index + 3 <= limit, haystack.character(at: index) == 0x5B else { return false }  // "["
-        guard haystack.character(at: index + 2) == 0x5D else { return false }  // "]"
-        let state = haystack.character(at: index + 1)
-        return state == 0x20 || state == 0x78 || state == 0x58 || state == 0x3E || state == 0x2D
-    }
-
-    private static func matches(
-        _ needle: String, in haystack: NSString, at index: Int, limit: Int
-    ) -> Bool {
-        let length = (needle as NSString).length
-        guard index + length <= limit else { return false }
-        return haystack.substring(with: NSRange(location: index, length: length)) == needle
-    }
-
-    private static func isDigit(_ character: unichar) -> Bool {
-        character >= 0x30 && character <= 0x39
     }
 }

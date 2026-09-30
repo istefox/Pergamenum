@@ -48,6 +48,16 @@ private let damagedNote = "---\ndate: 2026-08-17\ncssclass: a\ncssclass: b\nsolo
     #expect(damageFindings(violations) == [.secondFrontmatterBlock])
 }
 
+// PG-276, plan docs/plans/pg-276-crlf-delimiter-parsers.md - R-05: ADR-0065 §D11 removes ONE
+// trailing `\r` from the body's first line, so `---\r\r` is not a delimiter.
+@MainActor
+@Test func aBodyOpeningWithTwoCarriageReturnsIsNotASecondBlock() throws {
+    let vault = try TemporaryVault()
+    let s = session(root: vault.root, stateBase: vault.stateBase)
+    let text = "---\ndate: 2026-01-01\n---\n---\r\r\ndate: 2026-01-02\n---\nCorpo.\n"
+    #expect(damageFindings(s.violations(path: "Nota.md", title: "Nota", text: text)).isEmpty)
+}
+
 @MainActor
 @Test func aHorizontalRuleIsNotASecondBlock() throws {
     let vault = try TemporaryVault()

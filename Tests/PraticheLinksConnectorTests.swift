@@ -145,6 +145,39 @@ private func openVaultWithOnePratica(_ vault: borrowing TemporaryVault) async th
         #expect(!summary.applied)
     }
 
+    // MARK: - PG-276: a CRLF message file
+
+    // R-01 (ADR-0065 §D1.2, §D3): the connector's door on disk reads a `---\r` block and
+    // keeps every written line CRLF.
+    @Test func linkingANoteToACRLFMessageWritesItAndKeepsCRLF() async throws {
+        let vault = try TemporaryVault()
+        try vault.write(minimalPraticaNote, to: "\(praticaFolder)/pratica.md")
+        try vault.write(
+            messageWithNoLink.replacingOccurrences(of: "\n", with: "\r\n"), to: messagePath
+        )
+        let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+        await session.rescan()
+        let fileURL = vault.root.appending(path: messagePath)
+
+        func onDisk() throws -> String { try String(contentsOf: fileURL, encoding: .utf8) }
+        func allCRLF(_ text: String) -> Bool {
+            text.components(separatedBy: "\n").dropLast().allSatisfy { $0.hasSuffix("\r") }
+        }
+
+        VaultAPI.arm(session, command: "message_link_note", dryRun: false)
+        _ = try await VaultAPI.linkMessageNote(session, message: messagePath, title: "Offerta 2026")
+        let linked = try onDisk()
+        #expect(linked.contains("pergamenum-mail-note: \"[[Offerta 2026]]\"\r\n"))
+        #expect(allCRLF(linked))
+        #expect(try VaultAPI.praticaMessageLink(session, at: messagePath)?.reference == "[[Offerta 2026]]")
+
+        VaultAPI.arm(session, command: "message_unlink_note", dryRun: false)
+        _ = try await VaultAPI.unlinkMessageNote(session, message: messagePath)
+        let unlinked = try onDisk()
+        #expect(!unlinked.contains("pergamenum-mail-note"))
+        #expect(allCRLF(unlinked))
+    }
+
     // MARK: - R-02: the message's one relation replaces rather than appends
 
     @Test func linkingAMessageNoteTwiceReplacesRatherThanAppending() async throws {

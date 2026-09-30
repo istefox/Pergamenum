@@ -141,7 +141,12 @@ final class CommandActions {
             navigation.pane = .notes
             vault.beginNewTab()
         case .closeTab:
-            vault.closeFocusedTab()
+            // A dirty tab asks first (ADR-0012 §D3, ADR-0073 §D11); a clean one closes at once.
+            // The dialog is raised by the editor column, which exists only on the Note pane, so
+            // a dirty tab takes the person there first - from any other pane the request would
+            // sit unanswered until the column next appeared. A clean close needs no pane.
+            if vault.focusedTab?.note.hasUnsavedChanges == true { navigation.pane = .notes }
+            vault.requestCloseFocusedTab()
         case .reopenTab:
             navigation.pane = .notes
             vault.reopenClosedTab()

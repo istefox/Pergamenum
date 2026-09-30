@@ -24,41 +24,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .notice("delegate notifiche al lancio: \(delegate ?? "nessuno", privacy: .public)")
     }
 
-    /// Holds quit until the Diario's owed writes have landed (ADR-0057 §D8, #497).
-    /// `willTerminateNotification` fires after the decision to exit, so a flush started
-    /// there is an async write nothing waits for. Capped at two seconds: a disk that does
-    /// not answer must not turn «Esci» into a hang.
-    ///
-    /// Two independent tasks rather than a task group: a group waits for every child when
-    /// it ends, and `settle()` awaits a write that ignores cancellation, so a group would
-    /// wait out a hung write and the cap would cap nothing. Whichever finishes first
-    /// replies; `replyToTerminate()` makes the second a no-op.
-    ///
-    /// The open Workspace board goes first, and synchronously (#506, ADR-0066): its save is
-    /// not async, so an edit inside its autosave debounce is written before anything here
-    /// decides whether to wait.
+    /// Set beside `vault`: a cancelled quit brings the Note pane back (ADR-0073 §D7).
+    weak var navigation: Navigation?
+
+    /// The one door every termination goes through (ADR-0073 §D1): an open field editor
+    /// ends (a table cell reaches its note), the board settles, the
+    /// dirty note tabs are reviewed - asked about app-modally, before anything replies - and
+    /// then the Diario's owed writes are waited for, capped at two seconds (ADR-0057 §D8,
+    /// ADR-0060 §D2). `willTerminateNotification` fires after the decision to exit, so
+    /// nothing that must be asked or awaited can live there. The order, the caps and the
+    /// one-reply guarantee are `QuitCoordinator`'s; this keeps only AppKit's spelling.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        vault?.openBoard?.settleForTermination()
-        guard let diary, !diary.isSettled else { return .terminateNow }
-        owesTerminateReply = true
-        Task { [weak self] in
-            await diary.settle()
-            self?.replyToTerminate()
+        switch quit.shouldTerminate() {
+        case .now: .terminateNow
+        case .later: .terminateLater
+        case .cancel: .terminateCancel
         }
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(2))
-            self?.replyToTerminate()
-        }
-        return .terminateLater
     }
 
-    /// True between a `.terminateLater` and its one reply.
-    private var owesTerminateReply = false
+    /// Built on first use rather than as a `lazy var`: a lazy initializer is not a main-actor
+    /// context, and the compiler refuses the async `sleep` closure there.
+    private var quitCoordinator: QuitCoordinator?
+    private let quitFocus = QuitFocus()
 
-    private func replyToTerminate() {
-        guard owesTerminateReply else { return }
-        owesTerminateReply = false
-        NSApp.reply(toApplicationShouldTerminate: true)
+    private var quit: QuitCoordinator {
+        if let quitCoordinator { return quitCoordinator }
+        let made = QuitCoordinator(
+            vault: { [weak self] in self?.vault },
+            diary: { [weak self] in self?.diary },
+            // Ends an open field editor - a table cell reaches its note only when its editing
+            // ends. The main window too: a sheet in front of it is key, and the cell behind
+            // keeps its field editor. No window at all (the red button) has nothing open.
+            commitEditing: { [weak self] in
+                var windows = [NSApp.keyWindow, NSApp.mainWindow].compactMap { $0 }
+                if windows.count == 2, windows[0] === windows[1] { windows.removeLast() }
+                self?.quitFocus.resign(in: windows)
+            },
+            ask: { QuitReviewAlert.ask($0) },
+            reply: { NSApp.reply(toApplicationShouldTerminate: $0) },
+            reveal: { [weak self] in self?.revealAfterCancelledQuit($0) },
+            sleep: { try? await Task.sleep(for: $0) }
+        )
+        quitCoordinator = made
+        return made
+    }
+
+    /// What a cancelled quit shows (ADR-0073 §D7): the main window, reopened if the red
+    /// button had closed it, the Note pane, and the first unresolved tab in front of its
+    /// column.
+    private func revealAfterCancelledQuit(_ id: NoteTab.ID?) {
+        vault?.reopenMainWindow?()
+        navigation?.pane = .notes
+        // The keyboard goes back where `commitEditing` took it from (departure 14), and only
+        // then is the tab revealed: the other order lets the restore pull the focus back to
+        // the column the reveal had just left (`QuitFocus.restore(thenReveal:in:)`).
+        quitFocus.restore(thenReveal: id, in: vault)
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -277,6 +297,7 @@ struct PergamenumApp: App {
                 .onAppear {
                     appDelegate.vault = vault
                     appDelegate.diary = diary
+                    appDelegate.navigation = navigation
                 }
                 // Not in `init`: window work and `NSApp` must not happen while the app
                 // is still coming up, and neither the theme nor the vault the panel

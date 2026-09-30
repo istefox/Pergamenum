@@ -3,10 +3,10 @@ import AppKit
 /// Vends the one `TableGridView` a table keeps across every styling pass (ADR-0029 §D6;
 /// plan `2026-09-02-editor-wysiwyg-unification`, Task 4).
 ///
-/// `@MainActor` and owned by the Coordinator, exactly as `EmbedTable` is
-/// (`NoteTextView+Coordinator.swift:77`) - `EditorDecorationDelegate` cannot hold this
-/// store itself (it is not `@MainActor`, ADR §Context constraint 3), so the Coordinator
-/// asks it for a view per table and hands the finished `[Int: TableGridView]` map to the
+/// `@MainActor` and owned by the Coordinator's `TableBlockController` (`NoteTextView+Tables.swift`,
+/// ADR-0074 §D2), for the reason the Coordinator owns `EmbedTable` - `EditorDecorationDelegate`
+/// cannot hold this store itself (it is not `@MainActor`, ADR §Context constraint 3), so the
+/// controller asks it for a view per table and hands the finished `[Int: TableGridView]` map to the
 /// delegate through `apply(tableViews:)`.
 ///
 /// **The same view instance across layout passes is the whole point.** A grid rebuilt on
@@ -47,7 +47,7 @@ final class TableGridStore {
     /// Pruning belongs on this call rather than on `view(for:in:)` because a styling pass
     /// is the one moment that knows the whole set: a note whose tables are edited for an
     /// afternoon would otherwise accumulate a grid per offset any table ever started at,
-    /// each holding an `NSView` hierarchy. The map it returns is what the Coordinator hands
+    /// each holding an `NSView` hierarchy. The map it returns is what `TableBlockController` hands
     /// to `EditorDecorationDelegate.apply(tableViews:)` as a finished value (ADR-0029 §D6).
     func views(for identities: [Int], in textView: NSTextView) -> [Int: TableGridView] {
         var kept: [Int: TableGridView] = [:]

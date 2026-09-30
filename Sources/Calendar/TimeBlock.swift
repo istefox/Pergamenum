@@ -140,7 +140,10 @@ enum TimeBlockSection {
         var blocks: [TimeBlock] = []
 
         for line in body[sectionRange.upperBound...].components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            // A CRLF line keeps its `\r` through a `"\n"` split, and `.whitespaces` does not
+            // take it: the title would carry it, and `write` would put it back before its own
+            // line break (PG-318).
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.hasPrefix("#") { break }
             guard trimmed.hasPrefix("-") else { continue }
 
@@ -176,19 +179,26 @@ enum TimeBlockSection {
     /// Rewrites the section, creating it at the end of the note when absent and taking
     /// it away entirely when the last block goes.
     static func write(_ blocks: [TimeBlock], into body: String) -> String {
+        // The section takes the note's own line break, and every test for one is made with
+        // `LineBreak.isTerminator`: a `"\r\n"` pair is one `Character`, so `hasSuffix("\n")`
+        // and a search for `"\n#"` never matched in a CRLF note, where the section then ran to
+        // the end of the note and a rewrite replaced every heading after it (PG-318).
+        let lineBreak = LineBreak.detected(in: body).characters
         guard let sectionRange = body.range(of: heading) else {
-            let separator = body.hasSuffix("\n") ? "\n" : "\n\n"
-            return blocks.isEmpty ? body : body + separator + render(blocks)
+            let separator = body.last.map(LineBreak.isTerminator) == true ? lineBreak : lineBreak + lineBreak
+            return blocks.isEmpty ? body : body + separator + render(blocks, lineBreak: lineBreak)
         }
 
         // The section ends at the next heading, or at the end of the note.
         let afterHeading = body[sectionRange.upperBound...]
-        let nextHeading = afterHeading.range(of: "\n#")
-        let end = nextHeading?.lowerBound ?? body.endIndex
+        let nextHeading = afterHeading.indices.first { index in
+            LineBreak.isTerminator(body[index]) && body[body.index(after: index)...].first == "#"
+        }
+        let end = nextHeading ?? body.endIndex
 
         var result = body
         guard blocks.isEmpty else {
-            result.replaceSubrange(sectionRange.lowerBound..<end, with: render(blocks))
+            result.replaceSubrange(sectionRange.lowerBound..<end, with: render(blocks, lineBreak: lineBreak))
             return result
         }
 
@@ -201,11 +211,11 @@ enum TimeBlockSection {
         }
         // One newline closes the paragraph above; nothing at all when the note started
         // with the section.
-        result.replaceSubrange(start..<end, with: start == body.startIndex ? "" : "\n")
+        result.replaceSubrange(start..<end, with: start == body.startIndex ? "" : lineBreak)
         return result
     }
 
-    private static func render(_ blocks: [TimeBlock]) -> String {
+    private static func render(_ blocks: [TimeBlock], lineBreak: String) -> String {
         guard !blocks.isEmpty else { return heading }
         let lines = blocks
             .sorted { $0.startMinutes < $1.startMinutes }
@@ -213,7 +223,7 @@ enum TimeBlockSection {
                 "- \(block.startText)-\(block.endText) \(block.title)"
                     + (block.isPublished ? " [published]" : "")
             }
-        return ([heading, ""] + lines).joined(separator: "\n")
+        return ([heading, ""] + lines).joined(separator: lineBreak)
     }
 
     /// `HH:MM`, with `24:00` as the end of the day - the diary's own reader, shared

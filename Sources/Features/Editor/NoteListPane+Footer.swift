@@ -43,6 +43,9 @@ extension NoteListPane {
                 Text("Scansione…").themedText(.caption, color: .textSecondary)
             } else {
                 Text("\(vault.index.count) note").themedText(.caption, color: .textSecondary)
+                    // Drawn only once no scan is running: what a UI test waits on before it
+                    // searches a large vault (`GlobalSearchUITests`).
+                    .accessibilityIdentifier("vault-note-count")
                 if vault.index.lastScanDuration > .zero {
                     Text("· \(scanDurationText)").themedText(.caption, color: .textTertiary)
                 }

@@ -249,7 +249,10 @@ extension VaultSession {
                let freshTask = TaskParser.parse(line: line, sourcePath: relativePath, lineIndex: 0) {
                 line = TaskParser.line(for: freshTask, assigningCategory: category)
             }
-            let separator = body.hasSuffix("\n") ? "" : "\n"
+            // The note's own line break, and a closing `"\r\n"` counts as one: it is a single
+            // `Character`, which `hasSuffix("\n")` never matched (PG-318).
+            let lineBreak = LineBreak.detected(in: body).characters
+            let separator = body.last.map(LineBreak.isTerminator) == true ? "" : lineBreak
             // Guarded both ways. An existing note: `expecting:` its own hash (ADR-0043 §D8,
             // Task 9). No note: `expectingAbsent:` (ADR-0057 §D3), since the text was built
             // from the template *because* the read found nothing, so a file another writer
@@ -258,7 +261,7 @@ extension VaultSession {
             // unguarded: that exclusion is for «make the file say this» writes, and this is a
             // read-modify-write whose read came back empty (ADR-0057 §D8, #496).
             return try await write(
-                body + separator + line + "\n", to: relativePath,
+                body + separator + line + lineBreak, to: relativePath,
                 expecting: existing?.record.contentHash,
                 expectingAbsent: existing == nil
             )

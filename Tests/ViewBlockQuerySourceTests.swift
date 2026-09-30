@@ -9,7 +9,7 @@ import Testing
 ///
 /// **Tester stubs declared for this task, all defaulted `nil` (ADR-0049):**
 /// - `NoteTextView.queries: ViewQuerySource?` - declared, not read by `EditorColumn+Text.swift`'s
-///   `editing(_:)` or by `NoteTextView+ViewBlocks.swift`'s `refreshViewBlockHosts` (still calls
+///   `editing(_:)` or by `NoteTextView+ViewBlocks.swift`'s `ViewBlockController.refresh` (still calls
 ///   `ViewBlockHostStore.rootView(source:theme:)` alone). That threading, and rewriting the now-
 ///   stale "unreferenced" comment at `EditorColumn+Text.swift:194-198`, are the coder's own work.
 /// - `RenderedViewBlock.onEditSource: (() -> Void)?` and `.onOpenNote: ((String) -> Void)?` -
@@ -84,7 +84,7 @@ private struct Editor {
 private func editor(_ text: String, hidesMarkup: Bool = true, queries: ViewQuerySource? = nil) -> Editor {
     let view = NoteTextView(
         text: .constant(text), theme: .emergency, noteTitles: [], tagSuggestions: [],
-        hidesMarkup: hidesMarkup, onFollowLink: { _ in }, queries: queries
+        hidesMarkup: hidesMarkup, onFollowLink: { _ in }, vault: .init(queries: queries)
     )
     let coordinator = view.makeCoordinator()
     let textView = CompletingTextView(usingTextLayoutManager: true)
@@ -146,7 +146,7 @@ private enum Fixture {
     }
 
     /// "the store pushes an updated root view carrying it": built through the very
-    /// `ViewBlockHostStore.rootView(...)` `NoteTextView+ViewBlocks.swift`'s `refreshViewBlockHosts`
+    /// `ViewBlockHostStore.rootView(...)` `NoteTextView+ViewBlocks.swift`'s `ViewBlockController.refresh`
     /// calls, pushed through `update(_:forOrdinal:)` - the store-call half of R-13's third named
     /// case, still without a live SwiftUI render. ADR §D3's "never rebuild" is reasserted here in
     /// the queries-aware case specifically: a live refresh is a second `update` on the *same*
@@ -192,7 +192,7 @@ private enum Fixture {
         let fixture = editor(Fixture.note)
         defer { fixture.window.orderOut(nil) }
 
-        let before = fixture.coordinator.drawnViewBlocks[Fixture.openingFenceOffset]?.source
+        let before = fixture.coordinator.viewBlocks.drawn[Fixture.openingFenceOffset]?.source
         #expect(before == Fixture.bodySource, "premessa: il fence deve essere già disegnato prima della modifica")
 
         // Appends a character to "dopo", well after the fence - never touches its source.
@@ -202,7 +202,7 @@ private enum Fixture {
         fixture.textView.textStorage?.replaceCharacters(in: insertionPoint, with: "!")
         fixture.textView.didChangeText()
 
-        let after = fixture.coordinator.drawnViewBlocks[Fixture.openingFenceOffset]?.source
+        let after = fixture.coordinator.viewBlocks.drawn[Fixture.openingFenceOffset]?.source
         #expect(
             after == before,
             "una modifica che non tocca il fence ha comunque cambiato la componente 'source' dell'id"
@@ -210,7 +210,7 @@ private enum Fixture {
     }
 
     /// An edit above the fence shifts the opening paragraph's own offset - the dictionary key
-    /// `drawnViewBlocks` and `apply(viewBlockHosts:)` both use - but must leave the fence's
+    /// `ViewBlockController.drawn` and `apply(viewBlockHosts:)` both use - but must leave the fence's
     /// *ordinal* (still the note's first view block) and therefore its host untouched (ADR §D3),
     /// and its source-component of the id untouched too, since the fence's own body was never
     /// touched. `Tests/ViewBlockHostStoreTests.swift`'s `hostSurvivesAChangedParagraphOffsetAboveTheFence`
@@ -222,8 +222,8 @@ private enum Fixture {
         let fixture = editor(Fixture.note)
         defer { fixture.window.orderOut(nil) }
 
-        let hostBefore = fixture.coordinator.viewBlockHosts.host(for: 0, in: fixture.textView)
-        let sourceBefore = fixture.coordinator.drawnViewBlocks[Fixture.openingFenceOffset]?.source
+        let hostBefore = fixture.coordinator.viewBlocks.hosts.host(for: 0, in: fixture.textView)
+        let sourceBefore = fixture.coordinator.viewBlocks.drawn[Fixture.openingFenceOffset]?.source
         #expect(sourceBefore == Fixture.bodySource, "premessa: il fence deve essere già disegnato prima della modifica")
 
         let insertedLine = "una riga nuova\n"
@@ -233,8 +233,8 @@ private enum Fixture {
         fixture.textView.didChangeText()
 
         let shiftedOpening = Fixture.openingFenceOffset + (insertedLine as NSString).length
-        let hostAfter = fixture.coordinator.viewBlockHosts.host(for: 0, in: fixture.textView)
-        let sourceAfter = fixture.coordinator.drawnViewBlocks[shiftedOpening]?.source
+        let hostAfter = fixture.coordinator.viewBlocks.hosts.host(for: 0, in: fixture.textView)
+        let sourceAfter = fixture.coordinator.viewBlocks.drawn[shiftedOpening]?.source
 
         #expect(
             hostAfter === hostBefore,
@@ -362,7 +362,7 @@ private enum Fixture {
             text: .constant(Fixture.note), theme: .emergency, noteTitles: [], tagSuggestions: [],
             onFollowLink: { _ in }
         )
-        #expect(view.queries == nil, "il default di NoteTextView.queries deve restare nil")
+        #expect(view.vault.queries == nil, "il default di NoteTextView.queries deve restare nil")
         #expect(view.hidesMarkup == false, "premessa: il default di NoteTextView.hidesMarkup deve restare false")
 
         let coordinator = view.makeCoordinator()
@@ -376,7 +376,7 @@ private enum Fixture {
         )
 
         #expect(markers.isEmpty, "senza hidesMarkup è stato comunque registrato un marcatore")
-        #expect(coordinator.drawnViewBlocks.isEmpty, "senza hidesMarkup è stato comunque creato un host")
+        #expect(coordinator.viewBlocks.drawn.isEmpty, "senza hidesMarkup è stato comunque creato un host")
     }
 
     /// The other configuration a real vault can actually hand `DiaryView`/`TodayView`
@@ -393,8 +393,8 @@ private enum Fixture {
         let fixture = editor(Fixture.note, hidesMarkup: true, queries: nil)
         defer { fixture.window.orderOut(nil) }
 
-        #expect(fixture.coordinator.drawnViewBlocks[Fixture.openingFenceOffset]?.source == Fixture.bodySource)
-        _ = fixture.coordinator.viewBlockHosts.host(for: 0, in: fixture.textView)
+        #expect(fixture.coordinator.viewBlocks.drawn[Fixture.openingFenceOffset]?.source == Fixture.bodySource)
+        _ = fixture.coordinator.viewBlocks.hosts.host(for: 0, in: fixture.textView)
     }
 }
 
@@ -405,7 +405,7 @@ private enum Fixture {
 /// `applyStyling` pass and never puts a real `NSHostingView<AnyView>` through the attachment's
 /// own `as? NSHostingView<AnyView>` cast (`EditorDecorationDelegate+ViewBlockRendering.swift`).
 /// `ViewBlockQuerySourceTests`'s own suites above drive the real pass but only assert on
-/// `drawnViewBlocks`, never on the substituted paragraph. Neither half alone would have caught
+/// `viewBlocks.drawn`, never on the substituted paragraph. Neither half alone would have caught
 /// a regression at the seam between "the pass recognises and registers a fence" and "the
 /// delegate substitutes an attachment for what got registered" - which is exactly the seam this
 /// session's investigation crossed. This suite runs the real pipeline end to end and inspects
@@ -416,7 +416,7 @@ private enum Fixture {
         let fixture = editor(Fixture.note)
         defer { fixture.window.orderOut(nil) }
 
-        let host = fixture.coordinator.viewBlockHosts.host(for: 0, in: fixture.textView)
+        let host = fixture.coordinator.viewBlocks.hosts.host(for: 0, in: fixture.textView)
         #expect(host.rootView is AnyView, "il pass reale non ha prodotto un host reale")
 
         let storage = fixture.textView.textContentStorage!

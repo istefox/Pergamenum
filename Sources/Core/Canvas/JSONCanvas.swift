@@ -14,8 +14,9 @@ struct CanvasDocument: Equatable, Sendable {
     /// Top-level keys outside `nodes` and `edges`, preserved verbatim.
     var unknown: [String: JSONValue]
     /// Elements of `nodes`/`edges` the codec cannot read - an object without `id` or `type`
-    /// (nodes), without `id`, `fromNode` or `toNode` (edges), or anything that is not an object -
-    /// kept with their original index and written back there (ADR-0065 §D5.4, R-08).
+    /// (nodes), without `id`, `fromNode` or `toNode` (edges), a node with a required key present
+    /// with a wrong JSON type (`"x": "12"`, `"text": 42`, closing §D13.4), or anything that is not
+    /// an object - kept with their original index and written back there (ADR-0065 §D5.4, R-08).
     var opaqueNodes: [CanvasOpaqueElement]
     var opaqueEdges: [CanvasOpaqueElement]
 
@@ -236,30 +237,38 @@ struct CanvasNode: Identifiable, Equatable, Sendable {
     }
 
     init?(_ object: [String: Any]) {
-        guard let id = object["id"] as? String, let type = object["type"] as? String else { return nil }
+        guard let id = object["id"] as? String, let type = object["type"] as? String,
+              let x = CanvasRequiredKey.number("x", in: object, absent: 0),
+              let y = CanvasRequiredKey.number("y", in: object, absent: 0),
+              let width = CanvasRequiredKey.number("width", in: object, absent: 260),
+              let height = CanvasRequiredKey.number("height", in: object, absent: 120),
+              let payload = CanvasRequiredKey.payload(ofType: type, in: object)
+        else { return nil }
 
         self.id = id
-        x = CGFloat((object["x"] as? NSNumber)?.doubleValue ?? 0)
-        y = CGFloat((object["y"] as? NSNumber)?.doubleValue ?? 0)
-        width = CGFloat((object["width"] as? NSNumber)?.doubleValue ?? 260)
-        height = CGFloat((object["height"] as? NSNumber)?.doubleValue ?? 120)
+        self.x = CGFloat(x)
+        self.y = CGFloat(y)
+        self.width = CGFloat(width)
+        self.height = CGFloat(height)
         color = CanvasColor.kept(object["color"])
 
         // ADR-0065 §D5.1/§D5.3: each kind consumes only its own payload, an unknown kind none, and
-        // an optional key only when it is understood. Everything else stays in `unknown`.
+        // an optional key only when it is understood. Everything else stays in `unknown`. A
+        // required key present with a wrong JSON type answers nil instead, so the node is kept
+        // opaque (§D5.4, closing §D13.4): see `CanvasRequiredKey`.
         var consumed: Set<String> = ["id", "type", "x", "y", "width", "height"]
         if color != nil { consumed.insert("color") }
         switch type {
         case "text":
-            kind = .text(object["text"] as? String ?? "")
+            kind = .text(payload)
             consumed.insert("text")
         case "file":
             let subpath = object["subpath"] as? String
-            kind = .file(path: object["file"] as? String ?? "", subpath: subpath)
+            kind = .file(path: payload, subpath: subpath)
             consumed.insert("file")
             if subpath != nil { consumed.insert("subpath") }
         case "link":
-            kind = .link(url: object["url"] as? String ?? "")
+            kind = .link(url: payload)
             consumed.insert("url")
         case "group":
             let label = object["label"] as? String

@@ -338,7 +338,7 @@ private enum ViewBlockFixture {
 
 @MainActor
 @Suite struct ViewBlockHidesMarkupGuard {
-    /// D12, the `clearTables()` trap extended to the sixth input: with `hidesMarkup` off,
+    /// D12, the `TableBlockController.clear()` trap extended to the sixth input: with `hidesMarkup` off,
     /// `applyViewBlocks` must register no new `.viewBlock` marker.
     ///
     /// Green with the stub already (`applyViewBlocks` does nothing at all, so `markers` is
@@ -373,7 +373,7 @@ private enum ViewBlockFixture {
     /// verified against the working tree at dispatch time - `apply(viewBlockHosts:)` likewise)
     /// - it stores nothing at all, so there is no registered state for anything to clear, and
     /// this assertion is trivially true regardless of whether `applyViewBlocks`/
-    /// `clearViewBlocks` do their job. Written against the target shape rather than skipped:
+    /// `ViewBlockController.clear()` do their job. Written against the target shape rather than skipped:
     /// once Task 2's real storage and the `shouldEnumerate` widening land, this starts
     /// exercising exactly what D12 requires, with no change needed here.
     @Test func withHidesMarkupFalseThePassClearsLinesAPreviousPassHid() {

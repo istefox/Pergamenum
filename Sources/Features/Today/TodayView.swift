@@ -33,6 +33,21 @@ struct TodayView: View {
 
     private var day: CalendarDate { controller.day }
 
+    // Internal, not private: read by `Tests/IndexGenerationFollowUpTests.swift`.
+    /// What the day rereads its blocks and its week or month columns on: `indexGeneration`
+    /// (ADR-0072 §D11, PG-324), which every index change moves. A block typed into the daily
+    /// note or a task scheduled by an editor save or an external edit reaches the day when the
+    /// index takes it in. Keying it on `taskGeneration`, which neither moves, made it wait for the
+    /// next rescan or in-app task write - BoardTray's staleness before ADR-0072 §D5. One write moves
+    /// only `taskGeneration`: a board-sourced task write (`VaultSession.writeTaskSource` through
+    /// `CanvasStore.save`) never touches the index, so it is invisible to the day until the next
+    /// scan. Harmless for now, since `IndexSnapshot.boardTasks` is refreshed only by `replaceAll`
+    /// and a reload keyed on `taskGeneration` would read the same stale index. Pure, so a test
+    /// can check it without rendering (the shape of `BoardTray.refreshKey`).
+    static func reloadKey(for vault: VaultController) -> Int {
+        vault.indexGeneration
+    }
+
     var body: some View {
         scale
         .safeAreaInset(edge: .top) {
@@ -59,7 +74,7 @@ struct TodayView: View {
         // A task captured from the day view can land on this very day, and the block it
         // may have created lands in this note: reread rather than leave the day showing
         // what it held a moment ago.
-        .onChange(of: vault.taskGeneration) { _, _ in controller.reload() }
+        .onChange(of: Self.reloadKey(for: vault)) { _, _ in controller.reload() }
         .sheet(isPresented: Bindable(controller).isChoosingDate) {
             GoToDateSheet(
                 day: day,
@@ -208,9 +223,11 @@ struct TodayView: View {
                 onFollowLink: { title in
                     if let path = vault.index.resolve(title: title).first { vault.openNote(at: path) }
                 },
-                vaultRoot: vault.root,
-                notePath: note.relativePath,
-                thumbnails: vault.thumbnails
+                vault: .init(
+                    vaultRoot: vault.root,
+                    notePath: note.relativePath,
+                    thumbnails: vault.thumbnails
+                )
             )
             .frame(minHeight: 320)
         } else {

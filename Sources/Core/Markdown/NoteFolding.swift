@@ -89,6 +89,24 @@ enum NoteFolding {
         return hidden
     }
 
+    /// The entries that would hide at least one line if folded on their own: the same answer as
+    /// asking `hiddenParagraphs(in:foldedEntries: [index])` for every index and keeping the
+    /// non-empty ones, computed from one outline parse and one line walk instead of one of each
+    /// per entry (PG-268 - the index asks this on every keystroke).
+    static func foldableEntries(in text: String) -> Set<Int> {
+        let entries = NoteOutline.entries(in: text)
+        guard !entries.isEmpty else { return [] }
+        let starts = lineStarts(in: text)
+        var foldable: Set<Int> = []
+        for index in entries.indices {
+            guard case .heading(let level) = entries[index].kind else { continue }
+            let headingLine = line(of: entries[index].range.lowerBound, in: starts)
+            let last = sectionEnd(after: index, level: level, entries: entries, starts: starts)
+            if headingLine + 1 <= last { foldable.insert(index) }
+        }
+        return foldable
+    }
+
     /// The text of one section, its heading line included.
     ///
     /// The same rule the folds use, exposed rather than copied: a transclusion of
@@ -178,12 +196,13 @@ enum NoteFolding {
     }
 
     /// The start of every line, empty ones included - the paragraph numbering the text
-    /// view uses, which counts a blank line like any other.
+    /// view uses, which counts a blank line like any other. A CRLF pair is one `Character`
+    /// and one terminator (PG-274), so a CRLF note numbers its lines like its LF twin.
     private static func lineStarts(in text: String) -> [String.Index] {
         var starts: [String.Index] = [text.startIndex]
         var index = text.startIndex
         while index < text.endIndex {
-            if text[index] == "\n" { starts.append(text.index(after: index)) }
+            if LineBreak.isTerminator(text[index]) { starts.append(text.index(after: index)) }
             index = text.index(after: index)
         }
         return starts

@@ -346,6 +346,57 @@ import Testing
         #expect(parsed.frontmatter.subject == subject)
     }
 
+    // MARK: PG-314 - CR and CRLF in a header value round-trip and never reach the file raw
+
+    private static let lineBreakValues = ["a\r\nb", "a\rb", "a\n\rb", "a\r\n\r\nb", "tail\r", #"C:\root"#, #"C:\r\n"#, "C:\\\r\nx"]
+
+    @Test(arguments: lineBreakValues)
+    func aSubjectWithCRorCRLFRoundTripsExactly(_ subject: String) throws {
+        let text = try Self.render(Self.document(subject: subject, date: Self.instant(), dateOffset: nil))
+        let parsed = try #require(MessageDocument.parse(text))
+        #expect(parsed.frontmatter.subject == subject)
+        #expect(try Self.render(parsed) == text)
+    }
+
+    @Test(arguments: lineBreakValues)
+    func aSubjectLineHoldsNoRawCarriageReturnOrLineFeed(_ subject: String) throws {
+        let text = try Self.render(Self.document(subject: subject, date: Self.instant(), dateOffset: nil))
+        let line = try #require(Self.line("pergamenum-mail-subject", in: text))
+        #expect(!line.unicodeScalars.contains("\r"))
+        #expect(!line.unicodeScalars.contains("\n"))
+    }
+
+    @Test func aCRLFIsWrittenAsTwoEscapesAndALoneCRAsOne() throws {
+        let crlf = try Self.render(Self.document(subject: "a\r\nb", date: Self.instant(), dateOffset: nil))
+        #expect(Self.line("pergamenum-mail-subject", in: crlf) == #"pergamenum-mail-subject: "a\r\nb""#)
+        let cr = try Self.render(Self.document(subject: "a\rb", date: Self.instant(), dateOffset: nil))
+        #expect(Self.line("pergamenum-mail-subject", in: cr) == #"pergamenum-mail-subject: "a\rb""#)
+    }
+
+    @Test func aLiteralBackslashRIsNotDecodedAsACarriageReturn() throws {
+        let subject = #"C:\root"#
+        let text = try Self.render(Self.document(subject: subject, date: Self.instant(), dateOffset: nil))
+        #expect(Self.line("pergamenum-mail-subject", in: text) == #"pergamenum-mail-subject: "C:\\root""#)
+        let parsed = try #require(MessageDocument.parse(text))
+        #expect(parsed.frontmatter.subject == subject)
+    }
+
+    @Test func senderAndLinkedNoteWithCRLFRoundTrip() throws {
+        var document = Self.document(date: try Self.instant(), dateOffset: nil)
+        document.frontmatter.from = "Mario\r\nRossi <m@rossi.it>\r"
+        document.frontmatter.linkedNote = "[[Offerta\r\n2026]]"
+        document.frontmatter.original = #"C:\root\r.eml"#
+        let text = try Self.render(document)
+        for key in ["pergamenum-mail-from", MessageDocument.noteKey, "pergamenum-mail-original"] {
+            let line = try #require(Self.line(key, in: text))
+            #expect(!line.unicodeScalars.contains("\r"))
+        }
+        let parsed = try #require(MessageDocument.parse(text))
+        #expect(parsed.frontmatter.from == document.frontmatter.from)
+        #expect(parsed.frontmatter.linkedNote == document.frontmatter.linkedNote)
+        #expect(parsed.frontmatter.original == document.frontmatter.original)
+    }
+
     // MARK: R-15 - the date is written in the sender's offset, never the machine's
 
     @Test func theMailDateCarriesTheSendersOffset() throws {

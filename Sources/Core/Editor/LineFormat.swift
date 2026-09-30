@@ -60,7 +60,7 @@ enum LineFormat: Equatable, Sendable {
 
         var edits: [Edit] = []
         for (offset, line) in touched.enumerated() {
-            let start = line.start + indentLength(on: line, in: haystack)
+            let start = line.start + LineScan.indentLength(on: line, in: haystack)
             if removing {
                 guard let length = markerLength(of: format, on: line, in: haystack) else { continue }
                 edits.append(Edit(start: start, oldLength: length, replacement: ""))
@@ -105,52 +105,14 @@ enum LineFormat: Equatable, Sendable {
 
     // MARK: The lines a selection touches
 
-    /// One line of the text: `start ..< contentEnd` is what is written on it, `start ..< end`
-    /// includes its terminator.
-    private struct Line {
-        var start: Int
-        var contentEnd: Int
-        var end: Int
-    }
-
     private struct Edit {
         var start: Int
         var oldLength: Int
         var replacement: String
     }
 
-    /// Every line of `haystack`, including the empty one after a trailing newline.
-    ///
-    /// Line boundaries come from `NSString` itself rather than from splitting on `"\n"`, so a
-    /// `\r\n` pasted in from somewhere else is one terminator and not two.
-    private static func lines(in haystack: NSString) -> [Line] {
-        var found: [Line] = []
-        var index = 0
-        while index < haystack.length {
-            var start = 0, end = 0, contentEnd = 0
-            haystack.getLineStart(
-                &start, end: &end, contentsEnd: &contentEnd,
-                for: NSRange(location: index, length: 0)
-            )
-            found.append(Line(start: start, contentEnd: contentEnd, end: end))
-            index = end
-        }
-        // Text ending in a terminator has one more line - empty, and the one a caret parked at
-        // the very end sits on. Empty text is that same line and nothing else.
-        if let last = found.last {
-            if last.contentEnd < last.end {
-                found.append(
-                    Line(start: haystack.length, contentEnd: haystack.length, end: haystack.length)
-                )
-            }
-        } else {
-            found.append(Line(start: 0, contentEnd: 0, end: 0))
-        }
-        return found
-    }
-
-    private static func touchedLines(in haystack: NSString, over range: NSRange) -> [Line] {
-        let all = lines(in: haystack)
+    private static func touchedLines(in haystack: NSString, over range: NSRange) -> [LineScan.Line] {
+        let all = LineScan.lines(in: haystack)
         guard range.length > 0 else {
             // A bare caret is one line, the last one starting at or before it - so a caret on a
             // line's first character belongs to that line, not to the one that ended there.
@@ -176,8 +138,8 @@ enum LineFormat: Equatable, Sendable {
     /// Measured from the end of the line's indentation, so a nested `  - item` reads as a bullet
     /// and gets its prefix rewritten in place rather than a second one bolted on in front of the
     /// spaces.
-    private static func markerLength(of format: Self, on line: Line, in haystack: NSString) -> Int? {
-        let start = line.start + indentLength(on: line, in: haystack)
+    private static func markerLength(of format: Self, on line: LineScan.Line, in haystack: NSString) -> Int? {
+        let start = line.start + LineScan.indentLength(on: line, in: haystack)
         switch format {
         case .bullet:
             // "- [ ] Task" (`Tool.todo`'s own seed text, `WorkspaceController+Tools.swift:33`) is
@@ -186,22 +148,22 @@ enum LineFormat: Equatable, Sendable {
             // let the card format bar's bullet button strip a To Do card's "- " down to a bare
             // "[ ] Task", since a To Do sticky is a plain `.text` card sharing this exact code path
             // (ADR-0027 §D1).
-            guard matches("- ", in: haystack, at: start, limit: line.contentEnd) else { return nil }
-            return isChecklistMarker(in: haystack, at: start + 2, limit: line.contentEnd) ? nil : 2
+            guard LineScan.matches("- ", in: haystack, at: start, limit: line.contentEnd) else { return nil }
+            return LineScan.isChecklistMarker(in: haystack, at: start + 2, limit: line.contentEnd) ? nil : 2
         case .numbered:
             return numberedMarkerLength(in: haystack, at: start, limit: line.contentEnd)
         case .heading(let level):
             // The trailing space is what tells the levels apart: `## Titolo` does not start with
             // `# `, so a level-1 button does not light on a level-2 heading.
             let hashes = String(repeating: "#", count: headingLevel(level)) + " "
-            return matches(hashes, in: haystack, at: start, limit: line.contentEnd)
+            return LineScan.matches(hashes, in: haystack, at: start, limit: line.contentEnd)
                 ? (hashes as NSString).length : nil
         }
     }
 
     /// The length of whichever line marker the line carries, 0 when it carries none. This is what
     /// an applied format replaces.
-    private static func anyMarkerLength(on line: Line, in haystack: NSString) -> Int {
+    private static func anyMarkerLength(on line: LineScan.Line, in haystack: NSString) -> Int {
         if let bullet = markerLength(of: .bullet, on: line, in: haystack) { return bullet }
         if let numbered = markerLength(of: .numbered, on: line, in: haystack) { return numbered }
         // Read every CommonMark level, not only the 1...3 this feature writes, so a `#####`
@@ -217,23 +179,14 @@ enum LineFormat: Equatable, Sendable {
     /// Whether `line` opens with a checklist bullet - `"- [ ] "`/`"- [x] "` and the other states
     /// `TaskParser.state(for:)` recognizes, `"*"` bullet included since that parser accepts it too
     /// even though this file's own `.bullet` marker only ever writes/reads `"- "`.
-    private static func isChecklistLine(_ line: Line, in haystack: NSString) -> Bool {
-        let start = line.start + indentLength(on: line, in: haystack)
+    private static func isChecklistLine(_ line: LineScan.Line, in haystack: NSString) -> Bool {
+        let start = line.start + LineScan.indentLength(on: line, in: haystack)
         guard start + 2 < line.contentEnd else { return false }
         let bulletChar = haystack.character(at: start)
         guard bulletChar == 0x2D || bulletChar == 0x2A,  // "-" or "*"
               haystack.character(at: start + 1) == 0x20  // " "
         else { return false }
-        return isChecklistMarker(in: haystack, at: start + 2, limit: line.contentEnd)
-    }
-
-    /// Whether `"[X]"` sits at `index`, `X` being one of `TaskParser.state(for:)`'s markers: a
-    /// space (open), `x`/`X` (done), `>` (rescheduled) or `-` (cancelled).
-    private static func isChecklistMarker(in haystack: NSString, at index: Int, limit: Int) -> Bool {
-        guard index + 3 <= limit, haystack.character(at: index) == 0x5B else { return false }  // "["
-        guard haystack.character(at: index + 2) == 0x5D else { return false }  // "]"
-        let state = haystack.character(at: index + 1)
-        return state == 0x20 || state == 0x78 || state == 0x58 || state == 0x3E || state == 0x2D
+        return LineScan.isChecklistMarker(in: haystack, at: start + 2, limit: line.contentEnd)
     }
 
     /// `12. ` and `12) ` both, since CommonMark writes either; this file only ever emits the dot.
@@ -241,35 +194,13 @@ enum LineFormat: Equatable, Sendable {
         in haystack: NSString, at index: Int, limit: Int
     ) -> Int? {
         var cursor = index
-        while cursor < limit, isDigit(haystack.character(at: cursor)) { cursor += 1 }
+        while cursor < limit, LineScan.isDigit(haystack.character(at: cursor)) { cursor += 1 }
         guard cursor > index, cursor + 1 < limit else { return nil }
         let delimiter = haystack.character(at: cursor)
         guard delimiter == 0x2E || delimiter == 0x29,  // "." or ")"
               haystack.character(at: cursor + 1) == 0x20  // " "
         else { return nil }
         return cursor + 2 - index
-    }
-
-    private static func indentLength(on line: Line, in haystack: NSString) -> Int {
-        var cursor = line.start
-        while cursor < line.contentEnd {
-            let character = haystack.character(at: cursor)
-            guard character == 0x20 || character == 0x09 else { break }  // space or tab
-            cursor += 1
-        }
-        return cursor - line.start
-    }
-
-    private static func matches(
-        _ needle: String, in haystack: NSString, at index: Int, limit: Int
-    ) -> Bool {
-        let length = (needle as NSString).length
-        guard index + length <= limit else { return false }
-        return haystack.substring(with: NSRange(location: index, length: length)) == needle
-    }
-
-    private static func isDigit(_ character: unichar) -> Bool {
-        character >= 0x30 && character <= 0x39
     }
 
     /// SPEC scope is 1...3; clamping to CommonMark's 1...6 keeps a caller's stray value from

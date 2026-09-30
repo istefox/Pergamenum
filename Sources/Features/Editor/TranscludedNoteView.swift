@@ -15,8 +15,9 @@ struct TransclusionSource {
 
     /// Reference to note, or nil when the vault has no note by that name.
     var resolve: @MainActor (String) -> Resolved?
-    /// Bumped when the vault is rescanned, so a target edited outside the app is redrawn
-    /// without anything being re-read on every keystroke (ADR-0010 §D8).
+    /// Bumped when the index changes - a save, an external edit, a rescan - so a target is
+    /// redrawn without anything being re-read on every keystroke (ADR-0010 §D8; the index
+    /// generation since ADR-0072 §D11, PG-328).
     var generation: Int = 0
 }
 
