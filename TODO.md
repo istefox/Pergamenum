@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=331 -->
+<!-- project-tasks: prefix=PG lastId=332 -->
 # PROJECT TASKS
 
-Updated: 2026-09-30 · Open: 81 (P1: 1) · In progress: 0
+Updated: 2026-09-30 · Open: 82 (P1: 1) · In progress: 0
 
 ## GitHub Issues
 - [ ] `PG-326` -> #693 **P1** [fix] Cmd+Q discards unsaved note edits silently: notes save explicitly (ADR-0012), closing a dirty tab asks Salva / Non salvare / Annulla (ADR-0012 §D3), but `applicationShouldTerminate` waits only on the diary and the open board, so quitting with a dirty tab exits in ~1 s with no prompt and the edits never reach disk. Reproduced twice on a Debug build of `1061bcc1` over a throwaway vault (typed text, indicator on «Salvataggio…», Cmd+Q, file unchanged). Also: SPEC line 235 still says «autosalvataggio continuo, ~1 s», which ADR-0012 replaced — `Sources/App/PergamenumApp.swift:40` <!-- src:session kind:fix opened:2026-09-29 runs:2 promote:2026-09-29 -->
@@ -127,6 +127,7 @@ Their GitHub issues were closed 2026-09-12 as "not active work" — kept here as
   - Not yet scoped how the fix should look (inline `NSTextAttachmentViewProvider`-hosted board like ADR-0029's GFM table, or a live-updating panel opened from the "Viste" row) — needs its own interview before implementation, likely through `concept-to-code` given it reopens ADR-0009/ADR-0029 territory.
 
 ## Backlog / To Add
+- [ ] `PG-332` **P3** [feat] Renaming or moving a feature root folder from the Note pane does not update its setting, so the Contenitore root (ADR-0071 §D13, gate G5) and the Pratiche folder (ADR-0036) are orphaned and their notes stop being schede/pratiche; make the folder rename/move doors update both settings — `docs/adr/0071-contenitore-managed-document-archive.md` §D13 <!-- src:session kind:roadmap opened:2026-09-30 adr:0071 adr:0036 runs:0 -->
 - [ ] `PG-329` **P2** [feat] Contenitore PR 2: mockup gate G2 (plan Task 1, SPEC §9), Tasks 6-7 (controller that keeps ingest notices on screen, since the engine reports duplicate/rolled-back files once; watcher, settings, route, pane), Task 8 (PR 2 merge hash in ADR-0071's status, CLAUDE.md index line, SPEC §9 row) — `docs/plans/contenitore.md` <!-- src:session kind:roadmap opened:2026-09-29 pr:691 adr:0071 runs:2 -->
 
 `scripts/uitests.sh` run by hand on 2026-09-10 (114 tests, 88-1400s runs depending on the pass): first
@@ -427,7 +428,7 @@ issue with `Closes #N` on the PR.
 
 ## Blocked / Decisions Needed
 
-- [ ] `PG-330` **P2** ADR-0071 open gates: G5 (renaming the Contenitore root from the Note pane orphans the setting: accept as a named gap or file a follow-up) and G6 (protected-interface entry for `ContenitoreScheda.render`) — `docs/adr/0071-contenitore-managed-document-archive.md:575` <!-- src:session kind:roadmap opened:2026-09-29 pr:691 adr:0071 runs:2 -->
+- [ ] `PG-330` **P2** ADR-0071 open gate G6: approve the protected-interface entry for `ContenitoreScheda.render` (G5 answered 2026-09-30, follow-up PG-332) — `docs/adr/0071-contenitore-managed-document-archive.md` <!-- src:session kind:roadmap opened:2026-09-29 pr:691 adr:0071 runs:2 -->
 - [x] `PG-246` **P2** ADR-0062 follow-ups after PR #541, each a human step: flip `docs/adr/0062-landing-check-closes-the-squash-gap.md` status `proposed` → `accepted`; run `scripts/install-git-hooks.sh --force` (the installed hook still lacks the landing check, the checker prints «AVVISO HOOK» on every push until then); record `gh api repos/istefox/Pergamenum --jq '.squash_merge_commit_message'` in the ADR notes; decide branch protection with `merge-integrity.yml` required (recommended no) and the optional "Closed by ADR-0062" pointer in ADR-0061 §D5 · Closed 2026-09-25: ADR-0062 accepted, hook already reinstalled (byte-identical), `squash_merge_commit_message` = `COMMIT_MESSAGES` recorded with a new L6 self-test case, branch protection decided no, ADR-0061 §D5 pointer added. Merged PR #548. <!-- src:session kind:fix opened:2026-09-25 closed:2026-09-25 pr:548 adr:0062 runs:37 -->
 - [x] `PG-002` **P2** SPEC §7.3 rollover as an off-by-default option: the reopening needs Stefano's approval, ADR-0013 records it <!-- src:session opened:2026-08-16 closed:2026-08-20 runs:117 -->
   - Approved 2026-08-20 with M12's slicing, knowing the SPEC rejects rollover by name. ADR-0013 §D1 carries the argument and the three narrowings that keep it an amendment rather than a reversal; §7.3 is amended in place. The number is 13, not the 12 the roadmap predicted: 10, 11 and 12 went to transclusion, templates and tabs.

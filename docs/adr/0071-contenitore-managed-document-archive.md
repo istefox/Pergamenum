@@ -384,11 +384,28 @@ of failing on a missing source.
   and the inspector reloads, never overwrites (R-16).
 - **Visuals.** The pane's visual design is the approved mockup in `docs/design/contenitore/` (R-28,
   gate G2). Views use tokens only.
+- **Decided with the mockup (G2, 2026-09-30).**
+  - A document's colour is a 10 pt dot filled with its sticky token and ringed with
+    `color.border.strong`; the row is not tinted.
+  - A «Documento» menu sits between Inserisci and Task, on the «Task» model, active only while the
+    pane is. It carries «Classifica…», «Apri», «Apri scheda», «Rinomina…», «Sposta in…» and «Nuovo
+    sottocontenitore…». «Copia link Pergamenum» and «Rivela nel Finder» stay in File and «Sposta
+    nel Cestino» in Modifica, dispatching to the selection (§D12).
+  - Proposed keys: Cmd+Opt+K «Classifica…», Cmd+Opt+O «Apri scheda», Enter «Apri». Task 7 checks
+    them against the remappable catalogue and changes only a colliding one, saying so.
+  - Impostazioni gains a twelfth tab, «Contenitore», beside «Pratiche». Task 7 re-measures the
+    width at which AppKit collapses the tab bar, the way `SettingsView.swift` records it, and widens
+    the window as needed.
+  - The sidebar order stays as above.
 
 ### §D12 One command catalogue for the pane
 
-`ContenitoreCommand` names every action once: «Classifica», «Apri», «Mostra nel Finder», «Apri
+`ContenitoreCommand` names every action once: «Classifica», «Apri», «Rivela nel Finder», «Apri
 scheda», «Copia link Pergamenum», «Rinomina…», «Sposta in…», «Sposta nel Cestino».
+
+- «Rivela nel Finder», not the SPEC's «Mostra nel Finder» (G2, 2026-09-30): the app-wide File
+  entry this command dispatches through is already titled «Rivela nel Finder», and one command
+  keeps one title on every surface. Pratiche's own «Mostra nel Finder» is untouched.
 
 - The inspector, the row context menu and the menu bar all render it (R-27, ADR-0023 §D1).
 - While `navigation.pane == .contenitore`, the existing app-wide `copyLink` and `revealInFinder`
@@ -569,14 +586,16 @@ silent change would unmake existing documents. This follows the `Dossier.render`
 ## Open for Stefano
 
 - **G1.** Approve the `IndexCache.schemaVersion` 6 → 7 bump. Recommended: approve (§D2).
-- **G2.** Approve the pane mockup before the pane is built (R-28).
+- **G2.** Approve the pane mockup before the pane is built (R-28). **Answered 2026-09-30:** approved,
+  with the decisions listed under §D11 and §D12.
 - **G3.** Decide what happens to a dropped `.md`. Recommended: refuse it with a notice. The
   alternative is to import it as a plain note with no scheda. A dropped `.canvas` is refused the
   same way (§D4 step 1).
 - **G4.** Check stem uniqueness against the vault's note titles as well as the target folder.
   Recommended: yes.
 - **G5.** Renaming the root from the Note pane: accept it as a named gap, or file a follow-up shared
-  with Pratiche. Recommended: file the follow-up.
+  with Pratiche. Recommended: file the follow-up. **Answered 2026-09-30:** a named gap in v1, with a
+  follow-up shared with Pratiche filed in `TODO.md`.
 - **G6.** Approve the protected-interface entry above.
 
 ## References

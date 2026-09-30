@@ -179,7 +179,7 @@ failed (with reason).
   a centre list (thumbnail, name, colour dot, tags, date, OCR state) with a toggle to a thumbnail
   grid; filters by colour and tag; spacebar Quick Look (SPEC §6.6).
 - **Inspector**: preview, name, date, description, colour (six swatches), tags (vocabulary
-  autocompletion), sub-container, and actions «Classifica», «Apri», «Mostra nel Finder», «Apri
+  autocompletion), sub-container, and actions «Classifica», «Apri», «Rivela nel Finder» (ADR-0071 §D12), «Apri
   scheda», «Copia link Pergamenum», «Sposta nel Cestino».
 - **Classifica**: a sheet asking for one or more `topic-*` and an optional content type; confirm
   removes `status-inbox`.
