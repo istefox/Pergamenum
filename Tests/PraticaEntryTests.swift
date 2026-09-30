@@ -70,15 +70,100 @@ import Testing
         )
     }
 
-    // MARK: - The heading format round-trips with `PraticheController.parseEntryHeading`
+    // MARK: - The heading format round-trips with `PraticaManualEntries.parse`
 
     @Test func theHeadingFormatterMatchesPraticheControllersOwnPattern() {
-        // `PraticheController.entryHeadingFormatter` (`Sources/Features/Pratiche/
-        // PraticheController.swift`) already reads a heading back with this exact
-        // pattern and locale - the two formatters must agree, or a heading this
-        // inserts would fail to parse back into a timeline row.
+        // Since ADR-0076 §D1 this one formatter also reads the heading back
+        // (`PraticaManualEntries.heading(_:)`); the pattern and locale are pinned so a
+        // heading this inserts always parses back into a timeline row.
         #expect(PraticaEntry.headingFormatter.dateFormat == "yyyy-MM-dd HH:mm")
         #expect(PraticaEntry.headingFormatter.locale?.identifier == "en_US_POSIX")
+    }
+
+    // MARK: - ADR-0076 §D1, R-03: an entry anchored to a message
+
+    @Test(arguments: [LineBreak.lf, .crlf])
+    func anAnchoredInsertWritesTheHeadingTheAnchorLineAndAnEmptyBodyLine(_ lineBreak: LineBreak) {
+        let source = lineBreak.normalised("---\ndate: 2026-06-10\n---\n\ncorpo esistente\n")
+        let appended = "## 2026-06-10 14:06 Nota · Mario Rossi" + lineBreak.characters
+            + "<!-- pergamenum-message: <a@rossi.it> -->" + lineBreak.characters + lineBreak.characters
+
+        let insertion = PraticaEntry.insert(
+            kind: .note, at: Self.date("2026-06-10T14:06:00Z"), counterpart: "Mario Rossi",
+            anchor: "<a@rossi.it>", in: source
+        )
+
+        #expect(insertion.text == source + lineBreak.characters + appended)
+        // The empty body line is the last line, after the anchor line's own line break.
+        #expect(insertion.cursorRange == NSRange(
+            location: insertion.text.utf16.count - lineBreak.characters.utf16.count, length: 0
+        ))
+        #expect(PraticaManualEntries.parse(insertion.text).last?.anchor == "<a@rossi.it>")
+    }
+
+    @Test func anInsertWithoutAnAnchorIsByteIdenticalToTodays() {
+        let timestamp = Self.date("2026-06-10T14:06:00Z")
+        let expected = PraticaEntry.Insertion(
+            text: "corpo esistente\n\n## 2026-06-10 14:06 Nota · Mario Rossi\n\n",
+            cursorRange: NSRange(location: 56, length: 0)
+        )
+
+        #expect(PraticaEntry.insert(
+            kind: .note, at: timestamp, counterpart: "Mario Rossi", in: "corpo esistente\n"
+        ) == expected)
+        #expect(PraticaEntry.insert(
+            kind: .note, at: timestamp, counterpart: "Mario Rossi", anchor: nil, in: "corpo esistente\n"
+        ) == expected)
+        // An id the anchor line cannot spell writes a free entry rather than a broken line.
+        #expect(PraticaEntry.insert(
+            kind: .note, at: timestamp, counterpart: "Mario Rossi", anchor: "", in: "corpo esistente\n"
+        ) == expected)
+    }
+
+    // MARK: - ADR-0076 §D1, R-03: the message's counterpart
+
+    private static let own: Set<String> = ["stefano@stefer.it"]
+
+    private static func message(
+        direction: MessageDocument.Direction, from: String, to: [String] = [], cc: [String] = []
+    ) -> MessageDocument.MailFrontmatter {
+        MessageDocument.MailFrontmatter(
+            schemaVersion: 1, messageID: "<a@rossi.it>", conversationID: 1, direction: direction,
+            date: date("2026-06-10T14:06:00Z"), received: nil,
+            from: from, to: to, cc: cc, subject: "Offerta",
+            attachments: [], body: .complete, original: nil
+        )
+    }
+
+    @Test func aReceivedMessagesCounterpartIsItsSender() {
+        let frontmatter = Self.message(
+            direction: .received, from: "Mario Rossi <m.rossi@rossi.it>", to: ["Stefano <stefano@stefer.it>"]
+        )
+        #expect(PraticaEntry.counterpart(ofMessage: frontmatter, ownAddresses: Self.own) == "Mario Rossi")
+    }
+
+    @Test func aSentMessagesCounterpartIsTheFirstRecipientThatIsNotOwn() {
+        let frontmatter = Self.message(
+            direction: .sent, from: "Stefano <stefano@stefer.it>",
+            to: ["Stefano <STEFANO@stefer.it>", "Anna Verdi <a.verdi@verdi.it>"], cc: ["c@bianchi.it"]
+        )
+        #expect(PraticaEntry.counterpart(ofMessage: frontmatter, ownAddresses: Self.own) == "Anna Verdi")
+    }
+
+    @Test func aSentMessageAddressedOnlyToMyselfFallsBackToTheFirstCc() {
+        let frontmatter = Self.message(
+            direction: .sent, from: "stefano@stefer.it", to: ["stefano@stefer.it"], cc: ["c@bianchi.it"]
+        )
+        #expect(PraticaEntry.counterpart(ofMessage: frontmatter, ownAddresses: Self.own) == "c@bianchi.it")
+    }
+
+    @Test func aMessageNamingNobodyHasNoCounterpart() {
+        #expect(PraticaEntry.counterpart(
+            ofMessage: Self.message(direction: .sent, from: "stefano@stefer.it"), ownAddresses: Self.own
+        ) == nil)
+        #expect(PraticaEntry.counterpart(
+            ofMessage: Self.message(direction: .received, from: ""), ownAddresses: Self.own
+        ) == nil)
     }
 }
 

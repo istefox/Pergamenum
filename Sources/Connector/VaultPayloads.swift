@@ -283,28 +283,7 @@ extension VaultAPI {
         let trayCount: Int
     }
 
-    /// `pratica <title|path>` → the timeline as ordered entries (SPEC "Connectors").
-    struct PraticaTimelinePayload: Encodable {
-        let path: String
-        let title: String
-        let entries: [Entry]
-
-        /// `{ kind: message|note|call, date, direction, from, subject, attachments,
-        /// body, linkedNote }`, in the SPEC's own field order. `direction`/`from`/
-        /// `linkedNote` are `nil` for a manual entry (ADR-0049 §D12: links cover
-        /// email rows only).
-        struct Entry: Encodable {
-            let kind: String
-            let date: String
-            let direction: String?
-            let from: String?
-            let subject: String
-            let attachments: [String]
-            let body: String
-            let linkedNote: PraticaLinkTarget?
-        }
-    }
-
+    // `PraticaTimelinePayload` (ADR-0076 §D10) lives in `VaultPratiche.swift`, beside its reader.
     // `PraticaLinkTarget`/`PraticaLinksPayload` (ADR-0049 §D12) live in `VaultPraticheLinks.swift`.
 }
 

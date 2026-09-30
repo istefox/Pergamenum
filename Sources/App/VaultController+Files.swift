@@ -16,16 +16,23 @@ extension VaultController {
     /// same question of every note it is about to carry, and a second copy of the guard
     /// is a second place for it to stop matching the editor's actual state.
     func canOperate(on relativePath: String) -> Bool {
-        // The question is whether *any* tab is dirty, so it stops at the first one rather
-        // than flattening every column's tabs into an array to ask for its emptiness.
-        let hasDirtyTab = columns.contains { column in
-            column.tabs.contains { $0.note.relativePath == relativePath && $0.note.hasUnsavedChanges }
-        }
-        guard !hasDirtyTab else {
+        guard !hasUnsavedTab(showing: relativePath) else {
             recordProblem(Self.unsavedNoteRefusal)
             return false
         }
         return true
+    }
+
+    /// Whether any tab of any column shows `relativePath` with unsaved edits - the question
+    /// `canOperate(on:)` asks, without recording anything (ADR-0076 §D5). A caller that
+    /// refuses with a sentence of its own (Pratiche's anchor and carry verbs, whose refusal
+    /// is not about renaming, moving or deleting that note) asks this instead.
+    func hasUnsavedTab(showing relativePath: String) -> Bool {
+        // The question is whether *any* tab is dirty, so it stops at the first one rather
+        // than flattening every column's tabs into an array to ask for its emptiness.
+        columns.contains { column in
+            column.tabs.contains { $0.note.relativePath == relativePath && $0.note.hasUnsavedChanges }
+        }
     }
 
     /// The exact sentence `canOperate(on:)` records, kept as one value so

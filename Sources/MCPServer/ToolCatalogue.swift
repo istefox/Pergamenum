@@ -212,10 +212,10 @@ enum ToolCatalogue {
         Tool(
             name: "pratica",
             description: """
-                La cronologia di una pratica, dalla più vecchia: messaggi, note e \
-                telefonate con data, direzione, mittente, oggetto, allegati e testo. \
-                Si indica per titolo (il nome della cartella) o per percorso esatto; \
-                un titolo che ne individua più d'una viene rifiutato, non indovinato.
+                La cronologia di una pratica, dalla più vecchia: messaggi, note e telefonate con data, direzione, \
+                mittente, oggetto, allegati e testo. Una voce collegata a un messaggio porta anchorMessageID e \
+                anchorState (anchored, o orphaned se il messaggio non c'è più). Si indica per titolo (il nome della \
+                cartella) o per percorso esatto; un titolo che ne individua più d'una viene rifiutato, non indovinato.
                 """,
             inputSchema: [
                 "type": "object",

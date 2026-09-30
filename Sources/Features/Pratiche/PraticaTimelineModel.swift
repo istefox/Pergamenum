@@ -44,6 +44,23 @@ struct PraticaTimelineEntry: Equatable, Sendable, Identifiable {
     /// Whether the ledger still finds this message in Mail (R-26/R-16's "non più in
     /// Mail" caption). Irrelevant for a manual entry.
     var isInMail: Bool
+    /// ADR-0076 §D3 (PG-338). Each defaulted, so every memberwise call written before the
+    /// anchor existed compiles unchanged.
+    ///
+    /// A manual entry's anchor line, the Message-ID verbatim; nil for a message and a free entry.
+    var anchor: String?
+    /// A manual entry's index among `pratica.md`'s entries, in file order: the tie-break
+    /// between two entries at one instant (R-08).
+    var fileOrdinal: Int = 0
+    /// Where `PraticaTimelineModel.ordered` put the row (`PraticaTimelineOrder.arrange`).
+    var placement: PraticaTimelineOrder.Placement = .free
+    /// The instant the row is placed at: its message's date for an anchored entry.
+    var placementDate: Date?
+    /// An anchored entry's message's direction, which `hostLane(for:)` aligns it to.
+    var hostDirection: MessageDocument.Direction?
+
+    /// The instant the row counts at for day sections and «Inserisci qui» (R-07).
+    var placedAt: Date { placementDate ?? date }
 }
 
 /// Where a row sits and how it is coloured (SPEC "Timeline model" Lane paragraph,
@@ -88,12 +105,38 @@ enum PraticaTimelineModel {
     /// the newest, matching SPEC "Timeline model"'s "the view scrolls to the bottom
     /// (newest) on open".
     ///
-    /// The id breaks a tie, so two messages carrying the same header second (an
-    /// Exchange conversation sent to several mailboxes at once produces them) keep one
-    /// stable order across reloads instead of swapping places under the reader.
+    /// ADR-0076 §D3: the order is `PraticaTimelineOrder.arrange`'s, the one rule the
+    /// connectors share. An anchored entry follows its message (R-04); at an equal instant
+    /// a message sorts before an entry (R-08, the old id tie-break put the entry first,
+    /// ADR-0076 F2); two messages at one instant sort by id, so an Exchange conversation
+    /// sent to several mailboxes at once keeps one stable order across reloads.
     static func ordered(_ entries: [PraticaTimelineEntry]) -> [PraticaTimelineEntry] {
-        entries.sorted { left, right in
-            left.date == right.date ? left.id < right.id : left.date < right.date
+        let items = entries.map { entry in
+            PraticaTimelineOrder.Item(
+                kind: entry.kind == .message
+                    ? .message(messageID: entry.messageID ?? "", tieKey: entry.id)
+                    : .entry(anchor: entry.anchor, ordinal: entry.fileOrdinal),
+                date: entry.date
+            )
+        }
+        var hostDirections: [String: MessageDocument.Direction] = [:]
+        return PraticaTimelineOrder.arrange(items).map { placed in
+            var entry = entries[placed.index]
+            entry.placement = placed.placement
+            entry.placementDate = placed.placementDate
+            switch placed.placement {
+            case .message:
+                // The first message carrying an id owns it (ADR-0076 §D2), and it is also
+                // the first one met in this order.
+                if let messageID = entry.messageID, hostDirections[messageID] == nil {
+                    hostDirections[messageID] = entry.direction
+                }
+            case let .anchored(messageID):
+                entry.hostDirection = hostDirections[messageID]
+            case .free, .orphaned:
+                break
+            }
+            return entry
         }
     }
 
@@ -109,14 +152,61 @@ enum PraticaTimelineModel {
     /// address nor an attachment - narrowing them away would empty the timeline of the
     /// very entries a person wrote by hand. The text field is a question about the
     /// whole pratica, so it does reach them.
+    ///
+    /// ADR-0076 §D3 (R-06): a message and its anchored entries are one unit. The message
+    /// shows when it passes the sender and attachments filters and the text matches it or
+    /// any entry anchored to it; its anchored entries show exactly when it does, a
+    /// non-matching one included. Free and orphaned entries keep the rule above.
     static func filtered(
         _ entries: [PraticaTimelineEntry], by filter: PraticaTimelineFilter
     ) -> [PraticaTimelineEntry] {
-        entries.filter { entry in
-            matchesText(entry, filter.text)
+        let hosts = hostVisibility(in: entries, by: filter)
+        return entries.filter { entry in
+            // An anchored entry handed in without its message (never the case for
+            // `ordered`'s output) keeps today's rule rather than vanishing.
+            if case let .anchored(messageID) = entry.placement, let host = hosts[messageID] {
+                return host.isVisible
+            }
+            // The owning message follows its unit: an anchored entry the text matches brings it.
+            if entry.kind == .message, let messageID = entry.messageID,
+               let host = hosts[messageID], host.rowID == entry.id {
+                return host.isVisible
+            }
+            return matchesText(entry, filter.text)
                 && matchesSender(entry, filter.sender)
                 && matchesAttachments(entry, onlyWithAttachments: filter.attachmentsOnly)
         }
+    }
+
+    /// The message that owns a Message-ID, and whether it passes the filter as a unit.
+    private struct Host {
+        var rowID: String
+        var isVisible: Bool
+    }
+
+    /// Every owning message, keyed by its Message-ID (R-06). Only the first message carrying
+    /// an id owns it, as `PraticaTimelineOrder.arrange` decides. One pass each way:
+    /// `filteredTimeline` runs on every body read (ADR-0072 §D7).
+    private static func hostVisibility(
+        in entries: [PraticaTimelineEntry], by filter: PraticaTimelineFilter
+    ) -> [String: Host] {
+        var anchoredTextMatches: Set<String> = []
+        for entry in entries {
+            if case let .anchored(messageID) = entry.placement, matchesText(entry, filter.text) {
+                anchoredTextMatches.insert(messageID)
+            }
+        }
+        var hosts: [String: Host] = [:]
+        for entry in entries where entry.kind == .message {
+            guard let messageID = entry.messageID, hosts[messageID] == nil else { continue }
+            hosts[messageID] = Host(
+                rowID: entry.id,
+                isVisible: matchesSender(entry, filter.sender)
+                    && matchesAttachments(entry, onlyWithAttachments: filter.attachmentsOnly)
+                    && (matchesText(entry, filter.text) || anchoredTextMatches.contains(messageID))
+            )
+        }
+        return hosts
     }
 
     private static func matchesText(_ entry: PraticaTimelineEntry, _ text: String) -> Bool {
@@ -242,10 +332,17 @@ enum PraticaTimelineModel {
     /// Each row's successor in `entries`, keyed by the row's id; the last row has none. One pass
     /// per body, where every row menu used to search the array for its own row. An id that
     /// appears twice keeps its first row's successor, as that search did.
+    ///
+    /// ADR-0076 §D3: a free entry cannot land between a message and its anchored entries, so a
+    /// row whose next row is anchored gets no successor, and the group's last row gets the
+    /// next spine row. With no anchored entry this is the map above, unchanged.
     static func nextRows(in entries: [PraticaTimelineEntry]) -> [PraticaTimelineEntry.ID: PraticaTimelineEntry] {
         var next: [PraticaTimelineEntry.ID: PraticaTimelineEntry] = [:]
-        for index in entries.indices.dropLast() where next[entries[index].id] == nil {
-            next[entries[index].id] = entries[index + 1]
+        var seen: Set<PraticaTimelineEntry.ID> = []
+        for index in entries.indices.dropLast() where seen.insert(entries[index].id).inserted {
+            let following = entries[index + 1]
+            if case .anchored = following.placement { continue }
+            next[entries[index].id] = following
         }
         return next
     }

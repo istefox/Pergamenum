@@ -244,6 +244,10 @@ struct PraticaCommandActions {
     /// R-31: the files move, and both dossiers are told - the source excludes the id
     /// (so its own sync never writes it back) and the destination includes it (so its
     /// own sync knows the message belongs there even outside a followed conversation).
+    ///
+    /// ADR-0076 §D6: the entries anchored to the message travel with it (`PraticaEntryCarry`),
+    /// refused before anything moves while either `pratica.md` is dirty or the source is stale.
+    /// With no anchored entry, every step below is exactly the move this was before.
     func move(
         _ entry: PraticaTimelineEntry, detail: PraticaRowDetail?, to destination: PraticaListItem
     ) async {
@@ -252,24 +256,56 @@ struct PraticaCommandActions {
               let detail
         else { return }
 
+        // Read before the first suspension and handed to every carry step and to the undo: the
+        // vault on screen when the verb ended is not necessarily the one it started in.
+        let movedSession = vault.session
+        let carrier = PraticaEntryCarry(pratiche: pratiche, vault: vault)
+        let anchored: [String]
+        switch carrier.preflight(messageID: messageID, from: praticaPath, to: destination.id) {
+        case .nothingToCarry: anchored = []
+        case .carry(let blocks): anchored = blocks
+        case .refused(let sentence): pratiche.report(sentence); return
+        }
         let (moved, rewrites) = await files.moveFiles(of: detail, to: destination.id)
         guard !moved.isEmpty else { return }
+        // The entries follow the message note, not "some file": `moveFiles` moves the `.md` and
+        // the `.eml` independently, and with only the sidecar moved the message is still in the
+        // source, so its entries stay anchored to it there (`moveFiles` has already said why the
+        // note did not move).
+        let blocks = PraticaEntryCarry.noteMoved(in: moved, of: detail, under: vault.root) ? anchored : []
         await updateDossier(at: praticaPath) { dossier in
             if !dossier.excluded.contains(messageID) { dossier.excluded.append(messageID) }
         }
         await updateDossier(at: destination.id) { dossier in
             if !dossier.included.contains(messageID) { dossier.included.append(messageID) }
         }
+        let transfer = PraticaEntryCarry.Transfer(
+            blocks: blocks, messageID: messageID, source: praticaPath, destination: destination.id
+        )
+        let outcome = await carrier.carry(transfer, in: movedSession)
+        if !blocks.isEmpty,
+           let sentence = PraticaEntryCarry.sentence(for: outcome, source: praticaPath, destination: destination.id) {
+            pratiche.report(sentence)
+        }
         reload()
 
         register(undoName: "Sposta") { actions in
             let restored = await actions.files.moveBack(moved)
-            if let root = actions.vault.root,
-               restored.contains(root.appending(path: detail.notePath, directoryHint: .notDirectory)) {
+            // The entries follow the message: carried back only when the message note itself
+            // went back, or they would be orphaned in the source while it stays in the
+            // destination. `moveBack` has already said why a file did not return.
+            let messageRestored = actions.vault.root.map {
+                restored.contains($0.appending(path: detail.notePath, directoryHint: .notDirectory))
+            } ?? false
+            if messageRestored {
                 await actions.files.reverseContentRewrites(rewrites, notePath: detail.notePath)
             }
             await actions.updateDossier(at: praticaPath) { $0.excluded.removeAll { $0 == messageID } }
             await actions.updateDossier(at: destination.id) { $0.included.removeAll { $0 == messageID } }
+            if messageRestored {
+                await PraticaEntryCarry(pratiche: actions.pratiche, vault: actions.vault)
+                    .carryBack(outcome, transfer, in: movedSession)
+            }
             actions.reload()
             actions.register(undoName: "Sposta") { redo in
                 await redo.move(entry, detail: detail, to: destination)

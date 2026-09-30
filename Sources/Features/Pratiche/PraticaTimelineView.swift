@@ -65,7 +65,7 @@ struct PraticaTimelineView: View {
         // «Inserisci qui»'s neighbours, found in one pass rather than one search per row menu.
         let next = PraticaTimelineModel.nextRows(in: entries)
         return List(selection: selection) {
-            ForEach(Self.sections(of: entries), id: \.day) { section in
+            ForEach(PraticaTimelineModel.daySections(of: entries, calendar: .current), id: \.day) { section in
                 Section {
                     ForEach(section.entries) { entry in
                         row(entry, next: next[entry.id])
@@ -289,27 +289,5 @@ struct PraticaTimelineView: View {
     private func preview(_ url: URL) {
         previewURLs = [url]
         isPreviewing = true
-    }
-
-    /// Day sections in the timeline's own ascending order (R-23). Built by walking the
-    /// already-ordered array rather than by grouping into a dictionary and sorting it
-    /// again: the order is `PraticaTimelineModel.ordered`'s and must not be re-derived.
-    private static func sections(of entries: [PraticaTimelineEntry]) -> [DaySection] {
-        var sections: [DaySection] = []
-        let calendar = Calendar.current
-        for entry in entries {
-            let day = calendar.startOfDay(for: entry.date)
-            if sections.last?.day == day {
-                sections[sections.count - 1].entries.append(entry)
-            } else {
-                sections.append(DaySection(day: day, entries: [entry]))
-            }
-        }
-        return sections
-    }
-
-    private struct DaySection {
-        var day: Date
-        var entries: [PraticaTimelineEntry]
     }
 }

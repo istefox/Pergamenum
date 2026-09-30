@@ -102,6 +102,23 @@ final class PraticheController {
     /// after every link write, so a write refreshes this for free.
     var links: PraticaLinks = .empty
 
+    /// ADR-0076 §D3 (R-21): `NoteStore.hash` of the selected pratica's `pratica.md` as the
+    /// timeline last read it, the origin an entry write compares against. Written by
+    /// `reloadTimeline(from:)`, and cleared by `resetVaultScopedState()` so a hash read in a
+    /// vault that has been left never survives into the next one (ADR-0052's cross-vault
+    /// lesson). Nil with no selection or no readable file.
+    var timelineOrigin: String?
+
+    /// The pratica `timelineOrigin` was read for, so `reloadTimelineIfStale(from:)` can tell
+    /// a selection that moved on (a rename's remap) from an unchanged file. Same two writers.
+    @ObservationIgnored var timelineOriginPraticaPath: String?
+
+    /// A test seam, nil in production (ADR-0076 §D6, ADR-0057 §D9's shape): awaited between
+    /// each carry step's fresh read and its guarded write, so a test can write the file there
+    /// and watch the real `expecting:` refuse. Here, not on `PraticaEntryCarry`, because the
+    /// undo closure rebuilds its actions and this controller is what survives.
+    @ObservationIgnored var testOnlyCarryHook: (@MainActor (PraticaEntryCarry.Phase) async -> Void)?
+
     /// The three toolbar filters (R-32).
     var filter = PraticaTimelineFilter()
 
@@ -639,5 +656,7 @@ extension PraticheController {
         timeline = []
         details = [:]
         links = .empty
+        timelineOrigin = nil
+        timelineOriginPraticaPath = nil
     }
 }

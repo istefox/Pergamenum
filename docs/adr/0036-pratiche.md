@@ -233,6 +233,12 @@ CLAUDE.md, and the `growToFitTheText` regression that once cost the Diario its t
 «editable inline con il motore dell'editor» is satisfied literally: the editor engine, on the
 pratica note, on screen, with the caret placed for you.
 
+**§D5 amended 2026-09-30 by ADR-0076 §D4** — the timeline's writes widen: an appended heading
+may carry an anchor line in the same write, and the timeline may write, replace or remove one
+anchor line, and carry anchored entry blocks between two `pratica.md` files on «Sposta in…»
+and its undo. Each is one whole-file `VaultSession.write` with `expecting:`, computed from a
+fresh read. The single-editor rule stands: the timeline never binds a text view to a range.
+
 ### §D6 — A sync never rewrites a message file, with exactly two exceptions
 
 Exceptions: a `pergamenum-mail-body: pending` file whose body has since arrived (R-15), and an

@@ -97,6 +97,7 @@ enum PraticheCommands {
             Output.line("")
             Output.line("  \(header.joined(separator: "  "))")
             Output.line("  \(entry.subject)")
+            if let anchor = anchorLine(of: entry) { Output.line("  \(anchor)") }
             if !entry.attachments.isEmpty {
                 Output.line("  allegati: \(entry.attachments.joined(separator: ", "))")
             }
@@ -114,6 +115,17 @@ enum PraticheCommands {
         case ("message", _): "ricevuto"
         case ("call", _): "telefonata"
         default: "nota"
+        }
+    }
+
+    /// ADR-0076 §D10: the line under a manual entry anchored to a message, or under one whose
+    /// message is no longer in this pratica. Nil for a message and a free entry.
+    private static func anchorLine(of entry: VaultAPI.PraticaTimelinePayload.Entry) -> String? {
+        guard let messageID = entry.anchorMessageID else { return nil }
+        switch entry.anchorState {
+        case "anchored": return "collegata al messaggio \(messageID)"
+        case "orphaned": return "il suo messaggio non è più in questa pratica (\(messageID))"
+        default: return nil
         }
     }
 

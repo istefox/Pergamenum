@@ -298,3 +298,27 @@ private func controller(
     #expect(controller.columns[0].activeID == hers)
     controller.close()
 }
+
+// MARK: The caret's index entry does not move the focus
+
+@MainActor
+@Test func recordingTheOtherColumnsOutlineEntryLeavesTheFocusWhereItIs() async throws {
+    // Each column's text view reports its index entry when it loads its note, and it used to
+    // write it through the focused facade, taking the focus first: coming back to Note from
+    // Workspace, the right column loaded last and took the focus from the left.
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    controller.openNote(at: "Nexion.md")
+    controller.splitEditor()
+    controller.openNote(at: "Progetti/Sospensione.md")
+    controller.focusColumn(0)
+
+    controller.recordOutlineEntry(1, inColumn: 1)
+
+    #expect(controller.focusedColumnIndex == 0)
+    #expect(controller.columns[1].active?.currentOutlineEntry == 1)
+    // The focused column's own entry is untouched, and the facade still answers for it.
+    #expect(controller.columns[0].active?.currentOutlineEntry == nil)
+    #expect(controller.currentOutlineEntry == nil)
+    controller.close()
+}
