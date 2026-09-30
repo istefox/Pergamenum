@@ -3,7 +3,7 @@
 - Status: accepted. PR 1 of the two (see "Delivery") landed on `main` via PR #691 (merge
   `32b5ecd3`, 2026-09-29): the Core units, the index field, the session doors, the ingest engine,
   the extraction store and queue, and search, all dormant. PR 2 (controller, watcher, settings,
-  route, pane) is not on `main` yet; its merge is added here when it lands. Flipped at PR 1 rather
+  route, pane) landed on `main` via PR #721 (merge `1535c2d9`, 2026-09-30). Flipped at PR 1 rather
   than PR 2 because `docs/adr/README.md` rule 2 keeps `proposed` for an ADR whose implementation
   is not on `main` at all, the shape ADR-0053 already took for a multi-PR plan.
 - Date: 2026-09-29
@@ -582,7 +582,7 @@ The SPEC's own rejections are registered, not reopened:
 - **Manual acceptance by Stefano:** a real drop folder, a real scan, and a copied link pasted into
   another app.
 
-## Protected-interface proposal (pending approval, gate G6)
+## Protected-interface entry (gate G6, approved 2026-09-30)
 
 Add `Sources/Core/Contenitore/ContenitoreScheda.swift:ContenitoreScheda.render` to
 `.claude/protected-interfaces`. It emits the lines every scheda on disk is recognised by, so a
@@ -602,7 +602,8 @@ silent change would unmake existing documents. This follows the `Dossier.render`
 - **G5.** Renaming the root from the Note pane: accept it as a named gap, or file a follow-up shared
   with Pratiche. Recommended: file the follow-up. **Answered 2026-09-30:** a named gap in v1, with a
   follow-up shared with Pratiche filed in `TODO.md`.
-- **G6.** Approve the protected-interface entry above.
+- **G6.** Approve the protected-interface entry above. **Answered 2026-09-30:** approved; the entry is
+  in `.claude/protected-interfaces`.
 
 ## References
 

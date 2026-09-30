@@ -866,8 +866,8 @@ which is PR 2.
   G6 are still open and do not block Task 2; G2 blocks Task 7 only.
 - **Answered 2026-09-30:** G2 approved, mockup `docs/design/contenitore/Pergamenum Contenitore.html`;
   the decisions it fixes (colour dot, «Rivela nel Finder», the «Documento» menu, keys, the settings
-  tab width) are in ADR-0071 §D11/§D12. G5: a named gap, follow-up filed in `TODO.md`. G6 is still
-  open.
+  tab width) are in ADR-0071 §D11/§D12. G5: a named gap, follow-up filed in `TODO.md`. G6 approved: the
+  entry is in `.claude/protected-interfaces`.
 - **Stefano's usual gates.** He approves the schema change, the commit, the push and the SPEC §9
   edit. No step deletes anything: everything goes to the Trash or back to the drop folder.
 - **TCC.** A drop folder under Desktop, Documents or Downloads triggers macOS's folder-access
