@@ -23,7 +23,7 @@ struct PinnedTagsStore {
     }
 
     static func key(for root: URL) -> String {
-        "pinnedTags:" + root.resolvingSymlinksInPath().standardizedFileURL.path(percentEncoded: false)
+        "pinnedTags:" + root.vaultKey
     }
 
     /// The pinned tags, in the order they were pinned, skipping anything that no longer parses

@@ -68,8 +68,8 @@ struct NoteTabBar: View {
                 // **A glyph and not a word, because of the split.** Spelled out, these
                 // controls took some 230 points of a column that is 585 wide when the editor
                 // is divided, and two tabs were all that fitted beside them. The word survives
-                // as the accessibility label of the `Label`, which is also what the UI tests
-                // click on.
+                // as the accessibility label of the `Label`; the UI tests find the unsaved chip
+                // by its identifier, `note-save-chip`, never by that word.
                 if tabs.first(where: { $0.id == activeID })?.note.hasUnsavedChanges == true {
                     // Filled with the accent, same language `BoardToolbar` uses for its
                     // selected tool (`BoardChrome.swift`): a solid chip reads as "there is
@@ -85,6 +85,7 @@ struct NoteTabBar: View {
                     }
                     .buttonStyle(.plain)
                     .help("Salva la nota")
+                    .accessibilityIdentifier("note-save-chip")
                 } else {
                     // Same pill shape as the unsaved chip, an outline rather than a fill:
                     // the state is confirmed without competing for attention the way the

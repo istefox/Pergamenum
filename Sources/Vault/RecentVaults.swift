@@ -77,7 +77,7 @@ struct RecentVaults {
         guard !isOverridden else { return nil }
         // Symlinks resolved: /tmp and /private/tmp are the same vault, and listing it
         // twice would offer the user a choice that is not one.
-        let path = url.resolvingSymlinksInPath().standardizedFileURL.path(percentEncoded: false)
+        let path = url.vaultKey
         var updated = paths.filter { $0 != path }
         updated.insert(path, at: 0)
         let evicted = updated.count > Self.maximum ? updated[Self.maximum...] : []

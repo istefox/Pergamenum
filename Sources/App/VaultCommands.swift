@@ -91,7 +91,7 @@ struct VaultCommands: Commands {
                         Button(url.lastPathComponent) {
                             Task { await vault.open(url) }
                         }
-                        .disabled(url.standardizedFileURL == vault.root?.standardizedFileURL)
+                        .disabled(url.vaultKey == vault.root?.vaultKey)
                     }
                     Divider()
                     Button("Svuota elenco") {
