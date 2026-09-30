@@ -158,7 +158,7 @@ private func frames(
 
     // ADR-0030 §D5, plan 2026-09-04-editor-page-typography-noteplan, Task 3 (R-07).
     //
-    // The composition regression `reserveSpace` (`NoteTextView+Transclusion.swift:54-68`) has
+    // The composition regression `TransclusionController.reserveSpace` (`NoteTextView+Transclusion.swift`) has
     // to satisfy once the coder changes it to build its style as a mutable copy of the style
     // already on the line, rather than a fresh `NSMutableParagraphStyle()`: the reserved
     // height and the page's own line-height multiple must both survive on the same source
