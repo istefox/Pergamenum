@@ -402,6 +402,47 @@ private func failingWrite(in vault: borrowing TemporaryVault, on path: String) t
 }
 
 @MainActor
+@Test func aContainerTrashIsRefusedWhileAnEditInsideItCouldNotBeWritten() async throws {
+    let vault = try TemporaryVault()
+    let harness = try await harness(vault)
+    let session = try #require(harness.vault.session)
+    harness.contenitore.openEditor(for: scheda)
+    let editor = try #require(harness.contenitore.editor)
+    editor.draft.description = "Non deve andare persa"
+    let restore = try failingWrite(in: vault, on: folder)
+    defer { restore() }
+
+    await harness.actions.trashContainer("Contenitore/Fatture")
+
+    #expect(session.problems.contains(ContenitoreCommandActions.owedEditSentence))
+    #expect(FileManager.default.fileExists(atPath: vault.root.appending(path: scheda).path(percentEncoded: false)),
+            "the container was not trashed")
+    #expect(editor.draft.description == "Non deve andare persa")
+    #expect(harness.contenitore.hasUnsettledEdits)
+}
+
+@MainActor
+@Test func aVaultChangeNamesAnEditItCouldNotWriteInsteadOfDroppingItSilently() async throws {
+    let vault = try TemporaryVault()
+    let second = try TemporaryVault()
+    let harness = try await harness(vault)
+    harness.contenitore.openEditor(for: scheda)
+    let editor = try #require(harness.contenitore.editor)
+    editor.draft.description = "Non deve sparire in silenzio"
+    let restore = try failingWrite(in: vault, on: folder)
+    defer { restore() }
+
+    await harness.vault.open(second.root)
+    await harness.contenitore.start()
+    defer { harness.contenitore.stop() }
+
+    let session = try #require(harness.vault.session)
+    #expect(session.problems.contains(ContenitoreController.lostEditSentence(for: scheda)))
+    #expect(harness.contenitore.editor == nil)
+    #expect(!harness.contenitore.hasUnsettledEdits, "the old vault's edit does not hold the new vault's quit")
+}
+
+@MainActor
 @Test func aRefusedSaveOnAVanishedSchedaKeepsTheDraft() async throws {
     let vault = try TemporaryVault()
     let harness = try await harness(vault)

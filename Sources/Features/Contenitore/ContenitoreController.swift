@@ -363,10 +363,15 @@ final class ContenitoreController {
     /// The open vault is gone or another one is open: settles the inspector's unsaved edit (it
     /// writes to the session it was read from), then forgets everything the old vault left -
     /// the queue, the notices, the selection, the scope and filter, the presented requests and
-    /// the caches - so none of it shows in, or is raised into, the next one.
+    /// the caches - so none of it shows in, or is raised into, the next one. An edit whose write
+    /// failed cannot follow the old session, so it is named as a problem of the vault now open
+    /// rather than dropped without a word (nothing is shown when no vault is open).
     private func releaseSession() async {
         detachQueue()
         await settleEditing()
+        for owed in [editor].compactMap({ $0 }) + retiredEditors where !owed.isSettled {
+            vault.recordProblem(Self.lostEditSentence(for: owed.schedaPath))
+        }
         editor = nil
         retiredEditors = []
         sessionID = nil

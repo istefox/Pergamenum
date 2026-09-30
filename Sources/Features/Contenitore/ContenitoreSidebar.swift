@@ -59,6 +59,7 @@ struct ContenitoreSidebar: View {
             footer
         }
         .background(theme.color(.backgroundSecondary))
+        .onChange(of: tree, initial: true) { _, current in contenitore.dropVanishedScope(in: current) }
         .sheet(item: $renamingContainer) { item in
             ContenitoreNameSheet(
                 title: "Rinomina sottocontenitore",
