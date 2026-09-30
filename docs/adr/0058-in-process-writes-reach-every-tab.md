@@ -3,6 +3,8 @@
 - Status: accepted. Landed on `main` via PR #500 (merge `b390000`, 2026-09-25).
 - **Amended (2026-09-26, ADR-0067):** §D6's clause keeping the name `syncOpenNote` is retired and
   §D7 is closed; every landed change now reaches the tabs through one session door. Body untouched.
+- **Amended (2026-09-30, ADR-0073 departure 15):** §D1's rule adopts, instead of asking, an incoming
+  text identical to a dirty buffer's own (a split copy saved from the other column). Body untouched.
 - Date: 2026-09-24. Written **before** the implementation, against `2e529c14` (clean tree). Every
   line number below was read from that tree. None is recalled from the ticket.
 - **Numbering note:** `0056` is the highest file under `docs/adr/` on this branch, but

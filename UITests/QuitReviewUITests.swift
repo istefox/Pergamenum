@@ -4,9 +4,9 @@ import XCTest
 /// carries, justified in ADR-0073 §D9: the defect lived exactly where no in-process test
 /// reaches, AppKit's terminate calling the delegate, which calls the review.
 ///
-/// The alert's buttons are found by their titles: they are the contract here, the same words
-/// the tab-close dialog uses (ADR-0012 §D3). Everything else goes by identifier or by the
-/// note's own name. `-disableCalendar`, `-disableUpdater` and `-mailStoreRoot` as every
+/// The alert's buttons are found by their accessibility identifiers (`quit-prompt-*`, ADR-0073
+/// departure 18), not by their titles: prose grows (`CLAUDE.md`). The note is found by its
+/// own name. `-disableCalendar`, `-disableUpdater` and `-mailStoreRoot` as every
 /// UI-test file passes them.
 ///
 /// Probe P2 (ADR-0073 §D8) is the other reason this file exists: if `app.terminate()` in a
@@ -74,7 +74,7 @@ final class QuitReviewUITests: XCTestCase {
 
         // First quit: the question appears, and «Annulla» keeps the app and the edit.
         app.typeKey("q", modifierFlags: .command)
-        let cancel = alertButton("Annulla")
+        let cancel = alertButton(identifier: "quit-prompt-cancel")
         XCTAssertTrue(cancel.waitForExistence(timeout: 5), "uscire con una nota non salvata non ha chiesto niente")
         cancel.click()
         XCTAssertEqual(app.state, .runningForeground, "«Annulla» ha chiuso l'app")
@@ -83,7 +83,7 @@ final class QuitReviewUITests: XCTestCase {
 
         // Second quit: «Salva» writes the note, then the app exits.
         app.typeKey("q", modifierFlags: .command)
-        let save = alertButton("Salva")
+        let save = alertButton(identifier: "quit-prompt-save")
         XCTAssertTrue(save.waitForExistence(timeout: 5), "la seconda uscita non ha chiesto niente")
         save.click()
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 15), "dopo «Salva» l'app non è uscita")
@@ -91,11 +91,13 @@ final class QuitReviewUITests: XCTestCase {
         XCTAssertTrue(written.contains(typed), "«Salva» non ha scritto la nota")
     }
 
-    /// A button of the quit alert: an app-modal `NSAlert` surfaces as a dialog, and a sheet is
-    /// looked at too so the test does not depend on how AppKit exposes it.
-    private func alertButton(_ title: String) -> XCUIElement {
-        let inDialog = app.dialogs.buttons[title].firstMatch
+    /// A button of the quit alert, by the identifier `QuitReviewAlert.make` gives it
+    /// (`quit-prompt-save`, `quit-prompt-cancel`, `quit-prompt-discard`): an app-modal `NSAlert`
+    /// surfaces as a dialog, and a sheet is looked at too so the test does not depend on how
+    /// AppKit exposes it.
+    private func alertButton(identifier: String) -> XCUIElement {
+        let inDialog = app.dialogs.buttons[identifier].firstMatch
         if inDialog.waitForExistence(timeout: 5) { return inDialog }
-        return app.sheets.buttons[title].firstMatch
+        return app.sheets.buttons[identifier].firstMatch
     }
 }

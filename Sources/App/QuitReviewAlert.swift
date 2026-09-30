@@ -24,16 +24,27 @@ enum QuitReviewAlert {
         let save = alert.addButton(withTitle: copy.saveLabel)
         save.keyEquivalent = "\r"
         save.keyEquivalentModifierMask = []
+        save.setAccessibilityIdentifier(Identifier.save)
 
         let cancel = alert.addButton(withTitle: copy.cancelLabel)
         cancel.keyEquivalent = "\u{1b}"
         cancel.keyEquivalentModifierMask = []
+        cancel.setAccessibilityIdentifier(Identifier.cancel)
 
         let discard = alert.addButton(withTitle: copy.discardLabel)
         discard.keyEquivalent = "d"
         discard.keyEquivalentModifierMask = .command
         discard.hasDestructiveAction = true
+        discard.setAccessibilityIdentifier(Identifier.discard)
         return alert
+    }
+
+    /// The buttons' accessibility identifiers: the contract a UI test finds them by, since
+    /// their titles are prose that can change (`CLAUDE.md`, ADR-0073 departure 18).
+    enum Identifier {
+        static let save = "quit-prompt-save"
+        static let cancel = "quit-prompt-cancel"
+        static let discard = "quit-prompt-discard"
     }
 
     /// The answer a response stands for, in `make`'s button order.

@@ -14,7 +14,8 @@
   `docs/plans/pg-326-quit-unsaved-notes.md`, which declares R-01 to R-18.
 - **Extends ADR-0012 §D3 (closing a dirty tab asks), ADR-0060 §D2 (the quit hook and its 2 s diary
   cap), ADR-0066 §D5 (the board settles first on quit), ADR-0058 §D3 and ADR-0067 §D2 (the writer is
-  named by tab id). Amends none.** Explicit saving (ADR-0012 §D3) is not reopened. No on-disk
+  named by tab id). Amends ADR-0058 §D1 by one case (implementation note, departure 15; recorded
+  after the fact, the original line read «Amends none»).** Explicit saving (ADR-0012 §D3) is not reopened. No on-disk
   format, frontmatter key, `IndexCache.schemaVersion` or protected interface changes.
 
 ## Context
@@ -521,6 +522,51 @@ carries neither `NSSupportsSuddenTermination` nor `NSSupportsAutomaticTerminatio
     and never shown, including a two-column test with a `CompletingTextView` that moves the focus the
     way production does; the delegate's wiring is not covered by a unit test and has not been run in
     the app.
+
+Follow-ups of 2026-09-30, on `fix/pg-326-quit-followups`, found by a read-only comparison against a
+superseded parallel implementation of PG-326 (local branch `fix/pg-326-quit-saves-dirty-notes`,
+never merged). Four gaps, each a recorded departure; §D1–§D11's text is unchanged.
+
+15. **A dirty copy identical to what landed is not a conflict.** Type in a note, split the editor
+    (`splitEditor` copies the dirty buffer, so both columns hold the same unsaved text), then press
+    Cmd+S or answer «Salva tutto»: the left tab was written, and ADR-0058 §D1's rule read the right
+    one, dirty, as a conflict with its own text. It showed a false «changed on disk» banner, and the
+    quit was cancelled on it. `OpenNote.catchUp(to:)` now adopts an incoming `.text` equal to a
+    dirty buffer's `text` (`savedText` takes it, a pending prompt goes, `.adopted`) instead of
+    asking. This narrows ADR-0058 §D1 by that one case, which the record's head line «Amends none»
+    predated; the head now names it. ADR-0058 carries a one-line amendment note pointing here. Pinned in
+    `VaultControllerWriteCatchUpTests` (the rule, and split + Cmd+S) and in `QuitCoordinatorTests`
+    (split + «Salva tutto» replies `true` with no banner).
+16. **Two quit requests never overlap.** `shouldTerminate()` used to bump `attempt` and reset its
+    debts on every call. A second request that arrived while a `.terminateLater` reply was still owed
+    therefore orphaned the first reply: its tasks found a different attempt and answered nothing. In
+    modal panel mode that can hang the app. Now a request arriving while a reply is owed answers
+    `.later` and starts nothing, and the pending quit still gets exactly one reply. A request arriving
+    while the question is on screen (a nested terminate delivered inside `ask`'s modal loop) answers
+    `.cancel`, and the question decides. Pinned by two `QuitCoordinatorTests`. **Not verified:** how
+    AppKit itself treats a repeated terminate request while `.terminateLater` is owed (whether it
+    calls the delegate again at all, and what it does with the second `.later`) remains to be hand
+    checked on a Debug build.
+17. **On «Salva tutto» the diary settles before the notes are written (amends §D1's order).** §D1
+    step 3 put the diary after the notes. Take a Diario with a pending debounced write and a note tab
+    showing the same day file, dirty. The tab was written first, the diary's guarded write was then
+    refused as stale (ADR-0057), the Diario went into conflict, and its text was only recorded as a
+    problem while the app exited, so the text was lost. Now the `.save` branch settles the diary
+    first, under its own fail-open 2 s cap (ADR-0060 §D2). If the cap wins, the notes are saved
+    anyway. Then the notes phase starts, with its cap. The diary's write is announced (ADR-0067), so
+    the tab that shows the day file catches up to it (the banner). `saveForQuit` leaves that
+    conflicted tab unwritten, and the quit is cancelled with it revealed (§D7). The diary phase after
+    the notes stays as it was: it finds the diary settled, or, when the first cap won, waits for it
+    once more under the same cap. The no-dirty-tab path and «Non salvare» are unchanged. Residual,
+    named and not fixed: when the first cap wins and the diary's write lands only after the tab's
+    save, the old refusal is still possible. It needs a diary write slower than 2 s. Pinned by
+    `QuitCoordinatorTests`: the scenario above, the new order (`slept == [diaryCap, noteSaveCap]`,
+    replacing the test that pinned the old one), and the cap winning before the notes.
+18. **The alert's buttons have identifiers.** `QuitReviewAlert.make` sets `quit-prompt-save`,
+    `quit-prompt-cancel` and `quit-prompt-discard` on the three `NSButton`s (`QuitReviewAlert.Identifier`).
+    `QuitReviewUITests` now finds them by identifier rather than by title (`CLAUDE.md`: a UI test
+    must not find a control by the words on it), which supersedes departure 12's last sentence.
+    `QuitReviewAlertTests` pins the identifiers. The GUI test was compiled but not run.
 
 ## References
 

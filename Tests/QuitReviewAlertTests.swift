@@ -41,6 +41,16 @@ private let copy = QuitReview.Copy(
 }
 
 @MainActor
+@Test func eachButtonCarriesTheIdentifierAUITestFindsItBy() {
+    let buttons = QuitReviewAlert.make(copy).buttons
+
+    // Literal, not `QuitReviewAlert.Identifier`: `QuitReviewUITests` spells the same strings.
+    #expect(buttons.map { $0.accessibilityIdentifier() } == [
+        "quit-prompt-save", "quit-prompt-cancel", "quit-prompt-discard",
+    ])
+}
+
+@MainActor
 @Test func eachResponseMapsToItsAnswer() {
     #expect(QuitReviewAlert.answer(for: .alertFirstButtonReturn) == .save)
     #expect(QuitReviewAlert.answer(for: .alertSecondButtonReturn) == .cancel)

@@ -373,25 +373,199 @@ private func drain() async {
     controller.close()
 }
 
+// ADR-0073 departure 17: on «Salva tutto» the diary settles before the notes are written, and
+// the notes' cap starts only once it has (or once its own cap has won).
+
 @MainActor
-@Test func theDiaryCapStartsAfterTheSavesAndOneReplyFollows() async throws {
+@Test func theDiarySettlesBeforeTheSavesAndOneReplyFollows() async throws {
     let vault = try TemporaryVault()
     let root = vault.root
     let controller = try await quitController(vault)
     let diary = diary(for: controller)
     _ = try openDirty("Nexion.md", adding: "\nNota salvata.\n", inColumn: 0, of: controller)
-    diary.prose += "Diario dopo le note.\n"
+    diary.prose += "Diario prima delle note.\n"
+    let probe = QuitProbe()
+    let quit = probe.coordinator(controller, diary: diary) { _ in .save }
+
+    #expect(quit.shouldTerminate() == .later)
+    try await waitUntil { !probe.replies.isEmpty }
+
+    #expect(probe.replies == [true])
+    #expect(probe.slept == [QuitCoordinator.diaryCap, QuitReview.noteSaveCap])
+    #expect(diaryOnDisk(root)?.contains("Diario prima delle note.") == true)
+    #expect(quitOnDisk(root, "Nexion.md")?.contains("Nota salvata.") == true)
+    probe.openAllGates()
+    await drain()
+    #expect(probe.replies == [true])
+    controller.close()
+}
+
+@MainActor
+@Test func theDiaryCapWinningBeforeTheSavesStillSavesTheNotes() async throws {
+    let vault = try TemporaryVault()
+    let root = vault.root
+    let controller = try await quitController(vault)
+    let diary = diary(for: controller)
+    let held = Gate()
+    diary.testOnlyWriteHook = { phase in
+        if phase == .willWrite { await held.wait() }
+    }
+    _ = try openDirty("Nexion.md", adding: "\nNota salvata comunque.\n", inColumn: 0, of: controller)
+    diary.prose += "Diario bloccato.\n"
     let probe = QuitProbe()
     probe.instant = [QuitCoordinator.diaryCap]
     let quit = probe.coordinator(controller, diary: diary) { _ in .save }
 
     #expect(quit.shouldTerminate() == .later)
     try await waitUntil { !probe.replies.isEmpty }
-    try await waitUntil { diaryOnDisk(root)?.contains("Diario dopo le note.") == true }
+
+    // Fail-open, as ADR-0060 §D2: the notes are saved, and the phase after them waits for the
+    // still-unsettled diary once more under the same cap before letting go.
+    #expect(probe.replies == [true])
+    #expect(probe.slept == [QuitCoordinator.diaryCap, QuitReview.noteSaveCap, QuitCoordinator.diaryCap])
+    #expect(quitOnDisk(root, "Nexion.md")?.contains("Nota salvata comunque.") == true)
+    held.open()
+    probe.openAllGates()
+    await drain()
+    #expect(probe.replies == [true])
+    controller.close()
+}
+
+@MainActor
+@Test func salvaTuttoLetsTheDiaryWriteTheDayFileADirtyTabShowsAndCancels() async throws {
+    // The Diario owes a write and a tab shows the same day file, dirty. The diary's guarded
+    // write lands first; the tab hears it (the banner), is left unwritten, and the quit is
+    // cancelled on it - where the old order wrote the tab, refused the diary as stale and quit
+    // with the diary's text gone.
+    let vault = try TemporaryVault()
+    let root = vault.root
+    try vault.write(quitNote("Testo iniziale del giorno."), to: "Diario/20260811.md")
+    let controller = try await quitController(vault)
+    let diary = diary(for: controller)
+    let dayTab = try openDirty("Diario/20260811.md", adding: "\nDalla tab.\n", inColumn: 0, of: controller)
+    diary.prose += "Dal Diario.\n"
+    let probe = QuitProbe()
+    let quit = probe.coordinator(controller, diary: diary) { _ in .save }
+
+    #expect(quit.shouldTerminate() == .later)
+    try await waitUntil { !probe.replies.isEmpty }
+
+    #expect(probe.replies == [false])
+    #expect(probe.revealed == [dayTab])
+    #expect(diaryOnDisk(root)?.contains("Dal Diario.") == true)
+    #expect(diaryOnDisk(root)?.contains("Dalla tab.") == false)
+    #expect(diary.saveState == .saved)
+    let tab = try #require(controller.tab(withID: dayTab))
+    #expect(tab.note.hasUnsavedChanges)
+    #expect(tab.note.text.contains("Dalla tab."))
+    #expect(tab.note.externalChangePending != nil)
+    probe.openAllGates()
+    await drain()
+    #expect(probe.replies == [false])
+    controller.close()
+}
+
+// MARK: A split copy of the note (ADR-0073 departure 15)
+
+@MainActor
+@Test func salvaTuttoOverANoteSplitIntoBothColumnsQuitsWithoutAFalseConflict() async throws {
+    // Typed first, split second: both columns hold the same unsaved text. Saving the left one
+    // writes exactly the right one's text, which must not read as a change on disk.
+    let vault = try TemporaryVault()
+    let root = vault.root
+    let controller = try await quitController(vault)
+    controller.openNote(at: "Nexion.md")
+    controller.updateOpenNoteText((controller.openNote?.text ?? "") + "\nIn due colonne.\n")
+    controller.splitEditor()
+    try #require(controller.columns.count == 2)
+    let probe = QuitProbe()
+    var shown: QuitReview?
+    let quit = probe.coordinator(controller, diary: diary(for: controller)) { review in
+        shown = review
+        return .save
+    }
+
+    #expect(quit.shouldTerminate() == .later)
+    try await waitUntil { !probe.replies.isEmpty }
+
+    #expect(shown?.entries.count == 2)
+    #expect(probe.replies == [true])
+    #expect(probe.revealed.isEmpty)
+    #expect(quitOnDisk(root, "Nexion.md")?.contains("In due colonne.") == true)
+    #expect(controller.columns.allSatisfy { $0.tabs.allSatisfy { $0.note.externalChangePending == nil } })
+    probe.openAllGates()
+    await drain()
+    controller.close()
+}
+
+// MARK: Re-entrancy (ADR-0073 departure 16)
+
+@MainActor
+@Test func aSecondQuitWhileAReplyIsOwedAnswersLaterAndStartsNothing() async throws {
+    let vault = try TemporaryVault()
+    let root = vault.root
+    let controller = try await quitController(vault)
+    _ = try openDirty("Nexion.md", adding: "\nSalvata una volta.\n", inColumn: 0, of: controller)
+    let probe = QuitProbe()
+    let hung = Gate()
+    var asks = 0
+    var saves = 0
+    let quit = probe.coordinator(
+        controller, diary: diary(for: controller),
+        answer: { _ in
+            asks += 1
+            return .save
+        },
+        saveAll: { review in
+            saves += 1
+            await hung.wait()
+            return await controller.saveForQuit(review)
+        }
+    )
+
+    #expect(quit.shouldTerminate() == .later)
+    #expect(quit.shouldTerminate() == .later)
+    #expect(asks == 1)
+
+    hung.open()
+    try await waitUntil { !probe.replies.isEmpty }
 
     #expect(probe.replies == [true])
-    #expect(probe.slept == [QuitReview.noteSaveCap, QuitCoordinator.diaryCap])
-    #expect(quitOnDisk(root, "Nexion.md")?.contains("Nota salvata.") == true)
+    #expect(saves == 1)
+    #expect(quitOnDisk(root, "Nexion.md")?.contains("Salvata una volta.") == true)
+    probe.openAllGates()
+    await drain()
+    #expect(probe.replies == [true])
+    #expect(probe.slept.filter { $0 == QuitReview.noteSaveCap }.count == 1)
+    controller.close()
+}
+
+@MainActor
+@Test func aQuitArrivingWhileTheQuestionIsOnScreenIsCancelledAndTheFirstGoesOn() async throws {
+    let vault = try TemporaryVault()
+    let root = vault.root
+    let controller = try await quitController(vault)
+    _ = try openDirty("Nexion.md", adding: "\nDopo la domanda.\n", inColumn: 0, of: controller)
+    let probe = QuitProbe()
+    var nested: QuitReply?
+    var asks = 0
+    var quit: QuitCoordinator?
+    quit = probe.coordinator(controller, diary: diary(for: controller)) { _ in
+        asks += 1
+        // Without the re-entrancy guard the nested call asks again; stop the recursion there
+        // so the regression reads as `asks == 2`, not as a stack overflow.
+        guard asks == 1 else { return .cancel }
+        nested = quit?.shouldTerminate()
+        return .save
+    }
+
+    #expect(quit?.shouldTerminate() == .later)
+    #expect(nested == .cancel)
+    #expect(asks == 1)
+    try await waitUntil { !probe.replies.isEmpty }
+
+    #expect(probe.replies == [true])
+    #expect(quitOnDisk(root, "Nexion.md")?.contains("Dopo la domanda.") == true)
     probe.openAllGates()
     await drain()
     #expect(probe.replies == [true])
