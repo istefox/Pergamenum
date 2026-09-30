@@ -1,9 +1,10 @@
 # ADR-0076: A manual entry anchors to one message by its Message-ID, through one shared parser, one ordering rule and guarded body writes
 
-- Status: **proposed**. The implementation is not on `main`. Flip to `accepted` as the first docs
-  change after the first implementation PR merges, naming that PR, its merge hash as
-  `git log --first-parent main` shows it, and the date (`docs/adr/README.md` rule 2; ADR-0071's
-  two-PR precedent). Add the second PR's hash after it lands.
+- Status: **accepted**. PR 1 of the two (Tasks 2-5: the Core parser and ordering, the app model
+  switch-over, connector parity, the carry on «Sposta in…») landed on `main` via PR #724 (merge
+  `73f17450`, 2026-09-30). PR 2 (Tasks 6-7: the verbs, the picker, the rows, the editor
+  concealment) is not on `main` yet; its merge is added here when it lands (ADR-0071's two-PR
+  precedent, `docs/adr/README.md` rule 2).
 - Date: 2026-09-30. Written before the implementation, against `160d3e76` (the branch
   `kepler/docs/spec-pg-338`). `origin/main` is at `c99103c8`. Its diff against `160d3e76` touches
   `NoteFolding`, `OutlinePane`, `TagRenameSheet`, three Tasks views, `BoardCardMenu` and
