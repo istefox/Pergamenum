@@ -77,6 +77,27 @@ enum ContenitoreScheda {
         )
     }
 
+    /// The vault-relative path of the file the scheda at `schedaPath` owns, from the file name its
+    /// key holds: in the scheda's own folder, with the scheda's own stem. Nil when the key names
+    /// nothing, names a path, names a note, or names some other stem.
+    ///
+    /// The stem check is a guard, not a formality: a key edited by hand to name some other file
+    /// must not make a rename of the scheda rename that file too, and a scheda renamed alone in the
+    /// Finder no longer owns the file its key still names. This is the one place the rule lives:
+    /// `VaultSession.companion(ofScheda:)` adds only the existence check, and the pane's rows
+    /// derive their file path and their «file mancante» from the same answer. Pure, so it needs
+    /// no file system.
+    static func companionPath(ofSchedaAt schedaPath: String, fileName: String) -> String? {
+        guard !fileName.isEmpty, !fileName.contains("/") else { return nil }
+
+        let stem = NoteName.title(fromFileName: (schedaPath as NSString).lastPathComponent).lowercased()
+        let lowered = fileName.lowercased()
+        guard lowered == stem || lowered.hasPrefix(stem + "."), !lowered.hasSuffix(".md") else { return nil }
+
+        let folder = (schedaPath as NSString).deletingLastPathComponent
+        return folder.isEmpty ? fileName : "\(folder)/\(fileName)"
+    }
+
     /// `text` with its colour key set to `colour`, or removed when `colour` is nil. Only that
     /// key's line changes; a new key is added as the block's last line.
     static func settingColour(_ colour: ContenitoreColour?, in text: String) -> String {

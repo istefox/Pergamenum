@@ -58,7 +58,7 @@ final class AttachmentChipContextMenuUITests: XCTestCase {
 
         app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
                                "-disableCalendar", "YES",
-                               "-disableUpdater", "YES",
+                               "-disableUpdater", "YES", "-disableContenitore", "YES",
                                "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
                                "-stateBase", stateBase.path(percentEncoded: false)]
         app.launch()

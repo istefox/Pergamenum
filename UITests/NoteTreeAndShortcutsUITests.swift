@@ -47,7 +47,7 @@ final class NoteTreeAndShortcutsUITests: XCTestCase {
                          "-disableCalendar", "YES",
                          "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
                          "-disablePlaud", "YES",
-                         "-disableUpdater", "YES",
+                         "-disableUpdater", "YES", "-disableContenitore", "YES",
                          "-stateBase", stateBase.path(percentEncoded: false)]
         if let shortcuts {
             arguments += ["-shortcutOverrides", shortcuts]

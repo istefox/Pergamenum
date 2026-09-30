@@ -24,7 +24,12 @@ enum QuitReply: Equatable, Sendable {
 ///    cannot be retried.
 /// 3. **The diary** (ADR-0060 §D2), unchanged, and started only after the notes: its **fail-open**
 ///    2 s cap races `settle()` in two independent tasks - a task group would wait out a write
-///    that ignores cancellation, and the cap would cap nothing.
+///    that ignores cancellation, and the cap would cap nothing. The Contenitore inspector's
+///    description being typed (ADR-0071 §D11, `ContenitoreController.settleEditing()`) is the
+///    same kind of holder - one small guarded write, owed and not yet on disk - and settles
+///    in this phase, started with the diary's flush (not before it) and under the same cap.
+///    A scheda edit still owed at the last check (its write failed) cancels the quit and
+///    reveals the pane.
 ///
 /// Immediately before letting the app go (`.now` or `reply(true)`), the dirty set is read
 /// again: a dirty tab the answer did not cover turns the reply into a cancel (§D6, §D7).
@@ -36,10 +41,12 @@ enum QuitReply: Equatable, Sendable {
 final class QuitCoordinator {
     private let vault: @MainActor () -> VaultController?
     private let diary: @MainActor () -> DiaryController?
+    private let contenitore: @MainActor () -> ContenitoreController?
     private let commitEditing: @MainActor () -> Void
     private let ask: @MainActor (QuitReview) -> QuitReview.Answer
     private let reply: @MainActor (Bool) -> Void
     private let reveal: @MainActor (NoteTab.ID?) -> Void
+    private let revealContenitore: @MainActor (String?) -> Void
     private let sleep: @MainActor (Duration) async -> Void
     private let saveAll: (@MainActor (QuitReview) async -> QuitSaveReport)?
 
@@ -55,6 +62,12 @@ final class QuitCoordinator {
     /// cancelled quit can never answer a later one.
     private var attempt = 0
 
+    /// - Parameter contenitore: the pane's controller, whose unsaved inspector edit is settled
+    ///   before the app goes. Required rather than defaulted, like `commitEditing`: a holder of
+    ///   unsaved state that a new call site can leave out is one the quit stops asking about.
+    /// - Parameter revealContenitore: brings the Contenitore pane back, on the scheda whose edit
+    ///   is still owed, when a quit is cancelled because that edit could not be written (the
+    ///   pane's twin of `reveal`, ADR-0073 §D7). Required, like `contenitore`.
     /// - Parameter commitEditing: ends whatever edit is still open in a field editor, so it
     ///   reaches its buffer before anything is read (production: the key window gives up its
     ///   first responder). A GFM table cell reaches the note's text only when its editing ends
@@ -66,19 +79,23 @@ final class QuitCoordinator {
     init(
         vault: @escaping @MainActor () -> VaultController?,
         diary: @escaping @MainActor () -> DiaryController?,
+        contenitore: @escaping @MainActor () -> ContenitoreController?,
         commitEditing: @escaping @MainActor () -> Void,
         ask: @escaping @MainActor (QuitReview) -> QuitReview.Answer,
         reply: @escaping @MainActor (Bool) -> Void,
         reveal: @escaping @MainActor (NoteTab.ID?) -> Void,
+        revealContenitore: @escaping @MainActor (String?) -> Void,
         sleep: @escaping @MainActor (Duration) async -> Void,
         saveAll: (@MainActor (QuitReview) async -> QuitSaveReport)? = nil
     ) {
         self.vault = vault
         self.diary = diary
+        self.contenitore = contenitore
         self.commitEditing = commitEditing
         self.ask = ask
         self.reply = reply
         self.reveal = reveal
+        self.revealContenitore = revealContenitore
         self.sleep = sleep
         self.saveAll = saveAll
     }
@@ -178,7 +195,9 @@ final class QuitCoordinator {
     /// `reply`.
     private func diaryPhase(covering covered: QuitReview) -> QuitReply {
         let attempt = attempt
-        guard let diary = diary(), !diary.isSettled else {
+        let owedDiary = diary().flatMap { $0.isSettled ? nil : $0 }
+        let owedEdits = contenitore().flatMap { $0.hasUnsettledEdits ? $0 : nil }
+        guard owedDiary != nil || owedEdits != nil else {
             if owesReply {
                 finish(covering: covered, attempt: attempt)
                 return .later
@@ -186,8 +205,13 @@ final class QuitCoordinator {
             return lastCheck(covering: covered) ? .now : .cancel
         }
         owesReply = true
+        // Both writes start now, so a slow scheda write never eats into the diary's share of
+        // the cap; the reply waits for both.
+        let edits = Task { await owedEdits?.settleEditing() }
+        let diaryWrite = Task { await owedDiary?.settle() }
         Task { [weak self] in
-            await diary.settle()
+            await edits.value
+            await diaryWrite.value
             self?.finish(covering: covered, attempt: attempt)
         }
         Task { [weak self] in
@@ -202,12 +226,20 @@ final class QuitCoordinator {
         answer(lastCheck(covering: covered), attempt: attempt)
     }
 
-    /// The last check before letting go (§D6): true when every dirty tab is covered. An
-    /// uncovered one is revealed.
+    /// The last check before letting go (§D6): true when every dirty tab is covered and the
+    /// Contenitore inspector owes nothing. An uncovered tab, or a scheda edit whose write did
+    /// not land, is revealed and cancels the quit (§D7).
     private func lastCheck(covering covered: QuitReview) -> Bool {
-        guard let first = covered.uncovered(in: current).first else { return true }
-        reveal(first.tabID)
-        return false
+        if let first = covered.uncovered(in: current).first {
+            reveal(first.tabID)
+            return false
+        }
+        if let owed = contenitore(), owed.hasUnsettledEdits {
+            vault()?.recordProblem("Uscita annullata: modifiche alla scheda non salvate")
+            revealContenitore(owed.firstUnsettledSchedaPath)
+            return false
+        }
+        return true
     }
 
     /// The only path to `reply`: pays the debt once.

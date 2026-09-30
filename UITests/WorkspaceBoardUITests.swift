@@ -53,7 +53,7 @@ final class WorkspaceBoardUITests: XCTestCase {
                                "-disableCalendar", "YES",
                                "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
                                "-disablePlaud", "YES",
-                               "-disableUpdater", "YES",
+                               "-disableUpdater", "YES", "-disableContenitore", "YES",
                                "-stateBase", stateBase.path(percentEncoded: false)]
         app.launch()
         try openWorkspace()

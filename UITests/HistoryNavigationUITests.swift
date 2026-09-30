@@ -64,7 +64,7 @@ final class HistoryNavigationUITests: XCTestCase {
                                "-disableCalendar", "YES",
                                "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
                                "-disablePlaud", "YES",
-                               "-disableUpdater", "YES",
+                               "-disableUpdater", "YES", "-disableContenitore", "YES",
                                "-stateBase", stateBase.path(percentEncoded: false)]
         app.launch()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))

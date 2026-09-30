@@ -21,22 +21,13 @@ extension VaultSession {
 
     /// The companion file beside the scheda at `path`, when the note is a scheda whose file is
     /// present: the target of its `pergamenum-contenitore-file` key, in the scheda's own folder,
-    /// with the scheda's own stem. Nil for any other note, and for a scheda whose file is
-    /// missing, which is then operated on alone (§D6).
-    ///
-    /// The stem check is a guard, not a formality: a key edited by hand to name some other file
-    /// must not make a rename of the scheda rename that file too.
+    /// with the scheda's own stem (`ContenitoreScheda.companionPath`, the rule the pane's rows
+    /// share). Nil for any other note, and for a scheda whose file is missing, which is then
+    /// operated on alone (§D6).
     func companion(ofScheda path: String) -> String? {
-        guard let facts = index.note(at: path)?.contenitore else { return nil }
-        let fileName = facts.fileName
-        guard !fileName.isEmpty, !fileName.contains("/") else { return nil }
-
-        let stem = NoteName.title(fromFileName: (path as NSString).lastPathComponent).lowercased()
-        let lowered = fileName.lowercased()
-        guard lowered == stem || lowered.hasPrefix(stem + "."), !lowered.hasSuffix(".md") else { return nil }
-
-        let folder = (path as NSString).deletingLastPathComponent
-        let companion = folder.isEmpty ? fileName : "\(folder)/\(fileName)"
+        guard let facts = index.note(at: path)?.contenitore,
+              let companion = ContenitoreScheda.companionPath(ofSchedaAt: path, fileName: facts.fileName)
+        else { return nil }
         return exists(companion) ? companion : nil
     }
 

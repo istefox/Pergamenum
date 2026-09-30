@@ -24,6 +24,10 @@ final class ContenitoreExtractionQueue {
     /// Called with the document's URL when its extraction throws, so the controller can raise
     /// `ContenitoreNotice.extractionFailed` naming it.
     @ObservationIgnored var onFailed: ((URL) -> Void)?
+    /// Called with the hash and the record each time the store took one: `pending` as a job
+    /// starts, `done` or `failed` as it ends. The controller's extraction cache follows the
+    /// store through it instead of reading the file back. A write that failed calls nothing.
+    @ObservationIgnored var onRecorded: ((String, ExtractedText) -> Void)?
 
     @ObservationIgnored private let store: ExtractedTextStore
     @ObservationIgnored private let extractor: any TextExtracting
@@ -55,7 +59,7 @@ final class ContenitoreExtractionQueue {
             let job = jobs.removeFirst()
             current = job.sha256
             progress[job.sha256] = (done: 0, total: 0)
-            try? store.write(ExtractedText(method: .none, status: .pending, text: ""), sha256: job.sha256)
+            record(ExtractedText(method: .none, status: .pending, text: ""), sha256: job.sha256)
 
             let sha256 = job.sha256
             let result: ExtractedText
@@ -70,9 +74,15 @@ final class ContenitoreExtractionQueue {
                 result = ExtractedText(method: .none, status: .failed, text: "")
                 onFailed?(job.url)
             }
-            try? store.write(result, sha256: job.sha256)
+            record(result, sha256: job.sha256)
             current = nil
             progress.removeValue(forKey: job.sha256)
         }
+    }
+
+    /// Writes `text` for `sha256` and tells `onRecorded` when the store took it.
+    private func record(_ text: ExtractedText, sha256: String) {
+        guard (try? store.write(text, sha256: sha256)) != nil else { return }
+        onRecorded?(sha256, text)
     }
 }

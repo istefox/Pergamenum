@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var vault: VaultController?
     /// Set beside `vault`, for the same reason: the quit path below waits on it.
     weak var diary: DiaryController?
+    weak var contenitore: ContenitoreController?
 
     /// Logs who holds the notification delegate once launch finishes, so a cold-launch tap
     /// reaching `ReminderScheduler` is a fact read in the log, not an inference (PG-243).
@@ -52,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let made = QuitCoordinator(
             vault: { [weak self] in self?.vault },
             diary: { [weak self] in self?.diary },
+            contenitore: { [weak self] in self?.contenitore },
             // Ends an open field editor - a table cell reaches its note only when its editing
             // ends. The main window too: a sheet in front of it is key, and the cell behind
             // keeps its field editor. No window at all (the red button) has nothing open.
@@ -63,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ask: { QuitReviewAlert.ask($0) },
             reply: { NSApp.reply(toApplicationShouldTerminate: $0) },
             reveal: { [weak self] in self?.revealAfterCancelledQuit($0) },
+            revealContenitore: { [weak self] in self?.revealContenitoreAfterCancelledQuit($0) },
             sleep: { try? await Task.sleep(for: $0) }
         )
         quitCoordinator = made
@@ -79,6 +82,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // then is the tab revealed: the other order lets the restore pull the focus back to
         // the column the reveal had just left (`QuitFocus.restore(thenReveal:in:)`).
         quitFocus.restore(thenReveal: id, in: vault)
+    }
+
+    /// A quit cancelled by a scheda edit that could not be written brings the Contenitore back
+    /// on that scheda (ADR-0073 §D7's twin for the pane).
+    private func revealContenitoreAfterCancelledQuit(_ schedaPath: String?) {
+        vault?.reopenMainWindow?()
+        navigation?.pane = .contenitore
+        if let schedaPath { contenitore?.selection = schedaPath }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -152,6 +163,10 @@ struct PergamenumApp: App {
     /// own `startWatching(_:)`. Full Disk Access is probed per trigger, never at launch
     /// (ADR §D10).
     @State private var pratiche: PraticheController
+    /// The Contenitore pane's controller (ADR-0071 §D11), at app level for `pratiche`'s reason:
+    /// the drop folder keeps being watched while another pane is on screen. Nothing in the
+    /// constructor touches the disk; `RootView` starts it once a vault is open.
+    @State private var contenitore: ContenitoreController
     /// Global capture (ADR-0008). All three live at app level because the panel has to
     /// work with no window in front of the user - it is the whole point of the feature -
     /// and because the hot key is registered with the system once, not per window.
@@ -216,6 +231,8 @@ struct PergamenumApp: App {
         // PG-169, the deletion twin: state keyed by a trashed folder is forgotten, not followed.
         vault.didTrashFolder = { [weak pratiche] in pratiche?.followFolderTrashing($0, in: vault) }
         _pratiche = State(initialValue: pratiche)
+        let contenitore = ContenitoreController.live(vault: vault)
+        _contenitore = State(initialValue: contenitore)
 
         let panel = CapturePanel(
             controller: capture,
@@ -248,7 +265,8 @@ struct PergamenumApp: App {
             calendar: calendar,
             capturePanel: panel,
             history: history,
-            recordings: recordings
+            recordings: recordings,
+            contenitore: contenitore
         )
     }
 
@@ -285,6 +303,7 @@ struct PergamenumApp: App {
                 .environment(diary)
                 .environment(recordings)
                 .environment(pratiche)
+                .environment(contenitore)
                 .environment(shortcuts)
                 .environment(commandActions)
                 .themed(by: themeEngine)
@@ -297,6 +316,7 @@ struct PergamenumApp: App {
                 .onAppear {
                     appDelegate.vault = vault
                     appDelegate.diary = diary
+                    appDelegate.contenitore = contenitore
                     appDelegate.navigation = navigation
                 }
                 // Not in `init`: window work and `NSApp` must not happen while the app
@@ -349,6 +369,8 @@ struct PergamenumApp: App {
             ViewCommands(
                 navigation: navigation, vault: vault, shortcuts: shortcuts, actions: commandActions
             )
+            // ADR-0071 §D11 (G2): between Inserisci and Task, active only with the pane.
+            DocumentoCommands(navigation: navigation, vault: vault, contenitore: contenitore)
             TaskCommands(vault: vault, shortcuts: shortcuts, actions: commandActions)
             CalendarCommands(
                 day: day, calendar: calendar, navigation: navigation,
@@ -381,6 +403,8 @@ struct PergamenumApp: App {
                 // «Aggiorna tutte le pratiche ora» from this controller, and a scene
                 // that is missing it is a run-time trap rather than a compile error.
                 .environment(pratiche)
+                // Impostazioni › Contenitore validates and stores both folders through it.
+                .environment(contenitore)
                 .themed(by: themeEngine)
         }
     }

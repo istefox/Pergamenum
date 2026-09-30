@@ -10,19 +10,22 @@ import Testing
 private final class GapProbe {
     var replies: [Bool] = []
     var revealed: [NoteTab.ID?] = []
+    var revealedContenitore: [String?] = []
     let hold = Gate()
 
     func coordinator(
         _ controller: VaultController, diary: DiaryController?,
+        contenitore: ContenitoreController? = nil,
         answer: @escaping @MainActor (QuitReview) -> QuitReview.Answer,
         saveAll: (@MainActor (QuitReview) async -> QuitSaveReport)? = nil
     ) -> QuitCoordinator {
         QuitCoordinator(
-            vault: { controller }, diary: { diary },
+            vault: { controller }, diary: { diary }, contenitore: { contenitore },
             commitEditing: {},
             ask: answer,
             reply: { [unowned self] in replies.append($0) },
             reveal: { [unowned self] in revealed.append($0) },
+            revealContenitore: { [unowned self] in revealedContenitore.append($0) },
             // Every timer waits: the caps must not decide these tests.
             sleep: { [unowned self] _ in await hold.wait() },
             saveAll: saveAll
@@ -165,4 +168,57 @@ private final class GapProbe {
     #expect(quitOnDisk(root, "Nexion.md") == before)
     probe.hold.open()
     controller.close()
+}
+
+// MARK: The Contenitore inspector's description (ADR-0071 §D11)
+
+@MainActor
+@Test func aDescriptionStillBeingTypedInTheContenitoreIsWrittenBeforeTheAppGoes() async throws {
+    let vault = try TemporaryVault()
+    let scheda = try ContenitoreFixture.seed(stem: "20260314 Fattura", in: "Contenitore/2026", vault: vault)
+    let harness = try await ContenitoreHarness.make(root: vault.root, home: vault.stateBase)
+    harness.contenitore.openEditor(for: scheda)
+    let editor = try #require(harness.contenitore.editor)
+    editor.draft.description = "Da non perdere con Cmd+Q"
+    let probe = GapProbe()
+    let quit = probe.coordinator(harness.vault, diary: nil, contenitore: harness.contenitore) { _ in .cancel }
+
+    #expect(quit.shouldTerminate() == .later)
+    try await waitUntil { !probe.replies.isEmpty }
+
+    #expect(probe.replies == [true])
+    #expect(try ContenitoreFixture.text(scheda, in: vault.root).contains("Da non perdere con Cmd+Q"))
+    #expect(quit.shouldTerminate() == .now, "nothing is owed any more")
+    probe.hold.open()
+    harness.vault.close()
+}
+
+@MainActor
+@Test func aSchedaEditWhoseWriteFailsCancelsTheQuitAndRevealsTheContenitore() async throws {
+    let vault = try TemporaryVault()
+    let scheda = try ContenitoreFixture.seed(stem: "20260314 Fattura", in: "Contenitore/2026", vault: vault)
+    let harness = try await ContenitoreHarness.make(root: vault.root, home: vault.stateBase)
+    harness.contenitore.openEditor(for: scheda)
+    let editor = try #require(harness.contenitore.editor)
+    editor.draft.description = "Scrittura che fallisce"
+    let directory = vault.root.appending(path: "Contenitore/2026", directoryHint: .isDirectory).path(percentEncoded: false)
+    try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory) }
+    let probe = GapProbe()
+    let quit = probe.coordinator(harness.vault, diary: nil, contenitore: harness.contenitore) { _ in .cancel }
+
+    #expect(quit.shouldTerminate() == .later)
+    try await waitUntil { !probe.replies.isEmpty }
+
+    #expect(probe.replies == [false], "an edit that is not on disk never lets the app go")
+    #expect(probe.revealedContenitore == [scheda])
+    #expect(editor.draft.description == "Scrittura che fallisce")
+
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory)
+    #expect(quit.shouldTerminate() == .later, "the retry writes it")
+    try await waitUntil { probe.replies.count == 2 }
+    #expect(probe.replies == [false, true])
+    #expect(try ContenitoreFixture.text(scheda, in: vault.root).contains("Scrittura che fallisce"))
+    probe.hold.open()
+    harness.vault.close()
 }

@@ -40,6 +40,7 @@ private final class QuitProbe {
         QuitCoordinator(
             vault: { controller },
             diary: { diary },
+            contenitore: { nil },
             commitEditing: commitEditing,
             ask: { [unowned self] review in
                 sleptWhenAsked = slept
@@ -47,6 +48,7 @@ private final class QuitProbe {
             },
             reply: { [unowned self] in replies.append($0) },
             reveal: { [unowned self] in revealed.append($0) },
+            revealContenitore: { _ in },
             sleep: { [unowned self] duration in
                 slept.append(duration)
                 if instant.contains(duration) { return }
