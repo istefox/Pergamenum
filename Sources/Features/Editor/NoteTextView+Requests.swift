@@ -1,6 +1,6 @@
 import AppKit
 
-// The one-shot request bookkeeping `updateNSView` keeps between passes (ADR-0071 §D2).
+// The one-shot request bookkeeping `updateNSView` keeps between passes (ADR-0074 §D2).
 
 /// The last focus, scroll and match-jump requests, the last replacement batch, the last note
 /// path and the last outline entry, with one claim method per request.
@@ -11,7 +11,7 @@ import AppKit
 /// refused for a stale range is still remembered and never replayed.
 @MainActor
 final class RequestLedger {
-    /// Held for ADR-0071 §D3's uniform shape (every controller receives the provider at `init`)
+    /// Held for ADR-0074 §D3's uniform shape (every controller receives the provider at `init`)
     /// and unused today: every claim takes the value it compares as a parameter, read by its
     /// caller. A future read goes through it at the moment of use.
     private let parent: () -> NoteTextView?

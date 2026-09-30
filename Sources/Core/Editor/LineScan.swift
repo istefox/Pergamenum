@@ -1,6 +1,6 @@
 import Foundation
 
-/// Line-scan primitives shared by `LineFormat` and `ListContinuation` (ADR-0071 §D9).
+/// Line-scan primitives shared by `LineFormat` and `ListContinuation` (ADR-0074 §D9).
 ///
 /// The two enums answer different questions and stay separate (ADR-0028 A9); only the scanning
 /// underneath them lives here, so a change to how a line or a checklist marker is recognised is

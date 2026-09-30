@@ -147,20 +147,20 @@ enum MarkupReveal {
 
 extension NoteTextView.Coordinator {
     /// `RevealController.apply(to:)`, kept here under the name `updateNSView`, `textDidChange`
-    /// and `textViewDidChangeSelection` call (ADR-0071 §D5).
+    /// and `textViewDidChangeSelection` call (ADR-0074 §D5).
     func applyReveal(to textView: NSTextView) {
         reveal.apply(to: textView)
     }
 }
 
-// MARK: - The controller (ADR-0071 §D2/§D3)
+// MARK: - The controller (ADR-0074 §D2/§D3)
 
 /// The reveal pass and its state: the paragraphs and inline spans already applied, so an
 /// unchanged set does not invalidate the layout on every view update (ADR-0018 §D2, ADR-0037
 /// §D6). `MarkupReveal` above stays the pure core; `CardTextView+Reveal.swift` calls it too.
 @MainActor
 final class RevealController {
-    /// Read when a pass runs, never captured earlier (ADR-0071 §D3): `matches`, `currentMatch`
+    /// Read when a pass runs, never captured earlier (ADR-0074 §D3): `matches`, `currentMatch`
     /// and `revealsInlineSpans` are read at the moment the selection changes.
     private let parent: () -> NoteTextView?
     private let decorations: EditorDecorationDelegate

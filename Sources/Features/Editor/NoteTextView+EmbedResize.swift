@@ -5,7 +5,7 @@ import AppKit
 /// `docs/superpowers/plans/2026-08-23-ridimensionamento-maniglie-embed-editor.md`,
 /// Tasks 5, 6 and 7.
 ///
-/// `EmbedResizeController` (ADR-0071 §D2), beside `NoteTextView+EmbedCaret.swift` and sharing
+/// `EmbedResizeController` (ADR-0074 §D2), beside `NoteTextView+EmbedCaret.swift` and sharing
 /// its shape: `Coordinator.decoration(in:claimedBy:)` for the fragment walk,
 /// `decorations.drawnEmbedRange(atParagraphStart:in:)` as the single "is a picture actually
 /// on screen right now" guard plus `guard case .drawn`, and
@@ -20,14 +20,14 @@ import AppKit
 /// a point grabbed it, and keeping the overlay in step for as long as the gesture lasts.
 extension NoteTextView.Coordinator {
     /// `EmbedResizeController.resize(_:in:)`, kept here under the name `wire(_:to:)`'s three
-    /// gesture closures call (ADR-0071 §D5).
+    /// gesture closures call (ADR-0074 §D5).
     func resizeEmbed(_ phase: EmbedResize.Phase, in textView: NSTextView) -> Bool {
         embedResize.resize(phase, in: textView)
     }
 
     /// One drag, from the press inside a handle to the release that ends it: everything
     /// `.moved` and `.ended` need that a mouse event does not carry (ADR-0019 §D6, "the
-    /// state lives on the Coordinator", now on its `embedResize` controller, ADR-0071 §D2 -
+    /// state lives on the Coordinator", now on its `embedResize` controller, ADR-0074 §D2 -
     /// the text view stays the dumb forwarder every other decoration already treats it as).
     ///
     /// Held by `EmbedResizeController.embedDrag`, which is nil exactly when no drag is in flight and
@@ -60,13 +60,13 @@ extension NoteTextView.Coordinator {
     }
 }
 
-// MARK: - The controller (ADR-0071 §D2/§D3)
+// MARK: - The controller (ADR-0074 §D2/§D3)
 
 /// The embed drag in flight and its three phases. It is the one controller that reads another's
-/// state (ADR-0071 §D3): the renditions a handle is drawn on come from `embeds`.
+/// state (ADR-0074 §D3): the renditions a handle is drawn on come from `embeds`.
 @MainActor
 final class EmbedResizeController {
-    /// Read when `.began` runs, never captured earlier (ADR-0071 §D3): the overlay's theme.
+    /// Read when `.began` runs, never captured earlier (ADR-0074 §D3): the overlay's theme.
     private let parent: () -> NoteTextView?
     private let embeds: EmbedTable
     private let decorations: EditorDecorationDelegate

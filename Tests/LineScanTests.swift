@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0071 §D9, plan pg-144 Task 2 (R-01, R-02). Pins the line-scan primitives in
+// ADR-0074 §D9, plan pg-144 Task 2 (R-01, R-02). Pins the line-scan primitives in
 // `Sources/Core/Editor/LineScan.swift` that `ListContinuation` and `LineFormat` share.
 
 struct LineScanTests {

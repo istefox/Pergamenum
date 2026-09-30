@@ -30,7 +30,7 @@ constraint. The decision below stands as taken and the format it chose is unchan
 longer applies is the obligation that a future change keep Obsidian able to read the result.
 Body untouched.
 
-**Amended 2026-09-29 (ADR-0071):** the owner named in §D6 is now `EmbedResizeController`
+**Amended 2026-09-29 (ADR-0074):** the owner named in §D6 is now `EmbedResizeController`
 (`NoteTextView+EmbedResize.swift`), reached through the Coordinator's `resizeEmbed` forward;
 nothing this section decides about behaviour changes.
 

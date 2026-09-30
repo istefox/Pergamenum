@@ -1,7 +1,7 @@
 import AppKit
 
 /// The two steps every attachment-drawing branch of the decoration delegate repeats
-/// (ADR-0071 §D8, last paragraph). Both are non-isolated on purpose: the delegate is not
+/// (ADR-0074 §D8, last paragraph). Both are non-isolated on purpose: the delegate is not
 /// `@MainActor` and these run on the layout path.
 extension EditorDecorationDelegate {
     /// The paragraph's marker of `kind` that still fits inside `range.length`, read from

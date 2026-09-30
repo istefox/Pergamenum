@@ -10,13 +10,13 @@ import SwiftUI
 /// Swift 6 refuses the conformance - so it receives finished values and nothing else.
 extension NoteTextView.Coordinator {
     /// `TransclusionController.apply(to:theme:)`, kept here under the name `makeNSView`,
-    /// `updateNSView` and `textDidChange` call (ADR-0071 §D5).
+    /// `updateNSView` and `textDidChange` call (ADR-0074 §D5).
     func applyTransclusions(to textView: NSTextView, theme: Theme) {
         transclusion.apply(to: textView, theme: theme)
     }
 
     /// `TransclusionController.open(at:in:)`, kept here under the name `wire(_:to:)`'s click
-    /// closure calls (ADR-0071 §D5).
+    /// closure calls (ADR-0074 §D5).
     func openTransclusion(at point: CGPoint, in textView: NSTextView) -> Bool {
         transclusion.open(at: point, in: textView)
     }
@@ -76,13 +76,13 @@ extension NoteTextView.Coordinator {
     }
 }
 
-// MARK: - The controller (ADR-0071 §D2/§D3)
+// MARK: - The controller (ADR-0074 §D2/§D3)
 
 /// The transclusion pass's state: the renditions drawn and the cache they come from, and
 /// opening one on a click. `unfold` stays a Coordinator extension above: it owns no state.
 @MainActor
 final class TransclusionController {
-    /// Read when a pass runs or a click lands, never captured earlier (ADR-0071 §D3):
+    /// Read when a pass runs or a click lands, never captured earlier (ADR-0074 §D3):
     /// `vault.transclusions` per rendition, `onFollowLink` on the click.
     private let parent: () -> NoteTextView?
     private let decorations: EditorDecorationDelegate

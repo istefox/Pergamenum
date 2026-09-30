@@ -4,7 +4,7 @@ import AppKit
 /// plan `2026-09-02-editor-wysiwyg-unification`, Task 4).
 ///
 /// `@MainActor` and owned by the Coordinator's `TableBlockController` (`NoteTextView+Tables.swift`,
-/// ADR-0071 §D2), for the reason the Coordinator owns `EmbedTable` - `EditorDecorationDelegate`
+/// ADR-0074 §D2), for the reason the Coordinator owns `EmbedTable` - `EditorDecorationDelegate`
 /// cannot hold this store itself (it is not `@MainActor`, ADR §Context constraint 3), so the
 /// controller asks it for a view per table and hands the finished `[Int: TableGridView]` map to the
 /// delegate through `apply(tableViews:)`.

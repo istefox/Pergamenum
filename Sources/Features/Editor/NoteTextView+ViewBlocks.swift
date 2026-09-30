@@ -24,13 +24,13 @@ struct DrawnViewBlock {
 
 extension NoteTextView.Coordinator {
     /// `ViewBlockController.apply(to:runs:markers:)`, under the name `applyStyling` calls in its
-    /// sequence (ADR-0071 §D5). The pass and its state are the controller's, below.
+    /// sequence (ADR-0074 §D5). The pass and its state are the controller's, below.
     func applyViewBlocks(to textView: NSTextView, runs: [NSRange], markers: inout [Int: [HiddenMarker]]) {
         viewBlocks.apply(to: textView, runs: runs, markers: &markers)
     }
 }
 
-// MARK: - The controller (ADR-0071 §D2/§D3)
+// MARK: - The controller (ADR-0074 §D2/§D3)
 
 /// The view-block half's state and passes (ADR-0033 §D1/§D6/§D7/§D12/§D15; plan
 /// `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 5): the styling pass that
@@ -42,13 +42,13 @@ extension NoteTextView.Coordinator {
 /// (`EditorDecorationDelegate.apply(viewBlockLines:)`/`apply(viewBlockHosts:)`, Task 2) and
 /// the ordinal-keyed host store (`ViewBlockHostStore`, Task 4, ADR §D3) say to. The line walk
 /// and the caret-rescue rule are not copied but shared: `HiddenBlockLines` and `CaretRescue`
-/// (ADR-0071 §D8).
+/// (ADR-0074 §D8).
 ///
-/// It holds no Coordinator (ADR-0071 §D3): the view's inputs come through `parent`, read at the
+/// It holds no Coordinator (ADR-0074 §D3): the view's inputs come through `parent`, read at the
 /// moment a pass uses them, and `commitViewBlock` and `growToFitTheText` are handed to `refresh`.
 @MainActor
 final class ViewBlockController {
-    /// Read when a pass runs, never captured earlier (ADR-0071 §D3).
+    /// Read when a pass runs, never captured earlier (ADR-0074 §D3).
     private let parent: () -> NoteTextView?
     private let decorations: EditorDecorationDelegate
 
@@ -149,7 +149,7 @@ final class ViewBlockController {
             else { continue }
             let opening = run.location
             // The opening fence's own backticks are the marker; the body and the closing fence
-            // are the hidden lines (`HiddenBlockLines`, ADR-0071 §D8).
+            // are the hidden lines (`HiddenBlockLines`, ADR-0074 §D8).
             let walked = HiddenBlockLines(text: text, anchor: opening, range: recognised.range, kind: .viewBlock)
             guard let marker = walked.marker else { continue }
             markers[opening, default: []].append(marker)

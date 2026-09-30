@@ -2,7 +2,7 @@ import AppKit
 import Testing
 @testable import Pergamenum
 
-// `HiddenBlockLines` and `CaretRescue` (ADR-0071 §D8): the line walk `applyTables` and
+// `HiddenBlockLines` and `CaretRescue` (ADR-0074 §D8): the line walk `applyTables` and
 // `applyViewBlocks` share, and the rescue rule the table, view-block and fold passes share.
 //
 // Selection semantics pinned here are the ones the three callers (`TableBlockController.caretRescue`,

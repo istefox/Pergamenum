@@ -3,7 +3,7 @@ import SwiftUI
 import Testing
 @testable import Pergamenum
 
-// ADR-0071 §D3, "a value is read when it is read today" (plan `pg-144-editor-coordinator-
+// ADR-0074 §D3, "a value is read when it is read today" (plan `pg-144-editor-coordinator-
 // feature-controllers`, Task 6): the two block constructs whose parent-derived inputs are read at
 // different moments. Both pins were written against the code before any state moved into
 // `TableBlockController` / `ViewBlockController`, and must keep passing after.
@@ -19,7 +19,7 @@ private func timingFind<T>(_ type: T.Type, in value: Any, depth: Int = 0) -> T? 
     return nil
 }
 
-// MARK: - commitTable reads the current parent (ADR-0071 §D3)
+// MARK: - commitTable reads the current parent (ADR-0074 §D3)
 
 @MainActor
 @Suite struct TableCommitReadsTheCurrentParent {
@@ -80,7 +80,7 @@ private func timingFind<T>(_ type: T.Type, in value: Any, depth: Int = 0) -> T? 
     }
 }
 
-// MARK: - A vended host keeps the onEditQuery it was vended with (ADR-0071 §D3)
+// MARK: - A vended host keeps the onEditQuery it was vended with (ADR-0074 §D3)
 
 @MainActor
 @Suite(.serialized) struct ViewBlockHostKeepsItsVendedEditQuery {

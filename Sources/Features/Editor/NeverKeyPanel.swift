@@ -1,6 +1,6 @@
 import AppKit
 
-/// A panel that cannot become key, enforced rather than assumed (ADR-0071 §D9). Shared by
+/// A panel that cannot become key, enforced rather than assumed (ADR-0074 §D9). Shared by
 /// `CompletionPanel` and `FormatBarPanel`.
 ///
 /// `.nonactivatingPanel` stops the *app* being activated; it does not stop the panel

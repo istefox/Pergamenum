@@ -15,7 +15,7 @@ struct DrawnTable {
 /// The Coordinator's own half of the table grid (ADR-0029 §D5/§D6/§D7/§D8; plan
 /// `2026-09-02-editor-wysiwyg-unification`, Task 4/5): the entry point `applyStyling` calls by
 /// name, and the commit that writes a cell back into the note's own characters. The pass and
-/// its state are `TableBlockController`'s, below (ADR-0071 §D2/§D5).
+/// its state are `TableBlockController`'s, below (ADR-0074 §D2/§D5).
 ///
 /// The commit is on the exact model `NoteTextView+EmbedCaret.swift`'s
 /// `replaceAtomically(_:with:in:)` already set: one atomic
@@ -25,7 +25,7 @@ extension NoteTextView.Coordinator {
     // MARK: The styling pass (ADR §D5/§D6)
 
     /// `TableBlockController.apply(to:runs:markers:commit:)`, kept here under the name
-    /// `applyStyling` calls in its sequence (ADR-0071 §D5). A grid commits through
+    /// `applyStyling` calls in its sequence (ADR-0074 §D5). A grid commits through
     /// `commitTable`, which stays on the Coordinator because it owns no state.
     func applyTables(to textView: NSTextView, runs: [NSRange], markers: inout [Int: [HiddenMarker]]) {
         tables.apply(to: textView, runs: runs, markers: &markers) { [weak self] edit, header, textView in
@@ -81,17 +81,17 @@ extension NoteTextView.Coordinator {
     }
 }
 
-// MARK: - The controller (ADR-0071 §D2/§D3)
+// MARK: - The controller (ADR-0074 §D2/§D3)
 
 /// The table half's state and passes (ADR-0029 §D5/§D6): the styling pass that recognises a
 /// table and vends its grid, the grid refresh after `endEditing`, and the caret rescue a row
 /// leaving the layout needs.
 ///
-/// It holds no Coordinator (ADR-0071 §D3): the view's inputs come through `parent`, read at the
+/// It holds no Coordinator (ADR-0074 §D3): the view's inputs come through `parent`, read at the
 /// moment a pass uses them, and the commit a grid calls is handed in by `applyTables`.
 @MainActor
 final class TableBlockController {
-    /// Read when a pass runs, never captured earlier (ADR-0071 §D3).
+    /// Read when a pass runs, never captured earlier (ADR-0074 §D3).
     private let parent: () -> NoteTextView?
     private let decorations: EditorDecorationDelegate
 
@@ -154,7 +154,7 @@ final class TableBlockController {
             else { continue }
             let header = run.location
             // The header's own pipes are the marker; the delimiter and body rows are the
-            // hidden lines (`HiddenBlockLines`, ADR-0071 §D8).
+            // hidden lines (`HiddenBlockLines`, ADR-0074 §D8).
             let walked = HiddenBlockLines(text: text, anchor: header, range: recognised.range, kind: .table)
             guard let marker = walked.marker else { continue }
             markers[header, default: []].append(marker)

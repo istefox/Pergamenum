@@ -3,7 +3,7 @@ import SwiftUI
 import Testing
 @testable import Pergamenum
 
-// ADR-0071 §D3, "a value is read when it is read today" (plan `pg-144-editor-coordinator-
+// ADR-0074 §D3, "a value is read when it is read today" (plan `pg-144-editor-coordinator-
 // feature-controllers`, Task 7, tester half): the remaining sites, beside the two block constructs
 // `EditorControllerReadTimingTests` already pins. Written against the code before folding, reveal,
 // transclusion, embed resize and the request ledger moved into controllers, and driven through the
@@ -303,7 +303,7 @@ private func swapped(
     }
 }
 
-// MARK: - The replacement ledger records before it validates (ADR-0071 §D2, PG-093)
+// MARK: - The replacement ledger records before it validates (ADR-0074 §D2, PG-093)
 
 @MainActor
 @Suite struct ReplacementLedgerKeepsItsOrder {

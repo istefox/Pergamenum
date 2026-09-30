@@ -2,7 +2,7 @@ import AppKit
 import Testing
 @testable import Pergamenum
 
-// ADR-0071 §D9, plan pg-144 Task 2 (R-03). Pins the contract of the shared `NeverKeyPanel.make`,
+// ADR-0074 §D9, plan pg-144 Task 2 (R-03). Pins the contract of the shared `NeverKeyPanel.make`,
 // which `CompletionPanel` and `FormatBarPanel` both build their panel with. Builds the panel only
 // and never orders it front: no test takes the screen.
 

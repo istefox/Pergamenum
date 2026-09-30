@@ -25,7 +25,7 @@
   **ADR-0010 §D3** (`MarkdownBlocksView` as the transclusion renderer, untouched),
   **ADR-0014 §D4** (`onDayChange`, already inside `RenderedViewBlock`).
 
-**Amended 2026-09-29 (ADR-0071):** the owner named in §D2 is now `ViewBlockController`
+**Amended 2026-09-29 (ADR-0074):** the owner named in §D2 is now `ViewBlockController`
 (`NoteTextView+ViewBlocks.swift`), which builds and holds the hosts; nothing this section decides
 about behaviour changes.
 

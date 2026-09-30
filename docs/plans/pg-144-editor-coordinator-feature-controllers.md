@@ -3,7 +3,7 @@
 - Issue: `TODO.md` `PG-144` (P2, chain "editor"), GitHub #244. The ledger entry and its ten audit
   findings of 2026-09-12 are the whole brief. The repo-root `SPEC.md` belongs to another chain and
   is not this chain's input. The acceptance criteria are declared below as R-01 to R-10.
-- ADR: **`docs/adr/0071-editor-coordinator-feature-controllers.md`** (new, proposed). Read §D2,
+- ADR: **`docs/adr/0074-editor-coordinator-feature-controllers.md`** (new, proposed). Read §D2,
   §D3 and §D5 before Task 6. §D3's rule, "a value is read when it is read today", is the one a
   move can break without any test noticing.
 - Governing prior ADRs, registered and not reopened: ADR-0018 §D2/§D5, ADR-0019 §D6/§D7, ADR-0023,
@@ -45,8 +45,8 @@
 - **R-07** After every task, `PergamenumTests` is green, including the in-process hosted-view
   tests (`HostedViewPrototypeTests`, `TableGridHostedAttachmentTests`,
   `WorkspaceFitOnOpenHostedTests`), and the `Pergamenum` scheme builds.
-- **R-08** ADR-0071 is recorded, and each of ADR-0019, ADR-0029 and ADR-0033 gets a dated
-  amendment note at its head. CLAUDE.md's chain index gains the ADR-0071 line. The status flips to
+- **R-08** ADR-0074 is recorded, and each of ADR-0019, ADR-0029 and ADR-0033 gets a dated
+  amendment note at its head. CLAUDE.md's chain index gains the ADR-0074 line. The status flips to
   accepted, with PR, merge hash and date, as the first docs change after the merge. (no-test:
   documentation obligation)
 - **R-09** No stale reference is left. Every doc comment in `Sources/` and `Tests/` that names a
@@ -57,13 +57,13 @@
   - the PG-093 replacement replay guard and its record-before-validate order;
   - the focus, scroll and match-jump one-shots;
   - the caret reset on a note switch;
-  - the "read at the moment of use" sites of ADR-0071 §D3;
+  - the "read at the moment of use" sites of ADR-0074 §D3;
   - the never-key panel's contract;
   - the shared line-scan primitives.
 
 ## ADR outcome: new ADR
 
-**`docs/adr/0071-editor-coordinator-feature-controllers.md`** (status: proposed).
+**`docs/adr/0074-editor-coordinator-feature-controllers.md`** (status: proposed).
 
 The sub-controller design passes all three parts of the test:
 
@@ -81,7 +81,7 @@ The rest of the chain needs no ADR of its own:
 - **The panel and line-scan removals (Task 2)**, **the substitution preamble (Task 3)** and **the
   input grouping (Task 5)** each remove a duplicate or group fields, with no new boundary and no
   trade-off.
-- **Two parts get recorded anyway, inside ADR-0071.** The shared block walk (§D8) shapes the
+- **Two parts get recorded anyway, inside ADR-0074.** The shared block walk (§D8) shapes the
   controllers. Closing the line-scan duplicate takes early an extraction ADR-0028 A9 deferred
   (§D9), and that is a deviation from a recorded decision.
 
@@ -89,14 +89,14 @@ The rest of the chain needs no ADR of its own:
 
 | Finding | Audit, 2026-09-12 | Measured at `3cdc97fb` | Disposition | Task |
 |---|---|---|---|---|
-| `structure-NoteTextView+Coordinator.swift-d95` | 31 state fields, ~2,270 extension lines | 33 stored fields (26 internal, 5 `private`, 2 `private(set)`); 12 extension files, 2,284 lines; class body 294 (warning) | Holds, and has grown. Closed by ADR-0071: 23 fields move to 7 owners, 33 → 17 | 6, 7 |
+| `structure-NoteTextView+Coordinator.swift-d95` | 31 state fields, ~2,270 extension lines | 33 stored fields (26 internal, 5 `private`, 2 `private(set)`); 12 extension files, 2,284 lines; class body 294 (warning) | Holds, and has grown. Closed by ADR-0074: 23 fields move to 7 owners, 33 → 17 | 6, 7 |
 | `structure-NoteTextView.swift-e7a` | 37 stored inputs; `FindInputs`/`OutlineInputs`/`EmbedInputs` | 38 inputs | Holds, reshaped: the third group is `VaultInputs` (below) | 5 |
 | `structure-NoteTextView.swift-c97` | `updateNSView` 123 lines | 123 lines (`:321-443`), lint body 71, complexity 12 | Holds | 5 |
 | `structure-NoteTextView+ViewBlocks.swift-00b` | `applyViewBlocks`/`applyTables` same 60-line skeleton | `applyViewBlocks` `:54-142` (lint 60), `applyTables` `+Tables:41-106` (lint 52) | Holds | 4 |
 | `structure-NoteTextView+Tables.swift-a5b` | three caret-rescue copies | `rescueCaret` `+Coordinator:353`, `tableCaretRescue` `+Tables:129`, `viewBlockCaretRescue` `+ViewBlocks:264` | Holds | 4 |
 | `structure-EditorDecorationDelegate+CheckboxRendering.swift-552`, `+TableRendering.swift-a75` | substitution preambles duplicated | The marker-lookup preamble is in **six** branches: list `+ListRendering:25`, quote `+QuoteRendering:20`, checkbox `+CheckboxRendering:28`, table `+TableRendering:30`, view block `+ViewBlockRendering:38`, embed `EditorDecorationDelegate.swift:644`. The attachment tail is in three: table, view block, embed | Holds and is wider than the audit named. Reshaped to all six | 3 |
 | `structure-CompletionPanel.swift-602` | `NeverKeyPanel` + `makePanel` duplicated with `FormatBarPanel` | `CompletionPanel.swift:191-218`, `FormatBarPanel.swift:115-146`; they differ only in `contentRect` and `hasShadow` | Holds | 2 |
-| `structure-ListContinuation.swift-f19` | five primitives verbatim from `LineFormat` | `Line`, `lines(in:)` (byte-identical without comments), `indentLength`, `isChecklistMarker`, `matches`, `isDigit`: `ListContinuation.swift:228/238/289/370/377/385` and `LineFormat.swift:110/126/253/232/263/271`. ADR-0028 A9 accepted the duplication "if a third caller ever appears"; none has | Holds. Closed under ADR-0071 §D9 unless Stefano vetoes at G0, in which case it is deferred with A9 as the reason | 2 |
+| `structure-ListContinuation.swift-f19` | five primitives verbatim from `LineFormat` | `Line`, `lines(in:)` (byte-identical without comments), `indentLength`, `isChecklistMarker`, `matches`, `isDigit`: `ListContinuation.swift:228/238/289/370/377/385` and `LineFormat.swift:110/126/253/232/263/271`. ADR-0028 A9 accepted the duplication "if a third caller ever appears"; none has | Holds. Closed under ADR-0074 §D9 unless Stefano vetoes at G0, in which case it is deferred with A9 as the reason | 2 |
 | `structure-MarkupHidingTests.swift-7e8` | 1386 lines | 1426 lines, 71 `@Test`, now **error**-level | Holds, and is worse | 1 |
 | `structure-MarkdownStylerTests.swift-ee1` | size | 695 lines on `3cdc97fb`, 741 and 81 `@Test` on `origin/main`, warning | Holds | 1 |
 | Found while measuring | not in the ledger | `panel?.parent?.removeChildWindow(panel!)` at `CompletionPanel.swift:141` and `FormatBarPanel.swift:79`. It cannot crash today, because optional chaining short-circuits before `panel!` is evaluated, but it reads as a crash site | Fixed now (P4 rule), identical behaviour | 2 |
@@ -159,7 +159,7 @@ consumer would be wrong for the other three.
      re-measure after the merge);
    - the lint table for every file this plan names;
    - the Pasteboard `shasum`.
-4. Confirm that `docs/adr/0071*` is still free on `origin/main`.
+4. Confirm that `docs/adr/0074*` is still free on `origin/main`.
 
 ---
 
@@ -283,14 +283,14 @@ These are the two duplicates outside the Coordinator. They touch nothing in Text
   `InlineFormatTests`;
 - the `perg` and `pergamenum-mcp` builds (R-04).
 
-On a G0 veto of ADR-0071 §D9, the `LineScan` half of this task is dropped, f19 is recorded as
+On a G0 veto of ADR-0074 §D9, the `LineScan` half of this task is dropped, f19 is recorded as
 deferred citing ADR-0028 A9, and the panel half stands alone.
 
 ---
 
 ### Task 3 — One marker lookup and one attachment substitution for the decoration delegate (tester, then coder) (R-01, R-02, R-03, R-06, R-07)
 
-Closes 552 and a75 in their wider shape (ADR-0071 §D8, last paragraph). The Workspace card uses
+Closes 552 and a75 in their wider shape (ADR-0074 §D8, last paragraph). The Workspace card uses
 this delegate too.
 
 **Tester.** Declare in a new `Sources/Features/Editor/EditorDecorationDelegate+Substitution.swift`,
@@ -352,7 +352,7 @@ the commit body.
 
 ### Task 4 — One hidden-block line walk and one caret-rescue rule (tester, then coder) (R-01, R-02, R-03, R-06, R-07)
 
-Closes 00b and a5b (ADR-0071 §D8). The passes are still Coordinator extensions here. Task 6 moves
+Closes 00b and a5b (ADR-0074 §D8). The passes are still Coordinator extensions here. Task 6 moves
 them, already smaller.
 
 **Tester.** Declare in a new `Sources/Features/Editor/HiddenBlockLines.swift`, with stub bodies:
@@ -480,11 +480,11 @@ not measured. Hand check H10 to H12 is where a difference would show.
 
 ---
 
-### Task 6 — ADR-0071, first application: the write door, and the two block controllers (tester, then coder; gate G1 afterwards) (R-01, R-02, R-03, R-05, R-06, R-07, R-10)
+### Task 6 — ADR-0074, first application: the write door, and the two block controllers (tester, then coder; gate G1 afterwards) (R-01, R-02, R-03, R-05, R-06, R-07, R-10)
 
 **Tester**
 
-- Pin ADR-0071 §D3's "read at the moment of use" for the two block constructs:
+- Pin ADR-0074 §D3's "read at the moment of use" for the two block constructs:
   - `commitTable` after `coordinator.parent` is replaced with `hidesMarkup: false` refuses. It
     reads the current parent, not one captured earlier.
   - A view-block host vended before a parent swap keeps the `onEditQuery` it was vended with.
@@ -498,7 +498,7 @@ not measured. Hand check H10 to H12 is where a difference would show.
   - `@MainActor final class ViewBlockController` in `NoteTextView+ViewBlocks.swift`, with the same
     `init`, read accessors `hosts`, `drawn` and `hiddenLines`, and the statics moved in name only:
     `revealedViewBlock`, `viewBlockRanges`, `selectionReveals`.
-  - The exact method names are the tester's to choose. The table in ADR-0071 §D2 fixes what each
+  - The exact method names are the tester's to choose. The table in ADR-0074 §D2 fixes what each
     one owns.
 - `ViewBlockCaretTests`' reads of `Coordinator.revealedViewBlock` (8) are re-pointed by the
   coder, because they follow the static when it moves.
@@ -506,7 +506,7 @@ not measured. Hand check H10 to H12 is where a difference would show.
 **Coder**
 
 - `replaceAtomically(_:with:in:)` becomes `static` in `+EmbedCaret.swift`. `decoration(in:claimedBy:)`
-  becomes `static` in `+Transclusion.swift` (ADR-0071 §D4). The 14 call sites in 8 files become
+  becomes `static` in `+Transclusion.swift` (ADR-0074 §D4). The 14 call sites in 8 files become
   `Self.…`: `+CheckboxClick:104`, `+EmbedCaret:63`, `:152`, `:217`, `+EmbedResize:60`, `:282`,
   `+ListEditing:42`, `:65`, `+TableCaret:71`, `:96`, `+Tables:189`, `+Transclusion:158`, `:179`,
   `+ViewBlockEditing:57`. No test calls either.
@@ -554,13 +554,13 @@ not measured. Hand check H10 to H12 is where a difference would show.
 
 **G1 — Stefano reviews the first application before Task 7.** The review covers the diff, the lint
 table, the Coordinator's field count (33 → 23 at this point), and whether reading the code got
-easier or harder. **Go** runs Task 7. **No-go** stops the chain at Task 6 (ADR-0071 Alternative 4
-becomes the outcome). The rest of d95 is recorded as deferred, with G1's reason, and ADR-0071 is
+easier or harder. **Go** runs Task 7. **No-go** stops the chain at Task 6 (ADR-0074 Alternative 4
+becomes the outcome). The rest of d95 is recorded as deferred, with G1's reason, and ADR-0074 is
 amended to cover only what landed.
 
 ---
 
-### Task 7 — ADR-0071, the rest: folding, reveal, transclusion, embed resize, the request ledger (tester, then coder) (R-01, R-02, R-03, R-05, R-06, R-07, R-10)
+### Task 7 — ADR-0074, the rest: folding, reveal, transclusion, embed resize, the request ledger (tester, then coder) (R-01, R-02, R-03, R-05, R-06, R-07, R-10)
 
 Closes d95.
 
@@ -576,7 +576,7 @@ Closes d95.
 - The outline-entry callback fires only when the entry changes (`+Coordinator:237-240`).
 
 Then declare these shells, each in its file, with an `init` taking the provider and the
-collaborators ADR-0071 §D3 names:
+collaborators ADR-0074 §D3 names:
 
 - `FoldController` in a new `NoteTextView+Folding.swift`;
 - `RevealController` in `+Reveal.swift`;
@@ -587,7 +587,7 @@ collaborators ADR-0071 §D3 names:
 
 **Coder**
 
-- Move the fields to their owners as ADR-0071 §D2's table assigns them:
+- Move the fields to their owners as ADR-0074 §D2's table assigns them:
   - `lastFoldLayout`, `applyFolding` and `rescueCaret` → `FoldController`;
   - `lastRevealed`, `lastRevealedSpans` and the reveal pass → `RevealController`. `MarkupReveal`
     stays in `+Reveal.swift`, untouched: `CardTextView+Reveal.swift` calls it.
@@ -654,11 +654,11 @@ re-pointed.
 
   ADR bodies are historical and are not edited. Only the three amendment notes below are added.
 - **Records (R-08), each one a HITL gate:**
-  - flip nothing yet; ADR-0071 stays `proposed` until the merge;
+  - flip nothing yet; ADR-0074 stays `proposed` until the merge;
   - add a dated head note to ADR-0019 (§D6), ADR-0029 (§D6) and ADR-0033 (§D2), in the form
-    `**Amended 2026-MM-DD (ADR-0071):** the owner named here is now <controller>; nothing this
+    `**Amended 2026-MM-DD (ADR-0074):** the owner named here is now <controller>; nothing this
     section decides about behaviour changes`;
-  - add the ADR-0071 line to CLAUDE.md's chain decision index;
+  - add the ADR-0074 line to CLAUDE.md's chain decision index;
   - record the outcome on the `PG-144` entry in `TODO.md`, including any finding deferred at G0 or
     G1.
 - **Final verification:**
@@ -698,7 +698,7 @@ re-pointed.
 - **At merge, advisory:** `scripts/uitests.sh --status`, then `--affected`. It selects every class
   for an editor change. That run does not block the merge (CLAUDE.md's merge-gate rule), and a
   `contaminated` verdict is rerun, not acted on.
-- **After merge:** flip ADR-0071 to `accepted` with the PR, the merge hash from `git log
+- **After merge:** flip ADR-0074 to `accepted` with the PR, the merge hash from `git log
   --first-parent main` and the date. That is the first docs change after the merge.
 
 ## Observable-contract staleness
@@ -711,7 +711,7 @@ unrelated suite that constructs the editor.
 |---|---|---|
 | `NoteTextView` memberwise-init labels: 22 fields → `find`, `outline`, `vault` | 5 | Production: `EditorColumn+Text.swift:47`, `TodayView.swift:207`, `DiaryView.swift:105`. Tests: 29 construction sites in 23 files (`rg -n "NoteTextView\(" Tests`). About ten pass a grouped label (listed in Task 5) |
 | `parent.<grouped input>` reads | 5 | `NoteTextView.swift`, `+Coordinator.swift:237`, `:240`, `:435`, `+Embeds.swift:285-287`, `+Reveal.swift:157-158`, `+Transclusion.swift:91`, `:178`, `+ViewBlocks.swift:191-200` |
-| Coordinator state moved to controllers | 6, 7 | 54 test reads in five files (ADR-0071 §D5 table). No test writes moved state |
+| Coordinator state moved to controllers | 6, 7 | 54 test reads in five files (ADR-0074 §D5 table). No test writes moved state |
 | `replaceAtomically(_:with:in:)` and `decoration(in:claimedBy:)` become `static` | 6 | 14 call sites in 8 files (10 and 4; listed in Task 6), none in tests |
 | `NeverKeyPanel` from two `private` nested classes to one shared type | 2 | `CompletionPanel.swift:197`, `FormatBarPanel.swift:121` |
 | `ListContinuation`/`LineFormat` private primitives replaced by `LineScan` | 2 | Inside the two enums only |
@@ -724,10 +724,10 @@ unrelated suite that constructs the editor.
 
 - **The order of the passes changes silently.** This is the one defect class the unit suite may
   not catch, because no single test runs the four sequences end to end. The mitigations:
-  - ADR-0071 §D1 keeps every sequence written out at its call site;
-  - the reviewer compares each sequence line by line against the Context list in ADR-0071;
+  - ADR-0074 §D1 keeps every sequence written out at its call site;
+  - the reviewer compares each sequence line by line against the Context list in ADR-0074;
   - H1 to H18.
-- **A value read at a different moment** (ADR-0071 §D3), such as a closure captured at init
+- **A value read at a different moment** (ADR-0074 §D3), such as a closure captured at init
   instead of read at click time. It is invisible to a green suite unless it is pinned, which is why
   R-10 exists and Tasks 6 and 7 pin the sites before the moves.
 - **The Workspace card regresses through a shared piece:** `EditorDecorationDelegate` (Task 3),
@@ -757,8 +757,8 @@ app open out of `/Applications`.
 
 **HITL gates, none of them the implementing agent's to pass:**
 
-- **G0: approve this plan and ADR-0071**, including the separate yes or no on ADR-0071 §D9. The
-  §D9 decision closes ADR-0028 A9's duplication early. **Passed 2026-09-29: plan and ADR-0071
+- **G0: approve this plan and ADR-0074**, including the separate yes or no on ADR-0074 §D9. The
+  §D9 decision closes ADR-0028 A9's duplication early. **Passed 2026-09-29: plan and ADR-0074
   approved, §D9 yes (extract now).**
 - **The precondition merge of `origin/main`.** It is a merge commit.
 - **Each task's commit**, with the diff shown. That includes the deleted duplicate bodies in
@@ -776,7 +776,7 @@ app open out of `/Applications`.
 
 ## Open for Stefano
 
-- **ADR-0071 §D9.** Close ADR-0028 A9's accepted duplication now (the recommendation), or defer it
+- **ADR-0074 §D9.** Close ADR-0028 A9's accepted duplication now (the recommendation), or defer it
   until a third caller appears?
 - **G1's bar.** The recommendation is to go on to Task 7 if the Coordinator is at 23 fields with no
   test assertion touched, and the two controllers read more easily than the extensions did.

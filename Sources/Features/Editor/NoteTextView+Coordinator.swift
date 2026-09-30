@@ -44,39 +44,39 @@ extension NoteTextView {
         /// inline: filling it calls `ThumbnailStore`, an actor, and that delegate cannot
         /// be `@MainActor` at all (Step 2).
         let embeds = EmbedTable()
-        /// The table grids, their hidden rows and the table pass (ADR-0071 §D2,
+        /// The table grids, their hidden rows and the table pass (ADR-0074 §D2,
         /// `NoteTextView+Tables.swift`). `lazy` only because its provider captures `self`,
         /// which an initial value cannot; `parent` is read through it when a pass runs.
         private(set) lazy var tables = TableBlockController(
             parent: { [weak self] in self?.parent }, decorations: decorations
         )
         /// The view-block hosts, their hidden lines, the reveal crossing and the view-block
-        /// pass (ADR-0071 §D2, `NoteTextView+ViewBlocks.swift`). `lazy` for `tables`' reason.
+        /// pass (ADR-0074 §D2, `NoteTextView+ViewBlocks.swift`). `lazy` for `tables`' reason.
         private(set) lazy var viewBlocks = ViewBlockController(
             parent: { [weak self] in self?.parent }, decorations: decorations
         )
-        /// The embed resize drag and its three phases (ADR-0071 §D2, ADR-0019 §D6,
+        /// The embed resize drag and its three phases (ADR-0074 §D2, ADR-0019 §D6,
         /// `NoteTextView+EmbedResize.swift`). `lazy` for `tables`' reason.
         private(set) lazy var embedResize = EmbedResizeController(
             parent: { [weak self] in self?.parent }, embeds: embeds, decorations: decorations
         )
-        /// The transcluded renditions, their cache and the click that opens one (ADR-0071
+        /// The transcluded renditions, their cache and the click that opens one (ADR-0074
         /// §D2, `NoteTextView+Transclusion.swift`). `lazy` for `tables`' reason.
         private(set) lazy var transclusion = TransclusionController(
             parent: { [weak self] in self?.parent }, decorations: decorations
         )
-        /// The last fold layout and the folding pass (ADR-0071 §D2,
+        /// The last fold layout and the folding pass (ADR-0074 §D2,
         /// `NoteTextView+Folding.swift`). `lazy` for `tables`' reason.
         private(set) lazy var folding = FoldController(
             parent: { [weak self] in self?.parent }, decorations: decorations
         )
-        /// The revealed paragraphs and spans and the reveal pass (ADR-0071 §D2, ADR-0018 §D2,
+        /// The revealed paragraphs and spans and the reveal pass (ADR-0074 §D2, ADR-0018 §D2,
         /// `NoteTextView+Reveal.swift`). `lazy` for `tables`' reason.
         private(set) lazy var reveal = RevealController(
             parent: { [weak self] in self?.parent }, decorations: decorations
         )
         /// The one-shot requests already honoured, the last replacement batch, note path and
-        /// outline entry (ADR-0071 §D2, `NoteTextView+Requests.swift`). `lazy` for `tables`'
+        /// outline entry (ADR-0074 §D2, `NoteTextView+Requests.swift`). `lazy` for `tables`'
         /// reason.
         private(set) lazy var requests = RequestLedger(parent: { [weak self] in self?.parent })
         /// The observation that keeps the readable-width inset right as the pane is resized
@@ -178,7 +178,7 @@ extension NoteTextView {
         }
 
         /// `FoldController.apply(to:folded:theme:)`, kept here under the name `updateNSView`
-        /// calls (ADR-0071 §D5, `NoteTextView+Folding.swift`).
+        /// calls (ADR-0074 §D5, `NoteTextView+Folding.swift`).
         func applyFolding(to textView: NSTextView, folded: Set<Int>, theme: Theme) {
             folding.apply(to: textView, folded: folded, theme: theme)
         }

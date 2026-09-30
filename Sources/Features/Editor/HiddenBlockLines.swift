@@ -1,6 +1,6 @@
 import AppKit
 
-/// The line skeleton `applyTables` and `applyViewBlocks` both run (ADR-0071 §D8): the anchor
+/// The line skeleton `applyTables` and `applyViewBlocks` both run (ADR-0074 §D8): the anchor
 /// paragraph's `HiddenMarker`, and the hidden line starts from the anchor paragraph's `end` to
 /// the end of the recognised range. Each construct keeps what differs - the grid store keyed
 /// by offset, the host store keyed by ordinal, the change check and the refresh.
@@ -52,7 +52,7 @@ struct HiddenBlockLines {
 }
 
 /// The one rule for a caret inside a line that has just left the layout: it goes to the target
-/// its owner names (ADR-0071 §D8). Folding, tables and view blocks differ only in the owner.
+/// its owner names (ADR-0074 §D8). Folding, tables and view blocks differ only in the owner.
 enum CaretRescue {
     /// Where the caret goes, or nil when it stays. Judged on `selection.location` alone, as the
     /// three copies it replaces do: the paragraph the selection starts in is the one tested.

@@ -2,7 +2,7 @@ import AppKit
 import Testing
 @testable import Pergamenum
 
-/// PG-144 Task 3 (ADR-0071 §D8, last paragraph): direct tests of the delegate's two shared
+/// PG-144 Task 3 (ADR-0074 §D8, last paragraph): direct tests of the delegate's two shared
 /// substitution helpers, `marker(of:at:)` and `substituteAttachment(_:over:in:)`.
 @MainActor
 @Suite struct EditorDecorationSubstitution {

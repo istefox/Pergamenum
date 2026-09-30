@@ -1,4 +1,4 @@
-# ADR-0071: The editor's Coordinator keeps the order of the passes; each feature's state moves into a controller that owns it
+# ADR-0074: The editor's Coordinator keeps the order of the passes; each feature's state moves into a controller that owns it
 
 - Status: proposed. The implementation is not on `main`. Plan:
   `docs/plans/pg-144-editor-coordinator-feature-controllers.md`, which declares R-01 to R-10.
@@ -8,6 +8,11 @@
   `main`), and the plan merges `main` in before its first task. Every line number, count and access
   modifier below was read from `3cdc97fb`. Lint findings come from `swiftlint 0.65.1` run against
   `.swiftlint.yml` on that tree. None is recalled from the ledger entry, which dates from 2026-09-12.
+- **Renumbering note (2026-09-30).** Written and committed as ADR-0071 on
+  `refactor/pg-144-editor-coordinator`, before PR #691 landed a different ADR-0071 (Contenitore,
+  a managed document archive) on `main` and PR #684 and the PG-326 chain took 0072 and 0073.
+  Main's 0071 keeps its number; this record moved to the next free one at the merge with `main`
+  (`docs/adr/README.md` rule 1). The numbering note below is kept as written.
 - **Numbering note.** `0070` is the highest ADR on `origin/main` (`06812344`), and
   `git log --all -- 'docs/adr/0071*'` is empty (checked 2026-09-29). Another chain is being
   specified in parallel, so check again immediately before the merge (`docs/adr/README.md` §1).
