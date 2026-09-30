@@ -32,7 +32,7 @@ struct NoteTab: Identifiable, Equatable, Sendable {
     var isPreview = false
     /// The root of the vault this tab belongs to when that is not the one the controller has open
     /// now, symlinks resolved and standardized (`URL.vaultKey`); nil for a tab of the open vault. `open(_:)` never resets `columns`
-    /// (PG-327), so a tab of a previous vault survives a switch, and its relative path names a
+    /// (PG-334), so a tab of a previous vault survives a switch, and its relative path names a
     /// file of the *other* vault: nothing that writes on the quit path may write it into this one
     /// (ADR-0073 §D5, departure 13). Recorded by `open(_:)` the first time the tab is found
     /// foreign and cleared there when that same root opens again (A, B, A leaves the tab

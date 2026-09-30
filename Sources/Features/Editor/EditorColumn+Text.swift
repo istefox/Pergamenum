@@ -200,8 +200,8 @@ extension EditorColumnView {
     ///
     /// The index answers everything but `text()`, which reads the files - the same work the
     /// global search does, and the reason §D7 states the cost as a rule rather than a number.
-    /// `scanGeneration` rides along so a view is re-evaluated when the vault is rescanned and
-    /// not when a key is pressed.
+    /// `viewQueryGeneration(for:)` rides along so a view is re-evaluated when the index changes
+    /// and not when a key is pressed.
     ///
     /// **Handed to `NoteTextView.queries` by `editing(_:)` above** (ADR-0033 §D9, R-07). It
     /// stood unreferenced between ADR-0029 §D13, which removed `reading(_:)` - its only
@@ -220,7 +220,7 @@ extension EditorColumnView {
                     try? vault.session?.read(record.relativePath).text
                 }
             },
-            generation: vault.scanGeneration,
+            generation: Self.viewQueryGeneration(for: vault),
             // The one write a view makes (§D5). Offered here, where there is a vault and a
             // person looking at it; a note card on the canvas passes no source and its board
             // never invites the drag.
@@ -229,15 +229,26 @@ extension EditorColumnView {
         )
     }
 
+    // Internal, not private: read by `Tests/IndexGenerationFollowUpTests.swift`.
+    /// The generation a drawn fence re-runs its query on: `indexGeneration` (ADR-0072 §D11,
+    /// PG-325), which every index change moves - a save, an external edit, a rescan. It was
+    /// `scanGeneration` (ADR-0033 §D7), so a fence listing a note did not re-run when that note
+    /// was saved, since the app's own write is not a scan. Still never per keystroke: the index
+    /// changes when a note is written, not when a key is pressed. Pure, so a test can check it
+    /// without rendering (the shape of `BoardTray.refreshKey`).
+    static func viewQueryGeneration(for vault: VaultController) -> Int {
+        vault.indexGeneration
+    }
+
     /// Where a `![[nota]]` gets the note it names (ADR-0010 §D1: read fresh, never copied).
     ///
     /// Two lookups, in the order §D2 gives them: a reference ending in `.md` is a path, and
     /// anything else is a title through the index - the same lookup a `[[wikilink]]` uses,
     /// so the two cannot disagree about which note a name means.
     ///
-    /// `scanGeneration` rides along so a target edited outside the app is redrawn on the
-    /// next scan, and only then: the id it feeds changes when the vault changes, not when a
-    /// key is pressed.
+    /// `transclusionGeneration(for:)` rides along so a target is redrawn when the index
+    /// changes, and only then: the id it feeds changes when a note is written, not when a key
+    /// is pressed.
     var transclusionSource: TransclusionSource {
         TransclusionSource(
             resolve: { reference in
@@ -255,8 +266,18 @@ extension EditorColumnView {
                 }
                 return nil
             },
-            generation: vault.scanGeneration
+            generation: Self.transclusionGeneration(for: vault)
         )
+    }
+
+    // Internal, not private: read by `Tests/IndexGenerationFollowUpTests.swift`.
+    /// The generation a `![[nota]]` is redrawn on: `indexGeneration` (ADR-0072 §D11, PG-328),
+    /// which every index change moves - a save, an external edit, a rescan. It was
+    /// `scanGeneration` (ADR-0010 §D8), so an embed did not redraw when the note it names was
+    /// saved in the app, since the app's own write is not a scan. `viewQueryGeneration(for:)`'s
+    /// twin, and pure for the same reason: a test can check it without rendering.
+    static func transclusionGeneration(for vault: VaultController) -> Int {
+        vault.indexGeneration
     }
 }
 

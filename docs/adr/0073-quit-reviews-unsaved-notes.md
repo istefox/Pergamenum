@@ -394,7 +394,7 @@ were decided at Gate 1/2 as recommended (plan, «Risks and HITL gates»): one al
 **Pending verification. P1, P2 and R-18 have not been run, and no outcome is recorded for any of
 them.** Each needs a person at a Debug build or a run of the GUI suite, and neither was available to
 the implementation pass. R-17 (these notes carry P1's and P2's outcomes) is therefore not met yet,
-and PG-326 stays open until it is. PG-327 and PG-328 track G-a and G-b, not these checks.
+and PG-326 stays open until it is. PG-334 and PG-335 track G-a and G-b, not these checks.
 
 - **P1 (red button with a dirty tab, R-11): pending, hand check on a Debug build (plan M5).** Outcome
   B's remedy (`applicationShouldTerminateAfterLastWindowClosed(_:)` answering `false` while
@@ -474,7 +474,7 @@ carries neither `NSSupportsSuddenTermination` nor `NSSupportsAutomaticTerminatio
 13. **A tab of a previous vault is never written by the quit (fix loop, 2026-09-29).** G-a is real
     on this path: after a vault switch vault A's dirty tabs stay open, and «Salva tutto», the Return
     default, would have written each one's text to its relative path in vault B with no precondition,
-    overwriting or creating files there. PG-327 (the general vault-switch fix) stays out of scope; this
+    overwriting or creating files there. PG-334 (the general vault-switch fix) stays out of scope; this
     record only keeps the quit's own bulk answer from extending the defect to every background tab of
     both columns. The seam is the root a tab belongs to, `NoteTab.previousVaultRoot` (symlinks resolved and standardized, compared
     through `URL.vaultKey`, the key `RecentVaults`, `OpenTabsStore`, `PinnedTagsStore` and the session id
@@ -497,7 +497,7 @@ carries neither `NSSupportsSuddenTermination` nor `NSSupportsAutomaticTerminatio
     question's text names the note and says it is not saved into this vault. The question counts notes by (root, path), not path alone: a previous vault's `Nexion.md` and the open vault's are two notes, and the foreign copy is named with its folder, `Nexion.md (A)`.
     «Non salvare» is unchanged. Rejected: recording the vault root on every tab at creation (nine call
     sites build tabs; the one place a foreign tab can appear is `open(_:)`), and refusing the quit
-    outright at `open(_:)` (a person switching vaults with a dirty tab is PG-327's decision). Pinned by
+    outright at `open(_:)` (a person switching vaults with a dirty tab is PG-334's decision). Pinned by
     `QuitVaultSwitchTests`: the mark, the same-vault case, the A, B, A return (saves into A, reported saved) and A, B, C, B (still foreign), `showing(_:)`, «Salva tutto» writing nothing
     into B (an existing file untouched, a missing one not created), and the coordinator cancelling and
     revealing.

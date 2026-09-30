@@ -231,7 +231,7 @@ final class VaultController {
             guard let self, let newSession, self.session === newSession else { return }
             self.landed(change)
         }
-        // PG-327 is not fixed here, but the quit must never write a previous vault's tab into
+        // PG-334 is not fixed here, but the quit must never write a previous vault's tab into
         // this one (ADR-0073 §D5): a tab still open when a *different* vault replaces the
         // session records the root it belongs to, once (the first time it is found foreign), and
         // the record is dropped when that same root opens again. `showing(_:)` also drops it,
@@ -409,6 +409,13 @@ final class VaultController {
         await session.clearCache()
         await thumbnails?.forgetAll()
         try? await thumbnails?.clearCacheOnDisk()
+        // ADR-0071 §D8: the extracted text is the same kind of disposable derived state, and it
+        // is extracted again at the next vault open. No vault file is touched.
+        do {
+            try session.extractedTexts.removeAll()
+        } catch {
+            session.recordProblem("testo estratto non eliminato: \(error.localizedDescription)")
+        }
         scanGeneration += 1
         taskGeneration += 1
     }

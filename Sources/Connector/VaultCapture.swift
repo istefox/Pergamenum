@@ -145,9 +145,15 @@ extension VaultAPI {
     private static func captureAsNote(
         _ session: VaultSession, text: String, folder: String?
     ) async throws -> WriteSummary {
-        var lines = text.components(separatedBy: "\n")
-        let title = lines.removeFirst().trimmingCharacters(in: .whitespaces)
-        let rest = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        // Split at the first line break read as `LineBreak` reads one: `"\r\n"` is one
+        // `Character`, so a split on `"\n"` left its `"\r"` on the title and in the file name
+        // (PG-327). The body is the bytes after that break, as given: `append` decides its
+        // breaks from the note's own (PG-322).
+        let firstBreak = text.firstIndex(where: LineBreak.isTerminator)
+        let title = text[..<(firstBreak ?? text.endIndex)].trimmingCharacters(in: .whitespaces)
+        let rest = firstBreak
+            .map { String(text[text.index(after: $0)...]) }?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
         let created = try await createNote(
             session,

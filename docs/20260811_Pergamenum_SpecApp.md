@@ -411,6 +411,7 @@ Registrato via `CFBundleURLTypes`; gestito in `onOpenURL`. Route idempotenti, ap
 | `pergamenum://search?q=<query>` | Ricerca globale con la query |
 | `pergamenum://capture?text=<testo>&note=<path>` | Appende testo alla nota indicata (default: daily di oggi) senza portare l'app in primo piano |
 | `pergamenum://task?add=<testo>` | Crea un task nell'Inbox |
+| `pergamenum://contenitore?id=<uuid>` | Seleziona il documento nel pannello Contenitore; un ID sconosciuto apre il pannello senza selezione (ADR-0071 §D10) |
 
 Ogni nota, canvas e card espone "Copia link Pergamenum" nel menu contestuale, per incollare il link in Obsidian, DEVONthink, Mail o Calendario.
 

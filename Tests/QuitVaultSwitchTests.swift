@@ -3,7 +3,7 @@ import Testing
 @testable import Pergamenum
 
 // ADR-0073 §D5, departure 13 (fix loop, 2026-09-29): a tab that survives a vault switch
-// (PG-327 is the general fix and is not made here) is never written by the quit into the vault
+// (PG-334 is the general fix and is not made here) is never written by the quit into the vault
 // that replaced its own.
 
 /// Vault B: it has a `Nexion.md` of its own, which a stale write from vault A would overwrite,
