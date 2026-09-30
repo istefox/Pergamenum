@@ -1,7 +1,10 @@
 # ADR-0076: A manual entry anchors to one message by its Message-ID, through one shared parser, one ordering rule and guarded body writes
 
-- Status: **accepted**. The first implementation PR landed on `main` via PR #724 (`73f17450`,
-  2026-09-30), for `PG-338`. Add the second PR's hash after it lands (ADR-0071's two-PR precedent).
+- Status: **accepted**. PR 1 of the two (Tasks 2-5: the Core parser and ordering, the app model
+  switch-over, connector parity, the carry on «Sposta in…») landed on `main` via PR #724 (merge
+  `73f17450`, 2026-09-30). PR 2 (Tasks 6-7: the verbs, the picker, the rows, the editor
+  concealment) is not on `main` yet; its merge is added here when it lands (ADR-0071's two-PR
+  precedent, `docs/adr/README.md` rule 2).
 - Date: 2026-09-30. Written before the implementation, against `160d3e76` (the branch
   `kepler/docs/spec-pg-338`). `origin/main` is at `c99103c8`. Its diff against `160d3e76` touches
   `NoteFolding`, `OutlinePane`, `TagRenameSheet`, three Tasks views, `BoardCardMenu` and
