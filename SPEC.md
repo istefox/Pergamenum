@@ -1,306 +1,209 @@
-Status: Approved (2026-09-29)
+Status: Approved (2026-09-28)
 
-# SPEC — Contenitore: a managed document archive fed from a drop folder
+# SPEC — Day-boundary and calendar math: time blocks that survive midnight, events drawn on the day they cover, and five smaller calendar defects
 
 ## Destination
 
-An approved SPEC handed to `/workplan`: a new app section, «Contenitore», where any file dropped
-into one watched folder outside the vault is moved into the vault, parsed for text, given a
-markdown record («scheda») carrying description, colour and tags, and reachable through a stable
-`pergamenum://` link. `/workplan` decides the ADR and how many PRs this takes.
+A SPEC handed to `/workplan`. Closes issue #573 (Audit Fable chain 6, ledger `PG-259`) in one PR.
+The per-finding evidence is `ROADMAP.md` §Chain 6, re-verified against `origin/main` @ `2d1adb40`
+on 2026-09-28. One audit claim was refuted there and is excluded (see Out of scope).
 
 ## Objectives
 
-Stefano drops documents (quotes, invoices, certificates, scans, photos, anything) into one folder
-and stops thinking about where they go. Pergamenum files them in the vault, makes their content
-searchable (including scans, through on-device OCR), keeps them in a queue until he classifies
-them, and gives each one an address he can paste into a note, Mail or DEVONthink that keeps
-working after the document is renamed or moved inside the app.
+- A time block is never lost because of where it ends. Today a block that ends at midnight is
+  written as `00:00`, the parser refuses it, and the next rewrite of the day's timeline section
+  deletes the line. Resize and move already produce such an end, and creation near midnight
+  produces a line that wraps past it.
+- A new block never overlaps an existing one and never runs past midnight. Today the free-slot
+  search tests only the start point and ignores the duration.
+- An EventKit event that crosses midnight or spans several days is drawn, on each day, at the hours
+  it actually occupies that day. Today every day after the first draws it at the start hour with
+  its full duration.
+- Five smaller defects stop misleading the user: diary drags measured in a coordinate space that
+  moves with the card, every category and week deadline painted as overdue, duplicate identities
+  in the mini calendar, the Today pane embedding any open note whose path merely contains the
+  day's date, and a 30-second timer that re-evaluates the diary on days where it draws nothing.
 
 ## Scope and non-goals
 
-In: one configurable drop folder; automatic move-and-record while the app runs (and a catch-up at
-launch); a scheda note per document; text extraction for PDFs, images and plain text, OCR for
-scans and images; extracted text in the derived cache and reachable from global search; a
-«Contenitore» pane with a nested sub-container tree, list/grid, inspector, a «Da classificare»
-queue, colour and tag filters; «Classifica»; rename, move and trash of document and scheda as a
-pair; duplicate refusal; a new `pergamenum://contenitore?id=` route and «Copia link Pergamenum».
+In: the time-block model (formatting, parsing, placement, creation), the three creation paths that
+reach it (app, `perg`, MCP), the conversion of an event into a per-day time range in the Day and
+Week views, the diary card's drag and resize gestures, the deadline colour in the category view and
+the week plan, the mini calendar's cell identities, the Today pane's daily-note check, the diary's
+now-line timer.
 
-Out (detail in Out of scope): dedicated connector commands, several drop folders with rules,
-Office text extraction, structured field extraction, Finder tag/colour mirroring, adopting files
-placed in the vault by hand, GUI tests.
+Out, one line each: diary resize clamping (refuted, already correct); an upper bound on a block
+beyond the existing 5…480 settings range; recurring-event expansion; any GUI test; the diary's own
+24:00 handling (already correct, it is the reference).
 
 ## Decisions
 
-- **Metadata lives in a scheda `.md` beside the file** — every document gets an ordinary note whose
-  frontmatter carries `date`, `tags` and `pergamenum-contenitore-*` keys and whose body is the
-  description. Search, tags, backlinks, the linter, the note-ID registry and both connectors work
-  on it with no new store. Rejected: one registry JSON in `.pergamenum/` — metadata readable only
-  by the app (weakens Principle 1), and tags/description invisible to search and linter without
-  extending both. Rejected: Finder tags/colour/comment as the source of truth — xattrs are lost by
-  zip, git and some copies, and the Finder has only 7 colours; also rejected as a v1 mirror,
-  because Spotlight already reads PDF text and the files are managed from the app.
-- **Ingest: one drop folder outside the vault, files moved in** — default `~/Pergamenum Drop`,
-  configurable. Rejected: copy (two diverging originals); drop folder inside the vault (mixes
-  untriaged input with the archive); several drop folders with rules (more settings than the
-  need justifies now).
-- **Auto-import into a «Da classificare» state** — a file is moved and recorded as soon as it is
-  stable; the scheda is born `type-note` + `status-inbox`. Rejected: an approval queue before the
-  move (an extra gesture per file); import with no queue (unclassified documents disappear into
-  the archive).
-- **Any file type is accepted; text is extracted only where possible** — PDF text layer, OCR for
-  image-only PDFs and images, plain text files read directly. Other files get scheda, preview and
-  metadata only. Rejected: PDF and images only; Office extraction (no system library, much more
-  work).
-- **Layout `<root>/[<sub-container>/…]/YYYY/`, scheda beside file** — imports land in
-  `<root>/YYYY/`; moving a document into a sub-container puts the pair in `<sub-container>/YYYY/`.
-  Year folders are managed by the app and are not tree nodes. Rejected: a `file/` subfolder for
-  binaries (a second folder per year for no gain); a flat folder (unbounded growth); year folders
-  only at the root; sub-containers without years.
-- **Sub-containers are a nested tree of real folders under the root** — created, renamed, moved and
-  trashed from the pane's own sidebar, flat recursive rows as in ADR-0024, drag and drop of
-  documents. A document sits in exactly one sub-container; tags cover cross-cutting grouping.
-  Rejected: a single level.
-- **Root folder configurable** — default `Contenitore/` at the vault root, changeable like the
-  Pratiche folder. Rejected: a fixed name.
-- **Names: `YYYYMMDD <original name>`** — import date in front, original stem sanitised with the
-  note-title rules; the file keeps its extension, the scheda has the same stem. A taken name gets
-  the existing unique-name suffix, applied to the pair. Rejected: original name alone (no
-  chronological order in the Finder).
-- **`date` is the import date, editable** — consistent with the name prefix; corrected by hand in
-  the inspector. Rejected: date from EXIF/PDF metadata (often absent or wrong).
-- **Duplicates are refused** — SHA-256 of the incoming file compared with the hashes recorded in
-  existing schede; a duplicate stays in the drop folder with a notice that links the existing
-  document. Rejected: importing it anyway (two records of one document); trashing it (silent loss
-  of a file the user just placed).
-- **Extracted text lives in the derived cache, and global search reads it** — keyed by the file's
-  content hash, under the vault's Application Support state (ADR-0017); a hit on extracted text
-  returns the scheda. Deleting the cache loses only the time to re-extract. Rejected: text in the
-  scheda body (a 100-page scan makes an enormous note in the editor); an excerpt in the body plus
-  the full text in cache (two places to keep coherent).
-- **OCR runs in the background on every page, Italian and English, on-device only** — only for
-  PDFs without a text layer and for images; progress visible in the list. Rejected: a 50-page cap
-  (the rest of a long scan would be unsearchable).
-- **Colour: the six JSON Canvas presets** — Rosso, Arancio, Giallo, Verde, Ciano, Viola, drawn with
-  the existing `color.sticky.*` tokens, stored as a name, never a hex. Rejected: the five task
-  category colours.
-- **«Classificato» means `status-inbox` removed and at least one `topic-*` present** — «Classifica»
-  asks for one or more `topic-*` and offers an optional content type from the closed `type-*`
-  vocabulary (e.g. `type-invoice`, `type-contract`); description and colour stay optional.
-  Rejected: «a description is enough» (the scheda would then fail the linter's `topic-*` rule).
-- **The link points at the scheda's note ID, and opens the pane** — `pergamenum://contenitore?id=`
-  uses the scheda's ID from the ADR-0059 registry (which accepts only `.md`) and selects the
-  document in the Contenitore pane; `note?id=` keeps opening the scheda in the editor. Rejected:
-  opening the file directly (skips the metadata); `note?id=` only (no pane context).
-- **Rename and move always act on the pair** — from the Contenitore pane and from the Note pane
-  when the note is a scheda; wikilink and ID follow. Rejected: scheda only (pair drifts apart).
-- **Delete trashes file and scheda together** — one command, Finder Trash, never a permanent
-  removal. Rejected: asking each time.
-- **Connectors get the Contenitore for free through notes** — no dedicated `perg`/MCP commands in
-  v1; schede are notes, and the extended search is shared code. Rejected: a dedicated read (or
-  read-write) API, deferred until a need appears.
-- **Tests: the ingest engine is the main seam, zero GUI tests** — see Test seams.
+- **Time blocks follow the diary's midnight rule.** A block never crosses midnight; an end of
+  exactly midnight is written as `24:00` and read back as the end of the day, the same convention
+  the diary's entries already use. Rejected: capping the end at 23:59 — it avoids `24:00` but stops
+  a block one minute short of midnight and makes the two timeline formats diverge.
+- **Creation shortens rather than overlaps, refuses, or moves earlier.** A block starts at the
+  first free slot at or after the requested start and lasts the requested duration or until the
+  next block or midnight, whichever comes first, provided at least the smaller of 15 minutes and
+  the requested duration is free. Otherwise creation is refused with a visible sentence, including
+  in the app's «Inserisci Blocco Tempo» and hour-drop paths, which are silent today. Rejected:
+  refusing whenever the full duration does not fit — a drop at 23:30 with a 60-minute default would
+  simply fail; moving the block earlier — it keeps the duration but does not start where the user
+  dropped it.
+- **Lines already on disk are recovered, not dropped.** An end of `00:00` with a start after
+  midnight reads as `24:00`; an end earlier than the start (a line that wrapped past midnight)
+  reads as `24:00`, truncating the block at midnight, provided the recovered block lasts at most
+  480 minutes, the longest block the app can write; a longer one stays malformed and is skipped,
+  as today. The next rewrite stores the corrected form. (Cap added at plan gate G3, 2026-09-28: the
+  uncapped reading turned the existing malformed-line fixture `11:00-10:00` into a 13-hour block.)
+  Rejected: recovering only `00:00` — the wrapped lines creation has already produced would still
+  be deleted on the next write.
+- **An event is drawn per day as the part of it that day covers.** The first day shows it until
+  midnight, the last day from midnight, a day it covers entirely goes into the all-day row instead
+  of filling the grid. One shared pure helper computes this for both the Day and Week views, which
+  today duplicate the conversion. Rejected: clipping only (a fully covered day becomes a 00–24
+  block and widens the hour window to the whole day); showing the event only on its first day (it
+  becomes invisible on the others).
+- **Connectors refuse an out-of-range block duration.** `perg` and the MCP server refuse a
+  duration outside 5…480 minutes, the settings range, or one that is not a number, with one
+  sentence, following chain 3's rule for malformed input; a valid value follows the same shortening
+  rule as the app. (Non-numeric case added at plan gate G2, 2026-09-28: today it silently falls
+  back to the vault default.) Rejected:
+  silently clamping into range — the connector would write something other than what was asked.
+- **A deadline is painted overdue only when it has passed.** The category view and the week plan
+  use the rule task rows already use (a date before today is overdue), and the secondary text
+  colour otherwise, the colour the upcoming-deadlines list already uses (plan gate G1, 2026-09-28).
+  No new rule is invented.
+- **The Today pane recognises the daily note by exact path**, the same path every other daily-note
+  lookup already builds, instead of a substring match on the date.
+- **The diary's now-line timer runs only while the shown day is today.**
+- **Tests are unit tests on pure seams, zero GUI tests.** The diary gesture coordinate space and the
+  timer cannot be asserted by a unit test and are verified by hand. Rejected: a GUI drag test for
+  the diary — the GUI suite is deliberately small and synthetic drags on macOS 27 are fragile
+  (PG-162).
 
 ## Constraints
 
-- **File over app** — every piece of metadata is readable on disk without the app. Origin:
-  CLAUDE.md Principle 1.
-- **Fully offline** — no network call; OCR and text extraction are on-device. Origin: Principle 2.
-- **Rebuildable index** — extracted text and thumbnails are derived state outside the vault.
-  Origin: Principle 3, ADR-0017.
-- **Closed frontmatter** — only `date`, `tags`, `related`, `aliases` plus `pergamenum-` prefixed
-  keys; new prefixed keys need an ADR. Origin: SPEC §4.3, ADR-0032/0036 precedent.
-- **Closed tag vocabulary** — `type-*` and `status-*` from `vocabolari.json`, at most 7 tags, one
-  `status-*`. Origin: SPEC §4.4, Principle 5.
-- **Note naming** — forbidden characters and 60-character title limit apply to the scheda. Origin:
-  SPEC §4.2.
-- **Every vault write goes through `VaultSession`** with the existing guards (boundary resolver,
-  `expecting:` preconditions, landed-change door). Origin: ADR-0041, 0043, 0067.
-- **Trash, never remove** — Origin: ADR-0022.
-- **Tokens only in views** — Origin: CLAUDE.md Design system.
-- **UI in Italian** — Origin: CLAUDE.md.
-- **Mockup approved before the pane is built** — Origin: CLAUDE.md Design system.
-
-## Stack
-
-Swift 6, SwiftUI with AppKit where needed. PDFKit for text layers, Vision for OCR,
-QuickLookThumbnailing through the existing thumbnail store, FSEvents for the drop-folder watcher
-(the Pratiche mail-store watcher is the model). No new dependency.
+- **Timeline section format stays plain `HH:MM-HH:MM` lines** readable by any editor — origin:
+  CLAUDE.md principle 1 (file over app). `24:00` is already a value the diary writes, so no new
+  syntax enters the vault.
+- **No on-disk format, schema or protected interface changes** — origin: user mandate for this
+  chain, consistent with every Audit Fable fix chain so far.
+- **The existing unit test that asserts `24:00` is rejected by the time-block parser changes
+  meaning, it is not deleted** — origin: CLAUDE.md working agreement (never disable or delete a
+  test to make a suite pass). Its expectation flips because the behaviour it pins is the defect.
+- **Colours and fonts go through tokens** — origin: CLAUDE.md design-system binding rule.
 
 ## Data model
 
-A **document** is a pair in the same folder: the file `YYYYMMDD <name>.<ext>` and its scheda
-`YYYYMMDD <name>.md`. A note is a scheda when it sits under the Contenitore root and carries
-`pergamenum-contenitore`.
+A time block is a start minute and an end minute within one day, `0 ≤ start < end ≤ 1440`. The
+value 1440 is legal as an end and is written `24:00`. No other entity changes.
 
-Scheda frontmatter (key names indicative, final names in the ADR):
+An event's per-day projection, computed from its start, end and the shown day:
 
-```yaml
-date: 2026-09-29
-tags:
-  - type-note
-  - type-invoice            # optional content type, after «Classifica»
-  - topic-<something>       # required once classified
-  - status-inbox            # present until classified
-pergamenum-contenitore: 1                               # schema version
-pergamenum-contenitore-file: "[[20260929 preventivo.pdf]]"
-pergamenum-contenitore-original: "preventivo.pdf"       # name as dropped
-pergamenum-contenitore-sha256: "<hex>"                  # duplicate detection
-pergamenum-contenitore-color: giallo                    # optional, one of six names
+```
+enum DayProjection { case none, allDay, timed(startMinute: Int, endMinute: Int) }
 ```
 
-Body: the description, free markdown.
-
-A **sub-container** is a folder under the root that is not a year folder. Year folder names are
-four digits; a sub-container may not be named with four digits.
-
-**Extracted text** is a derived record keyed by the file's SHA-256: extraction method (text layer,
-OCR, plain text, none), status (pending, done, failed), text. Renaming or moving a file does not
-invalidate it.
-
-**Import state** of a drop-folder file: waiting for stability, imported, refused as duplicate,
-failed (with reason).
+`allDay` when the event covers the whole day (starts at or before its midnight, ends at or after the
+next); `timed` with the clipped range otherwise; an event ending exactly at midnight belongs to the
+previous day only, as the existing week bucketing already asserts.
 
 ## API / interfaces
 
-- New route `pergamenum://contenitore?id=<uuid>`: resolves the scheda through the note-ID registry
-  and selects the document in the Contenitore pane; an unknown id reports a problem and opens the
-  pane with nothing selected.
-- «Copia link Pergamenum» on a document copies the `contenitore?id=` form, minting the scheda's ID
-  if it has none (ADR-0059's mint-on-demand rule).
-- New settings: drop folder path (stored `~`-relative), Contenitore root folder.
-- Global search: results also match extracted text of schede.
-- Connectors: no new command; they see schede as notes and share the extended search.
+- The time-block free-slot search returns a start and a (possibly shortened) duration, or nothing.
+  Its three callers (app creation, hour drop, session creation used by capture and both connectors)
+  report the refusal as a sentence.
+- The connectors' block-duration argument is validated to 5…480 before reaching the session.
+- `perg` and MCP output shapes are unchanged.
 
 ## UI flows
 
-- **Sidebar**: «Contenitore» in the LAVORO group beside Pratiche.
-- **Pane**: a left column with «Tutti», «Da classificare» (with count) and the sub-container tree;
-  a centre list (thumbnail, name, colour dot, tags, date, OCR state) with a toggle to a thumbnail
-  grid; filters by colour and tag; spacebar Quick Look (SPEC §6.6).
-- **Inspector**: preview, name, date, description, colour (six swatches), tags (vocabulary
-  autocompletion), sub-container, and actions «Classifica», «Apri», «Rivela nel Finder» (ADR-0071 §D12), «Apri
-  scheda», «Copia link Pergamenum», «Sposta nel Cestino».
-- **Classifica**: a sheet asking for one or more `topic-*` and an optional content type; confirm
-  removes `status-inbox`.
-- **Notices**: duplicates, failed imports and failed extractions appear as non-modal notices in the
-  pane, each naming the file.
-- Every action in the inspector also exists in the row context menu and the menu bar (ADR-0023
-  parity).
+- Dropping a task on an hour, or «Inserisci Blocco Tempo», near midnight or next to another block
+  creates a shorter block rather than an overlapping or wrapping one; when no slot of at least 15
+  minutes remains, the day shows a one-line refusal instead of doing nothing.
+- A multi-day event appears on each of its days at the right hours, or in the all-day row on the
+  days it covers entirely.
 
 ## Edge cases
 
-- File still being written or downloaded in the drop folder: imported only once its size is stable
-  across two observations.
-- iCloud placeholder (evicted) in the drop folder: skipped with a notice.
-- Hidden files and subfolders in the drop folder: ignored; subfolders reported once.
-- Drop folder missing: created at first use; unreadable: one visible notice, nothing imported.
-- Files arriving while the app is closed: imported at the next launch.
-- Name collision in the target year folder: the unique-name suffix is applied to file and scheda
-  together, never to one only.
-- Move fails half-way (file moved, scheda write refused or failed): the file is put back in the drop
-  folder and the failure is reported; no orphan file is left in the vault.
-- File deleted outside the app while its scheda remains: row shows «file mancante».
-- Scheda edited by hand to drop `pergamenum-contenitore`: it stops being a document.
-- `date` edited to another year: the pair does not move.
-- Image-only PDF with no recognisable text, or an unsupported type: extraction status «nessun
-  testo», document still searchable by name, description and tags.
-- OCR failure on one file does not stop the queue.
+- A resize or move that ends exactly at midnight is written `24:00` and survives a reload.
+- A block at 23:45 with a 60-minute default becomes 23:45–24:00.
+- A requested start that snaps to 24:00 has no room and is refused.
+- A requested duration of 10 minutes (connector) in a 12-minute gap is created at 10 minutes; the
+  15-minute floor applies only as `min(15, requested)`.
+- An event ending exactly at 00:00 appears only on the day it started.
+- An event starting at 00:00 and ending at 24:00 of the same day is all-day for that day.
+- A note at `20260925-riunione.md` open while the Today pane shows 2026-09-25 is not embedded as
+  the daily note.
+- The mini calendar's leading and trailing blank cells, and the two «M» weekday initials, each have
+  a distinct identity.
 
 ## Test seams
 
-- **Ingest engine at `VaultSession` level** (main seam, the `PraticaSyncTests` shape): temporary
-  drop folder and vault, text extractor behind a protocol with a fake. Covers move, naming, pairing,
-  duplicates, stability wait, half-way failure, catch-up, classify, rename/move/trash as a pair,
-  sub-container operations.
-- **Pure `Sources/Core` units**: scheda render/parse round-trip, name and path rules, classify
-  validation, colour names, route parsing.
-- **Search**: `VaultSession.search` with a pre-seeded extracted-text cache.
-- **Real extractors**: one PDFKit test on a PDF fixture with a text layer, one Vision OCR test on a
-  small image fixture.
-- **UI**: one in-process hosted-view test of the pane. Zero GUI tests.
+All in existing test files, no new test target:
+
+- Time-block formatting, parsing, recovery of `00:00` and wrapped ends, free-slot search with
+  shortening and refusal — the calendar test file that already covers the parser and round trip.
+- Move and resize ending at midnight surviving a write-and-read — the time-block gesture test file.
+- Creation shortening and refusal reporting through the controller and the session — the day
+  controller and session test files.
+- The event per-day projection helper — the week plan test file, beside the existing bucketing
+  tests.
+- Mini calendar cell identities — the month grid test file.
+- The daily-note predicate and the overdue-deadline rule — the nearest existing test file for each;
+  `/workplan` picks it.
+- Connector duration validation — the connector test file and `scripts/mcp-smoke.py`.
 
 ## Success criteria
 
-- [ ] R-01 — A file placed in the drop folder while the app runs is moved to `<root>/YYYY/` as
-  `YYYYMMDD <sanitised original name>.<ext>`, with a scheda of the same stem beside it, and is no
-  longer in the drop folder.
-- [ ] R-02 — The scheda carries `date` (import date), `tags` with `type-note` and `status-inbox`,
-  the `pergamenum-contenitore*` keys for schema version, file wikilink, original name and SHA-256,
-  and passes the linter.
-- [ ] R-03 — A file still growing in size is not imported until its size is stable across two
-  observations.
-- [ ] R-04 — Files present in the drop folder at launch are imported.
-- [ ] R-05 — A file whose SHA-256 matches an existing scheda stays in the drop folder and produces a
-  notice naming the existing document.
-- [ ] R-06 — A name already taken in the target folder gets the same unique suffix on file and
-  scheda.
-- [ ] R-07 — If the scheda cannot be written after the file moved, the file is back in the drop
-  folder and the failure is reported.
-- [ ] R-08 — Hidden files, subfolders and iCloud placeholders in the drop folder are not imported;
-  placeholders and subfolders produce a notice.
-- [ ] R-09 — Text is extracted from a PDF's text layer, from image-only PDFs and images by OCR
-  (Italian and English), and from plain text files, into the derived cache keyed by content hash,
-  in the background, with progress visible in the list.
-- [ ] R-10 — Global search (app and connectors) returns a scheda when the query matches its file's
-  extracted text; deleting the cache removes no vault file.
-- [ ] R-11 — An extraction failure or a file with no text leaves the document listed with status
-  «nessun testo» and does not stop other extractions.
-- [ ] R-12 — No network call is made by import, extraction or the pane.
-- [ ] R-13 — The Contenitore pane lists every scheda under the root, with thumbnail, name, colour,
-  tags, date and extraction status, in list and grid modes.
-- [ ] R-14 — «Da classificare» lists exactly the schede carrying `status-inbox`, with a count.
-- [ ] R-15 — Filters by colour and by tag narrow the list.
-- [ ] R-16 — Editing description, date, colour and tags in the inspector writes the scheda through
-  the guarded write path; a scheda changed on disk since it was read is refused, not overwritten.
-- [ ] R-17 — Colour accepts only the six preset names and is drawn with the `color.sticky.*` tokens.
-- [ ] R-18 — «Classifica» requires at least one `topic-*`, offers an optional `type-*` from the
-  vocabulary, removes `status-inbox`, and the result passes the linter.
-- [ ] R-19 — Sub-containers can be created, renamed, moved and trashed from the pane's tree, nested
-  to any depth; a four-digit name is refused.
-- [ ] R-20 — Moving a document into a sub-container puts file and scheda in
-  `<sub-container>/YYYY/` (year of the scheda's `date`) and updates the file wikilink.
-- [ ] R-21 — Renaming a scheda (from the Contenitore pane or the Note pane) renames its file to the
-  same stem; the file wikilink and the note ID follow.
-- [ ] R-22 — «Sposta nel Cestino» moves file and scheda to the Finder Trash together.
-- [ ] R-23 — «Copia link Pergamenum» copies `pergamenum://contenitore?id=<uuid>`, minting the ID if
-  needed; opening that link selects the document in the pane, and after an in-app rename or move it
-  still does.
-- [ ] R-24 — An unknown `contenitore?id=` opens the pane with nothing selected and reports a
-  problem.
-- [ ] R-25 — A scheda whose file is gone shows «file mancante».
-- [ ] R-26 — Drop folder and root folder are configurable in Impostazioni; the drop folder is
-  created if missing, and an unreadable one produces one visible notice.
-- [ ] R-27 — Every inspector action is available from the row context menu and the menu bar.
-- [ ] R-28 — The pane's mockup is approved before it is built. (no-test: design process gate, no code)
-- [ ] R-29 — The new `pergamenum-contenitore-*` keys, the pane and the route are recorded in an ADR
-  and in SPEC §9. (no-test: documentation obligation)
-
-## Assumptions
-
-- Import and extraction run only while the app is open; there is no background agent.
-- The drop folder path is stored `~`-relative in the vault settings, so it resolves on any Mac the
-  vault syncs to.
-- Wikilinks and embeds to the file elsewhere in the vault are rewritten on a pair rename the same
-  way note renames rewrite links; if the existing rename machinery cannot do this for a non-`.md`
-  target, `/workplan` states the cost.
-- Vision text recognition runs entirely on-device on macOS 27 (to be confirmed against the live
-  SDK documentation at `/workplan`).
-- The pane's keyboard shortcut is chosen at `/workplan` (digit shortcuts are used up).
-
-## Out of scope
-
-- Dedicated `perg`/MCP commands — schede already reach the connectors as notes; add when a need
-  appears.
-- Several drop folders with rules — one folder covers the stated need.
-- Office (docx/xlsx/pptx) text extraction — no system library; scheda and preview only.
-- Structured field extraction (invoice number, supplier, amount) — much larger, separate feature.
-- Finder tag/colour mirroring — can be added later without changing the on-disk format.
-- Adopting files placed under the root by hand without a scheda — v1 records only what passes
-  through the drop folder.
-- GUI tests — the ingest engine and hosted-view test carry the coverage.
+- [ ] R-01 — A block ending at 1440 is formatted `24:00`; `24:00` is parsed as 1440 when it is an
+  end; the full section round-trips unchanged.
+- [ ] R-02 — A move or resize that ends exactly at midnight, written and read back, yields the same
+  block; nothing is dropped from the section.
+- [ ] R-03 — A line with end `00:00` and a later start is read with end 1440; a line whose end is
+  earlier than its start is read with end 1440 when the recovered block lasts at most 480 minutes,
+  and is skipped otherwise; the next rewrite writes the recovered lines in the corrected form.
+- [ ] R-04 — The free-slot search never returns a range overlapping an existing block.
+- [ ] R-05 — The free-slot search never returns a range ending after 1440.
+- [ ] R-06 — When the requested duration does not fit before the next block or midnight, the
+  returned duration is shortened to the free space, provided at least `min(15, requested)` minutes
+  are free; otherwise nothing is returned.
+- [ ] R-07 — A refused creation from «Inserisci Blocco Tempo» or an hour drop reports a sentence the
+  day view shows; creation through the session still records its problem.
+- [ ] R-08 — `perg` and the MCP server refuse a block duration outside 5…480, or one that is not a
+  number, with one sentence and write nothing.
+- [ ] R-09 — The per-day projection returns `timed` with the clipped range on the first and last
+  day of a multi-day event, `allDay` on a day it covers entirely, `none` on a day it does not touch,
+  and treats an event ending exactly at midnight as belonging to the previous day only.
+- [ ] R-10 — The Day and Week views place events through that projection; neither keeps its own
+  date-to-minute conversion for events.
+- [ ] R-11 — The Day view's hour window is widened by the projected range, never by the event's
+  unclipped start and duration.
+- [ ] R-12 — The diary card's move and resize gestures measure translation in a coordinate space
+  that does not move with the card. (no-test: gesture coordinate space is not observable from a
+  unit test; verified by hand dragging and resizing a diary entry)
+- [ ] R-13 — A category or week-plan deadline before today uses the overdue colour; today or later
+  uses the secondary text colour, by the same rule task rows use.
+- [ ] R-14 — Every mini calendar cell, blank padding included, and every weekday initial has a
+  distinct identity.
+- [ ] R-15 — The Today pane embeds the open note as the day's note only when its path equals the
+  day's daily-note path.
+- [ ] R-16 — The diary's now-line timer runs only while the shown day is today. (no-test: the timer
+  lives in a view's task; verified by hand opening a past day and today)
+- [ ] R-17 — The existing parser test that rejected `24:00` asserts the new behaviour instead of
+  being removed; every other existing calendar, diary and week test stays green unchanged.
 
 ## Not yet specified
 
-- Whether files put under the root by hand (Finder, board drops) should later be offered a «Crea
-  scheda» action.
+_none_
+
+## Out of scope
+
+- **Diary resize clamping.** The audit said resizing a late entry's bottom edge moves its start;
+  the code clamps the duration first and the start stays put. Refuted, nothing to do.
+- **Diary 24:00 handling.** Already correct and already tested; it is the model this chain copies.
+- **Recurring events and time zones.** The projection works on the event's own start and end dates
+  as EventKit returns them; nothing about recurrence expansion or zone conversion changes.
+- **A GUI test for the diary drag.** See Decisions.
+- **The other Audit Fable chains**, including chain 15's performance work beyond the one timer.

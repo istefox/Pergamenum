@@ -25,7 +25,8 @@ import Testing
     ) -> (NSTextView, NoteTextView.Coordinator) {
         let view = NoteTextView(
             text: .constant(text), theme: .emergency, noteTitles: [], tagSuggestions: [],
-            onFollowLink: { _ in }, vaultRoot: root, notePath: "Nota.md", thumbnails: thumbnails
+            onFollowLink: { _ in },
+            vault: .init(vaultRoot: root, notePath: "Nota.md", thumbnails: thumbnails)
         )
         let coordinator = view.makeCoordinator()
         let textView = NSTextView(usingTextLayoutManager: true)

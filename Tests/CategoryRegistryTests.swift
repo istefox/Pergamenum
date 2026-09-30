@@ -314,3 +314,18 @@ import Testing
     #expect(refusal == .registryUnreadable)
     #expect(try Data(contentsOf: store.file) == bytesBefore)
 }
+
+// MARK: - A deadline is red only once it has passed (ADR-0075 §D6)
+
+@Test func aCategoryDeadlineIsOverdueOnlyOnceItHasPassed() {
+    let today = CalendarDate(iso: "2026-09-28")!
+    func category(deadline: String?) -> Pergamenum.Category {
+        Category(slug: "offerte", name: "Offerte", color: "rosso",
+                 deadline: deadline.flatMap(CalendarDate.init(iso:)))
+    }
+
+    #expect(category(deadline: "2026-09-27").isDeadlineOverdue(on: today))
+    #expect(!category(deadline: "2026-09-28").isDeadlineOverdue(on: today))
+    #expect(!category(deadline: "2026-09-29").isDeadlineOverdue(on: today))
+    #expect(!category(deadline: nil).isDeadlineOverdue(on: today))
+}

@@ -68,8 +68,8 @@ enum EmbedEditorFixtures {
         let followedLinks = LinkFollowSpy()
         let view = NoteTextView(
             text: .constant(text), theme: .emergency, noteTitles: [], tagSuggestions: [],
-            hidesMarkup: hidesMarkup, onFollowLink: followedLinks.follow(title:), vaultRoot: root,
-            notePath: "Nota.md", thumbnails: thumbnails
+            hidesMarkup: hidesMarkup, onFollowLink: followedLinks.follow(title:),
+            vault: .init(vaultRoot: root, notePath: "Nota.md", thumbnails: thumbnails)
         )
         let coordinator = view.makeCoordinator()
         let textView = CompletingTextView(usingTextLayoutManager: true)

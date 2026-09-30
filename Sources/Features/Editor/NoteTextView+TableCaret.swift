@@ -78,7 +78,7 @@ extension NoteTextView.Coordinator {
             let lineBreak = paragraphEnd > end
                 ? text.substring(with: NSRange(location: end, length: paragraphEnd - end))
                 : LineBreak.detected(in: textView.string).characters
-            guard replaceAtomically(NSRange(location: end, length: 0), with: lineBreak, in: textView)
+            guard Self.replaceAtomically(NSRange(location: end, length: 0), with: lineBreak, in: textView)
             else { return false }
             textView.setSelectedRange(NSRange(location: end + (lineBreak as NSString).length, length: 0))
             // The redirected caret does not visibly blink here - a known, currently-open
@@ -111,7 +111,7 @@ extension NoteTextView.Coordinator {
                 &start, end: &paragraphEnd, contentsEnd: &contentsEnd, for: NSRange(location: end, length: 0)
             )
             let terminator = paragraphEnd > end ? paragraphEnd - end : 1
-            _ = replaceAtomically(NSRange(location: end, length: terminator), with: "", in: textView)
+            _ = Self.replaceAtomically(NSRange(location: end, length: terminator), with: "", in: textView)
             return true
         }
     }

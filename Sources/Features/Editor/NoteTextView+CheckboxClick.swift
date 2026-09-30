@@ -23,8 +23,7 @@ extension NoteTextView.Coordinator {
     /// would ignore an unsaved edit sitting in this buffer.
     func toggleCheckbox(at point: CGPoint, in textView: NSTextView) -> Bool {
         guard let manager = textView.textLayoutManager else { return false }
-        let origin = textView.textContainerOrigin
-        let inContainer = CGPoint(x: point.x - origin.x, y: point.y - origin.y)
+        let inContainer = Self.inContainer(point, of: textView)
         let text = textView.string as NSString
 
         var handled = false
@@ -102,6 +101,6 @@ extension NoteTextView.Coordinator {
         let newState: TaskItem.State = task.state == .done ? .open : .done
         let newLine = TaskParser.line(for: task, settingState: newState, today: .today) + terminator
 
-        return replaceAtomically(lineRange, with: newLine, in: textView)
+        return Self.replaceAtomically(lineRange, with: newLine, in: textView)
     }
 }

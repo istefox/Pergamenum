@@ -48,12 +48,14 @@ final class DayController {
         }
     }
 
-    /// What the last drop did, until it is dismissed. The banner the week and the day
-    /// draw from it is the way back: a write nobody was asked to confirm has to say what
-    /// it did and offer to undo it (ADR-0013 §D5, the shape ADR-0009 §D5 gave the board).
+    /// What the last drop or block insertion did, until it is dismissed. The banner the
+    /// week and the day draw from it is the way back: a write nobody was asked to confirm
+    /// has to say what it did and offer to undo it (ADR-0013 §D5, the shape ADR-0009 §D5
+    /// gave the board). It is also the day view's only sentence surface, so a block that
+    /// could not be placed says so here (ADR-0075 §D3).
     var lastDrop: Drop?
 
-    /// What a drag left behind.
+    /// What the last drop or block insertion left behind.
     struct Drop: Equatable, Sendable {
         var summary: String
         var journalID: String?
@@ -145,7 +147,8 @@ final class DayController {
                     on: date,
                     events: eventsByDay[date] ?? [],
                     blocks: hasNote ? vault.timeBlocks(on: date) : [],
-                    tasks: tasks
+                    tasks: tasks,
+                    today: .today
                 ),
                 hasNote: hasNote
             )
@@ -171,21 +174,49 @@ final class DayController {
     ///
     /// The task's own hour wins when it has one: a task due at 15:00 blocked out at
     /// nine in the morning is a plan for a different day than the one written down.
-    /// The duration is the one set in Impostazioni (SPEC §8.3's 30 minutes by default).
+    /// The duration is the one set in Impostazioni (SPEC §8.3's 30 minutes by default),
+    /// cut short at the next block or at midnight rather than overlapping either.
+    ///
+    /// With no free quarter hour left in the day, nothing is written and the refusal is
+    /// the banner's sentence: the day view has no other place that shows one
+    /// (ADR-0075 §D3).
+    ///
+    /// `announcesRefusal` is false only for the hour drop (`drop(_:on:at:)`), so that the
+    /// drop is the one place that composes its banner: it says where the task went and
+    /// that the block was not made, in one sentence. The direct «Inserisci Blocco Tempo»
+    /// call (`DayReferences.swift`) keeps the default, since nothing else composes one for
+    /// it. The drop-commit crash this chain met lives in the banner's height, not here: see
+    /// `TaskDropBanner`.
+    ///
+    /// The banner speaks the interface's date (`italianForm`); the problem list keeps the
+    /// report's own sentence.
     @discardableResult
-    func addBlock(from task: TaskItem, preferredStart: Int? = nil) -> TimeBlock? {
+    func addBlock(
+        from task: TaskItem, preferredStart: Int? = nil, announcesRefusal: Bool = true
+    ) -> TimeBlock? {
         let preferred = preferredStart
             ?? task.scheduledTime?.minutes
             ?? task.dueTime?.minutes
             ?? 9 * 60
         let duration = vault.settings.blockMinutes
-        guard let start = TimeBlock.freeStart(from: preferred, in: blocks, duration: duration)
-        else { return nil }
+        guard let slot = TimeBlock.freeSlot(
+            from: preferred, in: blocks, duration: duration, minimum: min(15, duration)
+        ) else {
+            report("blocco tempo: nessuno spazio libero il \(day.compactForm)")
+            if announcesRefusal {
+                lastDrop = Drop(
+                    summary: "Blocco tempo non creato: nessuno spazio libero il \(day.italianForm)",
+                    journalID: nil,
+                    isRefusal: true
+                )
+            }
+            return nil
+        }
 
         let block = TimeBlock(
             day: day,
-            startMinutes: start,
-            durationMinutes: duration,
+            startMinutes: slot.start,
+            durationMinutes: slot.duration,
             title: task.text,
             sourceTaskID: task.id,
             isPublished: false
@@ -294,8 +325,10 @@ final class DayController {
         }
     }
 
-    /// Records a failure both here, where a test can see it, and on the vault, which is
-    /// the banner the user actually reads.
+    /// Records a failure both here, where a test can see it, and on the vault's problem
+    /// list, which is drawn in Impostazioni only - not a banner anyone sees while
+    /// planning the day; a refusal the user must see also goes into `lastDrop`
+    /// (ADR-0075 §D3).
     private func report(_ message: String) {
         problems.append(message)
         vault.recordProblem(message)

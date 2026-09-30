@@ -204,7 +204,9 @@ struct VaultSettings: Codable, Equatable, Sendable {
         // make every block zero minutes long and every one of them invisible.
         let minutes = try container.decodeIfPresent(Int.self, forKey: .blockMinutes)
             ?? fallback.blockMinutes
-        blockMinutes = min(max(minutes, 5), 480)
+        blockMinutes = min(
+            max(minutes, TimeBlock.durationRange.lowerBound), TimeBlock.durationRange.upperBound
+        )
         // Clamped on the way in, since `settings.json` is meant to be edited by hand
         // and a window that runs backwards would draw a grid of negative height.
         dayHours = (try container.decodeIfPresent(HourWindow.self, forKey: .dayHours)

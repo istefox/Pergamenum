@@ -51,6 +51,18 @@ struct WeekEntry: Identifiable, Equatable, Sendable {
     /// The line the task is written on, so a click lands on it rather than at the top of
     /// a note the reader then has to search.
     let lineIndex: Int?
+    /// A deadline that has passed on a task still open, by the rule the task rows use
+    /// (ADR-0075 §D6). A property of the entry, not a fifth kind: ADR-0013 §D4 fixes four.
+    var isOverdue: Bool = false
+
+    /// The colour the row is drawn in: red only for a deadline that has passed, the
+    /// secondary text colour for one still ahead - «SCADENZE IN ARRIVO»'s date colour,
+    /// distinct from the event, block and task colours in the month - and the kind's own
+    /// colour for everything else.
+    var token: ColorToken {
+        guard kind == .deadline else { return kind.token }
+        return isOverdue ? .taskOverdue : .textSecondary
+    }
 }
 
 /// A day as the week and the month draw it.
@@ -105,18 +117,22 @@ enum WeekPlan {
     /// A task scheduled on a day it is also due on appears once, as a task: two rows
     /// for one line of markdown would make the week say the day holds more than it
     /// does.
+    ///
+    /// `today` decides which deadlines have passed (ADR-0075 §D6); a caller that draws
+    /// passes it, so the grid and its test agree on what day it is.
     static func entries(
         on day: CalendarDate,
         events: [CalendarEvent],
         blocks: [TimeBlock],
-        tasks: [TaskItem]
+        tasks: [TaskItem],
+        today: CalendarDate = .today
     ) -> [WeekEntry] {
         let scheduled = tasks.filter { $0.isScheduled(on: day) }
         let scheduledIDs = Set(scheduled.map(\.id))
         let due = tasks.filter { $0.due == day && !scheduledIDs.contains($0.id) }
 
-        return eventEntries(events) + blockEntries(blocks)
-            + taskEntries(scheduled) + deadlineEntries(due)
+        return eventEntries(events, on: day) + blockEntries(blocks)
+            + taskEntries(scheduled) + deadlineEntries(due, today: today)
     }
 
     /// What a column shows and how many it could not, never truncating in silence: a
@@ -129,10 +145,18 @@ enum WeekPlan {
 
     // MARK: The four sources
 
-    private static func eventEntries(_ events: [CalendarEvent]) -> [WeekEntry] {
+    /// Each event at the part of it this day covers (ADR-0075 §D5): the middle day of a
+    /// three-day event is all-day, its last day starts at midnight, and a day it does not
+    /// touch drops it.
+    private static func eventEntries(_ events: [CalendarEvent], on day: CalendarDate) -> [WeekEntry] {
         events
-            .map { event in
-                let minutes = event.isAllDay ? nil : minutes(from: event.start)
+            .compactMap { event -> WeekEntry? in
+                let minutes: Int?
+                switch event.projection(on: day) {
+                case .none: return nil
+                case .allDay: minutes = nil
+                case .timed(let startMinute, _): minutes = startMinute
+                }
                 return WeekEntry(
                     id: "event-\(event.id)",
                     kind: .event,
@@ -183,7 +207,7 @@ enum WeekPlan {
             }
     }
 
-    private static func deadlineEntries(_ tasks: [TaskItem]) -> [WeekEntry] {
+    private static func deadlineEntries(_ tasks: [TaskItem], today: CalendarDate) -> [WeekEntry] {
         tasks
             .sorted { lhs, rhs in
                 let left = lhs.dueTime?.minutes ?? Int.max
@@ -198,7 +222,8 @@ enum WeekPlan {
                     timeText: task.dueTime?.text,
                     minutes: task.dueTime?.minutes,
                     sourcePath: task.sourcePath,
-                    lineIndex: task.lineIndex
+                    lineIndex: task.lineIndex,
+                    isOverdue: task.isOverdue(on: today)
                 )
             }
     }
@@ -220,13 +245,6 @@ enum WeekPlan {
             if next.month != month.month { return cursor }
             cursor = next
         }
-    }
-
-    /// The zone here is the machine's, unlike everywhere else in this file: an event is
-    /// an instant, and the hour a person reads on it is the hour their Mac shows.
-    private static func minutes(from date: Date) -> Int {
-        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
-        return (components.hour ?? 0) * 60 + (components.minute ?? 0)
     }
 
     private static func text(ofMinutes minutes: Int) -> String {

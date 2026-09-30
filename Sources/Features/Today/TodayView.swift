@@ -99,32 +99,20 @@ struct TodayView: View {
         }
     }
 
-    /// What the last drag wrote, and the way back (ADR-0013 §D5).
+    /// What the last drop or block insertion wrote, and the way back (ADR-0013 §D5).
     ///
     /// At the top of the view rather than inside one scale, because the same drag is
     /// made in the week, in the month and on the timeline, and three banners saying the
     /// same thing in three places would be three things to dismiss.
+    ///
+    /// It never changes height once it is up (`TaskDropBanner`): it sits above the day's
+    /// `HSplitView` and can appear mid drop-commit, when a taller banner crashes AppKit.
     private func dropBanner(_ drop: DayController.Drop) -> some View {
-        HStack(spacing: theme.spacing(.xs)) {
-            Image(systemName: drop.isRefusal ? "exclamationmark.triangle" : "checkmark")
-                .themedText(.caption, color: drop.isRefusal ? .taskOverdue : .textTertiary)
-            Text(drop.summary)
-                .themedText(.caption, color: drop.isRefusal ? .taskOverdue : .textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer()
-            if drop.journalID != nil {
-                Button("Annulla") { Task { @MainActor in await controller.undoLastDrop() } }
-                    .accessibilityIdentifier("undo-task-drop")
-            }
-            Button("Chiudi") { controller.lastDrop = nil }
-                .buttonStyle(.plain)
-                .themedText(.caption, color: .textTertiary)
-        }
-        .padding(.horizontal, theme.spacing(.m))
-        .padding(.vertical, theme.spacing(.xs))
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.color(.backgroundSecondary))
-        .accessibilityIdentifier("task-drop-banner")
+        TaskDropBanner(
+            drop: drop,
+            onUndo: { Task { @MainActor in await controller.undoLastDrop() } },
+            onClose: { controller.lastDrop = nil }
+        )
     }
 
     /// One of three scales of the same day (ADR-0013 §D4), all anchored on
@@ -218,7 +206,7 @@ struct TodayView: View {
 
     @ViewBuilder
     private var noteBody: some View {
-        if let note = vault.openNote, note.relativePath.contains(day.compactForm) {
+        if let note = vault.openNote, vault.isDailyNote(note.relativePath, for: day) {
             NoteTextView(
                 text: Binding(
                     get: { vault.openNote?.text ?? "" },
@@ -235,15 +223,19 @@ struct TodayView: View {
                 onFollowLink: { title in
                     if let path = vault.index.resolve(title: title).first { vault.openNote(at: path) }
                 },
-                vaultRoot: vault.root,
-                notePath: note.relativePath,
-                thumbnails: vault.thumbnails
+                vault: .init(
+                    vaultRoot: vault.root,
+                    notePath: note.relativePath,
+                    thumbnails: vault.thumbnails
+                )
             )
             .frame(minHeight: 320)
+            .accessibilityIdentifier("today-editor")
         } else {
             Button("Apri la nota di \(day.compactForm)") { controller.openDailyNote() }
                 .buttonStyle(.plain)
                 .themedText(.body, color: .accentPrimary)
+                .accessibilityIdentifier("today-open-daily-note")
         }
     }
 

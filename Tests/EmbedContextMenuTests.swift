@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import Pergamenum
@@ -76,4 +77,68 @@ import Testing
     // the menu never asks for a bad write.
     let staleRun = NSRange(location: 6, length: 13)
     #expect(EmbedContextMenu.deletionRange(forRun: staleRun, textLength: 6) == nil)
+}
+
+// MARK: - The wired menu hook (ADR-0074 G2 H7)
+
+/// A right click at `point` (the text view's own flipped coordinates, what
+/// `EmbedEditorFixtures` returns), built the way `WikilinkClickNavigationTests` builds one and
+/// handed straight to `menu(for:)` - never sent through a window.
+@MainActor
+private func rightClick(at point: CGPoint, in fixture: EmbedEditorFixtures.Fixture) -> NSEvent {
+    NSEvent.mouseEvent(
+        with: .rightMouseDown, location: fixture.textView.convert(point, to: nil),
+        modifierFlags: [], timestamp: 0, windowNumber: fixture.window.windowNumber,
+        context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+    )!
+}
+
+/// The fixture's `claimsCommand`-only wiring plus the rest of `NoteTextView.wire(_:to:)`, so
+/// `onEmbedMenu` is the app's own closure and not a copy.
+@MainActor
+private func wired(_ fixture: EmbedEditorFixtures.Fixture) {
+    NoteTextView(
+        text: .constant(""), theme: .emergency, noteTitles: [], tagSuggestions: [],
+        hidesMarkup: true, onFollowLink: { _ in }
+    ).wire(fixture.textView, to: fixture.coordinator)
+}
+
+/// G2 H7: a secondary click on a drawn picture reaches `CompletingTextView.menu(for:)`, which
+/// asks `onEmbedMenu` first, so the menu is the embed's own catalogue and nothing else.
+@MainActor
+@Test func aRightClickOnADrawnEmbedYieldsTheEmbedMenu() async throws {
+    let root = try EmbedEditorFixtures.makeTempVaultRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (fixture, box) = try await EmbedEditorFixtures.landedEmbed(root: root)
+    defer { fixture.window.orderOut(nil) }
+    #expect(box.width > 0)
+    wired(fixture)
+
+    let menu = fixture.textView.menu(for: rightClick(at: CGPoint(x: box.midX, y: box.midY), in: fixture))
+
+    #expect(menu?.items.map(\.title) == EmbedContextMenu.items())
+    // The menu's action is the coordinator's, and the click selected the run it acts on.
+    #expect(menu?.items.first?.target === fixture.coordinator)
+    #expect(
+        fixture.textView.selectedRange()
+            == NSRange(location: EmbedEditorFixtures.embedOffset, length: EmbedEditorFixtures.runLength)
+    )
+}
+
+/// G2 H7: away from the picture `onEmbedMenu` answers nil and the click falls through to
+/// `super.menu(for:)` - the system contextual menu, present and without the embed's entry.
+@MainActor
+@Test func aRightClickOutsideAnEmbedFallsThroughToTheSystemMenu() async throws {
+    let root = try EmbedEditorFixtures.makeTempVaultRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (fixture, _) = try await EmbedEditorFixtures.landedEmbed(root: root)
+    defer { fixture.window.orderOut(nil) }
+    wired(fixture)
+    let frame = EmbedEditorFixtures.fragmentFrame(at: 0, in: fixture.textView)
+    #expect(frame.width > 0)
+
+    let menu = fixture.textView.menu(for: rightClick(at: CGPoint(x: frame.midX, y: frame.midY), in: fixture))
+
+    #expect(menu != nil, "il menu di sistema dell'editor non deve sparire fuori da un embed")
+    #expect(menu?.items.contains { $0.title == "Elimina" } != true)
 }

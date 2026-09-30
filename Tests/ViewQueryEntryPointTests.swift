@@ -49,7 +49,7 @@ private struct EntryPointEditor {
     }
 
     func block(at ordinal: Int) throws -> RenderedViewBlock {
-        let host = coordinator.viewBlockHosts.host(for: ordinal, in: textView)
+        let host = coordinator.viewBlocks.hosts.host(for: ordinal, in: textView)
         return try #require(entryPointFind(RenderedViewBlock.self, in: host.rootView))
     }
 
@@ -71,7 +71,7 @@ private func entryPointEditor(_ text: String, enabled: Bool = true) -> EntryPoin
         theme: .emergency, noteTitles: [], tagSuggestions: [],
         hidesMarkup: true, onFollowLink: { _ in }
     )
-    if enabled { view.onEditQuery = { model.requests.append($0) } }
+    if enabled { view.vault.onEditQuery = { model.requests.append($0) } }
     let coordinator = view.makeCoordinator()
     let textView = CompletingTextView(usingTextLayoutManager: true)
     textView.delegate = coordinator
@@ -139,7 +139,7 @@ struct ViewQueryEntryPointTests {
             text: .constant(""), theme: .emergency, noteTitles: [], tagSuggestions: [],
             onFollowLink: { _ in }
         )
-        #expect(view.onEditQuery == nil)
+        #expect(view.vault.onEditQuery == nil)
     }
 
     @Test(arguments: ["render: table", "outsider: invalid"])
@@ -169,14 +169,14 @@ struct ViewQueryEntryPointTests {
         let after = "render: table\nlimit: 9"
         let editor = entryPointEditor(entryPointNote(before))
         let first = try editor.click(at: 0)
-        let host = editor.coordinator.viewBlockHosts.host(for: 0, in: editor.textView)
+        let host = editor.coordinator.viewBlocks.hosts.host(for: 0, in: editor.textView)
         // Same offsets and same line count deliberately exercise the stale-closure case.
         editor.style(entryPointNote(after))
         let second = try editor.click(at: 0)
         #expect(first.source == before)
         #expect(second.source == after)
         #expect(try editor.block(at: 0).source == second.source)
-        #expect(editor.coordinator.viewBlockHosts.host(for: 0, in: editor.textView) === host)
+        #expect(editor.coordinator.viewBlocks.hosts.host(for: 0, in: editor.textView) === host)
     }
 
     // R-02/R-03: invalid and empty bodies must reach the fix-it flow unchanged.
@@ -201,19 +201,19 @@ struct ViewQueryEntryPointTests {
         #expect(first.source == firstSource)
         #expect(second.source == secondSource)
         #expect(first.source != second.source)
-        let firstHost = editor.coordinator.viewBlockHosts.host(for: 0, in: editor.textView)
-        let secondHost = editor.coordinator.viewBlockHosts.host(for: 1, in: editor.textView)
+        let firstHost = editor.coordinator.viewBlocks.hosts.host(for: 0, in: editor.textView)
+        let secondHost = editor.coordinator.viewBlocks.hosts.host(for: 1, in: editor.textView)
         #expect(firstHost !== secondHost)
     }
 
     @Test func editingAboveTheFenceKeepsTheHostAndRefreshesTheRequest() throws {
         let editor = entryPointEditor(entryPointNote("render: table"))
-        let host = editor.coordinator.viewBlockHosts.host(for: 0, in: editor.textView)
+        let host = editor.coordinator.viewBlocks.hosts.host(for: 0, in: editor.textView)
         _ = try editor.click(at: 0)
         editor.style(entryPointNote("render: list\nlimit: 12", prefix: "New 🧭 line\nBefore\n"))
         let request = try editor.click(at: 0)
         #expect(request.source == "render: list\nlimit: 12")
-        #expect(editor.coordinator.viewBlockHosts.host(for: 0, in: editor.textView) === host)
+        #expect(editor.coordinator.viewBlocks.hosts.host(for: 0, in: editor.textView) === host)
     }
 
     // R-01/C8 explicitly requires one declaration in header(renderer:count:), shared
@@ -261,7 +261,7 @@ private final class InsertionEditor {
             self.appliedCount += 1
             self.pending = nil
         }
-        editor.onEditQuery = { self.requests.append($0) }
+        editor.vault.onEditQuery = { self.requests.append($0) }
         return editor
     }
 

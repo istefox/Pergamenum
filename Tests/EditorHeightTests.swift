@@ -30,7 +30,7 @@ private struct Editor {
 private func editorInAWindow(_ body: String) -> Editor {
     let view = NoteTextView(
         text: .constant(body), theme: .emergency, noteTitles: [], tagSuggestions: [],
-        onFollowLink: { _ in }, transclusions: nil
+        onFollowLink: { _ in }, vault: .init(transclusions: nil)
     )
     let coordinator = view.makeCoordinator()
     let textView = CompletingTextView(usingTextLayoutManager: true)

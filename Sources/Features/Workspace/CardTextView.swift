@@ -213,7 +213,7 @@ struct CardTextView: NSViewRepresentable {
         /// R-04's precondition.
         private(set) var hiddenMarkers: [Int: [HiddenMarker]] = [:]
         /// The revealed set already published, so an unchanged one invalidates nothing - the
-        /// same restraint `NoteTextView.Coordinator.lastRevealed` keeps, and for the same
+        /// same restraint the note editor's `RevealController.lastRevealed` keeps, and for the same
         /// reason: `applyReveal` runs on every arrow key. Not private for that type's other
         /// reason too - its mutator lives in `CardTextView+Reveal.swift`.
         var lastRevealed: Set<Int> = []
@@ -223,7 +223,7 @@ struct CardTextView: NSViewRepresentable {
         /// mutator lives in `CardTextView+Reveal.swift`.
         var lastRevealedSpans: [Int: [NSRange]] = [:]
         /// The fold layout already handed to the delegate, so an unchanged one re-reads nothing -
-        /// `NoteTextView.Coordinator.lastFoldLayout`'s restraint, mattering more here because
+        /// the note editor's `FoldController.lastFoldLayout` restraint, mattering more here because
         /// `applyFolding` runs in every SwiftUI update of every card. Not private, like
         /// `lastRevealed` above: its mutator lives in `CardTextView+Fold.swift`.
         var lastFoldLayout = NoteFolding.Layout()
@@ -408,7 +408,7 @@ struct CardTextView: NSViewRepresentable {
             }
             hiddenMarkers = markers
             // The badge a folded heading draws over itself, from the two tokens the note editor's
-            // `applyFolding` reads (`NoteTextView+Coordinator.swift:154-155`). Here rather than
+            // fold pass reads (`FoldController.apply`, `NoteTextView+Folding.swift`). Here rather than
             // beside a fold pass the card does not have yet: the delegate is shared, and it must
             // never be left drawing a badge in its `.secondaryLabelColor` default on a themed card.
             decorations.badgeColor = NSColor(parent.theme.color(.textTertiary))

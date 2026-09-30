@@ -252,7 +252,7 @@ final class VaultHost {
                 session,
                 title: try arguments.required("title"),
                 at: try arguments.required("at"),
-                minutes: arguments.int("minutes"),
+                minutes: try arguments.checkedInt("minutes", parsing: VaultAPI.blockMinutes(parsing:)),
                 on: arguments.string("day")
             ))
         case "undo_write":

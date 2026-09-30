@@ -26,10 +26,7 @@ extension EditorDecorationDelegate {
     /// the task's own text keeps the caret in that same paragraph the whole time, which used to
     /// mean the glyph vanished back into raw markdown on every keystroke.
     func checkboxParagraph(at range: NSRange, storage: NSTextStorage) -> NSTextParagraph? {
-        let markers = hiddenMarkers[range.location] ?? []
-        guard let marker = markers.first(where: { $0.kind == .checkbox }),
-              NSMaxRange(marker.range) <= range.length
-        else { return nil }
+        guard let marker = marker(of: .checkbox, at: range) else { return nil }
 
         let text = storage.string as NSString
         let markerRange = NSRange(
@@ -66,6 +63,7 @@ extension EditorDecorationDelegate {
         // still reveals on caret exactly as before this change, since editing bold text is a
         // workflow that still needs it. Only the checkbox itself is exempt.
         if !revealedParagraphs.contains(range.location) {
+            let markers = hiddenMarkers[range.location] ?? []
             for other in Self.survivors(among: markers.filter { $0.kind != .checkbox }, of: range, in: text) {
                 copy.addAttribute(.font, value: Self.collapsedFont, range: other.range)
             }

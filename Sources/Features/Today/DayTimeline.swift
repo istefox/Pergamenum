@@ -19,22 +19,38 @@ struct DayTimeline: View {
     /// The window widened to reach everything on the day: an event at 23:00 under a
     /// window ending at 18:00 would otherwise be drawn below the grid and never seen.
     private var hours: HourWindow {
-        Self.hours(
+        Self.hours(for: window, blocks: blocks, timed: projectedEvents.timed)
+    }
+
+    /// The window widened from what the grid actually draws on this day (ADR-0075 §D5):
+    /// the part of each event the day covers, not the event's own start and length, so
+    /// the middle day of a three-day event is not stretched to midnight. An event's extent
+    /// is the one drawn, with the 15-minute floor the boxes keep.
+    ///
+    /// `nonisolated`: pure arithmetic, and a `View`'s members otherwise infer the main
+    /// actor for the closure below, which traps when a test calls this off the main actor.
+    nonisolated static func hours(
+        for window: HourWindow, blocks: [TimeBlock], timed: [ProjectedEvent]
+    ) -> HourWindow {
+        hours(
             for: window,
-            startMinutes: blocks.map(\.startMinutes) + timedEvents.map { minutes(from: $0.start) },
+            startMinutes: blocks.map(\.startMinutes) + timed.map(\.startMinute),
             endMinutes: blocks.map(\.endMinutes)
-                + timedEvents.map { minutes(from: $0.start) + duration(of: $0) }
+                + timed.map { min(24 * 60, max($0.endMinute, $0.startMinute + 15)) }
         )
     }
 
-    /// The widening itself (ADR-0053 §D2 seam #10), pulled out of the computed property
-    /// above so a test can call it with plain integers rather than building a `TimeBlock`
-    /// or a `CalendarEvent`: `hours` is not a function of `window` alone, but everything
-    /// else it reads - `timedEvents`, `minutes(from:)`, `duration(of:)` - is private to
-    /// this view and over `CalendarEvent`, so those stay here and hand this the minutes
-    /// already converted.
+    /// The widening itself (ADR-0053 §D2 seam #10), over plain integers so a test can
+    /// call it without building a `TimeBlock` or a `CalendarEvent`.
     static func hours(for window: HourWindow, startMinutes: [Int], endMinutes: [Int]) -> HourWindow {
         window.covering(startMinutes: startMinutes, endMinutes: endMinutes)
+    }
+
+    /// The hours whose row accepts a dropped task (ADR-0075 §D3): every drawn row but a
+    /// «24:00» one. A window reaching midnight draws that row as the day's bottom edge, and a
+    /// task cannot start at 24:00 (`TaskTime` would quietly read it as 23:00).
+    nonisolated static func droppableHours(in window: HourWindow) -> ClosedRange<Int> {
+        window.first...min(window.last, 23)
     }
 
     private var firstHour: Int { hours.first }
@@ -47,18 +63,19 @@ struct DayTimeline: View {
         ScrollView {
             ZStack(alignment: .topLeading) {
                 hourLines
-                ForEach(timedEvents) { event in
+                ForEach(projectedEvents.timed) { projected in
                     TimelineEntryBox(
                         entry: TimelineEntry(
-                            title: event.title, subtitle: event.calendarTitle,
-                            start: minutes(from: event.start), duration: duration(of: event),
+                            title: projected.event.title, subtitle: projected.event.calendarTitle,
+                            start: projected.startMinute,
+                            duration: max(15, projected.endMinute - projected.startMinute),
                             token: .accentMuted, isEvent: true
                         ),
                         firstHour: firstHour,
                         hourHeight: hourHeight,
-                        accessory: { eventNoteMark(event) }
+                        accessory: { eventNoteMark(projected.event) }
                     )
-                    .contextMenu { eventNoteMenuItem(event) }
+                    .contextMenu { eventNoteMenuItem(projected.event) }
                 }
                 ForEach(blocks) { block in
                     TimelineBlockBox(
@@ -113,10 +130,12 @@ struct DayTimeline: View {
     /// The hour and the attendees are stamped from the event, so the note says what the
     /// meeting was before anybody types a word into it (§D3).
     private func openEventNote(_ event: CalendarEvent) {
-        // Nil for an all-day event, which has no hour to stamp: `minutes(from:)` would give
+        // Nil for an all-day event, which has no hour to stamp: `minuteOfDay` would give
         // midnight, and «00:00–00:00 · Ferragosto» is worse than saying it lasts all day.
-        let start = event.isAllDay ? nil : time(at: minutes(from: event.start))
-        let end = event.isAllDay ? nil : time(at: minutes(from: event.end))
+        // The event's own clock start and end, not the part this day covers: the note is
+        // about the meeting, not about the slice of it on screen.
+        let start = event.isAllDay ? nil : time(at: DayProjection.minuteOfDay(event.start))
+        let end = event.isAllDay ? nil : time(at: DayProjection.minuteOfDay(event.end))
         Task { @MainActor in
             await vault.openEventNote(
                 for: event.title,
@@ -133,32 +152,42 @@ struct DayTimeline: View {
     /// The row is the target rather than the line: a one-point rule is not something a
     /// mouse can be asked to hit, and the hour a task is dropped *in* is the hour whose
     /// band it was let go over.
+    ///
+    /// A «24:00» row is still drawn, so the grid keeps its height and the day its bottom
+    /// line, but it is not a target (`droppableHours`).
     private var hourLines: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let droppable = Self.droppableHours(in: hours)
+        return VStack(alignment: .leading, spacing: 0) {
             ForEach(firstHour...lastHour, id: \.self) { hour in
-                TaskDropTarget(
-                    cornerRadius: theme.radius(.control),
-                    onDrop: { payload in
-                        await controller.drop(payload, on: controller.day, at: TaskTime(hour: hour, minute: 0))
-                    },
-                    content: {
-                        HStack(alignment: .top, spacing: theme.spacing(.s)) {
-                            Text(String(format: "%02d:00", hour))
-                                .themedText(.caption, color: .textTertiary)
-                                .frame(width: 44, alignment: .trailing)
-                            Rectangle()
-                                .fill(theme.color(.borderSubtle))
-                                .frame(height: 1)
-                        }
-                        .frame(height: hourHeight, alignment: .top)
-                        // Without this the band is `.clear` above its one-point rule, and
-                        // a drop anywhere but on the rule itself finds nothing to land on.
-                        .contentShape(Rectangle())
-                    }
-                )
-                .accessibilityIdentifier("timeline-hour-\(hour)")
+                if droppable.contains(hour) {
+                    TaskDropTarget(
+                        cornerRadius: theme.radius(.control),
+                        onDrop: { payload in
+                            await controller.drop(payload, on: controller.day, at: TaskTime(hour: hour, minute: 0))
+                        },
+                        content: { hourRow(hour) }
+                    )
+                    .accessibilityIdentifier("timeline-hour-\(hour)")
+                } else {
+                    hourRow(hour)
+                }
             }
         }
+    }
+
+    private func hourRow(_ hour: Int) -> some View {
+        HStack(alignment: .top, spacing: theme.spacing(.s)) {
+            Text(String(format: "%02d:00", hour))
+                .themedText(.caption, color: .textTertiary)
+                .frame(width: 44, alignment: .trailing)
+            Rectangle()
+                .fill(theme.color(.borderSubtle))
+                .frame(height: 1)
+        }
+        .frame(height: hourHeight, alignment: .top)
+        // Without this the band is `.clear` above its one-point rule, and
+        // a drop anywhere but on the rule itself finds nothing to land on.
+        .contentShape(Rectangle())
     }
 
     /// Events with no hour of their own, above the grid.
@@ -196,8 +225,13 @@ struct DayTimeline: View {
         }
     }
 
-    private var allDayEvents: [CalendarEvent] { events.splitByAllDay.allDay }
-    private var timedEvents: [CalendarEvent] { events.splitByAllDay.timed }
+    /// The day's events as this day covers them (ADR-0075 §D5): a timed event that spans
+    /// the whole day goes in the strip, and the rest at the minutes they have on it.
+    private var projectedEvents: (allDay: [CalendarEvent], timed: [ProjectedEvent]) {
+        events.projected(on: controller.day)
+    }
+
+    private var allDayEvents: [CalendarEvent] { projectedEvents.allDay }
 
     private var header: some View {
         HStack(spacing: theme.spacing(.xs)) {
@@ -234,14 +268,5 @@ struct DayTimeline: View {
     /// to. Inside, it is placed on the entry before the entry moves.
     private func time(at minutes: Int) -> TaskTime {
         TaskTime(hour: minutes / 60, minute: minutes % 60)
-    }
-
-    private func minutes(from date: Date) -> Int {
-        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
-        return (components.hour ?? 0) * 60 + (components.minute ?? 0)
-    }
-
-    private func duration(of event: CalendarEvent) -> Int {
-        max(15, Int(event.end.timeIntervalSince(event.start) / 60))
     }
 }

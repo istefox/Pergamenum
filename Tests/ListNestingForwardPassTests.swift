@@ -88,7 +88,7 @@ private func expectAgreement(
 @Test func aListLookingLineInsideAFenceIsCountedNotFilteredByEitherImplementation() {
     // `ListNesting` has no notion of a fence at all - that filtering happens one layer up,
     // in `MarkdownStyler.spans(in:)`'s own per-line loop (`aListMarkerInsideAFenceHasNoListMarkerSpan`,
-    // `MarkdownStylerTests.swift`). Both implementations here still walk straight through it.
+    // `MarkdownStylerBlockTests.swift`). Both implementations here still walk straight through it.
     let text = "```\n- inside fence\n```\n\n- outside"
     expectAgreement(text, at: lineStart(of: "- inside fence", in: text), indent: 0, "list-looking line inside a fence")
     expectAgreement(text, at: lineStart(of: "- outside", in: text), indent: 0, "list line after the fence")
@@ -103,7 +103,7 @@ private func expectAgreement(
 @Test func multiDigitOrdinalContentColumnAgrees() {
     // "100. " is a 5-column marker (3 digits, then ". ") - a child indented exactly 5
     // reaches that content column and nests, the same tie-break
-    // `spansTieBreakAttachesToTheDeepestListThatStillFits` pins in `MarkdownStylerTests`.
+    // `spansTieBreakAttachesToTheDeepestListThatStillFits` pins in `MarkdownStylerBlockTests`.
     let text = "100. padre\n     - figlio"
     let target = lineStart(of: "- figlio", in: text)
     expectAgreement(text, at: target, indent: 5, "multi-digit ordinal content column")

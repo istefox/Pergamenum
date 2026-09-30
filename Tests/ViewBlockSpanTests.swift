@@ -17,9 +17,10 @@ import Testing
 /// already true against the stub, the same "some assertions are red, some are already true"
 /// shape `Tests/TableRenderingTests.swift`'s own header documents for its Task 4 stub.
 ///
-/// Contract-staleness: `Tests/MarkdownStylerTests.swift` is re-run in full and stays green
-/// unmodified - its only two full-array assertions (`# Titolo`, `*corsivo*`) contain no
-/// fence, so a red result there would mean the span is being emitted outside a fence.
+/// Contract-staleness: `Tests/MarkdownStylerTests.swift` and `Tests/MarkdownStylerBlockTests.swift`
+/// are re-run in full and stay green unmodified - their only two full-array assertions
+/// (`# Titolo`, `*corsivo*`) contain no fence, so a red result there would mean the span is
+/// being emitted outside a fence.
 
 private func spans(_ text: String) -> [MarkdownStyler.Span] {
     MarkdownStyler.spans(in: text).map(\.span)

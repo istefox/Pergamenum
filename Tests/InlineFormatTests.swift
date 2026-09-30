@@ -217,3 +217,47 @@ Terza riga, per avere spazio sotto.
     // plan said - put the bar at the top of the note, far from where the mouse had stopped.
     #expect(anchorSide(selecting: "prosa da formattare.\nSeconda riga", in: twoParagraphs) == .below)
 }
+
+// MARK: The bar's button reaches the text view (ADR-0074 G2 H14)
+
+/// G2 H14: `applyFormat(.format(.bold))` is what a press on the bar's bold button calls. Applied
+/// twice over the selection it leaves, it wraps and then unwraps, each press undone by one undo
+/// (explicit per-press groups; registrations within a press merge, as in production)
+/// and the selection still on the word after both. The bar panel itself is not driven: its
+/// only in-process observable, that it cannot become key, is `NeverKeyPanelTests`' (the
+/// factory both panels share), and showing the real one would order a window front.
+@MainActor
+@Test func theBoldButtonTogglesBoldOnThenOffOverTheSelectionAndEachPressUndoesInOneStep() throws {
+    let note = "l'isolatore amplifica invece"
+    let view = CompletingTextView(usingTextLayoutManager: true)
+    view.frame = NSRect(x: 0, y: 0, width: 500, height: 300)
+    view.allowsUndo = true
+    view.string = note
+    let window = NSWindow(
+        contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false
+    )
+    window.contentView = view
+    defer { window.orderOut(nil) }
+    let undo = try #require(view.undoManager)
+    undo.groupsByEvent = false
+    view.setSelectedRange(range(of: "amplifica", in: note))
+
+    undo.beginUndoGrouping()
+    view.applyFormat(.format(.bold))
+    undo.endUndoGrouping()
+
+    #expect(view.string == "l'isolatore **amplifica** invece")
+    #expect((view.string as NSString).substring(with: view.selectedRange()) == "amplifica")
+
+    undo.beginUndoGrouping()
+    view.applyFormat(.format(.bold))
+    undo.endUndoGrouping()
+
+    #expect(view.string == note)
+    #expect((view.string as NSString).substring(with: view.selectedRange()) == "amplifica")
+
+    undo.undo()
+    #expect(view.string == "l'isolatore **amplifica** invece")
+    undo.undo()
+    #expect(view.string == note)
+}

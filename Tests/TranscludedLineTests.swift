@@ -39,7 +39,7 @@ import Testing
             noteTitles: [],
             tagSuggestions: [],
             onFollowLink: { _ in },
-            transclusions: transclusions
+            vault: .init(transclusions: transclusions)
         )
         let coordinator = view.makeCoordinator()
         let textView = CompletingTextView(usingTextLayoutManager: true)
@@ -79,14 +79,14 @@ import Testing
         let (textView, coordinator) = Self.editor(transclusions: Self.source(generation: 1, text: "# Prove\n\nPrima.\n"))
         coordinator.applyStyling(to: textView, theme: .emergency)
         coordinator.applyTransclusions(to: textView, theme: .emergency)
-        #expect(coordinator.renditionCache.count == 1)
+        #expect(coordinator.transclusion.renditionCache.count == 1)
 
         for generation in 2...4 {
-            coordinator.parent.transclusions = Self.source(generation: generation, text: "# Prove\n\nDopo \(generation).\n")
+            coordinator.parent.vault.transclusions = Self.source(generation: generation, text: "# Prove\n\nDopo \(generation).\n")
             coordinator.applyStyling(to: textView, theme: .emergency)
             coordinator.applyTransclusions(to: textView, theme: .emergency)
-            #expect(coordinator.renditionCache.count == 1)
-            #expect(coordinator.renditionCache.keys.allSatisfy { $0.contains("@\(generation)|") })
+            #expect(coordinator.transclusion.renditionCache.count == 1)
+            #expect(coordinator.transclusion.renditionCache.keys.allSatisfy { $0.contains("@\(generation)|") })
         }
     }
 
@@ -94,12 +94,12 @@ import Testing
         let (textView, coordinator) = Self.editor(transclusions: Self.source(generation: 5, text: "# Prove\n\nPrima.\n"))
         coordinator.applyStyling(to: textView, theme: .emergency)
         coordinator.applyTransclusions(to: textView, theme: .emergency)
-        let cached = coordinator.renditionCache
+        let cached = coordinator.transclusion.renditionCache
         // Same generation, different text behind it: the cache answers, nothing is re-read.
-        coordinator.parent.transclusions = Self.source(generation: 5, text: "# Prove\n\nCambiata.\n")
+        coordinator.parent.vault.transclusions = Self.source(generation: 5, text: "# Prove\n\nCambiata.\n")
         coordinator.applyStyling(to: textView, theme: .emergency)
         coordinator.applyTransclusions(to: textView, theme: .emergency)
-        #expect(coordinator.renditionCache == cached)
+        #expect(coordinator.transclusion.renditionCache == cached)
     }
 
     @Test func theLineNamingANoteReservesSpaceUnderItself() {
@@ -160,7 +160,7 @@ import Testing
             noteTitles: [],
             tagSuggestions: [],
             onFollowLink: { followed = $0 },
-            transclusions: Self.source()
+            vault: .init(transclusions: Self.source())
         )
         let coordinator = view.makeCoordinator()
         let textView = CompletingTextView(usingTextLayoutManager: true)
@@ -204,6 +204,36 @@ import Testing
         }
         #expect(url(of: "Prove in laboratorio")?.host == "note")
         #expect(url(of: "foto.png")?.host == MarkdownAttributedText.embedHost)
+    }
+
+    /// G2 H8 (ADR-0074): `![[Nota#Sezione]]` reaches `TransclusionController.apply` with the
+    /// occurrence's section, and the rendition drawn holds that section's text only - neither
+    /// the sections around it nor the note's lead-in. A fresh coordinator, so the cache has no
+    /// earlier generation to answer from.
+    @Test func aSectionTransclusionRendersOnlyThatSectionsText() throws {
+        let note = "# Prove\n\nIntro.\n\n## Prima\n\nTesto della prima.\n\n"
+            + "## Seconda\n\nTesto della seconda.\n\n## Terza\n\nTesto della terza.\n"
+        let source = TransclusionSource(
+            resolve: { reference in
+                guard reference == "Prove" else { return nil }
+                return TransclusionSource.Resolved(title: "Prove", relativePath: "Prove.md", text: note)
+            },
+            generation: 1
+        )
+        let (textView, coordinator) = Self.editor(transclusions: source)
+        let host = "# Ospite\n\n![[Prove#Seconda]]\n\ncoda\n"
+        textView.string = host
+        coordinator.applyStyling(to: textView, theme: .emergency)
+        coordinator.applyTransclusions(to: textView, theme: .emergency)
+
+        let offset = (host as NSString).range(of: "![[Prove#Seconda]]").location
+        let rendition = try #require(coordinator.transclusion.lastRenditions[offset])
+        let drawn = rendition.body.string
+        #expect(drawn.contains("Testo della seconda"))
+        #expect(!drawn.contains("Testo della prima"))
+        #expect(!drawn.contains("Testo della terza"))
+        #expect(!drawn.contains("Intro."))
+        #expect(rendition.title == "Prove › Seconda")
     }
 
     @Test func withoutAVaultBehindItTheLineStaysAnOrdinaryLine() {

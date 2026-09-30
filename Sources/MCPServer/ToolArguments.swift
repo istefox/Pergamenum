@@ -51,7 +51,14 @@ struct ToolArguments {
     /// An integer that keeps «absent» apart from «unreadable» (ADR-0063 §D1.4), for a
     /// `limit`: a bad number is refused with the shared sentence rather than read as «no
     /// limit given», which is the leniency the rest of this file allows elsewhere.
-    func checkedInt(_ name: String) throws -> Int? {
+    ///
+    /// `parsing` is the shared text rule whose sentence a refusal speaks - `limit`'s by
+    /// default, `VaultAPI.blockMinutes(parsing:)` for a block's `minutes` (ADR-0075 §D4).
+    func checkedInt(
+        _ name: String,
+        parsing rule: ((String) throws -> Int?)? = nil
+    ) throws -> Int? {
+        let parse = rule ?? { raw in try VaultAPI.limit(parsing: raw, named: name) }
         guard let value = values[name] else { return nil }
         switch value {
         case .null: return nil
@@ -61,11 +68,11 @@ struct ToolArguments {
         // value never prints as an integer, so none of them can read as a number there.
         case .double(let number):
             guard let whole = Self.truncated(number) else {
-                return try VaultAPI.limit(parsing: String(number), named: name)
+                return try parse(String(number))
             }
             return whole
-        case .string(let raw): return try VaultAPI.limit(parsing: raw, named: name)
-        default: return try VaultAPI.limit(parsing: "\(value)", named: name)
+        case .string(let raw): return try parse(raw)
+        default: return try parse("\(value)")
         }
     }
 

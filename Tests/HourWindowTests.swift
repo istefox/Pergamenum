@@ -69,6 +69,36 @@ import Testing
     #expect(DayTimeline.hours(for: window, startMinutes: [10 * 60], endMinutes: [11 * 60]) == window)
 }
 
+// The window widened from the part of each event the day covers (ADR-0075 §D5), not from
+// the event's own start and length.
+
+private func spanning(_ fromISO: String, _ fromHour: Int, _ toISO: String, _ toHour: Int) -> CalendarEvent {
+    CalendarEvent(
+        id: "evento", title: "Evento",
+        start: EventKitStore.date(CalendarDate(iso: fromISO)!, hour: fromHour, minute: 0)!,
+        end: EventKitStore.date(CalendarDate(iso: toISO)!, hour: toHour, minute: 0)!,
+        isAllDay: false, calendarTitle: "Lavoro", isEditable: true
+    )
+}
+
+@Test func theMiddleDayOfAMultiDayEventDoesNotStretchTheWindow() {
+    let window = HourWindow(first: 9, last: 14)
+    let fair = spanning("2026-08-17", 9, "2026-08-19", 11)
+    let tuesday = [fair].projected(on: CalendarDate(iso: "2026-08-18")!)
+
+    #expect(DayTimeline.hours(for: window, blocks: [], timed: tuesday.timed) == window)
+}
+
+@Test func theSecondDayOfALateEventWidensToMidnightNotToTheEvening() {
+    let window = HourWindow(first: 9, last: 14)
+    let dinner = spanning("2026-08-20", 22, "2026-08-21", 1)
+    let nextDay = [dinner].projected(on: CalendarDate(iso: "2026-08-21")!)
+
+    let widened = DayTimeline.hours(for: window, blocks: [], timed: nextDay.timed)
+    #expect(widened.first == 0)
+    #expect(widened.last == 14)
+}
+
 // MARK: In the vault's settings
 
 @Test func settingsCarryOneWindowPerSection() throws {

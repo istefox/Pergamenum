@@ -62,6 +62,9 @@ extension VaultSession {
     ///
     /// Returns the block as it was placed: the requested start is honoured unless
     /// something is already there, in which case it moves on rather than overlapping.
+    /// It may be shorter than asked, cut at the next block or at midnight, but never
+    /// under a quarter of an hour (or the length asked, when that is less); with no such
+    /// stretch left in the day, nothing is written (ADR-0075 §D2).
     func addTimeBlock(
         title: String,
         on day: CalendarDate,
@@ -71,16 +74,17 @@ extension VaultSession {
     ) async -> PlacedBlock? {
         let duration = durationMinutes ?? settings.blockMinutes
         let existing = timeBlocks(on: day, preferring: text)
-        guard let start = TimeBlock.freeStart(from: startMinutes, in: existing, duration: duration)
-        else {
+        guard let slot = TimeBlock.freeSlot(
+            from: startMinutes, in: existing, duration: duration, minimum: min(15, duration)
+        ) else {
             recordProblem("blocco tempo: nessuno spazio libero il \(day.compactForm)")
             return nil
         }
 
         let block = TimeBlock(
             day: day,
-            startMinutes: start,
-            durationMinutes: duration,
+            startMinutes: slot.start,
+            durationMinutes: slot.duration,
             title: title,
             sourceTaskID: nil,
             isPublished: false

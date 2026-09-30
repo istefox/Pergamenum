@@ -507,165 +507,281 @@ Never sleep in the engine.
 
 ## Task 6 — Controller, watcher, settings, route and link (R-04, R-08, R-23, R-24, R-26)
 
+Tasks 6 and 7 were re-read at `cd3d9b15` (2026-09-30), after PR 1 landed. Line numbers below were
+read there.
+
+### What PR 1 hands this task
+
+- **`ContenitoreIngestEngine`** (`@MainActor`), `init(session:settings:home:today:onImported:)`.
+  - It is driven only by `observe() async -> IngestReport` (`imported`, `waiting`, `notices`).
+  - It has no catch-up method, no timer and no notice callback. A notice exists only in the report
+    one `observe()` returns.
+  - `observe()` creates a missing drop folder itself. The controller does not create it again.
+- **`ContenitoreExtractionQueue`** (`@MainActor @Observable`): `enqueue(sha256:url:)`,
+  `drain() async`, `progress` and `onFailed`. It has no start or stop, and it re-enqueues nothing
+  after an interruption.
+- **`ContenitoreSettings`**: `dropFolder` (`~/Pergamenum Drop`) and `root` (`Contenitore`).
+  - It decodes key by key.
+  - `validateDropFolder(_:vaultRoot:home:)` returns a `DropFolderRefusal` with seven cases, each
+    with its own `sentence`.
+  - `validateRoot(_:praticheFolder:)` returns a `RootRefusal`.
+  - `storedDropFolder(for:home:)` keeps `~`.
+- **Session and index**:
+  - `VaultSession+Contenitore.swift`: `extractedTexts`, `companion(ofScheda:)`,
+    `moveDocument(at:toContainer:)` and `trashDocument(at:)`.
+  - `IndexSnapshot.schede(underRoot:)`.
+  - `NoteRecord.contenitore`.
+  - `mintNoteID(for:)` and `lookUpNote(id:)`, the registry `.noteID` already uses.
+
 ### Declarations (tester)
 
 - **`Sources/Core/URLScheme/PergamenumURL.swift`:**
-  - `case contenitore(id: String)`, parsed from host `contenitore` and query `id`.
-  - `kind` gains `"contenitore"`.
-  - `PergamenumLink.contenitore(id:)`.
-- **`Sources/App/VaultController+Routes.swift:41`:**
-  - A `.contenitore` arm, stubbed to `return false`.
-  - `RouteState` gains `pendingContenitore: ContenitoreRouteTarget?`, where
+  - `case contenitore(id: String)`, parsed from host `contenitore` and query `id` in the host
+    switch (`:46-83`).
+  - `kind` gains `"contenitore"` (the switch at `:99-107`).
+  - `PergamenumLink.contenitore(id:)` beside `note(id:)`, through the private `build` (`:148`).
+- **`Sources/App/VaultController+Routes.swift`:**
+  - A `.contenitore` arm in the route switch (`:42-74`), stubbed to `return false`.
+  - `RouteState` (`:192-200`) gains `pendingContenitore: ContenitoreRouteTarget?`, where
     `ContenitoreRouteTarget` is `select(path)` or `none`.
-  - `consumePendingContenitoreRoute()`.
-- **`Sources/App/Navigation.swift`:** `.contenitore`, with title «Contenitore», symbol `archivebox`
-  and shortcut `.paneContenitore`, added to the switches at `:54`, `:73` and `:104`.
-- **`Sources/Core/Shortcuts/ShortcutCommand.swift`:** `paneContenitore`, appended after
-  `addToPraticaFromMail`, never inserted.
-  - Section `.view` (`:175`).
-  - Title «Vai a Contenitore» (the `:238` block).
-  - `KeyBinding("c", [.command, .control])` (the `:351` block).
+  - `consumePendingContenitoreRoute()` beside `consumePendingCanvasRoute()` (`:147`).
+  - `pergamenumLink(toSchedaAt:) -> URL?`, the `pergamenumLink(toNoteAt:)` shape (`:120`).
+- **`Sources/App/Navigation.swift`:**
+  - `.contenitore` after `pratiche` (`:39`), with title «Contenitore», symbol `archivebox` and
+    shortcut `.paneContenitore`.
+  - Add it to the switches at `:54`, `:73` and `:104`.
+- **`Sources/Core/Shortcuts/ShortcutCommand.swift`:** three cases, appended after
+  `addToPraticaFromMail` (`:136`), never inserted.
+  - `paneContenitore`: section `.view` (`:172-175`), title «Vai a Contenitore», default
+    Cmd+Ctrl+C.
+  - `contenitoreClassify`: title «Classifica…», default Cmd+Opt+K.
+  - `contenitoreOpenScheda`: title «Apri scheda», default Cmd+Opt+O.
+  - The two document commands take the section the Task menu's commands use.
+  - All three defaults were checked unused at `cd3d9b15` (ADR-0071 §D11). The shortcut tests below
+    still prove it.
 - **`Sources/App/SidebarItem.swift:90`:** `[.pane(.tasks), .pane(.contenitore), .pane(.pratiche),
   .pane(.recordings)]`.
-- **`Sources/App/RootView.swift:265`:** `case .contenitore: ContenitoreView()`, as a shell with an
-  empty state until Task 7.
-- **`Sources/Features/Contenitore/ContenitoreController.swift`:**
-  - `@MainActor @Observable`, with `live(vault:)`.
-  - `start()`, which starts the watcher, the catch-up and the queue.
-  - `stop()`.
-  - `notices`, `selection` and `copyLink(for:) -> Bool`.
-- **`Sources/Features/Contenitore/DropFolderEventStream.swift`:** the FSEvents stream, in the
-  `MailStoreEventStream` shape with a retained sink.
-- **`Sources/Vault/VaultSettings.swift`:** `contenitore: ContenitoreSettings`, decoded key by key as
-  `pratiche` is.
-- **`Sources/Features/Settings/ContenitoreSettingsTab.swift`,** plus a tab in `SettingsView.swift`.
-- **`Sources/App/PergamenumApp.swift`:** `ContenitoreController.live(vault:)`, injected with
-  `.environment` in the window and settings scenes, beside `PraticheController`.
+- **`Sources/App/RootView.swift`:** `case .contenitore: contenitorePane` in the pane switch
+  (`:259-269`).
+  - Wrap it in the `needsVault(…)` guard `pratichePane` uses (`:273`).
+  - `ContenitoreView` is a shell with an empty state until Task 7.
+- **`Sources/Features/Contenitore/ContenitoreController.swift`:** `@MainActor @Observable`, with
+  `live(vault:)`.
+  - `start(in:) async` and `stop()`.
+  - `notices: [ContenitoreNotice]`, `selection: String?` and `copyLink(for:) -> Bool`.
+  - `observeNow() async`: one observation, public for the tests.
+- **`Sources/Features/Contenitore/DropFolderEventStream.swift`:** the FSEvents stream in the
+  `MailStoreEventStream` shape (`Sources/Features/Pratiche/MailStoreEventStream.swift`): a private
+  `Sink` behind `NSLock`, a retained context, a serial queue, `start()`/`stop()`.
+- **`Sources/Vault/VaultSettings.swift`:** `var contenitore: ContenitoreSettings`.
+  - Decode it as one nested value with a fallback, the `pratiche` line at `:233`.
+  - Add it to the memberwise init with a `.default` default (`:255`/`:274`).
+  - Add it to the `default` literal (`:146-168`).
+- **`Sources/Features/Settings/ContenitoreSettingsTab.swift`,** plus a twelfth tab in
+  `SettingsView.swift` (`:19-33`) beside «Pratiche».
+- **`Sources/App/PergamenumApp.swift`:** `@State private var contenitore: ContenitoreController`.
+  - Create it in `init` after `PraticheController.live` (`:208`).
+  - Inject it with `.environment` in the window (`:287`) and settings (`:383`) scenes.
+  - Do **not** reassign `vault.didRelocateFolders` or `didTrashFolder` (`:213-217`). They are
+    single closure slots that Pratiche owns. The controller learns of vanished paths from the index.
 
 ### Red suite (tester)
 
 - **`Tests/ContenitoreRouteTests.swift`:**
   - `pergamenum://contenitore?id=<uuid>` parses, and a missing id is not a route.
-  - A minted scheda id sets `pendingContenitore == .select(path)`, and still does after a pair
-    rename and a pair move (R-23).
-  - An unknown id, or the id of a non-scheda note, sets `.none` and records exactly one problem
-    (R-24).
-  - `copyLink(for:)` mints on first use and puts `pergamenum://contenitore?id=<same id>` on a
-    private pasteboard, using the existing link-copy test's seam. The second call reuses the id
-    (R-23).
+  - A minted scheda id sets `pendingContenitore == .select(path)`. It still does after a pair
+    rename and after a pair move (R-23).
+  - An unknown id, or the id of a note that is not a scheda, sets `.none` and records exactly one
+    problem (R-24).
+  - `copyLink(for:)` mints the id on first use and puts `pergamenum://contenitore?id=<same id>` on
+    a `.volatile()` pasteboard, the seam `RowCommandTests.swift:103` uses (`CommandActions.pasteboard`,
+    `NSPasteboard+Volatile.swift`). The second call reuses the id (R-23).
 - **`Tests/ContenitoreControllerTests.swift`:**
-  - `start()` on a vault with files already in the drop folder imports them after two driven
-    observations (R-04, end-to-end).
-  - Engine notices surface on the controller (R-08).
-  - Settings round-trip through `VaultSettings` with `~` kept, and an invalid drop folder is refused
-    with its sentence (R-26).
-  - The drop folder is created at the first `start()`.
+  - `start(in:)` on a vault whose drop folder already holds files imports them after two driven
+    `observeNow()` calls (R-04, end-to-end).
+  - A duplicate dropped twice leaves exactly one `.duplicate` notice on the controller (R-08). The
+    controller collects notices from each `IngestReport`.
+  - An extraction failure raised through `queue.onFailed` appears as `.extractionFailed`.
+  - `start(in:)` enqueues every scheda under the root whose `extractedTexts.read` is nil or
+    `.pending`, so an interrupted extraction resumes.
+  - A missing drop folder exists after the first `start(in:)`, created by the engine's own
+    `observe()`.
+  - Settings round-trip through `VaultSettings` with `~` kept.
+  - An old settings file with no `contenitore` key decodes to the defaults.
+  - Each invalid drop folder is refused with its own `DropFolderRefusal.sentence` (R-26).
 
 ### Coder
 
-- Fill the arms.
-- `RootView` gets `.onChange(of: vault.routeState.pendingContenitore)`, which sets `navigation.pane =
-  .contenitore`. This is the `pendingCanvas` shape at `RootView.swift:125-129`.
-- Start the controller from `RootView`'s `.task(id: vault.root)`.
-- While something waits, the watcher schedules the second observation about 2 seconds after any
-  event. This is the only timer.
+- **Routes.**
+  - Fill the arms. The route resolves through `session.lookUpNote(id:)` and checks
+    `NoteRecord.contenitore != nil`.
+  - `RootView` mirrors both halves of the `pendingCanvas` shape:
+    - an `.onChange(of: vault.routeState.pendingContenitore)` that sets `navigation.pane =
+      .contenitore`, as at `:128-130`;
+    - the companion `.task` that replays a route pending before first appearance, as at `:131-134`.
+- **Start.** `RootView` gains a new `.task(id: vault.root)` that calls `contenitore.start(in:)`.
+  - `RootView` has no such block today. It is new, not an existing one extended.
+  - It goes in `RootView`, not the pane: R-04 imports on any pane. Pratiche starts from its own pane
+    (`PratichePane.swift:82`) because it only syncs while shown.
+- **Controller wiring.**
+  - Hook the engine's `onImported` to `queue.enqueue` and then `drain()`.
+  - Hook `queue.onFailed` to append `.extractionFailed`.
+- **Watcher.** An event runs `observeNow()`.
+  - While a report says `waiting > 0`, the controller schedules one more observation about 2 seconds
+    later. This is the only timer.
+  - Changing the drop folder in settings stops the stream and restarts it on the new path.
 
 ### Update tests and call-sites asserting the old behaviour
 
 - **Route enum.** `rg -n "case \.addTask|\.kind" Sources` finds:
-  - `PergamenumURL.swift:102-107`
-  - `VaultController+Routes.swift:41-75`
-  - `ReminderScheduler.swift:79` (log only)
+  - `PergamenumURL.swift:99-107`;
+  - `VaultController+Routes.swift:42-74`;
+  - `Sources/Calendar/ReminderScheduler.swift:79` (log only).
 - **Pane enum.** `rg -n "Pane\.allCases|case \.pratiche" Sources Tests` finds:
-  - `MenuCommands.swift:24`: builds the Vista menu from `allCases`, so it picks up the case
-    automatically.
-  - `CommandActions.swift:251-252` and `:294`, and `CommandActions+CanRun.swift:66-70`: add
-    `.paneContenitore` beside `.panePratiche`.
-  - `RootView.swift:265`.
-  - `Tests/SidebarTests.swift:15-16,47-48,57-68`: stay green with the new row.
-  - `Tests/CommandActionTests.swift:107,171`: loop over `allCases` and must pass for the new case.
+  - `MenuCommands.swift:24`, which picks the case up automatically;
+  - `CommandActions.swift:255-257` and `:299`, and `CommandActions+CanRun.swift:66-70`, which gain
+    `.paneContenitore` beside `.panePratiche`;
+  - `RootView.swift:259-269`.
+  - `Tests/SidebarTests.swift:15-16,47-48,57-68` stay green: the new row sits before Pratiche, so
+    `praticheSitsInLavoroImmediatelyBeforeRecordings` holds.
+  - `Tests/CommandActionTests.swift:107,171` loop over `allCases` and must pass for the new case.
 - **Shortcut enum.** `rg -n "ShortcutCommand\.allCases" Sources Tests` finds:
-  - `Tests/ShortcutTests.swift:58,68`: the new default must be usable and conflict-free.
+  - `Tests/ShortcutTests.swift:58,68`: the three new defaults must be usable and conflict-free.
   - `Tests/EditorCommandTests.swift:152`: `appCommands.count == allCases.count - 2` still holds,
-    because the new command is an app entry.
+    because the three new commands are app entries (`EditorCommand.swift:196`).
   - `Tests/CapturePanelTests.swift:32`.
   - `ShortcutSettings.swift:21` and `ShortcutStore.swift:68,74`.
-- **Settings default.** `VaultSettings.default` (`VaultSettings.swift:146`) gains the field. The
-  existing settings round-trip tests must decode an old file with no `contenitore` key to the
-  defaults.
 
 ## Task 7 — The pane (R-13, R-14, R-15, R-16, R-17, R-18, R-19, R-22, R-25, R-27)
 
-This task **starts only after gate G2**, the mockup approval in Task 1. The mockup wins on layout;
-it does not override this task's list of behaviours.
+Gate G2 was approved on 2026-09-30. The mockup is `docs/design/contenitore/Pergamenum
+Contenitore.html`, and ADR-0071 §D11 records its decisions. The mockup wins on layout. It does not
+override this task's list of behaviours.
 
 ### Declarations (tester)
 
 - **`Sources/Features/Contenitore/ContenitoreListModel.swift`** (pure, `@MainActor`-free):
-  - `rows(index:root:filter:container:fileExists:extraction:) -> [ContenitoreRow]`. Each row
-    carries name, date, colour, tags, the extraction label, `isFileMissing` and the thumbnail URL.
+  - `rows(index:root:filter:container:fileExists:extraction:) -> [ContenitoreRow]`.
+    - Each row carries name, date, colour, tags, the extraction label (`ExtractedText.displayLabel`),
+      `isFileMissing` and the thumbnail URL.
+    - The rows read `IndexSnapshot.schede(underRoot:)`.
   - `inboxCount`.
-  - `containerTree(root:folders:) -> [ContainerNode]`, with year folders hidden.
+  - `containerTree(root:folders:) -> [ContainerNode]`. Year folders
+    (`ContenitoreNaming.isYearFolderName`) are hidden.
 - **`Sources/Features/Contenitore/ContenitoreCommand.swift`:**
-  - `enum ContenitoreCommand: CaseIterable`, with cases `classify`, `open`, `revealInFinder`,
-    `openScheda`, `copyLink`, `rename`, `moveTo` and `trash`.
-  - The titles.
-  - `ContenitoreCommandActions.run(_:on:)`.
+  - `enum ContenitoreCommand: CaseIterable`, the eight document commands of ADR-0071 §D12:
+    `classify`, `open`, `revealInFinder`, `openScheda`, `copyLink`, `rename`, `moveTo` and
+    `trash`.
+  - `enum ContenitoreContainerCommand: CaseIterable`: `newSubcontainer`, `rename`, `moveTo` and
+    `trash`. This is R-19's tree verbs, rendered by the tree's context menu. «Nuovo
+    sottocontenitore…» is also in the «Documento» menu.
+  - The titles, including «Rivela nel Finder».
+  - `ContenitoreCommandActions.run(_:on:)`, the `PraticaCommandActions.run(_:on:)` shape
+    (`PraticaCommandActions.swift:87`).
+  - `ContenitoreNaming.yearNameSentence`: the user-facing text for `.yearName`, which has none today.
 - **`Sources/Features/Contenitore/ContenitoreInspectorModel.swift`:** `save(description:date:colour:
-  tags:)`, through `write(…, expecting:)`.
+  tags:)`, through `session.write(…, expecting:)` (`VaultSession.swift:612`).
+- **`Sources/App/DocumentCommands.swift`:** a `CommandMenu("Documento")`.
+  - Declare it in `PergamenumApp.swift`'s `.commands` block (`:341-357`) immediately before
+    `TaskCommands`, so the bar reads Inserisci, Documento, Task.
+  - The «Task» menu is **not** pane-gated (`PergamenumApp.swift:390-396`), so "active only while the
+    pane is" means per-item gating. The precedent is `.disabled(navigation.pane != .workspace)` at
+    `MenuCommands.swift:56-76`.
+- **`EditCommands` (`MenuCommands.swift:274`):** a new «Sposta nel Cestino…» item, enabled only
+  while `pane == .contenitore` with a selection.
+  - No menu-bar trash item exists today. ADR-0071 §D11's "stays in Modifica" is corrected in this
+    PR to "is added to Modifica".
 - **View shells matching the mockup:**
   - `ContenitoreView.swift`, `ContenitoreSidebar.swift`, `ContenitoreList.swift`,
-    `ContenitoreGrid.swift`, `ContenitoreInspector.swift`, `ClassificaSheet.swift`,
-    `ContenitoreNoticeStrip.swift` and `ContenitoreMenuItems.swift`.
-  - A menu-bar section in `MenuCommands.swift`, placed where the mockup puts it.
+    `ContenitoreGrid.swift` and `ContenitoreInspector.swift`;
+  - `ClassificaSheet.swift`, `ContenitoreNoticeStrip.swift` and `ContenitoreSettingsTab`'s final
+    layout;
+  - `ContenitoreRowMenuHost.swift`, an AppKit row-menu host (ADR-0069's `AttachmentChipMenuHost`
+    shape, `Sources/Features/Pratiche/AttachmentChipMenuHost.swift:20,92`), only if a nested menu
+    turns out to be needed.
 
 ### Red suite (tester)
 
 - **`Tests/ContenitoreListModelTests.swift`:**
-  - Every scheda under the root is a row with name, colour, tags, date and extraction label. A note
-    outside the root, or without the key, is not a row (R-13).
-  - «Da classificare» holds exactly the `status-inbox` schede, and shows their count (R-14).
+  - Every scheda under the root is a row with name, colour, tags, date and extraction label.
+  - A note outside the root, or without the key, is not a row (R-13).
+  - «Da classificare» holds exactly the `status-inbox` schede and shows their count (R-14).
   - The colour and tag filters narrow the rows (R-15).
   - A missing companion shows «file mancante» (R-25).
   - Year folders are not tree nodes. Nested containers are (R-19).
 - **`Tests/ContenitoreInspectorTests.swift`** (R-16, R-17):
   - Editing description, date, colour and tags writes through the guarded door.
-  - A scheda that changed on disk after the read is refused, and left untouched on disk.
-  - Colour accepts only the six names, and the token map is the sticky one.
+  - A scheda that changed on disk after the read is refused and left untouched on disk.
+  - Colour accepts only the six names, and the token map is `ContenitoreColour.token`
+    (`StickyPreset.token(for:)`).
   - Changing `date` to another year does not move the pair.
-- **`Tests/ContenitoreCommandTests.swift`** (R-18, R-22, R-27):
+- **`Tests/ContenitoreCommandTests.swift`** (R-18, R-19, R-22, R-27):
   - «Classifica» with no topic is refused. With a topic and a type, it removes `status-inbox` and
     lints clean.
   - «Sposta nel Cestino» trashes both files.
-  - Creating a container with a four-digit name from the pane is refused.
-  - **Parity.** Every `ContenitoreCommand` case appears in the inspector's action list, in the row
-    context-menu builder and in the menu-bar builder. All three read from the catalogue, the
-    ADR-0023 test shape.
-  - `copyLink` and `revealInFinder` dispatch to the selection while `pane == .contenitore`.
+  - Each container verb:
+    - `newSubcontainer` with a four-digit name is refused with `yearNameSentence`;
+    - `rename` and `moveTo` carry their schede and pairs;
+    - `trash` sends the folder to the Trash.
+  - **Parity** (the `Tests/PraticaCommandTests.swift` shape):
+    - Every `ContenitoreCommand` case appears in the inspector's action list, the row context-menu
+      builder and the menu-bar builder. The menu bar is «Documento» plus the File and Modifica
+      items. All three read the catalogue.
+    - Every `ContenitoreContainerCommand` case appears in the tree's context-menu builder.
+  - `copyLink`, `revealInFinder` and the new trash item dispatch to the selection while `pane ==
+    .contenitore`.
+  - With no selection, or on any other pane, they behave exactly as today.
 - **`Tests/ContenitoreHostedViewTests.swift`:** one in-process hosted-view test, through
-  `Tests/HostedViewSupport.swift`.
+  `Tests/HostedViewSupport.swift` (`HostedView`, `:86`).
   - Host `ContenitoreView` over a vault with three schede: one in the inbox, one classified, one
     whose file is missing.
-  - It shows three rows, the inbox count `1` and «file mancante».
-  - Find each element by `accessibilityIdentifier`, never by its visible text.
+  - Assert that `snapshot()` drew something (`distinctColors > 1`).
+  - Assert that `key("\u{1b}", keyCode: 53)` and the pane's key equivalents reach the view without
+    showing the window (`neverShown`).
+  - Rows, the inbox count and «file mancante» are asserted in `ContenitoreListModelTests`, not here.
+    `HostedViewSupport.swift:78-80` records that the in-process accessibility tree is a single
+    childless group, and no mouse event reaches SwiftUI, so no `accessibilityIdentifier` lookup is
+    possible in-process.
 
 ### Coder
 
-- The views follow the mockup and use tokens only.
-- The container tree uses flat recursive rows (ADR-0024).
-- Quick Look uses `quickLook(urls:isPresented:claimsFocus: false)` (ADR-0070 §D4).
-- `.onDeleteCommand`, with `@FocusState` set on selection change.
-- A nested row menu gets an AppKit menu host (ADR-0069).
-- Trash confirms through `.confirmationDialog(…, presenting:)`.
-- The grid reads `ThumbnailStore`, and the list shows the queue's progress.
+- **Views.** They follow the mockup and use tokens only.
+  - The colour dot is 10 pt, ringed with `color.border.strong`. The row is not tinted.
+  - The container tree uses flat recursive rows (ADR-0024).
+- **Quick Look.** Use `quickLook(urls:isPresented:claimsFocus: false)`
+  (`QuickLookPresenter.swift:209`, ADR-0070 §D4).
+- **Keyboard.**
+  - Set `@FocusState` on selection change, and handle deletion with `.onDeleteCommand`, the
+    `PraticaTimelineView.swift:41,85-95` shape. Trash confirms through
+    `.confirmationDialog(…, presenting:)`.
+  - **Enter «Apri»** is handled on the focused list with `.onKeyPress(.return)`, not as a menu key
+    equivalent. A plain-Return key equivalent would take Return from the inspector's description
+    field.
+    - Check it by hand first. If the list does not see Return, stop and bring the finding back
+      rather than moving the binding onto the menu.
+    - The «Apri» menu item carries no key equivalent.
+- **Row menu.** Try the SwiftUI `.contextMenu` on the row first. Use the ADR-0069 host only if a
+  view inside the row has its own menu.
+- **Pane-aware File commands.** `copyLink` and `revealInFinder` run through `runFile` →
+  `runOnOpenNote` (`CommandActions.swift:194-220`, `copyLinkToOpenNote` `:372`, `revealOpenNote`
+  `:378`), and their `canRun` through `canRunOnOpenNote` (`CommandActions+CanRun.swift:133-136`).
+  The Contenitore branch goes first in both, and only while `pane == .contenitore` with a selection.
+- **Settings width.** A twelfth tab makes the bar wider than the 698 pt measured for eleven
+  (`SettingsView.swift:37-47`, frame 760 pt at `:48`).
+  - Re-measure the tab bar with twelve tabs.
+  - Widen the frame to measured width plus inset plus margin.
+  - Rewrite the comment with the new figures.
+- **Grid and list.** The grid reads `ThumbnailStore` (`VaultController.thumbnails`, API
+  `thumbnail(for:width:)`). The list shows the queue's `progress`.
 
 ### Update tests and call-sites asserting the old behaviour
 
-- **Pane-aware commands.** `CommandActions` `copyLink` and `revealInFinder`, and their `canRun`,
-  become pane-aware. The existing Note-pane assertions in `Tests/RowCommandTests.swift` and
-  `Tests/CommandActionTests.swift` must stay green unchanged.
-- **Sticky colours.** `StickyTextCard` and `BoardContentLayer` were already switched to the shared
-  helper in Task 2.
+- **Pane-aware commands.** The existing Note-pane assertions must stay green unchanged:
+  - `Tests/RowCommandTests.swift:103,127,179-184`;
+  - `Tests/CommandActionTests.swift:48`. `[.copyLink, .revealInFinder, .insertRelated]` are refused
+    with no note open, which still holds on every pane but Contenitore.
+- **Sticky colours.** Nothing to update: `StickyTextCard.swift:137` and `BoardContentLayer.swift:281`
+  already read `StickyPreset`.
 
 **End of PR 2:** Tasks 6-7, plus Task 8's checks.
 

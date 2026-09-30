@@ -16,6 +16,13 @@ extension VaultController {
         session?.dailyNotePath(for: day) ?? NoteName.dailyFileName(for: day)
     }
 
+    /// Whether a note is the daily note of `day`, by its exact path (ADR-0075 §D7): a
+    /// path that merely contains the date - `Calendar/20260925-riunione.md` - is some
+    /// other note written that day, not the day's own.
+    func isDailyNote(_ relativePath: String, for day: CalendarDate) -> Bool {
+        relativePath == dailyNotePath(for: day)
+    }
+
     /// The editor's copy of a note, when it is showing that one. Nil otherwise, which
     /// is what sends the session to the file.
     func bufferText(for relativePath: String) -> String? {

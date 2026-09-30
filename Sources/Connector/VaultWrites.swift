@@ -235,6 +235,11 @@ extension VaultAPI {
         guard !title.isEmpty else {
             throw ConnectorError("serve un titolo per il blocco", usage: true)
         }
+        // Refused, never clamped: a block written at a length nobody asked for, with
+        // nothing said, is the thing this check exists to stop (ADR-0075 §D4).
+        if let minutes, !TimeBlock.durationRange.contains(minutes) {
+            throw durationRefusal(raw: String(minutes))
+        }
         let requested = try minutesFromMidnight(time)
 
         guard let placed = await session.addTimeBlock(
@@ -246,12 +251,38 @@ extension VaultAPI {
             throw ConnectorError("non scritto: \(session.problems.last ?? "motivo sconosciuto")")
         }
 
-        // It moved rather than overlapped, and the caller asked for a different hour:
-        // saying so beats letting them find it on the timeline later.
+        // It moved rather than overlapped, or it was cut short at the next block or at
+        // midnight: saying so beats letting the caller find it on the timeline later.
+        let asked = minutes ?? session.settings.blockMinutes
         let moved = placed.block.startMinutes == requested
             ? nil
             : "spostato alle \(placed.block.startText): le \(time) erano occupate"
-        return summarise(result, session: session, note: moved)
+        let shortened = placed.block.durationMinutes < asked
+            ? "accorciato a \(placed.block.durationMinutes) minuti"
+            : nil
+        let note = [moved, shortened].compactMap { $0 }.joined(separator: "; ")
+        return summarise(result, session: session, note: note.isEmpty ? nil : note)
+    }
+
+    /// A duration as a front end received it, as text: nil when it was not given, the
+    /// number when it reads as one, and the range's own sentence otherwise - so
+    /// `--minutes abc` is refused rather than silently becoming the vault default
+    /// (ADR-0075 §D4, closing ADR-0063 §D9's bullet). The range itself is checked by
+    /// `addTimeBlock`, which both front ends reach.
+    static func blockMinutes(parsing raw: String?) throws -> Int? {
+        guard let raw else { return nil }
+        guard let number = Int(raw) else { throw durationRefusal(raw: raw) }
+        return number
+    }
+
+    /// The one sentence a bad duration gets, however it arrived wrong, with the bounds
+    /// read from the range rather than typed twice.
+    static func durationRefusal(raw: String) -> ConnectorError {
+        let range = TimeBlock.durationRange
+        return ConnectorError(
+            "«minutes» vuole una durata da \(range.lowerBound) a \(range.upperBound) minuti: «\(raw)» non lo è",
+            usage: true
+        )
     }
 
     // MARK: The journal

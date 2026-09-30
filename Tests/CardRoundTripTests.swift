@@ -90,7 +90,7 @@ private func makeCard(_ text: String, editable: Bool = true) throws -> (Formatti
     return (textView, coordinator)
 }
 
-/// The note editor's own wiring, `Tests/MarkupHidingTests.swift`'s `MarkupCoordinator.editor`.
+/// The note editor's own wiring, `Tests/MarkupCoordinatorTests.swift`'s `MarkupCoordinator.editor`.
 /// Present because the note is the surface that opens the `.md` file the first test writes: a
 /// styling pass that corrupted the buffer there would reach disk on the next save.
 @MainActor

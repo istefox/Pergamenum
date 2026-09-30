@@ -7,8 +7,8 @@ import Testing
 /// The census found no test of this (ui-suite-replacement plan §2 row 2): the three
 /// `CompletionPanelTests` `noteSections` stubs and `EditorCompletionTests:189`'s
 /// `headings(of:)` all hand `CompletingTextView.noteSections` a literal closure written
-/// by the test, never `NoteTextView.wire(_:to:)`'s own (`NoteTextView.swift:259-265`) -
-/// `coordinator.parent.transclusions?.resolve(reference)` then `NoteOutline.entries`
+/// by the test, never `NoteTextView.wire(_:to:)`'s own (`NoteTextView.swift:179-185`) -
+/// `coordinator.parent.vault.transclusions?.resolve(reference)` then `NoteOutline.entries`
 /// filtered to `.heading`, mapped to `entry.title`. A bug in that wiring - the wrong
 /// `transclusions` read, a filter that let an embed row through - would have shipped
 /// green through every one of those. This drives the real closure `wire` installs,
@@ -35,7 +35,7 @@ import Testing
         text: .constant(""), theme: .emergency, noteTitles: [], tagSuggestions: [],
         hidesMarkup: true, onFollowLink: { _ in }
     )
-    view.transclusions = source
+    view.vault.transclusions = source
     let coordinator = view.makeCoordinator()
     let textView = CompletingTextView(usingTextLayoutManager: true)
     view.wire(textView, to: coordinator)
