@@ -28,6 +28,12 @@ struct TagRenameSheet: View {
     }
 
     var body: some View {
+        // Asked once per evaluation (PG-268): `changes` reads every note carrying the tag from
+        // disk, and the preview and the button used to ask it six times per keystroke. Not
+        // asked at all while there is a problem - a problem means `parsed` is nil, which
+        // already disables the button, and the preview is not drawn.
+        let problem = self.problem
+        let changes = problem == nil ? self.changes : []
         VStack(alignment: .leading, spacing: theme.spacing(.m)) {
             Text("Rinomina «\(old.description)» in tutto il vault")
                 .themedText(.heading)
@@ -39,7 +45,7 @@ struct TagRenameSheet: View {
             if let problem {
                 Text(problem).themedText(.caption, color: .taskOverdue)
             } else {
-                preview
+                preview(changes)
             }
 
             HStack(spacing: theme.spacing(.s)) {
@@ -61,7 +67,7 @@ struct TagRenameSheet: View {
     // MARK: Cosa succederebbe
 
     @ViewBuilder
-    private var preview: some View {
+    private func preview(_ changes: [VaultSession.TagRenameChange]) -> some View {
         if changes.isEmpty {
             Text("Nessuna nota porta «\(old.description)».")
                 .themedText(.caption, color: .textTertiary)

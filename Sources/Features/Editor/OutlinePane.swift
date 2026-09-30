@@ -181,11 +181,10 @@ struct OutlinePane: View {
     }
 
     /// The entries that have at least one line under them. Computed once per rebuild rather
-    /// than per row, because each answer costs a pass over the note.
+    /// than per row, and in one pass over the note rather than one per entry (PG-268): asking
+    /// `hiddenParagraphs` entry by entry re-parsed the whole note once per heading.
     private var foldable: Set<Int> {
-        Set(entries.indices.filter { index in
-            !NoteFolding.hiddenParagraphs(in: text, foldedEntries: [index]).isEmpty
-        })
+        NoteFolding.foldableEntries(in: text)
     }
 
     /// The entries a folded ancestor hides from the index itself (PG-090), so folding `##

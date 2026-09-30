@@ -106,6 +106,35 @@ private func hidden(_ entries: Set<Int>, in text: String = note) -> Set<Int> {
     #expect(hidden([1], in: withEmbed).isEmpty)
 }
 
+@Test func foldableEntriesAgreesWithFoldingEachEntryOnItsOwn() {
+    // The index's chevrons ask this once per keystroke (PG-268). It has to be the same answer
+    // as folding each entry alone and asking whether anything disappeared: an embed never
+    // folds, a heading with nothing under it never folds, a `#` inside a fence is no heading.
+    let texts = [
+        note,
+        "",
+        "corpo senza titoli\n",
+        "# Uno\n## Vuoto\n## Pieno\ncorpo\n# Due",
+        "# Uno\n![[Altra nota]]\n# Due\n```\n# non un titolo\n```\n",
+        "---\ntags: [topic-x]\n---\n# Uno\r\ncorpo\r\n# Due\r\n",
+    ]
+    for text in texts {
+        let perEntry = Set(NoteOutline.entries(in: text).indices.filter { !hidden([$0], in: text).isEmpty })
+        #expect(NoteFolding.foldableEntries(in: text) == perEntry)
+    }
+    #expect(NoteFolding.foldableEntries(in: note) == [0, 1, 2, 3, 4])
+}
+
+@Test func foldableEntriesNamesTheHeadingsWithSomethingUnderThem() {
+    // Literal expectation, independent of `hiddenParagraphs`: the equivalence test above
+    // would pass if both implementations were wrong the same way.
+    // 0 Uno (has children), 1 Vuoto (next line is a sibling), 2 Pieno (body), 3 Due (last, empty)
+    let text = "# Uno\n## Vuoto\n## Pieno\ncorpo\n# Due"
+    #expect(NoteFolding.foldableEntries(in: text) == [0, 2])
+    #expect(NoteFolding.foldableEntries(in: "").isEmpty)
+    #expect(NoteFolding.foldableEntries(in: "solo testo\n").isEmpty)
+}
+
 // MARK: - What the editor is handed
 
 @Test func theLayoutCarriesTheHiddenOffsetsAndWhatTheBadgeSays() {
