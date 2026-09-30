@@ -432,6 +432,16 @@ move the previous copy aside rather than deleting it.
   still shows an already-fixed regression. Use `ls -dt .../Pergamenum-*/Build/Products/Debug/Pergamenum.app | head -1`
   (or `APP=$(ls -dt ... | head -1)`) to get the most recently built bundle before an `open -n`
   hand-check launch.
+- **A crash at launch in `initializeWithCopy for <SwiftUI type>` on a Debug build is a stale
+  incremental build until proven otherwise.** Swift's incremental compiler does not record the
+  underlying type of a `some View` property as a dependency of the files that use it: when a
+  commit changes that type in one file (PR #662 added `.accessibilityIdentifier` inside
+  `NoteListPane+Footer.swift`'s `footer`), the file whose view body embeds it
+  (`NoteListPane.swift`'s `pane`) is not recompiled, keeps the old layout, and SwiftUI copies the
+  value at the wrong size - `EXC_BAD_ACCESS` in `swift_retain` at `0x8`, every launch, test host
+  and UI-test app alike (2026-09-29, three DerivedData folders). Confirm by comparing the two
+  `.o` timestamps under `Objects-normal/arm64/`, then move that DerivedData (or
+  `build/uitests-dd`) to the Trash and rebuild clean. A clean build never showed it.
 - Build and tests must pass before committing. A change that does not build is not done.
 - Keep commits small and atomic, one logical change each.
 - Never disable or delete a test to make a suite pass.
