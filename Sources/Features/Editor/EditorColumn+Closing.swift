@@ -30,20 +30,21 @@ extension EditorColumnView {
         }
     }
 
-    /// Saves the tab being closed, which means focusing it first: the save writes the focused
-    /// buffer, and the tab under the pointer is not necessarily the one in front.
-    /// **`closeTab` must run after the save has resumed, inside the same `Task`** (ADR-0043
-    /// §D2). With an `async` save and a synchronous straight line, the tab would be gone
-    /// before the buffer was written and `saveOpenNote` would write whatever tab focus
-    /// landed on instead - a data-loss bug the cascade would otherwise have introduced.
+    /// Saves the tab being closed and closes it only when the save landed or there was
+    /// nothing to save (ADR-0073 §D4, F6): a failed save leaves the tab open and dirty, with
+    /// its problem recorded, instead of closing it with the edits inside.
+    ///
+    /// The save is by tab id (`saveAndCloseTab`), so it no longer depends on the focus; the
+    /// tab is still brought to the front first, because the dialog is about the tab in front
+    /// of the person. **The close runs after the save has resumed, inside the same `Task`**
+    /// (ADR-0043 §D2) - `saveAndCloseTab` is that ordering, in one place.
     func closeAfterSaving() {
         guard let tab = closing else { return }
         closing = nil
         focused {
             Task { @MainActor in
                 vault.focusTab(tab.id)
-                await vault.saveOpenNote()
-                vault.closeTab(tab.id)
+                await vault.saveAndCloseTab(tab.id)
             }
         }
     }

@@ -45,6 +45,8 @@ final class VaultController {
     /// `replaceOpenNote` has always made.
     var columns: [EditorColumn] = [EditorColumn()]
     var focusedColumnIndex = 0
+    /// Cmd+W's dirty tab until its column raises the dialog; written only by the doors (ADR-0073 §D11).
+    var closeRequest: NoteTab.ID?
 
     /// The tab the person is looking at.
     var focusedTab: NoteTab? {
@@ -153,6 +155,8 @@ final class VaultController {
     /// which `AppDelegate` cannot see; the board registers itself in `attach` and clears
     /// this in `detach`. Weak: the view owns the board, not the vault.
     @ObservationIgnored weak var openBoard: WorkspaceController?
+    /// Reopens the main window for a cancelled quit (ADR-0073 §D7); set by `RootView`'s `openWindow`.
+    @ObservationIgnored var reopenMainWindow: (() -> Void)?
 
     /// Everything the `pergamenum://` routes hold between arriving and being acted on
     /// (SPEC §9). The type is declared beside the extension that uses it.
@@ -226,6 +230,26 @@ final class VaultController {
         newSession.landedChangeSubscriber = { [weak self, weak newSession] change in
             guard let self, let newSession, self.session === newSession else { return }
             self.landed(change)
+        }
+        // PG-334 is not fixed here, but the quit must never write a previous vault's tab into
+        // this one (ADR-0073 §D5): a tab still open when a *different* vault replaces the
+        // session records the root it belongs to, once (the first time it is found foreign), and
+        // the record is dropped when that same root opens again. `showing(_:)` also drops it,
+        // since the tab then shows a note of the current vault. This is the only place a foreign
+        // tab is born, so no tab-creation site tracks a root.
+        // Compared and stored under `vaultKey` (symlinks resolved), the key the rest of the app
+        // identifies a vault by: the open panel hands over an unresolved URL and Recents a
+        // resolved one, and `standardizedFileURL` alone tells a link from its target.
+        let incoming = url.vaultKey
+        let outgoing = root?.resolvingSymlinksInPath().standardizedFileURL
+        for column in columns.indices {
+            for tab in columns[column].tabs.indices {
+                if let origin = columns[column].tabs[tab].previousVaultRoot {
+                    if origin.vaultKey == incoming { columns[column].tabs[tab].previousVaultRoot = nil }
+                } else if let outgoing, outgoing.vaultKey != incoming {
+                    columns[column].tabs[tab].previousVaultRoot = outgoing
+                }
+            }
         }
         indexGenerationBase = indexGeneration + 1
         session = newSession

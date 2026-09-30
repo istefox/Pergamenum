@@ -54,7 +54,7 @@ struct OpenTabsStore {
     }
 
     static func key(for root: URL) -> String {
-        "openTabs:" + root.resolvingSymlinksInPath().standardizedFileURL.path(percentEncoded: false)
+        "openTabs:" + root.vaultKey
     }
 
     func session(for root: URL) -> Session {
