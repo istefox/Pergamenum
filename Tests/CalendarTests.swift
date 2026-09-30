@@ -171,14 +171,158 @@ Sopralluogo in reparto stampaggio.
     #expect(firstIndex != nil && secondIndex != nil && firstIndex! < secondIndex!)
 }
 
-@Test(arguments: [("09:00", 540), ("00:00", 0), ("23:59", 1439)])
+@Test(arguments: [("09:00", 540), ("00:00", 0), ("23:59", 1439), ("24:00", 1440)])
 func parsesValidTimes(_ testCase: (text: String, minutes: Int)) {
     #expect(TimeBlockSection.minutes(from: testCase.text) == testCase.minutes)
 }
 
-@Test(arguments: ["24:00", "09:60", "9:00:00", "nove", "", "0900"])
+@Test(arguments: ["24:01", "25:00", "09:60", "9:00:00", "nove", "", "0900"])
 func rejectsInvalidTimes(_ text: String) {
     #expect(TimeBlockSection.minutes(from: text) == nil)
+}
+
+// MARK: - The end of the day (ADR-0075 §D1)
+
+@Test func writesMidnightAtTheEndOfABlockAs2400() {
+    #expect(TimeBlock.timeText(1440) == "24:00")
+    #expect(TimeBlock.timeText(0) == "00:00")
+}
+
+@Test func aBlockEndingAtMidnightSurvivesWriteAndRead() throws {
+    let section = """
+    ## Timeline
+
+    - 23:00-24:00 Chiusura
+    """
+    let read = TimeBlockSection.parse(from: section, day: day)
+    let block = try #require(read.first)
+    #expect(block.endMinutes == 1440)
+
+    let written = TimeBlockSection.write(read, into: section)
+    #expect(written.contains("23:00-24:00"))
+    #expect(TimeBlockSection.parse(from: written, day: day) == read)
+}
+
+@Test func aMidnightEndWrittenAs0000IsRecoveredAndRewrittenAs2400() {
+    let section = """
+    ## Timeline
+
+    - 23:00-00:00 A
+    - 09:00-00:00 Lungo
+    """
+    let read = TimeBlockSection.parse(from: section, day: day)
+    #expect(read.map(\.endMinutes) == [1440, 1440])
+
+    let written = TimeBlockSection.write(read, into: section)
+    #expect(written.contains("- 23:00-24:00 A"))
+    #expect(written.contains("- 09:00-24:00 Lungo"))
+}
+
+@Test func aLineThatWrappedPastMidnightIsCutAtMidnight() throws {
+    let section = """
+    ## Timeline
+
+    - 23:30-00:30 Tardi
+    """
+    let read = TimeBlockSection.parse(from: section, day: day)
+    let block = try #require(read.first)
+    #expect(block.startMinutes == 23 * 60 + 30)
+    #expect(block.endMinutes == 1440)
+    #expect(TimeBlockSection.write(read, into: section).contains("- 23:30-24:00 Tardi"))
+}
+
+@Test func aBlockOfNoLengthAtEitherMidnightIsSkipped() {
+    let section = """
+    ## Timeline
+
+    - 24:00-24:00 X
+    - 00:00-00:00 Y
+    """
+    #expect(TimeBlockSection.parse(from: section, day: day).isEmpty)
+}
+
+// MARK: - Placement (ADR-0075 §D2)
+
+private func slotBlock(_ start: Int, _ end: Int) -> TimeBlock {
+    TimeBlock(day: day, startMinutes: start, durationMinutes: end - start,
+              title: "B", sourceTaskID: nil, isPublished: false)
+}
+
+@Test func anEmptyDayPlacesTheBlockWhereAsked() {
+    #expect(TimeBlock.freeSlot(from: 540, in: [], duration: 30, minimum: 15)
+        == TimeBlock.Slot(start: 540, duration: 30))
+}
+
+@Test func aStartInsideAHandWrittenBlockMovesToItsExactEnd() {
+    let blocks = [slotBlock(540, 550)]
+    #expect(TimeBlock.freeSlot(from: 540, in: blocks, duration: 30, minimum: 15)
+        == TimeBlock.Slot(start: 550, duration: 30))
+}
+
+@Test func aBlockIsShortenedBeforeTheNextOne() {
+    let blocks = [slotBlock(600, 660)]
+    #expect(TimeBlock.freeSlot(from: 585, in: blocks, duration: 60, minimum: 15)
+        == TimeBlock.Slot(start: 585, duration: 15))
+}
+
+@Test func aBlockIsShortenedAtMidnight() {
+    #expect(TimeBlock.freeSlot(from: 1425, in: [], duration: 60, minimum: 15)
+        == TimeBlock.Slot(start: 1425, duration: 15))
+}
+
+@Test func aStartThatSnapsToMidnightHasNoSlot() {
+    #expect(TimeBlock.freeSlot(from: 1433, in: [], duration: 30, minimum: 15) == nil)
+}
+
+@Test func tenMinutesFitATwelveMinuteGap() {
+    let blocks = [slotBlock(540, 558), slotBlock(570, 600)]
+    #expect(TimeBlock.freeSlot(from: 540, in: blocks, duration: 10, minimum: 10)
+        == TimeBlock.Slot(start: 558, duration: 10))
+}
+
+@Test func aRunShorterThanTheMinimumIsPassedOver() {
+    let blocks = [slotBlock(540, 590), slotBlock(600, 660)]
+    #expect(TimeBlock.freeSlot(from: 540, in: blocks, duration: 60, minimum: 15)
+        == TimeBlock.Slot(start: 660, duration: 60))
+}
+
+@Test func noRunOfTheMinimumLeftGivesNoSlot() {
+    let blocks = [slotBlock(1380, 1430)]
+    #expect(TimeBlock.freeSlot(from: 1380, in: blocks, duration: 60, minimum: 15) == nil)
+}
+
+@Test func aBlockOfNoLengthDoesNotStallTheSearch() {
+    let blocks = [slotBlock(540, 540), slotBlock(540, 600)]
+    #expect(TimeBlock.freeSlot(from: 540, in: blocks, duration: 30, minimum: 15)
+        == TimeBlock.Slot(start: 600, duration: 30))
+}
+
+/// Over a fixed table of layouts and starts, no slot the search returns overlaps a block
+/// or runs past midnight (R-04, R-05).
+@Test func aSlotNeverOverlapsABlockNorRunsPastMidnight() {
+    let layouts: [[TimeBlock]] = [
+        [],
+        [slotBlock(540, 600)],
+        [slotBlock(540, 550), slotBlock(555, 600), slotBlock(610, 700)],
+        [slotBlock(0, 60), slotBlock(600, 660), slotBlock(1380, 1440)],
+        [slotBlock(1400, 1430)],
+        [slotBlock(480, 1200)],
+    ]
+    let starts = [0, 7, 540, 545, 590, 605, 1190, 1380, 1425, 1439]
+    let requests = [(10, 10), (30, 15), (60, 15), (60, 60), (480, 15)]
+    for blocks in layouts {
+        for start in starts {
+            for (duration, minimum) in requests {
+                guard let slot = TimeBlock.freeSlot(
+                    from: start, in: blocks, duration: duration, minimum: minimum
+                ) else { continue }
+                let placed = slotBlock(slot.start, slot.start + slot.duration)
+                #expect(slot.duration >= minimum && slot.duration <= duration)
+                #expect(placed.endMinutes <= 1440)
+                #expect(!blocks.contains { $0.overlaps(placed) })
+            }
+        }
+    }
 }
 
 // MARK: - Day ranges

@@ -65,20 +65,22 @@ struct MiniCalendar: View {
 
     private var weekdayRow: some View {
         HStack(spacing: 0) {
-            ForEach(Self.weekdayInitials, id: \.self) { initial in
-                Text(initial)
+            ForEach(MonthGrid.weekdayHeaders) { header in
+                Text(header.initial)
                     .themedText(.caption, color: .textTertiary)
                     .frame(maxWidth: .infinity)
             }
         }
     }
 
+    /// Rows and cells identified by position (ADR-0075 §D7): the nil blanks at either end
+    /// of the month, and the two «M» headers, shared one identity before.
     private var grid: some View {
         VStack(spacing: 2) {
-            ForEach(weeks, id: \.first) { week in
+            ForEach(Array(MonthGrid.cells(of: month).enumerated()), id: \.offset) { _, week in
                 HStack(spacing: 0) {
-                    ForEach(week, id: \.self) { date in
-                        cell(date)
+                    ForEach(week) { gridCell in
+                        cell(gridCell.date)
                     }
                 }
             }
@@ -171,11 +173,6 @@ struct MiniCalendar: View {
             .formatted(.dateTime.month(.wide).year().locale(Locale(identifier: "it_IT")))
             .capitalized
     }
-
-    /// Monday first, as the Italian week is read.
-    private static let weekdayInitials = ["L", "M", "M", "G", "V", "S", "D"]
-
-    private var weeks: [[CalendarDate?]] { MonthGrid.weeks(of: month) }
 }
 
 /// The month grid's arithmetic, apart from the view so it can be checked directly:
@@ -198,6 +195,33 @@ enum MonthGrid {
 
         return stride(from: 0, to: cells.count, by: 7).map { Array(cells[$0..<$0 + 7]) }
     }
+
+    /// One place in the grid, identified by its position (ADR-0075 §D7). The blanks at
+    /// either end of the month all hold nil, so an identity drawn from the date made
+    /// them one view to SwiftUI; a grid whose cells never reorder needs no more than
+    /// where each one is.
+    struct Cell: Identifiable, Equatable, Sendable {
+        let id: Int
+        let date: CalendarDate?
+    }
+
+    /// `weeks(of:)` as the view draws it, each cell numbered from the top left.
+    static func cells(of month: CalendarDate) -> [[Cell]] {
+        weeks(of: month).enumerated().map { row, week in
+            week.enumerated().map { column, date in Cell(id: row * 7 + column, date: date) }
+        }
+    }
+
+    /// One weekday initial, identified by its column: Tuesday and Wednesday are both «M».
+    struct WeekdayHeader: Identifiable, Sendable {
+        let id: Int
+        let initial: String
+    }
+
+    /// Monday first, as the Italian week is read.
+    static let weekdayHeaders: [WeekdayHeader] = ["L", "M", "M", "G", "V", "S", "D"]
+        .enumerated()
+        .map { WeekdayHeader(id: $0.offset, initial: $0.element) }
 
     /// The same day some months away, clamped to the last day of the target month.
     ///

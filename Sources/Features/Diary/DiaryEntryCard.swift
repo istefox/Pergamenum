@@ -166,10 +166,15 @@ struct DiaryEntryCard: View {
 
     // MARK: Dragging
 
+    // Both gestures measure in `.global`, not in the `.local` space of the view they move:
+    // a local translation is measured against a frame the drag itself is shifting, and
+    // the card oscillates or overshoots. `TimelineBlockBox.swift`'s own comment on its
+    // drag records the measurement (ADR-0075 §D7). The translation is a height delta in
+    // either space, so nothing else changes.
     private var moveGesture: some Gesture {
         // Four points before it counts as a drag, so an ordinary click still opens the
         // block instead of nudging it by one mark.
-        DragGesture(minimumDistance: 4)
+        DragGesture(minimumDistance: 4, coordinateSpace: .global)
             .onChanged { draggedMinutes = geometry.snappedDelta($0.translation.height, notBefore: entry.startMinutes) }
             .onEnded { value in
                 let delta = geometry.snappedDelta(value.translation.height, notBefore: entry.startMinutes)
@@ -180,7 +185,7 @@ struct DiaryEntryCard: View {
     }
 
     private var resizeGesture: some Gesture {
-        DragGesture(minimumDistance: 2)
+        DragGesture(minimumDistance: 2, coordinateSpace: .global)
             .onChanged { draggedDuration = pulledDuration($0.translation.height) }
             .onEnded { value in
                 let pulled = pulledDuration(value.translation.height)

@@ -45,14 +45,26 @@ extension DayController {
         }
         guard outcome.didWrite else { return false }
 
+        // The move has landed and is journalled whatever happens to the block: a block
+        // refused for want of room makes the banner say both things, and keeps the
+        // journal id so «Annulla» still undoes the move (ADR-0075 §D3).
+        //
+        // `announcesRefusal: false`: this is the one place that composes the drop's
+        // banner, for both outcomes, so `addBlock` leaves `lastDrop` alone.
+        var blockRefused = false
         if let time, let task, target == day {
-            _ = addBlock(from: task, preferredStart: time.minutes)
+            blockRefused = addBlock(
+                from: task, preferredStart: time.minutes, announcesRefusal: false
+            ) == nil
         }
         reload()
+        let moved = "Spostato al \(target.italianForm)" + (time.map { ", \($0.text)" } ?? "")
         lastDrop = Drop(
-            summary: "Spostato al \(target.italianForm)" + (time.map { ", \($0.text)" } ?? ""),
+            summary: blockRefused
+                ? moved + ". Blocco non creato: nessuno spazio libero il \(day.italianForm)"
+                : moved,
             journalID: outcome.journalID,
-            isRefusal: false
+            isRefusal: blockRefused
         )
         return true
     }

@@ -62,3 +62,25 @@ private func date(_ iso: String) -> CalendarDate { CalendarDate(iso: iso)! }
 @Test func pagingByZeroChangesNothing() {
     #expect(MonthGrid.month(date("2026-08-11"), offsetBy: 0) == date("2026-08-11"))
 }
+
+// MARK: - Identities the view draws by (ADR-0075 §D7)
+
+/// The blanks at either end of a month all hold nil, and an identity drawn from the
+/// date made them one view; every cell is its own position now.
+@Test(arguments: ["2026-09-01", "2026-02-01"])
+func everyCellOfTheGridHasItsOwnIdentity(_ iso: String) {
+    let month = date(iso)
+    let cells = MonthGrid.cells(of: month).flatMap { $0 }
+
+    #expect(cells.contains { $0.date == nil })
+    #expect(Set(cells.map(\.id)).count == cells.count)
+    #expect(cells.map(\.date) == MonthGrid.weeks(of: month).flatMap { $0 })
+}
+
+/// Tuesday and Wednesday are both «M».
+@Test func theSevenWeekdayHeadersAreSevenIdentities() {
+    let headers = MonthGrid.weekdayHeaders
+
+    #expect(Set(headers.map(\.id)).count == 7)
+    #expect(headers.map(\.initial) == ["L", "M", "M", "G", "V", "S", "D"])
+}

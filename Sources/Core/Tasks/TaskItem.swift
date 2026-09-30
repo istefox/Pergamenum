@@ -85,7 +85,13 @@ struct TaskItem: Equatable, Sendable, Identifiable {
     /// Late relative to a given day: due before it and still open.
     func isOverdue(on day: CalendarDate) -> Bool {
         guard state.isOpen, let due else { return false }
-        return due < day
+        return Self.isPastDue(due, on: day)
+    }
+
+    /// Whether a date due has passed by `day`: the one overdue comparison, shared by the
+    /// task rows and a category's deadline so the two cannot disagree (ADR-0075 §D6).
+    static func isPastDue(_ due: CalendarDate, on day: CalendarDate) -> Bool {
+        due < day
     }
 
     /// Whether this task should appear on a given day's note (SPEC §7.3: the task

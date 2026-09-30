@@ -71,3 +71,36 @@ private func block(_ start: Int, _ duration: Int, _ title: String = "Blocco") ->
 
     #expect(resized.endMinutes == 24 * 60)
 }
+
+// MARK: - Fino a mezzanotte, e ritorno (ADR-0075 §D1, §D2)
+
+/// Written as `24:00` and read back as the same block: before, the end was written
+/// `00:00`, refused on the way in, and the next write of the day deleted the block.
+@Test func aBlockResizedToMidnightSurvivesWriteAndRead() {
+    let resized = TimeBlock.resized(block(23 * 60, 30), toDuration: 180, among: [])
+
+    let written = TimeBlockSection.write([resized], into: "## Timeline")
+    let read = TimeBlockSection.parse(from: written, day: day)
+
+    #expect(read == [resized])
+    #expect(read.first?.endMinutes == 24 * 60)
+}
+
+@Test func aBlockMovedToTheLastHourSurvivesWriteAndRead() throws {
+    let moved = try #require(TimeBlock.moved(block(23 * 60, 60), toStart: 23 * 60 + 45, among: []))
+
+    let written = TimeBlockSection.write([moved], into: "## Timeline")
+
+    #expect(TimeBlockSection.parse(from: written, day: day) == [moved])
+}
+
+/// The start alone used to be tested, so a block moved above another landed on top of its
+/// first half; it now slides past it, keeping its length.
+@Test func aMoveDoesNotLandOnTopOfTheNextBlock() throws {
+    let moved = try #require(
+        TimeBlock.moved(block(9 * 60, 60), toStart: 9 * 60 + 30, among: [block(10 * 60, 60, "Riunione")])
+    )
+
+    #expect(moved.startMinutes == 11 * 60)
+    #expect(moved.durationMinutes == 60)
+}

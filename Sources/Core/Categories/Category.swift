@@ -29,6 +29,12 @@ struct Category: Codable, Equatable, Sendable, Identifiable {
 
     var id: String { slug }
 
+    /// Whether the deadline has passed by `day`, by the rule the task rows use
+    /// (ADR-0075 §D6): a deadline still ahead is not drawn red.
+    func isDeadlineOverdue(on day: CalendarDate) -> Bool {
+        deadline.map { TaskItem.isPastDue($0, on: day) } ?? false
+    }
+
     init(
         slug: String,
         name: String,

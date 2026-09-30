@@ -24,12 +24,19 @@ struct TimeBlock: Equatable, Sendable, Identifiable {
     var startText: String { TimeBlock.timeText(startMinutes) }
     var endText: String { TimeBlock.timeText(endMinutes) }
 
+    /// `09:00`, and `24:00` for a block that runs to midnight - the diary's own rule,
+    /// shared rather than copied, so the two timelines cannot disagree about the end of
+    /// the day again (ADR-0075 §D1).
     static func timeText(_ minutes: Int) -> String {
-        String(format: "%02d:%02d", (minutes / 60) % 24, minutes % 60)
+        DiaryGrid.timeText(minutes)
     }
 
     /// The default duration of a block created by dropping a task (SPEC §8.3).
     static let defaultDuration = 30
+
+    /// The lengths a block may be asked for, in minutes: the one statement of the range
+    /// the settings clamp to and the connectors refuse outside of (ADR-0075 §D4).
+    static let durationRange: ClosedRange<Int> = 5...480
 
     /// Snaps a minute value to the nearest quarter hour, which is what makes dragging
     /// produce times a person would actually write down.
@@ -37,18 +44,42 @@ struct TimeBlock: Equatable, Sendable, Identifiable {
         max(0, ((minutes + step / 2) / step) * step)
     }
 
-    /// The first start at or after `preferred` where a block of `duration` sits in no
-    /// other block, or nil when the day runs out.
+    /// Where a block goes and how long it can be there.
+    struct Slot: Equatable, Sendable {
+        let start: Int
+        let duration: Int
+    }
+
+    /// The first free stretch at or after `preferred` that is at least `minimum` long,
+    /// with the block's length cut to fit it, or nil when the day runs out
+    /// (ADR-0075 §D2).
     ///
     /// Placed rather than overlapped: two blocks at the same time say nothing about
-    /// what the day actually looks like, which is the whole point of a timeline.
-    static func freeStart(from preferred: Int, in blocks: [TimeBlock], duration: Int) -> Int? {
+    /// what the day actually looks like, which is the whole point of a timeline. A start
+    /// inside a block moves to that block's end exactly, so a hand-written `09:00-09:10`
+    /// leaves 09:10 usable; a stretch shorter than `minimum` is passed over, not refused;
+    /// midnight closes the day. A block with no length is ignored rather than trusted,
+    /// so every step moves the start strictly forward.
+    static func freeSlot(from preferred: Int, in blocks: [TimeBlock], duration: Int, minimum: Int) -> Slot? {
+        let dayEnd = 24 * 60
+        let placed = blocks.filter { $0.durationMinutes > 0 }
         var start = snap(preferred)
-        while blocks.contains(where: { $0.startMinutes <= start && start < $0.endMinutes }) {
-            start += max(15, duration)
-            guard start < 24 * 60 else { return nil }
+        while start < dayEnd {
+            if let containing = placed.first(where: { $0.startMinutes <= start && start < $0.endMinutes }) {
+                start = containing.endMinutes
+                continue
+            }
+            let next = placed
+                .filter { $0.startMinutes > start }
+                .min { $0.startMinutes < $1.startMinutes }
+            let run = min(next?.startMinutes ?? dayEnd, dayEnd) - start
+            if run >= minimum {
+                return Slot(start: start, duration: min(duration, run))
+            }
+            guard let next else { return nil }
+            start = next.endMinutes
         }
-        return start
+        return nil
     }
 
     func overlaps(_ other: TimeBlock) -> Bool {
@@ -58,21 +89,23 @@ struct TimeBlock: Equatable, Sendable, Identifiable {
     /// The same block at another hour, or nil when the day has no room left for it.
     ///
     /// `others` is the day without this block in it: a block always overlaps itself, and
-    /// asking `freeStart` to avoid the place it is leaving would push every move down by
+    /// asking `freeSlot` to avoid the place it is leaving would push every move down by
     /// its own length.
     ///
-    /// Placed with `freeStart` rather than dropped exactly where the pointer let go,
+    /// Placed with `freeSlot` rather than dropped exactly where the pointer let go,
     /// which is the rule every other way of making a block already follows: two blocks
-    /// at the same time say nothing about what the day looks like.
+    /// at the same time say nothing about what the day looks like. The minimum is the
+    /// block's own length, so a move never shortens it - that would be a resize nobody
+    /// asked for - and never lands on top of the next block either (ADR-0075 §D2).
     static func moved(_ block: TimeBlock, toStart start: Int, among others: [TimeBlock]) -> TimeBlock? {
-        let wanted = min(max(0, snap(start)), 24 * 60 - block.durationMinutes)
+        let duration = block.durationMinutes
+        let wanted = min(max(0, snap(start)), 24 * 60 - duration)
         guard wanted >= 0,
-              let free = freeStart(from: wanted, in: others, duration: block.durationMinutes),
-              free + block.durationMinutes <= 24 * 60
+              let slot = freeSlot(from: wanted, in: others, duration: duration, minimum: duration)
         else { return nil }
 
         var moved = block
-        moved.startMinutes = free
+        moved.startMinutes = slot.start
         return moved
     }
 
@@ -119,8 +152,8 @@ enum TimeBlockSection {
             let parts = times.split(separator: "-")
             guard parts.count == 2,
                   let start = minutes(from: String(parts[0])),
-                  let end = minutes(from: String(parts[1])),
-                  end > start
+                  let read = minutes(from: String(parts[1])),
+                  let end = end(reading: read, after: start)
             else { continue }
 
             let isPublished = rest.contains("[published]")
@@ -183,11 +216,28 @@ enum TimeBlockSection {
         return ([heading, ""] + lines).joined(separator: "\n")
     }
 
+    /// `HH:MM`, with `24:00` as the end of the day - the diary's own reader, shared
+    /// (ADR-0075 §D1). Where a `24:00` may stand is `parse`'s business, not this one's.
     static func minutes(from text: String) -> Int? {
-        let parts = text.split(separator: ":")
-        guard parts.count == 2, let hour = Int(parts[0]), let minute = Int(parts[1]),
-              (0...23).contains(hour), (0...59).contains(minute)
-        else { return nil }
-        return hour * 60 + minute
+        DiarySection.minutes(from: text)
+    }
+
+    /// The end a line means, given its start, or nil when the line is not a block
+    /// (ADR-0075 §D1).
+    ///
+    /// A start at `24:00` begins nothing. An end of `00:00` after any start is a block
+    /// that ran to midnight, written the way this app used to write it. An end before
+    /// the start is a line that wrapped past midnight only when the length it implies is
+    /// one a block could have been given; anything longer is a typo, not a wrap, and
+    /// stays malformed. Nothing is rewritten here: the corrected form reaches the file on
+    /// the next write of the section.
+    private static func end(reading end: Int, after start: Int) -> Int? {
+        let dayEnd = 24 * 60
+        guard start < dayEnd else { return nil }
+        if end == 0, start > 0 { return dayEnd }
+        if end > 0, end < start {
+            return end + dayEnd - start <= TimeBlock.durationRange.upperBound ? dayEnd : nil
+        }
+        return end > start ? end : nil
     }
 }

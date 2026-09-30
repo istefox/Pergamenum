@@ -112,8 +112,12 @@ struct CategoryView<Row: View>: View {
             }
 
             if let deadline = category.deadline {
+                // Red only once it has passed, by the task rows' rule (ADR-0075 §D6).
                 Text("Scadenza \(deadline.italianForm)")
-                    .themedText(.caption, color: .taskOverdue)
+                    .themedText(
+                        .caption,
+                        color: category.isDeadlineOverdue(on: .today) ? .taskOverdue : .textSecondary
+                    )
                     .accessibilityIdentifier("category-view-deadline")
             }
 
