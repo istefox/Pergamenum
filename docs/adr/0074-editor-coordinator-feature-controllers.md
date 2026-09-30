@@ -1,7 +1,8 @@
 # ADR-0074: The editor's Coordinator keeps the order of the passes; each feature's state moves into a controller that owns it
 
-- Status: proposed. The implementation is not on `main`. Plan:
-  `docs/plans/pg-144-editor-coordinator-feature-controllers.md`, which declares R-01 to R-10.
+- Status: **accepted**. Merged to `main` via PR #717 (`711c4b6c`, 2026-09-30), for `PG-144`/#244.
+  Plan: `docs/plans/pg-144-editor-coordinator-feature-controllers.md`, which declares R-01 to R-10.
+  The G2 hand check H1–H18 and a full GUI run were not performed before the merge.
 - Date: 2026-09-29. Written against `3cdc97fb` (`kepler/fix-fable-chain-debt`, clean tree).
   `origin/main` is at `06812344`. Of the files this record cites by line, only
   `Tests/MarkdownStylerTests.swift` differs between the two (695 lines on the branch, 741 on
