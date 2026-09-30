@@ -89,9 +89,14 @@ struct PraticaTimelineView: View {
         // key still deletes characters in the filter field and the inspector. Measured
         // (ADR-0070): `.onKeyPress(.delete)` never sees Backspace on a macOS `List`, the
         // table sends it down the Delete command, so forward delete and Modifica ▸ Elimina
-        // exclude too (G1). The body is the row menu's own (ADR-0023 §D1).
+        // exclude too (G1). The body is the row menu's own (ADR-0023 §D1). A press that
+        // excludes nothing (a manual entry, a repeat after the exclusion) beeps, as the
+        // system already does for a row the filter hides (PG-306).
         .onDeleteCommand {
-            guard let entry = pratiche.takeDeleteKeyTarget() else { return }
+            guard let entry = pratiche.takeDeleteKeyTarget() else {
+                NSSound.beep()
+                return
+            }
             actions.run(.exclude, on: entry, detail: pratiche.details[entry.id])
         }
     }

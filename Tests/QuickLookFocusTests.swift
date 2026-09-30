@@ -162,6 +162,24 @@ private final class FocusableView: NSView {
         #expect(window.firstResponder === host)
     }
 
+    /// PG-306: the editor's shape. The note's text view holds the keyboard (a plain
+    /// `NSTextView`, not a field editor), so an embed preview claims first responder for the
+    /// panel and gives the keyboard back to the text view when the panel closes.
+    @Test func handBackFocusRestoresATextViewThatWasEditing() {
+        let (window, _, host) = fixture()
+        defer { window.orderOut(nil) }
+        let textView = NSTextView(frame: NSRect(x: 0, y: 40, width: 200, height: 24))
+        window.contentView?.addSubview(textView)
+        window.makeFirstResponder(textView)
+        #expect(window.firstResponder === textView)
+
+        host.claimFocusForPresentation()
+        #expect(window.firstResponder === host)
+        host.handBackFocus()
+
+        #expect(window.firstResponder === textView)
+    }
+
     @Test func handBackFocusDoesNothingWhenTheRecordedViewLeftTheWindow() {
         let (window, elsewhere, host) = fixture()
         defer { window.orderOut(nil) }

@@ -351,7 +351,21 @@ clear the selection.
   `testBackspaceStillExcludesAfterAQuickLookPreview` presses the space after the panel closes.
 - **Not measured: a Backspace the door refuses.** `.onDeleteCommand` has no handled/ignored
   result, so a refused press (a manual entry, a filtered-out row, a repeat) is a silent no-op.
-  Whether SwiftUI still beeps there is left to the hand checks.
+  Whether SwiftUI still beeps there is left to the hand checks. Measured by hand on 2026-09-29
+  (`PG-306`): a manual entry and a repeat were silent, a filtered-out row beeped (the system's
+  own «nothing to delete», the command never reaching the handler). Stefano chose to beep every
+  time: the handler now calls `NSSound.beep()` when the door refuses.
+- **Measured after the merge: the editor never reached its own embed preview.** Hand check M8
+  (`PG-306`, 2026-09-29): Cmd+click on an embed opened the panel with «No items selected». The
+  note's text view holds the keyboard, the standing claim steps aside for any `NSText`, and the
+  host is not in the text view's responder chain, so the panel found no data source. The same
+  logic predates this chain (`c7121c0d^`), so it is not a regression. The fix widens §D4 on
+  purpose: every presentation now goes through `claimFocusForPresentation()`, not only the
+  timeline's, and `handBackFocus()` returns the keyboard to the text view when the panel closes.
+  On the board the host already holds first responder, so nothing changes there. The standing
+  claim (`claimsFocusOnUpdate`) is unchanged. Pinned by
+  `handBackFocusRestoresATextViewThatWasEditing`; the presentation wiring itself has no
+  in-process seam and is a hand check.
 
 **Line drift, against the tree this ADR was written on.** `PraticaTimelineView.swift`: F1's
 `:77-84` is now `.focused` `:79`, the selection `.onChange` `:80-82` and `.onDeleteCommand`
