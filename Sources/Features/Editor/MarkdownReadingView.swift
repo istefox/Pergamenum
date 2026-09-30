@@ -15,7 +15,7 @@ import SwiftUI
 ///
 /// - **the export feature R-12 reserves it for already exists and does not use it.**
 ///   `NoteExporter` writes HTML and PDF through `NoteExport.html(from:title:)`, a separate
-///   generator (`NoteExporter.swift:43-47`);
+///   generator over the same two parsers (ADR-0077) (`NoteExporter.swift:43-47`);
 /// - **`MarkdownBlocksView`, which this wraps, is *not* in the same position.** It is live and
 ///   load-bearing - `TranscludedNoteView.swift` draws every `![[nota]]` rendition with it - and
 ///   carries no retention note of its own, deliberately.

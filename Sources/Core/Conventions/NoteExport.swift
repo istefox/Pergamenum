@@ -27,11 +27,10 @@ enum NoteExport {
 
     /// The note as a standalone HTML document.
     ///
-    /// A deliberately small CommonMark subset - headings, emphasis, code, lists,
-    /// quotes, links, GFM tables - which is what §5 says a note may contain. Anything
-    /// outside it comes through as its own text rather than as markup: an exported
-    /// note that silently dropped a line would be worse than one that shows a stray
-    /// asterisk.
+    /// The body is the dialect the reading surfaces read, through the same parsers
+    /// (`MarkdownHTML`, ADR-0077). Anything outside it comes through as its own text
+    /// rather than as markup: an exported note that silently dropped a line would be
+    /// worse than one that shows a stray asterisk.
     static func html(from text: String, title: String) -> String {
         let body = MarkdownHTML.render(markdown(from: text))
         return """
@@ -60,14 +59,16 @@ enum NoteExport {
         """
     }
 
-    /// Quotes are escaped as well as angle brackets because `MarkdownHTML` writes a link's
-    /// URL into a quoted `href` attribute after this pass: a literal `"` there would end
-    /// the attribute and let the rest of the href become markup (PG-124). `&` goes first,
-    /// or it would re-escape the entities the later lines introduce.
+    /// Applied exactly once to every string `MarkdownHTML` takes from the note, as it is
+    /// written out, and never before parsing (ADR-0077 §D2). Quotes are escaped as well as
+    /// angle brackets because a link's URL goes into a quoted `href` attribute: a literal
+    /// `"` there would end the attribute and let the rest of the href become markup
+    /// (PG-124). `&` goes first, or it would re-escape the entities the later lines
+    /// introduce.
     ///
-    /// `'` becomes `&apos;` rather than `&#39;` on purpose: `MarkdownHTML.inline` splits a
-    /// wikilink at `#` after this pass, so a numeric reference would cut `[[Nota d'Arco]]`
-    /// to `Nota d&`. The document is HTML5, where `&apos;` is defined.
+    /// `'` becomes `&apos;`, which HTML5 defines. Nothing splits the escaped text any more,
+    /// so `&#39;` would do as well; `&apos;` stays so that every exported page keeps its
+    /// bytes.
     static func escape(_ text: String) -> String {
         text
             .replacingOccurrences(of: "&", with: "&amp;")
@@ -75,229 +76,5 @@ enum NoteExport {
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
             .replacingOccurrences(of: "'", with: "&apos;")
-    }
-}
-
-/// The markdown-to-HTML conversion behind `NoteExport.html`.
-enum MarkdownHTML {
-    /// The blocks being accumulated while the lines are read.
-    ///
-    /// A type rather than a handful of local variables and nested closures: the reader
-    /// of `render` should see the line-by-line decisions, not the bookkeeping each one
-    /// implies.
-    private struct Blocks {
-        var html: [String] = []
-        var listKind: String?
-        var paragraph: [String] = []
-        var quote: [String] = []
-        var table: [[String]] = []
-
-        mutating func closeParagraph() {
-            guard !paragraph.isEmpty else { return }
-            html.append("<p>\(inline(paragraph.joined(separator: " ")))</p>")
-            paragraph = []
-        }
-        mutating func closeList() {
-            guard let kind = listKind else { return }
-            html.append("</\(kind)>")
-            listKind = nil
-        }
-        mutating func closeQuote() {
-            guard !quote.isEmpty else { return }
-            html.append("<blockquote><p>\(inline(quote.joined(separator: " ")))</p></blockquote>")
-            quote = []
-        }
-        mutating func closeTable() {
-            guard !table.isEmpty else { return }
-            var rows = table
-            let head = rows.removeFirst()
-            // The alignment row of a GFM table is separator, not content.
-            if let second = rows.first, second.allSatisfy({ $0.allSatisfy { "-: ".contains($0) } }) {
-                rows.removeFirst()
-            }
-            var out = "<table>\n<thead><tr>"
-            out += head.map { "<th>\(inline($0))</th>" }.joined()
-            out += "</tr></thead>\n<tbody>"
-            for row in rows {
-                out += "<tr>" + row.map { "<td>\(inline($0))</td>" }.joined() + "</tr>"
-            }
-            out += "</tbody>\n</table>"
-            html.append(out)
-            table = []
-        }
-        mutating func closeAll() {
-            closeParagraph()
-            closeList()
-            closeQuote()
-            closeTable()
-        }
-    }
-
-    static func render(_ markdown: String) -> String {
-        var blocks = Blocks()
-        var inCode = false
-        var codeLines: [String] = []
-
-        // `components(separatedBy:)` splits below the grapheme level, so a CRLF line arrives
-        // with its `\r` attached; one trailing `\r` goes, as `ViewCatalogue` does, so a blank
-        // CRLF line closes a block, a table row ends in `|` and a heading or a code line carries
-        // no `\r` into the page (ADR-0065 §D13.1, PG-274).
-        for rawLine in markdown.components(separatedBy: "\n").map({ FrontmatterSource.interpreted($0) }) {
-            let line = rawLine.trimmingCharacters(in: .whitespaces)
-
-            if line.hasPrefix("```") {
-                if inCode {
-                    blocks.html.append("<pre><code>\(NoteExport.escape(codeLines.joined(separator: "\n")))</code></pre>")
-                    codeLines = []
-                    inCode = false
-                } else {
-                    blocks.closeAll()
-                    inCode = true
-                }
-                continue
-            }
-            if inCode {
-                codeLines.append(rawLine)
-                continue
-            }
-
-            if line.isEmpty {
-                blocks.closeAll()
-                continue
-            }
-
-            if line.hasPrefix("#") {
-                let level = min(6, line.prefix { $0 == "#" }.count)
-                let content = line.dropFirst(level).trimmingCharacters(in: .whitespaces)
-                blocks.closeAll()
-                blocks.html.append("<h\(level)>\(inline(content))</h\(level)>")
-                continue
-            }
-
-            if line.hasPrefix("|"), line.hasSuffix("|") {
-                blocks.closeParagraph()
-                blocks.closeList()
-                blocks.closeQuote()
-                blocks.table.append(
-                    line.dropFirst().dropLast()
-                        .components(separatedBy: "|")
-                        .map { $0.trimmingCharacters(in: .whitespaces) }
-                )
-                continue
-            }
-            blocks.closeTable()
-
-            if line.hasPrefix("> ") || line == ">" {
-                blocks.closeParagraph()
-                blocks.closeList()
-                blocks.quote.append(String(line.dropFirst(line == ">" ? 1 : 2)))
-                continue
-            }
-            blocks.closeQuote()
-
-            if let item = listItem(line) {
-                blocks.closeParagraph()
-                if blocks.listKind != item.kind {
-                    blocks.closeList()
-                    blocks.html.append("<\(item.kind)>")
-                    blocks.listKind = item.kind
-                }
-                blocks.html.append("<li>\(inline(item.content))</li>")
-                continue
-            }
-            blocks.closeList()
-
-            blocks.paragraph.append(line)
-        }
-
-        if inCode, !codeLines.isEmpty {
-            blocks.html.append("<pre><code>\(NoteExport.escape(codeLines.joined(separator: "\n")))</code></pre>")
-        }
-        blocks.closeAll()
-        return blocks.html.joined(separator: "\n")
-    }
-
-    private static func listItem(_ line: String) -> (kind: String, content: String)? {
-        for marker in ["- ", "* ", "+ "] where line.hasPrefix(marker) {
-            var content = String(line.dropFirst(marker.count))
-            // A task list keeps its box, drawn as a character: an exported checklist
-            // that lost its state would be a different document.
-            if content.hasPrefix("[ ] ") {
-                content = "☐ " + content.dropFirst(4)
-            } else if content.lowercased().hasPrefix("[x] ") {
-                content = "☑ " + content.dropFirst(4)
-            }
-            return ("ul", content)
-        }
-        // `1. `, `2. ` and so on.
-        let digits = line.prefix { $0.isNumber }
-        if !digits.isEmpty, line.dropFirst(digits.count).hasPrefix(". ") {
-            return ("ol", String(line.dropFirst(digits.count + 2)))
-        }
-        return nil
-    }
-
-    /// Inline markup, applied to already-escaped text.
-    static func inline(_ text: String) -> String {
-        var result = NoteExport.escape(text)
-
-        // Wikilinks become their display text: the reader has no vault to resolve them
-        // in, and `[[Titolo]]` on a page sent to a customer is noise.
-        result = replacePairs(in: result, open: "[[", close: "]]") { inner in
-            let withoutEmbed = inner
-            let displayed = withoutEmbed.split(separator: "|").last.map(String.init) ?? withoutEmbed
-            return displayed.split(separator: "#").first.map(String.init) ?? displayed
-        }
-        result = replaceCode(in: result)
-        result = replaceMarkdownLinks(in: result)
-        result = replacePairs(in: result, open: "**", close: "**") { "<strong>\($0)</strong>" }
-        result = replacePairs(in: result, open: "*", close: "*") { "<em>\($0)</em>" }
-        return result
-    }
-
-    private static func replaceCode(in text: String) -> String {
-        replacePairs(in: text, open: "`", close: "`") { "<code>\($0)</code>" }
-    }
-
-    /// `[testo](url)` becomes an anchor, or just its label when `LinkPolicy` refuses the
-    /// scheme: an exported page is read in a browser or rendered by WebKit for the PDF,
-    /// and neither should be handed a `javascript:` or `file:` link out of a note.
-    private static func replaceMarkdownLinks(in text: String) -> String {
-        var result = ""
-        var rest = Substring(text)
-
-        while let open = rest.firstIndex(of: "["),
-              let close = rest[open...].firstIndex(of: "]"),
-              rest.index(after: close) < rest.endIndex,
-              rest[rest.index(after: close)] == "(",
-              let end = rest[close...].firstIndex(of: ")") {
-            let label = String(rest[rest.index(after: open)..<close])
-            let url = String(rest[rest.index(close, offsetBy: 2)..<end])
-            result += rest[rest.startIndex..<open]
-            // `url` is already escaped by `inline`; the scheme it starts with is not
-            // affected by that, so the check reads the same string the anchor would.
-            result += LinkPolicy.isOpenable(url) ? "<a href=\"\(url)\">\(label)</a>" : label
-            rest = rest[rest.index(after: end)...]
-        }
-        return result + rest
-    }
-
-    /// Replaces every `open … close` pair, leaving an unmatched delimiter as text.
-    private static func replacePairs(
-        in text: String,
-        open: String,
-        close: String,
-        transform: (String) -> String
-    ) -> String {
-        var result = ""
-        var rest = Substring(text)
-
-        while let start = rest.range(of: open),
-              let end = rest.range(of: close, range: start.upperBound..<rest.endIndex) {
-            result += rest[rest.startIndex..<start.lowerBound]
-            result += transform(String(rest[start.upperBound..<end.lowerBound]))
-            rest = rest[end.upperBound...]
-        }
-        return result + rest
     }
 }

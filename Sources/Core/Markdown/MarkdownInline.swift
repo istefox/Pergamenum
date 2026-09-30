@@ -40,6 +40,10 @@ enum MarkdownInlineParser {
         var result: [MarkdownSpan] = []
         var plain = ""
         var index = text.startIndex
+        var previous: Character?
+        // The character before the current run of `_`: CommonMark reads a delimiter run as a
+        // whole, so the second `_` of `a__b` is as intraword as the first (ADR-0077 §D5).
+        var beforeRun: Character?
 
         func flush() {
             guard !plain.isEmpty else { return }
@@ -48,13 +52,17 @@ enum MarkdownInlineParser {
         }
 
         while index < text.endIndex {
-            if let match = match(at: text[index...]) {
+            let character = text[index]
+            if character != "_" || previous != "_" { beforeRun = previous }
+            if let match = match(at: text[index...], after: beforeRun) {
                 flush()
                 result.append(contentsOf: match.spans)
+                previous = text[text.index(before: match.end)]
                 index = match.end
                 continue
             }
-            plain.append(text[index])
+            plain.append(character)
+            previous = character
             index = text.index(after: index)
         }
         flush()
@@ -67,11 +75,13 @@ enum MarkdownInlineParser {
         var end: String.Index
     }
 
-    private static func match(at rest: Substring) -> Match? {
+    /// `previous` is the character before `rest` (before its run of `_`), nil at the start.
+    private static func match(at rest: Substring, after previous: Character?) -> Match? {
         // Code first: inside backticks nothing else is markup.
         // An embed before the wikilink and link fallbacks: neither reads `![[`, so the `!` was
         // left behind as plain text beside a note link (ADR-0065 §D9.2, R-17).
-        code(at: rest) ?? embed(at: rest) ?? wikilink(at: rest) ?? link(at: rest) ?? emphasis(at: rest)
+        code(at: rest) ?? embed(at: rest) ?? wikilink(at: rest) ?? link(at: rest)
+            ?? emphasis(at: rest, after: previous)
     }
 
     private static func embed(at rest: Substring) -> Match? {
@@ -108,15 +118,22 @@ enum MarkdownInlineParser {
         // reachable from the editor and from Quick Look.
         let body = rest.hasPrefix("![") ? rest.dropFirst() : rest
         guard body.hasPrefix("["), let parsed = markdownLink(in: body) else { return nil }
+        // The label is markdown too, so `[**forte**](url)` is strong and linked (ADR-0077 §D5).
+        // An empty label keeps its one empty span, as before, rather than losing the link.
+        let label = spans(in: parsed.label)
         return Match(
-            spans: [MarkdownSpan(text: parsed.label, link: .url(parsed.target))],
+            spans: (label.isEmpty ? [MarkdownSpan(text: "")] : label).map { span in
+                var linked = span
+                linked.link = .url(parsed.target)
+                return linked
+            },
             end: parsed.end
         )
     }
 
-    private static func emphasis(at rest: Substring) -> Match? {
+    private static func emphasis(at rest: Substring, after previous: Character?) -> Match? {
         guard let (marker, style) = emphasisMarker(at: rest),
-              opensEmphasis(rest, marker: marker),
+              opensEmphasis(rest, marker: marker, after: previous),
               let close = closingRange(of: marker, in: rest.dropFirst(marker.count))
         else { return nil }
 
@@ -145,9 +162,17 @@ enum MarkdownInlineParser {
     /// `2 * 3 * 4` is arithmetic, not emphasis: a marker followed by a space opens
     /// nothing. Without this the parser ate both asterisks and rendered "2  3  4",
     /// which is the one thing a reading view must never do - lose the text.
-    private static func opensEmphasis(_ rest: Substring, marker: String) -> Bool {
+    ///
+    /// `_` and `__` also open nothing inside a word, CommonMark's intraword rule: `file_name_here`
+    /// is a file name, not `file` *`name`* `here` (ADR-0077 §D5). `*` keeps today's rule.
+    private static func opensEmphasis(_ rest: Substring, marker: String, after previous: Character?) -> Bool {
         guard let next = rest.dropFirst(marker.count).first else { return false }
+        if marker.hasPrefix("_"), let previous, isWordCharacter(previous) { return false }
         return !next.isWhitespace
+    }
+
+    private static func isWordCharacter(_ character: Character) -> Bool {
+        character.isLetter || character.isNumber
     }
 
     /// Finds the marker that closes a span.
@@ -168,6 +193,11 @@ enum MarkdownInlineParser {
             var end = found.upperBound
             while end < haystack.endIndex, haystack[end] == markerCharacter {
                 end = haystack.index(after: end)
+            }
+            // The closing half of the intraword rule: `_lieve_mente` does not close at `_m`.
+            if markerCharacter == "_", end < haystack.endIndex, isWordCharacter(haystack[end]) {
+                search = haystack[end...]
+                continue
             }
             guard haystack.distance(from: found.lowerBound, to: end) > marker.count else { return found }
             return haystack.index(end, offsetBy: -marker.count)..<end

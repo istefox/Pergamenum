@@ -140,8 +140,9 @@ private func parseErrorDescription(_ source: String) -> String {
 
     /// Captured directly from `NoteExport.html(from:title:)` as it stands today (not a golden
     /// file this chain writes): the fence is exported exactly like any other fenced code block -
-    /// `MarkdownHTML.render` never reads a fence's language at all, `pergamenum-view` included -
-    /// so the vista's own grammar shows up verbatim, escaped, inside a `<pre><code>`.
+    /// `MarkdownHTML.render` renders every fence as plain code, whatever its language,
+    /// `pergamenum-view` included (ADR-0077 §D6) - so the vista's own grammar shows up verbatim,
+    /// escaped, inside a `<pre><code>`.
     private static let expectedHTML = """
         <!DOCTYPE html>
         <html lang="it">

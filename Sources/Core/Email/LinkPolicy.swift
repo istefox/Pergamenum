@@ -32,11 +32,13 @@ enum LinkPolicy {
     }
 
     /// The same decision for a raw string, read by scheme prefix rather than through
-    /// `URL(string:)`: `NoteExport`'s own escaping pass runs before this is called (PG-124),
-    /// and a payload built to break out of an `href` attribute - a stray space, an
-    /// unescaped `<` - can fail `URL(string:)` on the whole string even though the scheme
-    /// in front of the first `:` is `https` and entirely legitimate. RFC 3986 §3.1 makes
-    /// the scheme unambiguous: everything before the first `:`.
+    /// `URL(string:)`: `MarkdownHTML` asks it about a link's raw target, before escaping it
+    /// into the `href` (ADR-0077 §D3), and a payload built to break out of that attribute -
+    /// a stray space, a `"`, a `<` - can fail `URL(string:)` on the whole string even though
+    /// the scheme in front of the first `:` is `https` and entirely legitimate. RFC 3986 §3.1
+    /// makes the scheme unambiguous: everything before the first `:`. So asking before or
+    /// after escaping gives the same answer: escaping touches only `&<>"'`, and none of them
+    /// can be part of an openable scheme.
     static func isOpenable(_ string: String) -> Bool {
         guard let colon = string.firstIndex(of: ":") else { return false }
         return openableSchemes.contains(string[string.startIndex..<colon].lowercased())

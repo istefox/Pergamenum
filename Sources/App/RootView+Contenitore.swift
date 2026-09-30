@@ -3,18 +3,8 @@ import SwiftUI
 // ADR-0071 (Contenitore, a managed document archive fed from a drop folder) §D10 and §D11, plan
 // docs/plans/contenitore.md, Task 6 - R-04, R-23, R-24, R-26.
 //
-// Beside `RootView.swift` rather than in it: that file sits at the edge of `file_length`.
-
-extension RootView {
-    @ViewBuilder
-    var contenitorePane: some View {
-        if vault.root == nil {
-            needsVault("Il Contenitore archivia i documenti che metti nella cartella di raccolta: senza un vault non c'è dove tenerli.")
-        } else {
-            ContenitoreView()
-        }
-    }
-}
+// Beside `RootView.swift` rather than in it: that file sits at the edge of `file_length`. The
+// pane's empty state went into `RootView.detail`'s one `requiringVault` door (PG-147).
 
 extension View {
     /// Starts the Contenitore controller for each open vault and each change of Settings ›

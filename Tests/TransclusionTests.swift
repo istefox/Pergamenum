@@ -100,6 +100,22 @@ un fonometro
     #expect(Transclusion.excerpt(of: note, section: "  campioni ")?.hasPrefix("## Campioni") == true)
 }
 
+@Test func aSectionWithIntrawordUnderscoresIsFound() {
+    // ADR-0077 §D5: the outline title keeps its underscores, so `![[Nota#a_b_c]]` matches.
+    #expect(Transclusion.excerpt(of: "## a_b_c\n\ntesto", section: "a_b_c") != nil)
+}
+
+@Test func aSectionNamedByAnOldOutlineTitleNoLongerMatches() {
+    // ADR-0077 §D5, accepted: `[[Nota#` completion wrote the outline title into the note, and
+    // these two titles changed. The old spellings (`filenamehere`, `Vedi **x**`) were the
+    // parser's mistakes; a link completed under them stops resolving until it is completed again.
+    let note = "## file_name_here\n\ntesto\n\n## Vedi [**x**](u)\n\naltro"
+    #expect(Transclusion.excerpt(of: note, section: "filenamehere") == nil)
+    #expect(Transclusion.excerpt(of: note, section: "Vedi **x**") == nil)
+    #expect(Transclusion.excerpt(of: note, section: "file_name_here") != nil)
+    #expect(Transclusion.excerpt(of: note, section: "Vedi x") != nil)
+}
+
 @Test func aSectionThatNoHeadingAnswersToIsNilRatherThanTheWholeNote() {
     // Showing the whole note instead would look exactly like the section having been
     // deleted, which is the worse of the two lies.

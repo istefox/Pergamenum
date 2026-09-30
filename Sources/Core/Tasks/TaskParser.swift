@@ -97,7 +97,10 @@ enum TaskParser {
         return highest + 1
     }
 
-    private static func state(for marker: Character) -> TaskItem.State? {
+    /// Not `private`: `MarkdownBlockParser.taskLine(in:)` (`MarkdownBlocks.swift`) asks it which
+    /// markers make a task line, so the reading view and the task index share one vocabulary
+    /// (ADR-0077 §D5).
+    static func state(for marker: Character) -> TaskItem.State? {
         switch marker {
         case " ": .open
         case "x", "X": .done
