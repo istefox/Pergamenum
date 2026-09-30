@@ -294,7 +294,7 @@ enum PraticaRowFormat {
     }
 
     /// The person's own locale and time zone, unlike the file formats
-    /// (`PraticheController.entryHeadingFormatter`), which are `en_US_POSIX` because a
+    /// (`PraticaEntry.headingFormatter`), which are `en_US_POSIX` because a
     /// heading is a file format and not a presentation.
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()

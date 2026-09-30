@@ -422,6 +422,50 @@ def pratiche_links(binary, vault, check):
         server.close()
 
 
+def pratiche_anchors(binary, vault, check):
+    """ADR-0076 §D10, R-22: an entry anchored to a message follows it in the `pratica`
+    payload with `anchorState` "anchored", one naming a Message-ID no message carries sits at
+    its own heading time with "orphaned", and a free entry carries neither key.
+
+    The message is dated 12:06 UTC, the free call 14:06; the anchored note is written the next
+    day and still comes right after the message, the orphaned one sits at its own 13:00. The
+    ordering rule itself is `Tests/PraticheConnectorAnchorTests.swift`'s job; what only a real
+    server shows is that the two keys survive the JSON crossing over a read-only server.
+    """
+    print("voci collegate a un messaggio")
+    folder = os.path.join(vault, "01 Progetti", "Rossi", "Offerta")
+    os.makedirs(os.path.join(folder, "email"))
+    with open(os.path.join(folder, "pratica.md"), "w", encoding="utf-8") as handle:
+        handle.write(PRATICA_NOTE
+                     + "\n## 2026-06-11 09:00 Nota · Mario Rossi\n"
+                     + "<!-- pergamenum-message: <abc@rossi-spa.it> -->\n\nOfferta da preparare.\n"
+                     + "\n## 2026-06-10 13:00 Nota · Mario Rossi\n"
+                     + "<!-- pergamenum-message: <sparito@rossi-spa.it> -->\n\nMessaggio tolto.\n")
+    with open(os.path.join(folder, "email", "msg.md"), "w", encoding="utf-8") as handle:
+        handle.write(MESSAGE_NOTE)
+
+    server = Server(binary, vault, allow_write=False)
+    try:
+        timeline = server.payload("pratica", {"pratica": "Offerta"})
+        entries = timeline.get("entries", [])
+        check([entry["kind"] for entry in entries] == ["message", "note", "note", "call"],
+              "il messaggio, la voce collegata, la voce orfana, poi la telefonata")
+        if len(entries) == 4:
+            check("anchorMessageID" not in entries[0] and "anchorState" not in entries[0],
+                  "il messaggio non porta le chiavi dell'ancora")
+            check(entries[1].get("anchorState") == "anchored"
+                  and entries[1].get("anchorMessageID") == "<abc@rossi-spa.it>",
+                  "la voce collegata segue il suo messaggio ed è anchored")
+            check("pergamenum-message" not in entries[1]["body"], "il testo non contiene la riga dell'ancora")
+            check(entries[2].get("anchorState") == "orphaned"
+                  and entries[2].get("anchorMessageID") == "<sparito@rossi-spa.it>",
+                  "la voce senza messaggio resta alla sua ora ed è orphaned")
+            check("anchorMessageID" not in entries[3] and "anchorState" not in entries[3],
+                  "una voce libera non porta nessuna delle due chiavi")
+    finally:
+        server.close()
+
+
 def categories(binary, vault, check):
     """ADR-0047 §D9 (R-09): the registry read, implicit categories folded in, and one
     category's rolled-up, grouped task list - both read-only, neither writes.
@@ -565,8 +609,8 @@ def main(argv):
 
     failures = []
     check = make_check(failures)
-    for stage in (read_only, writing, views, pratiche, pratiche_links, categories, resources,
-                  hardening):
+    for stage in (read_only, writing, views, pratiche, pratiche_links, pratiche_anchors, categories,
+                  resources, hardening):
         vault = tempfile.mkdtemp(prefix="pergamenum-smoke-")
         try:
             with open(os.path.join(vault, "Nota.md"), "w", encoding="utf-8") as handle:

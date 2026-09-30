@@ -20,8 +20,8 @@ enum PraticaEntry {
         case call
 
         /// The literal word the heading and the daily-note mirror line both carry, and
-        /// the one `PraticheController.parseEntryHeading` already matches back
-        /// (`tail.hasPrefix("Telefonata")`, `Sources/Features/Pratiche/PraticheController.swift`).
+        /// the one `PraticaManualEntries.heading(_:)` matches back
+        /// (`tail.hasPrefix(Kind.call.label)`, `Sources/Core/Pratiche/PraticaManualEntries.swift`).
         var label: String {
             switch self {
             case .note: "Nota"
@@ -39,16 +39,14 @@ enum PraticaEntry {
         var cursorRange: NSRange
     }
 
-    /// `en_US_POSIX` / `"yyyy-MM-dd HH:mm"` - the same pattern
-    /// `PraticheController.entryHeadingFormatter` already reads back. A file format,
-    /// not a presentation, so it cannot follow the person's locale (that formatter's
-    /// own comment).
+    /// `en_US_POSIX` / `"yyyy-MM-dd HH:mm"` - the one formatter that both writes the
+    /// heading and reads it back (`PraticaManualEntries.parse`, ADR-0076 §D1). A file
+    /// format, not a presentation, so it cannot follow the person's locale.
     ///
     /// The time zone is pinned to GMT for the same reason the locale is pinned, and
     /// `Tests/PraticaEntryTests.swift` requires it: a heading written at `14:06Z` reads
     /// back `14:06` on any Mac, in any zone, which is what makes the file portable and
-    /// the round trip through `PraticheController.entryHeadingFormatter` (pinned the
-    /// same way, for the same reason) an identity. `DateEntry` and `PlaudTimestamp`
+    /// the round trip through the shared parser an identity. `DateEntry` and `PlaudTimestamp`
     /// already pin `secondsFromGMT: 0` on their own file-format formatters. The
     /// timeline still *draws* the row in the reader's own zone
     /// (`PraticaRowFormat.time`), as it does for a message's own header date.
@@ -77,10 +75,15 @@ enum PraticaEntry {
     /// heading itself: the caller resolves it into
     /// `Navigation.jumpToLine(range:ordinal:)`, and a caret on the heading would put
     /// the first thing typed inside the entry's own title.
+    ///
+    /// With an `anchor` (a Message-ID, ADR-0076 §D1, R-03) the heading is followed by the anchor
+    /// line and then the empty body line, and the caret still lands on the body line. An id
+    /// `PraticaEntryAnchor.line(for:)` cannot spell writes a free entry, byte-identical to the
+    /// call without an anchor.
     static func insert(
-        kind: Kind, at timestamp: Date, counterpart: String, in source: String
+        kind: Kind, at timestamp: Date, counterpart: String, anchor: String? = nil, in source: String
     ) -> Insertion {
-        let heading = "## \(headingFormatter.string(from: timestamp)) \(kind.label) · \(counterpart)"
+        var heading = "## \(headingFormatter.string(from: timestamp)) \(kind.label) · \(counterpart)"
 
         // One blank line between whatever the note already says and the new heading,
         // and never two: `pratica.md` is a file a person also reads in Obsidian.
@@ -88,6 +91,8 @@ enum PraticaEntry {
         // is one `Character`, which `hasSuffix("\n")` never matched, so a CRLF note gained
         // two blank lines and bare LFs (PG-318).
         let lineBreak = LineBreak.detected(in: source).characters
+        // The anchor line rides on the heading, so the caret offset below lands past both.
+        if let line = anchor.flatMap(PraticaEntryAnchor.line(for:)) { heading += lineBreak + line }
         var text = source
         if !text.isEmpty {
             if text.last.map(LineBreak.isTerminator) != true { text += lineBreak }
@@ -101,5 +106,21 @@ enum PraticaEntry {
             text: text,
             cursorRange: NSRange(location: headingEnd + (lineBreak as NSString).length, length: 0)
         )
+    }
+
+    /// Who an entry anchored to a message is with (ADR-0076 §D1, R-03): the sender of a received
+    /// message, else the first recipient that is not one of `ownAddresses`, else the first Cc -
+    /// `MessageDocument.counterpart`'s rule, spelled as `EmailAddress.displayText`. Nil when the
+    /// message names nobody.
+    static func counterpart(
+        ofMessage frontmatter: MessageDocument.MailFrontmatter, ownAddresses: Set<String>
+    ) -> String? {
+        MessageDocument.counterpart(
+            direction: frontmatter.direction,
+            from: EmailHeaderParser.parseAddress(frontmatter.from),
+            to: frontmatter.to.compactMap(EmailHeaderParser.parseAddress),
+            cc: frontmatter.cc.compactMap(EmailHeaderParser.parseAddress),
+            ownAddresses: ownAddresses
+        )?.displayText
     }
 }
