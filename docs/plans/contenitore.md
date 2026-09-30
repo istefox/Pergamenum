@@ -1,0 +1,776 @@
+# Plan: Contenitore, a managed document archive fed from a drop folder
+
+- **SPEC:** root `SPEC.md` (Approved 2026-09-29). It is the authority for scope, decisions and
+  R-01..R-29.
+  - The staged `docs/specs/search-query-correctness.spec.md` belongs to another feature and is not
+    an input. The same holds for the root `BRAINSTORM.md` and `UX-BLUEPRINT.md`.
+- **ADR:** `docs/adr/0071-contenitore-managed-document-archive.md` (new, `proposed`). Recheck the
+  number against `origin/main` right before merge (`docs/adr/README.md` rule 1).
+- **Base:** `e653cbdc`. Every line number below was read there.
+- **Delivery: two PRs.**
+  - **PR 1** covers Tasks 2-5. It is dormant: Core units, the index field, session doors, the ingest
+    engine, the extraction store and queue, and search. Nothing starts an import.
+  - **PR 2** covers Tasks 6-7: controller, watcher, settings, route and pane. It starts after the
+    mockup gate.
+  - Task 1 opens both PRs, and Task 8 closes each.
+
+## SPEC decisions registered, not reopened
+
+The SPEC's `## Decisions` settle the following, and ADR-0071 carries them as they stand:
+
+- **Storage and ingest.**
+  - Metadata lives in a scheda `.md` beside the file.
+  - There is one drop folder, outside the vault. Files are moved, not copied.
+  - Files are auto-imported into `status-inbox`.
+  - Any file type is accepted. Text is extracted only from PDF, images and plain text.
+- **Layout and naming.**
+  - The layout is `<root>/[<sub>/…]/YYYY/`, and sub-containers are a nested folder tree.
+  - The root is configurable.
+  - Names are `YYYYMMDD <name>`, and `date` is the import day.
+- **Duplicates and text.**
+  - Duplicates are refused by SHA-256.
+  - Extracted text lives in derived state, and search reads it.
+  - OCR runs on every page, in Italian and English, on-device.
+- **Colour and classification.**
+  - Colour is one of six preset names.
+  - «Classificato» means `status-inbox` removed and at least one `topic-*` present.
+- **Links and pair operations.**
+  - The link is the scheda's note id, and it opens the pane.
+  - Rename and move act on the pair. Delete trashes both files.
+- **Connectors and tests.**
+  - Connectors reach Contenitore through notes.
+  - There are zero GUI tests.
+
+«Crea scheda» for hand-placed files is out of scope and is not planned.
+
+## Assumptions the SPEC deferred here, resolved
+
+- **(a) Rewriting links to a non-`.md` target on a pair rename: the pure rule already works.**
+  - `NoteRename.rewritingLinks` matches on `resolvedTitle`, which is the raw target
+    (`Sources/Core/Conventions/Wikilink.swift:29`).
+  - Given the full file name, it rewrites `[[x.pdf]]` and `![[x.pdf|400]]` and keeps the embed
+    mark, the section and the size. It also rewrites the scheda's own `pergamenum-contenitore-file`
+    key.
+  - What is missing is the plan layer. `NoteFileOperations.renamePlan` knows only `.md` titles. The
+    two rewrites of one note must become one `VaultFileChange`, or the second guarded write is
+    refused by its own `expecting:` hash.
+  - **Cost:** about 100-150 lines in `NoteFileOperations.swift` and `VaultSession+Files.swift`, and
+    about 8 tests. No new write door, no schema change.
+  - A move needs no rewrite, because attachments resolve by name anywhere.
+  - **Residual:** CommonMark `![](x.pdf)` references are not rewritten (ADR-0071 §D6).
+- **(b) Vision runs on-device and supports Italian and English.** Confirmed on 2026-09-29, against
+  Xcode 27.0 (27A266a) and macOS 27.0.1:
+  - `VNRecognizeTextRequest.supportedRecognitionLanguages()` was run on this Mac. It lists `it-IT`
+    and `en-US` at both levels: 33 languages accurate, 6 fast.
+  - The Swift `RecognizeTextRequest` lists both as well.
+  - The SDK header `VNRecognizeTextRequest.h` declares the language and level properties.
+  - Apple's "Recognizing text in images" says "all of Vision's processing happens on the user's
+    device".
+- **(c) The pane's shortcut is Ctrl+Cmd+C**, as `ShortcutCommand.paneContenitore`.
+  - It is free in `com.apple.symbolichotkeys`. There are 58 entries, none uses keycode 8, and every
+    Ctrl+Cmd entry is disabled.
+  - It is also free in the shortcut catalogue and in `Sources/`.
+  - It follows Pratiche's Ctrl+Cmd+P precedent.
+
+## What reading the code added (the coder must know these)
+
+1. **`VaultDisk.moveFile` and `restoreFile` index any file.**
+   - `VaultDisk.swift:422-427` and `:468-473` read the whole moved file and call
+     `store.record(from:)` whatever its type.
+   - Moving a PDF through them reads it into memory. A `.txt` would become a phantom note.
+   - The fix is a `.md` gate (ADR-0071 §D3). Every existing `moveFile` caller and test moves a
+     `.md`, so no current behaviour changes.
+2. **`VaultSession.trashFile` reads the whole file on the main actor** for `textBefore`
+   (`VaultSession+Journal.swift:159`). Gate that read to `.md`.
+3. **`restoreFromOutside` refuses a missing parent** on purpose (ADR-0068 §D2). Ingest gets its own
+   door and must not change that one.
+4. **The index keeps no foreign key.**
+   - `StoredFrontmatter` holds four keys, which is why ADR-0047 added `categorySlug`
+     (`IndexCache.swift:274`).
+   - Contenitore adds one typed field and bumps `schemaVersion` 6 → 7 (`IndexCache.swift:214`).
+     That constant is protected, so the bump is gate G1.
+5. **A stem of exactly `YYYYMMDD` is a daily note** (`NoteName.category`). A name that sanitises to
+   nothing gets the fallback `documento`.
+6. **Shared and app-only session files.**
+   - App-only: `VaultSession+Move.swift`, `VaultSession+Folders.swift`.
+   - In `sharedSources`: `VaultSession+Files.swift`, `+Journal`, `+Search`, `+NoteIDs`
+     (`Project.swift:87-157`).
+   - The pair operations go in shared files, because the connectors call `renameNote`, `moveNote`
+     and `trashNote`. The ingest door goes in a new app-only file.
+7. **`VaultState` is keyed by the bundle id, so app and connectors share it.** The connectors'
+   search therefore reads the extraction the app wrote.
+8. **The test target bundles no PDF or image.** Its resources are `Themes` and `vocabolari.json`.
+   - Generate a text-layer PDF in the test with CoreGraphics and CoreText.
+   - Generate the OCR image by drawing large black text into a bitmap.
+9. **`SidebarTests.praticheSitsInLavoroImmediatelyBeforeRecordings` pins Pratiche immediately
+   before Registrazioni.** Contenitore therefore goes before Pratiche:
+   `[.tasks, .contenitore, .pratiche, .recordings]` (`SidebarItem.swift:90`).
+10. **Colour tokens.**
+    - `DiaryColour+Token.swift` is the precedent for mapping a Core colour to a `ColorToken` in
+      `Sources/DesignSystem`.
+    - The sticky card's preset map lives in `StickyTextCard.swift`, and the names in
+      `BoardContentLayer.colorNames`.
+    - Extract one shared preset-to-token helper.
+11. **`ImportNaming.truncatedAtWordBoundary` splits on hyphens only** (`ImportNaming.swift:170`).
+    It cannot cut a space-separated name. It is pinned by the tests of two protected names, so do
+    not edit it; `ContenitoreNaming` cuts at spaces with its own function.
+12. **`FolderName.validate` returns `[NoteName.Violation]`** (`Sources/Core/Vault/FolderIdentity.swift:23`).
+    The four-digit refusal is therefore a separate outcome, not a new `NoteName.Violation` case. A
+    new case would widen a type the whole linter switches on.
+
+## Standing rules for every task
+
+- **Tooling.**
+  - Run `tuist install` once per fresh worktree.
+  - Run `tuist generate --no-open` after adding any file or changing `Project.swift`.
+  - Never edit `.xcodeproj` or `.xcworkspace`.
+  - Add any new file the connectors need to `sharedSources` by hand.
+- **Tester owns the signatures, coder owns the bodies.**
+  - Every "Declarations" list below belongs to the tester half of its task.
+  - Each declaration gets a body that keeps today's behaviour: a no-op, `nil`, today's return value,
+    or an arm mapping a new case to today's outcome. The target then builds, and the new tests fail
+    for the intended reason.
+  - The coder half replaces those bodies.
+  - If a batch leaves the target unbuildable, it produces no reds at all.
+- **Keep the build green.**
+  - Every task ends with the app, `perg` and `pergamenum-mcp` building, and `PergamenumTests` green
+    apart from the declared reds.
+  - Run the **full** `PergamenumTests` suite after every coder half, not only the new files. The
+    schema version, the note doors, the route and pane enums, and search are shared contracts.
+- **Tests.**
+  - Never disable or delete a test.
+  - An assertion that must change is explained in chat first. The known ones are listed per task.
+  - Use Swift Testing only, on `TemporaryVault` (`Tests/TemporaryVaultSupport.swift`), with a
+    temporary state base.
+  - Zero GUI tests.
+- **UI.** Strings are in Italian. Colours and fonts come from tokens only. SwiftLint is clean.
+- **Protected interfaces.**
+  - `IndexCache.schemaVersion` changes only after gate G1.
+  - Every other entry in `.claude/protected-interfaces` stays untouched, including
+    `ImportNaming.recordingNoteTitle` and `VaultBoundary.url(for:)`.
+
+---
+
+## Task 1 — Record, mockup and SPEC §9 (R-28, R-29)
+
+Owners are the parent session and Stefano. No production code.
+
+- **ADR.** `docs/adr/0071-contenitore-managed-document-archive.md` is written as `proposed`.
+  - Stefano answers gates G1, G3 and G4 (listed under Risks) before Task 2; G5 and G6 may follow.
+  - A different answer to G1, G3 or G4 means re-planning the affected task, not improvising.
+- **Mockup (R-28).**
+  - Produce the pane's mockup under `docs/design/contenitore/`. The precedent is
+    `docs/design/pratiche/Pergamenum Pratiche.dc.html`.
+  - It must cover:
+    - the left column: «Tutti», «Da classificare» with count, and the sub-container tree;
+    - the list and grid;
+    - filters;
+    - the inspector;
+    - the «Classifica» sheet;
+    - notices;
+    - where the menu-bar entries sit.
+  - Stefano's approval opens Task 7. PR 1 does not wait for it.
+- **SPEC §9 (R-29).** In `docs/20260811_Pergamenum_SpecApp.md`, add one row under the table at
+  `:395-403`:
+  - `pergamenum://contenitore?id=<uuid>`: «selects the document in the Contenitore pane; unknown id
+    opens the pane with nothing selected (ADR-0071 §D10)».
+- **Done when:** the ADR is on the branch, the mockup is approved, and the §9 row is written.
+  - The CLAUDE.md chain-index line and the ADR's landing evidence belong to Task 8.
+
+## Task 2 — Pure Core units and the index field (R-02, R-06, R-17, R-18, R-19, R-26)
+
+### Declarations (tester)
+
+The new files go under `Sources/Core/Contenitore/`. They are Foundation-only, and all three targets
+compile them through the `Sources/Core/**` glob.
+
+- **`ContenitoreScheda.swift`**
+  - The key-name constants.
+  - `static func render(date: CalendarDate, fileName: String, originalName: String, sha256:
+    String) -> String`.
+  - `static func facts(in foreignKeys: [ForeignKey]) -> ContenitoreFacts?`. Returns `nil` unless
+    `pergamenum-contenitore: 1`.
+  - `static func settingColour(_: ContenitoreColour?, in text: String) -> String`, through
+    `NoteDocument`/`FrontmatterSource`.
+  - `struct ContenitoreFacts: Equatable, Sendable, Codable`, with `fileName`, `originalName`,
+    `sha256: String?`, `colour: ContenitoreColour?` and `rawColour: String?`.
+- **`ContenitoreColour.swift`**
+  - `enum ContenitoreColour: String, CaseIterable, Sendable, Codable`, with cases `rosso`,
+    `arancio`, `giallo`, `verde`, `ciano`, `viola`.
+  - `canvasPreset: Int` (1...6) and a display name.
+- **`ContenitoreNaming.swift`**
+  - `stem(forOriginal:importDate:)`. It cuts at a space with its own function (item 11).
+  - `uniquePairStem(_:extension:takenFileNames:takenTitles:)`.
+  - `yearFolder(for: CalendarDate, in container: String) -> String`.
+  - `isYearFolderName(_:)`.
+  - `validateContainerName(_:) -> ContainerNameCheck`, where `ContainerNameCheck` is `valid`,
+    `invalid([NoteName.Violation])` (from `FolderName.validate`) or `yearName` (item 12).
+- **`ContenitoreClassification.swift`**
+  - `static func classify(tags: [Tag], topics: [Tag], type: Tag?, vocabulary: Vocabulary) ->
+    Result<[Tag], ClassificationRefusal>`.
+- **`ContenitoreSettings.swift`**, modelled on `Sources/Core/Pratiche/PraticheSettings.swift`.
+  - `struct ContenitoreSettings: Codable, Equatable, Sendable`, with `dropFolder = "~/Pergamenum
+    Drop"` and `root = "Contenitore"`.
+  - `validateDropFolder(_:vaultRoot:home:)`, `validateRoot(_:praticheFolder:)` and
+    `resolvedDropFolder(home:) -> URL`.
+- **`TextExtracting.swift`**
+  - `enum ExtractionMethod { textLayer, ocr, plainText, none }`.
+  - `enum ExtractionStatus { pending, done, failed }`.
+  - `struct ExtractedText: Codable, Sendable`.
+  - `static func displayLabel(_:) -> String`. It returns «nessun testo» for `failed` and `none`.
+  - `protocol TextExtracting: Sendable { func extract(_ url: URL, progress: @Sendable (Int, Int) ->
+    Void) async throws -> ExtractedText }`.
+
+Edits outside `Sources/Core/Contenitore/`:
+
+- **`Sources/Vault/NoteStore.swift:26`:** `var contenitore: ContenitoreFacts? = nil`. It stays
+  `nil` until the coder fills it in `record(from:)` at `:129`.
+- **`Sources/Index/IndexCache.swift:274`:** `var contenitore: ContenitoreFacts?`, carried in
+  `init(_:)` and `record`.
+- **`Sources/Index/IndexSnapshot+Contenitore.swift`** (new, add to `sharedSources`):
+  `func schede(underRoot:) -> [NoteRecord]` and `func scheda(withSHA256:underRoot:) ->
+  NoteRecord?`.
+- **`Sources/DesignSystem/ContenitoreColour+Token.swift`** (new): `var token: ColorToken`.
+- **`Sources/DesignSystem/StickyPreset+Token.swift`** (new): the one preset-number-to-token map.
+  `StickyTextCard` and `ContenitoreColour` both call it.
+
+### Red suite (tester)
+
+`Tests/ContenitoreCoreTests.swift`:
+
+- **Scheda text (R-02).**
+  - The scheda render and parse round-trips.
+  - A rendered scheda passes `VaultSession.violations(path:title:text:)` with no finding.
+  - Setting or clearing the colour changes one line.
+  - A schema value `2` is not a scheda.
+- **Stem rules (R-06, name half).**
+  - The stem has the date prefix and loses forbidden characters.
+  - A trailing `v2` is dropped.
+  - The stem stays within 60 characters, leaving room for `-NN`, and is cut at a space.
+  - An empty name falls back to `documento`, and the result is never `.daily`.
+  - A dot inside the name is kept, and so is the extension.
+- **Pair uniqueness (R-06).** A stem taken by either extension, or by an existing note title, gets
+  the same suffix on both files.
+- **Colours (R-17).** Exactly six names, in preset order, with the token map.
+- **Classification (R-18).**
+  - It refuses: no `topic-*`, an unknown `topic-*`, a second `type-*`, more than 7 tags.
+  - It removes `status-inbox` and keeps `type-note`.
+  - The result passes the linter.
+- **Container names (R-19, name rule).** A four-digit name is `yearName`, and ordinary names are
+  `valid`.
+- **Settings (R-26, validation half).**
+  - The drop folder is refused when it is the vault, inside the vault, an ancestor of the vault,
+    `~` or `/`.
+  - The root is refused when it is empty, hidden, inside the Pratiche folder or containing it.
+  - A `~`-relative path round-trips unchanged.
+- **Index facts.** A scheda's facts survive a `StoredRecord` round trip, and a second scan on a
+  reused cache.
+
+### Coder
+
+- Fill the bodies.
+- Fill `contenitore` in `NoteStore.record(from:)`.
+- After gate G1, set `IndexCache.schemaVersion` to 7 and add a "7 (ADR-0071 §D2)" line to its doc
+  comment.
+
+### Update tests and call-sites asserting the old behaviour
+
+- **`Tests/IndexCacheTests.swift:228`** asserts `IndexCache.schemaVersion == 6`. Change it to 7,
+  and explain the change in chat first.
+- **Sticky colours.** `Sources/Features/Workspace/StickyTextCard.swift` and
+  `BoardContentLayer.colorNames` now read the shared preset helper, with no visible change. The
+  existing sticky and colour tests stay green untouched.
+
+## Task 3 — The session doors: the `.md` gate, adopt and return, pair operations (R-19, R-20, R-21, R-22, R-23)
+
+### Declarations (tester)
+
+- **`Sources/Vault/VaultSession+Adopt.swift`** (new, app-only):
+  - `func adoptFromOutside(_ source: URL, to relativePath: String) async throws`
+  - `func returnToOutside(_ relativePath: String, to destination: URL) async throws`
+
+  Stub both to throw the refusal type the session already uses today.
+- **`Sources/Vault/NoteFileOperations.swift`:**
+  - `pairRenamePlan(scheda:companion:newStem:knownPaths:)`
+  - `pairMovePlan(scheda:companion:toFolder:renamingTo:knownPaths:)`
+  - `repointedDocument(_:repoints:titleChanges:)`, the list form, reached through
+    `repointBoardsPlan(repoints:titleChanges:)`
+- **`Sources/Vault/VaultSession+Contenitore.swift`** (new, add to `sharedSources`):
+  - `func companion(ofScheda path: String) -> String?`
+  - `func moveDocument(at:toContainer:) async throws -> NoteFileOperations.Outcome`
+- **`Sources/Vault/VaultSession+Files.swift`:** `renameNote`, `moveNote` and `trashNote` keep their
+  signatures.
+
+### Red suite (tester)
+
+The tests are `Tests/ContenitorePairOperationsTests.swift` and
+`Tests/VaultDiskNonNoteMoveTests.swift`. They run on `TemporaryVault`, with a hand-written scheda
+and a small binary companion.
+
+- **Non-note files.**
+  - `moveFile` of a `.pdf`, and of a `.txt`, adds no index record and reads no bytes. Assert on
+    `index.allNotes` and on the mutation.
+  - `trashFile` of a `.pdf` journals a removal with no text.
+- **Rename (R-21).** `renameNote` on a scheda renames both files to the same stem.
+  - These follow the new name: a linking note's `[[x.pdf]]` and `![[x.pdf|400]]`, a board's `.file`
+    node, and the scheda's own `pergamenum-contenitore-file` key.
+  - `lookUpNote(id:)` returns the new path for a minted id.
+  - A taken target stem refuses both files.
+  - An ambiguous old file name elsewhere in the vault skips the file-name rewrite and reports it.
+- **Move (R-20).**
+  - `moveDocument(at:toContainer:)` puts both files in `<container>/<YYYY of date>` and creates the
+    year folder.
+  - A collision gets one unique stem, applied to both files.
+  - `moveNote` on a scheda moves both files or refuses both.
+- **Trash (R-22).** `trashNote` sends both files to the Finder Trash in one gesture. Both paths are
+  absent afterwards, and the Trash URLs are returned.
+- **Ids (R-23, id half).** `lookUpNote` still finds the scheda after a rename and after a move.
+- **Sub-containers (R-19, disk half).** Renaming, moving and trashing a container folder carry every
+  pair inside it, with its ids, nested three levels deep.
+- **Batch move.** When a scheda and its companion are both selected, `moveItems` moves the pair once
+  and reports no failure.
+- **Adopt and return.**
+  - `adoptFromOutside` creates missing folders, refuses an existing destination and indexes nothing.
+  - `returnToOutside` puts the file back.
+
+### Coder
+
+- Add the `.md` gate in `VaultDisk.swift:422-427` and `:468-473`, and the `.md`-only `textBefore`
+  read in `VaultSession+Journal.swift:159`.
+- When `companion(ofScheda:)` is non-nil, run the pair paths inside `renameNote`, `moveNote` and
+  `trashNote`, each in one `transaction`.
+- Compose the two rewrites into one `VaultFileChange` per note and per board.
+- Implement the two adopt doors through `VaultBoundary`.
+- Make `moveItems` skip companions that are already carried.
+
+### Update tests and call-sites asserting the old behaviour
+
+- **Callers of the three note doors.** `rg -n "session\.(renameNote|moveNote|trashNote)" Sources`
+  finds these call sites:
+  - `VaultController+Files.swift:41,66,93`
+  - `Connector/VaultWrites.swift:127,147,165`
+  - `VaultSession+Move.swift:130`
+
+  None changes signature, and each now gets pair behaviour for schede. Check that `FileMoveSummary`
+  and `TrashSummary` keep their JSON shape: the companion's move is not a new key.
+- **Existing `moveFile` and `restoreFile` tests** all move `.md` files (grep `moveFile(` in `Tests/`)
+  and stay green unchanged.
+- **Connectors.** Run `scripts/mcp-smoke.py` after this task, because the connectors' note verbs
+  changed behaviour on schede.
+
+## Task 4 — The ingest engine (R-01, R-02, R-03, R-04, R-05, R-06, R-07, R-08)
+
+### Declarations (tester)
+
+**`Sources/Features/Contenitore/ContenitoreIngestEngine.swift`** (new, app-only):
+
+- `@MainActor final class ContenitoreIngestEngine`, with `init(session:, settings:, home:, today:
+  () -> CalendarDate, onImported: (String) -> Void)`.
+- `func observe() async -> IngestReport` runs one observation. The stub returns an empty report.
+- `struct IngestReport`, with `imported: [String]`, `waiting: [String]` and `notices:
+  [ContenitoreNotice]`.
+- `enum ContenitoreNotice: Equatable`, with these cases:
+  - `duplicate(file:, existing:)`
+  - `failed(file:, reason:)`
+  - `placeholder(file:)`
+  - `subfolder(name:)`
+  - `unreadableDropFolder`
+  - `refusedNote(file:)` (gate G3)
+  - `extractionFailed(file:)`
+
+**`Sources/Features/Contenitore/DropFolderListing.swift`** (new, app-only):
+
+- A pure classification of listed entries into ready, waiting, hidden, subfolder, placeholder and
+  refused.
+- It recognises the `.x.icloud` stub before applying the hidden-file rule.
+- It keeps the size and date memory between observations.
+
+### Red suite (tester)
+
+`Tests/ContenitoreIngestTests.swift` uses a temporary drop folder and vault. The engine never calls
+the extractor: extraction is Task 5's job, and the engine only reports imported paths.
+
+- **Import (R-01, R-02).** One file, two observations.
+  - The file lands at `<root>/2026/20260929 <name>.<ext>`, with the scheda beside it.
+  - The drop folder ends up empty.
+  - The scheda carries every key and passes the linter.
+- **Stability (R-03).**
+  - The first observation imports nothing.
+  - A file whose size changes between two observations waits.
+  - It imports on the next stable pair.
+- **Catch-up (R-04).** Files already present before the engine exists import on its first two
+  observations.
+- **Duplicate (R-05).** A file whose hash equals an existing scheda's stays in the drop folder. The
+  `duplicate` notice names the existing document.
+- **Collision (R-06).** When the target stem is taken, both files get the same suffix.
+- **Half-way failure (R-07).**
+  - Set up the failure one of two ways: pre-create the scheda path as a directory, or stub an
+    `expectingAbsent` clash.
+  - The file is back in the drop folder and a `failed` notice is raised.
+  - No file of the pair is left in the vault.
+- **Things never imported (R-08).**
+  - A hidden file is ignored.
+  - A subfolder is ignored, and reported once across three observations.
+  - A `.x.icloud` stub is skipped with a `placeholder` notice, not silently ignored as hidden.
+  - A dropped `.md` is refused (G3).
+- **Drop folder states (R-26, engine half).**
+  - A missing drop folder is created.
+  - A drop folder with permissions `000` gives exactly one `unreadableDropFolder` notice and
+    imports nothing.
+
+### Coder
+
+Implement the order of ADR-0071 §D4:
+
+1. listing;
+2. stability;
+3. SHA-256, streamed in a detached task;
+4. duplicate check through the index, with `scheda(withSHA256:underRoot:)`;
+5. pair naming against the folder listing and the index titles;
+6. `adoptFromOutside`;
+7. `write(…, expectingAbsent: true)`;
+8. on failure, `returnToOutside`.
+
+Never sleep in the engine.
+
+## Task 5 — Extraction store, queue, system extractor and search (R-09, R-10, R-11, R-12)
+
+### Declarations (tester)
+
+- **`Sources/Vault/ExtractedTextStore.swift`** (new, Foundation-only, add to `sharedSources`):
+  - `read(sha256:) -> ExtractedText?`
+  - `write(_:sha256:)`
+  - `removeAll()`
+
+  It stores one JSON file per hash.
+- **`Sources/Vault/VaultState.swift`:** `var extractedText: URL`, pointing at the `extracted-text/`
+  directory beside `thumbnails`.
+- **`Sources/Features/Contenitore/ContenitoreExtractionQueue.swift`** (new, app-only):
+  - `@MainActor @Observable final class`, with `init(store:extractor:)`.
+  - `enqueue(sha256:url:)`
+  - `progress: [String: (done: Int, total: Int)]`
+  - `func drain() async`
+- **`Sources/Features/Contenitore/SystemTextExtractor.swift`** (new, app-only):
+  - `struct SystemTextExtractor: TextExtracting`, stubbed to return `.none`.
+  - It uses PDFKit, plus Vision's `RecognizeTextRequest` with `recognitionLanguages` `[it-IT,
+    en-US]`, the `.accurate` level and language correction on.
+  - Confirm the Swift property types against the Xcode 27 SDK when declaring.
+
+### Red suite (tester)
+
+- **`Tests/ContenitoreExtractionTests.swift`**, with the fake extractor:
+  - The queue records `done` with the method (R-09).
+  - Progress is published per page.
+  - A throwing extraction records `failed`, and the next document is still extracted (R-11).
+  - `failed` and `none` both read «nessun testo» through `ExtractedText.displayLabel`.
+- **`Tests/ContenitoreSystemExtractorTests.swift`**, with the real frameworks (R-09):
+  - A PDF with a text layer, generated with CoreText in the test, yields its words by `textLayer`.
+  - A bitmap drawn with «Preventivo fornitura guarnizioni» yields those words by `ocr`.
+  - An image-only PDF made from that bitmap yields `ocr`.
+  - A `.txt` yields `plainText`.
+  - An unknown binary yields `none`.
+- **`Tests/ContenitoreSearchTests.swift`** (R-10):
+  - `VaultSession.search` and `searchCooperatively` return the scheda for a word found only in its
+    pre-seeded extracted text. The excerpt is that line.
+  - `VaultAPI.search` (the connector path) returns it too.
+  - After `removeAll()`, the scheda is no longer a hit, and no vault file changed. Compare the
+    listing and the hashes.
+- **`Tests/ContenitoreIsolationTests.swift`** (R-12), modelled on `Tests/PraticheIsolationTests.swift`:
+  - It walks `Sources/Core/Contenitore`, `Sources/Features/Contenitore` and the new `Sources/Vault`
+    files.
+  - It finds no `URLSession`, `URLRequest`, `NWConnection` or `import Network`.
+  - It strips comments and strings first, and asserts a positive count of scanned files.
+
+### Coder
+
+- **`VaultSession+Search.swift:85` `hit(for:)`:** when `record.contenitore?.sha256` has a stored
+  text, match and excerpt against `text + "\n\n" + extracted`.
+- **`VaultController.clearCache`** (`VaultController.swift:375`) also calls
+  `ExtractedTextStore.removeAll()`.
+- **The queue and the system extractor.** A PDF whose text layer has no non-whitespace character
+  anywhere is rendered page by page to `CGImage` and OCR'd (the per-document rule, ADR-0071 §D8).
+
+### Update tests and call-sites asserting the old behaviour
+
+- **Search callers.** Every caller goes through `hit(for:)`, and none changes signature:
+  - `VaultReads.swift:87`
+  - `VaultController+Search.swift:15`
+  - `MCPServer/VaultHost.swift:81`
+  - `CLI/Commands/SearchCommands.swift:15`
+
+  A note with no `contenitore` facts takes the old path, so the existing search tests must stay
+  green unchanged.
+- **Cache tests.** `Tests/NoteIDRouteTests.swift:94`, `Tests/WorkspaceIntegrationWalkTests.swift:181`
+  and `Tests/ThumbnailStoreTests.swift` stay green unchanged.
+
+**End of PR 1:** Tasks 2-5, plus Task 8's checks.
+
+## Task 6 — Controller, watcher, settings, route and link (R-04, R-08, R-23, R-24, R-26)
+
+### Declarations (tester)
+
+- **`Sources/Core/URLScheme/PergamenumURL.swift`:**
+  - `case contenitore(id: String)`, parsed from host `contenitore` and query `id`.
+  - `kind` gains `"contenitore"`.
+  - `PergamenumLink.contenitore(id:)`.
+- **`Sources/App/VaultController+Routes.swift:41`:**
+  - A `.contenitore` arm, stubbed to `return false`.
+  - `RouteState` gains `pendingContenitore: ContenitoreRouteTarget?`, where
+    `ContenitoreRouteTarget` is `select(path)` or `none`.
+  - `consumePendingContenitoreRoute()`.
+- **`Sources/App/Navigation.swift`:** `.contenitore`, with title «Contenitore», symbol `archivebox`
+  and shortcut `.paneContenitore`, added to the switches at `:54`, `:73` and `:104`.
+- **`Sources/Core/Shortcuts/ShortcutCommand.swift`:** `paneContenitore`, appended after
+  `addToPraticaFromMail`, never inserted.
+  - Section `.view` (`:175`).
+  - Title «Vai a Contenitore» (the `:238` block).
+  - `KeyBinding("c", [.command, .control])` (the `:351` block).
+- **`Sources/App/SidebarItem.swift:90`:** `[.pane(.tasks), .pane(.contenitore), .pane(.pratiche),
+  .pane(.recordings)]`.
+- **`Sources/App/RootView.swift:265`:** `case .contenitore: ContenitoreView()`, as a shell with an
+  empty state until Task 7.
+- **`Sources/Features/Contenitore/ContenitoreController.swift`:**
+  - `@MainActor @Observable`, with `live(vault:)`.
+  - `start()`, which starts the watcher, the catch-up and the queue.
+  - `stop()`.
+  - `notices`, `selection` and `copyLink(for:) -> Bool`.
+- **`Sources/Features/Contenitore/DropFolderEventStream.swift`:** the FSEvents stream, in the
+  `MailStoreEventStream` shape with a retained sink.
+- **`Sources/Vault/VaultSettings.swift`:** `contenitore: ContenitoreSettings`, decoded key by key as
+  `pratiche` is.
+- **`Sources/Features/Settings/ContenitoreSettingsTab.swift`,** plus a tab in `SettingsView.swift`.
+- **`Sources/App/PergamenumApp.swift`:** `ContenitoreController.live(vault:)`, injected with
+  `.environment` in the window and settings scenes, beside `PraticheController`.
+
+### Red suite (tester)
+
+- **`Tests/ContenitoreRouteTests.swift`:**
+  - `pergamenum://contenitore?id=<uuid>` parses, and a missing id is not a route.
+  - A minted scheda id sets `pendingContenitore == .select(path)`, and still does after a pair
+    rename and a pair move (R-23).
+  - An unknown id, or the id of a non-scheda note, sets `.none` and records exactly one problem
+    (R-24).
+  - `copyLink(for:)` mints on first use and puts `pergamenum://contenitore?id=<same id>` on a
+    private pasteboard, using the existing link-copy test's seam. The second call reuses the id
+    (R-23).
+- **`Tests/ContenitoreControllerTests.swift`:**
+  - `start()` on a vault with files already in the drop folder imports them after two driven
+    observations (R-04, end-to-end).
+  - Engine notices surface on the controller (R-08).
+  - Settings round-trip through `VaultSettings` with `~` kept, and an invalid drop folder is refused
+    with its sentence (R-26).
+  - The drop folder is created at the first `start()`.
+
+### Coder
+
+- Fill the arms.
+- `RootView` gets `.onChange(of: vault.routeState.pendingContenitore)`, which sets `navigation.pane =
+  .contenitore`. This is the `pendingCanvas` shape at `RootView.swift:125-129`.
+- Start the controller from `RootView`'s `.task(id: vault.root)`.
+- While something waits, the watcher schedules the second observation about 2 seconds after any
+  event. This is the only timer.
+
+### Update tests and call-sites asserting the old behaviour
+
+- **Route enum.** `rg -n "case \.addTask|\.kind" Sources` finds:
+  - `PergamenumURL.swift:102-107`
+  - `VaultController+Routes.swift:41-75`
+  - `ReminderScheduler.swift:79` (log only)
+- **Pane enum.** `rg -n "Pane\.allCases|case \.pratiche" Sources Tests` finds:
+  - `MenuCommands.swift:24`: builds the Vista menu from `allCases`, so it picks up the case
+    automatically.
+  - `CommandActions.swift:251-252` and `:294`, and `CommandActions+CanRun.swift:66-70`: add
+    `.paneContenitore` beside `.panePratiche`.
+  - `RootView.swift:265`.
+  - `Tests/SidebarTests.swift:15-16,47-48,57-68`: stay green with the new row.
+  - `Tests/CommandActionTests.swift:107,171`: loop over `allCases` and must pass for the new case.
+- **Shortcut enum.** `rg -n "ShortcutCommand\.allCases" Sources Tests` finds:
+  - `Tests/ShortcutTests.swift:58,68`: the new default must be usable and conflict-free.
+  - `Tests/EditorCommandTests.swift:152`: `appCommands.count == allCases.count - 2` still holds,
+    because the new command is an app entry.
+  - `Tests/CapturePanelTests.swift:32`.
+  - `ShortcutSettings.swift:21` and `ShortcutStore.swift:68,74`.
+- **Settings default.** `VaultSettings.default` (`VaultSettings.swift:146`) gains the field. The
+  existing settings round-trip tests must decode an old file with no `contenitore` key to the
+  defaults.
+
+## Task 7 — The pane (R-13, R-14, R-15, R-16, R-17, R-18, R-19, R-22, R-25, R-27)
+
+This task **starts only after gate G2**, the mockup approval in Task 1. The mockup wins on layout;
+it does not override this task's list of behaviours.
+
+### Declarations (tester)
+
+- **`Sources/Features/Contenitore/ContenitoreListModel.swift`** (pure, `@MainActor`-free):
+  - `rows(index:root:filter:container:fileExists:extraction:) -> [ContenitoreRow]`. Each row
+    carries name, date, colour, tags, the extraction label, `isFileMissing` and the thumbnail URL.
+  - `inboxCount`.
+  - `containerTree(root:folders:) -> [ContainerNode]`, with year folders hidden.
+- **`Sources/Features/Contenitore/ContenitoreCommand.swift`:**
+  - `enum ContenitoreCommand: CaseIterable`, with cases `classify`, `open`, `revealInFinder`,
+    `openScheda`, `copyLink`, `rename`, `moveTo` and `trash`.
+  - The titles.
+  - `ContenitoreCommandActions.run(_:on:)`.
+- **`Sources/Features/Contenitore/ContenitoreInspectorModel.swift`:** `save(description:date:colour:
+  tags:)`, through `write(…, expecting:)`.
+- **View shells matching the mockup:**
+  - `ContenitoreView.swift`, `ContenitoreSidebar.swift`, `ContenitoreList.swift`,
+    `ContenitoreGrid.swift`, `ContenitoreInspector.swift`, `ClassificaSheet.swift`,
+    `ContenitoreNoticeStrip.swift` and `ContenitoreMenuItems.swift`.
+  - A menu-bar section in `MenuCommands.swift`, placed where the mockup puts it.
+
+### Red suite (tester)
+
+- **`Tests/ContenitoreListModelTests.swift`:**
+  - Every scheda under the root is a row with name, colour, tags, date and extraction label. A note
+    outside the root, or without the key, is not a row (R-13).
+  - «Da classificare» holds exactly the `status-inbox` schede, and shows their count (R-14).
+  - The colour and tag filters narrow the rows (R-15).
+  - A missing companion shows «file mancante» (R-25).
+  - Year folders are not tree nodes. Nested containers are (R-19).
+- **`Tests/ContenitoreInspectorTests.swift`** (R-16, R-17):
+  - Editing description, date, colour and tags writes through the guarded door.
+  - A scheda that changed on disk after the read is refused, and left untouched on disk.
+  - Colour accepts only the six names, and the token map is the sticky one.
+  - Changing `date` to another year does not move the pair.
+- **`Tests/ContenitoreCommandTests.swift`** (R-18, R-22, R-27):
+  - «Classifica» with no topic is refused. With a topic and a type, it removes `status-inbox` and
+    lints clean.
+  - «Sposta nel Cestino» trashes both files.
+  - Creating a container with a four-digit name from the pane is refused.
+  - **Parity.** Every `ContenitoreCommand` case appears in the inspector's action list, in the row
+    context-menu builder and in the menu-bar builder. All three read from the catalogue, the
+    ADR-0023 test shape.
+  - `copyLink` and `revealInFinder` dispatch to the selection while `pane == .contenitore`.
+- **`Tests/ContenitoreHostedViewTests.swift`:** one in-process hosted-view test, through
+  `Tests/HostedViewSupport.swift`.
+  - Host `ContenitoreView` over a vault with three schede: one in the inbox, one classified, one
+    whose file is missing.
+  - It shows three rows, the inbox count `1` and «file mancante».
+  - Find each element by `accessibilityIdentifier`, never by its visible text.
+
+### Coder
+
+- The views follow the mockup and use tokens only.
+- The container tree uses flat recursive rows (ADR-0024).
+- Quick Look uses `quickLook(urls:isPresented:claimsFocus: false)` (ADR-0070 §D4).
+- `.onDeleteCommand`, with `@FocusState` set on selection change.
+- A nested row menu gets an AppKit menu host (ADR-0069).
+- Trash confirms through `.confirmationDialog(…, presenting:)`.
+- The grid reads `ThumbnailStore`, and the list shows the queue's progress.
+
+### Update tests and call-sites asserting the old behaviour
+
+- **Pane-aware commands.** `CommandActions` `copyLink` and `revealInFinder`, and their `canRun`,
+  become pane-aware. The existing Note-pane assertions in `Tests/RowCommandTests.swift` and
+  `Tests/CommandActionTests.swift` must stay green unchanged.
+- **Sticky colours.** `StickyTextCard` and `BoardContentLayer` were already switched to the shared
+  helper in Task 2.
+
+**End of PR 2:** Tasks 6-7, plus Task 8's checks.
+
+## Task 8 — Verification and closing the record (R-10, R-12, R-28, R-29)
+
+**Per PR, before merge:**
+
+- **Full suite.** Run the full `PergamenumTests` suite with the pinned test command.
+- **Connectors and lint.** Build `perg` and `pergamenum-mcp`, run `scripts/mcp-smoke.py`, and run
+  SwiftLint.
+- **GUI suite.** Run `scripts/uitests.sh --status`, then `--affected`. This is advisory at merge per
+  CLAUDE.md.
+- **ADR checks.** Run `git fetch origin`, then `scripts/check-adr-references.py`, and recheck that
+  0071 is still free on `origin/main`.
+
+**PR 2 only: manual acceptance by Stefano.** He drops these into `~/Pergamenum Drop`:
+
+- a real scanned PDF;
+- a photo;
+- a text PDF;
+- a `.txt`.
+
+He then checks five things:
+
+- the import;
+- an OCR search hit, from global search and from `perg search` (R-10);
+- a link pasted into Mail that still opens after a rename;
+- «Svuota cache»;
+- that nothing in the vault changed.
+
+**After the PR 2 merge (a docs change):**
+
+- Add PR 2's merge hash to ADR-0071's status line. The flip to `accepted` already happened after
+  PR 1 (#691, `32b5ecd3`): rule 2 reported 0071 as `proposed` on `main` as soon as PR 1 landed.
+- Add the ADR-0071 line to CLAUDE.md's chain decision index.
+- Confirm the SPEC §9 row (R-29).
+- If G6 was approved, add the protected-interface entry.
+
+## Requirement coverage
+
+| R | Tasks | R | Tasks | R | Tasks |
+|---|---|---|---|---|---|
+| R-01 | 4 | R-11 | 5 | R-21 | 3 |
+| R-02 | 2, 4 | R-12 | 5, 8 | R-22 | 3, 7 |
+| R-03 | 4 | R-13 | 7 | R-23 | 3, 6 |
+| R-04 | 4, 6 | R-14 | 7 | R-24 | 6 |
+| R-05 | 4 | R-15 | 7 | R-25 | 7 |
+| R-06 | 2, 4 | R-16 | 7 | R-26 | 2, 4, 6 |
+| R-07 | 4 | R-17 | 2, 7 | R-27 | 7 |
+| R-08 | 4, 6 | R-18 | 2, 7 | R-28 | 1, 8 |
+| R-09 | 5 | R-19 | 2, 3, 7 | R-29 | 1, 8 |
+| R-10 | 5, 8 | R-20 | 3 | | |
+
+R-28 and R-29 are `(no-test:)` process criteria. Task 1 and Task 8 meet them, not a test.
+
+## Order and dependencies
+
+**Order:** Task 1 (the ADR, plus gates G1, G3 and G4) → 2 → 3 → 4 → 5, which is PR 1. Then 6 → 7,
+which is PR 2.
+
+- Task 3 needs Task 2's facts.
+- Task 4 needs Task 3's adopt door.
+- Task 5 needs Task 2's facts for search.
+- Task 7 also waits on G2.
+- The mockup can be produced while PR 1 is being built.
+
+## Risks, dependencies and HITL gates
+
+- **G1: schema bump** (protected interface). `IndexCache.schemaVersion` goes 6 → 7, so every vault
+  rebuilds its cache once. That rebuild is fast by principle 3. Recommended: approve.
+- **G2: mockup approval** (R-28). It blocks Task 7 only.
+- **G3: a dropped `.md`.** This is a user preference.
+  - Recommended: refuse it with a notice.
+  - Alternative: import it as a plain note with no scheda.
+- **G4: stem uniqueness across the vault**, checked against note titles. Recommended: yes. This
+  widens the SPEC's "target folder" rule.
+- **G5: renaming the root from the Note pane** does not update the setting. Pratiche has the same
+  gap. Recommended: a shared follow-up.
+- **G6: a protected-interface entry** for `ContenitoreScheda.render`.
+- **Answered at /workplan, 2026-09-29:** G1 approved (schemaVersion 5 → 6 at the time; became 6 → 7 on 2026-09-29 when PG-316 took 6 on `main` first). G3: refuse a dropped
+  `.md` with a notice. G4: yes, stem uniqueness is checked vault-wide against note titles. G5 and
+  G6 are still open and do not block Task 2; G2 blocks Task 7 only.
+- **Stefano's usual gates.** He approves the schema change, the commit, the push and the SPEC §9
+  edit. No step deletes anything: everything goes to the Trash or back to the drop folder.
+- **TCC.** A drop folder under Desktop, Documents or Downloads triggers macOS's folder-access
+  prompt. The default `~/Pergamenum Drop` avoids it, and a denial surfaces as the unreadable-folder
+  notice.
+- **Vision quality.** Real OCR accuracy on Stefano's documents is verified only by Task 8's manual
+  acceptance. The unit test proves the pipeline, not the quality.
+- **Large files.**
+  - Hashing streams and extraction runs one document at a time. A very large scan still takes
+    minutes of CPU.
+  - The queue runs at `.utility` priority and never blocks the main actor.
+- **Named residuals (ADR-0071):**
+  - A file edited in place keeps a stale extraction.
+  - Undo of a pair trash is refused whole; the scheda and the file stay in the Finder Trash.
+  - CommonMark references are not rewritten.
+  - A PDF that mixes text and scanned pages is searched by its text layer only.
+  - An extensionless file's `-file` link resolves to the scheda.
+  - Empty year folders stay.
+  - A four-digit folder made in the Note pane reads as a year folder.
+- **Nothing to provision.** No API, account, port or environment variable is needed. The app
+  creates the drop folder itself.
+
+## TEST-CMD
+
+TEST-CMD CANDIDATE: xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' -only-testing:PergamenumTests test
+TEST-CMD MODE: brownfield

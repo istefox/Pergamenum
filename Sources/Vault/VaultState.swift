@@ -14,6 +14,8 @@ struct VaultState: Sendable {
     static let vaultsDirectoryName = "vaults"
     static let cacheFileName = "cache.db"
     static let thumbnailsDirectoryName = "thumbnails"
+    /// Contenitore's extracted text, one JSON file per document hash (ADR-0071 §D8).
+    static let extractedTextDirectoryName = "extracted-text"
     /// The names of what is beside the vault, named here rather than as bare literals
     /// inside `NoteHistory` and `WriteJournal` themselves.
     static let historyDirectoryName = "history"
@@ -32,6 +34,7 @@ struct VaultState: Sendable {
     let directory: URL
     var cacheFile: URL
     var thumbnails: URL
+    var extractedText: URL
     var history: URL
     var journal: URL
     var descriptor: URL
@@ -40,6 +43,7 @@ struct VaultState: Sendable {
         directory = base.appending(path: id, directoryHint: .isDirectory)
         cacheFile = directory.appending(path: Self.cacheFileName, directoryHint: .notDirectory)
         thumbnails = directory.appending(path: Self.thumbnailsDirectoryName, directoryHint: .isDirectory)
+        extractedText = directory.appending(path: Self.extractedTextDirectoryName, directoryHint: .isDirectory)
         history = directory.appending(path: Self.historyDirectoryName, directoryHint: .isDirectory)
         journal = directory.appending(path: Self.journalDirectoryName, directoryHint: .isDirectory)
         descriptor = directory.appending(path: Self.descriptorFileName, directoryHint: .notDirectory)

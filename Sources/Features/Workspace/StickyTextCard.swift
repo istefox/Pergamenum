@@ -126,22 +126,15 @@ struct StickyTextCard: View {
     /// its colour coding here, in this app's palette.
     ///
     /// One token per entry of `BoardContentLayer.colorNames` (#569 point 10): «Rosso» and
-    /// «Arancio» used to share `stickyPink`, and «Viola» fell through to grey.
+    /// «Arancio» used to share `stickyPink`, and «Viola» fell through to grey. The map itself is
+    /// `StickyPreset.token(for:)`, shared with the Contenitore colour (ADR-0071 §D1).
     private func stickyColor(_ color: CanvasColor) -> Color {
         switch color {
         case .hex(let value):
             let rgba = RGBA(hex: value) ?? RGBA(hex: "#E8E5DF")!
             return Color(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha)
         case .preset(let index):
-            return switch index {
-            case 1: theme.color(.stickyPink)
-            case 2: theme.color(.stickyOrange)
-            case 3: theme.color(.stickyYellow)
-            case 4: theme.color(.stickyGreen)
-            case 5: theme.color(.stickyBlue)
-            case 6: theme.color(.stickyPurple)
-            default: theme.color(.stickyGrey)
-            }
+            return theme.color(StickyPreset.token(for: index))
         case .unrecognised:
             // A colour this app cannot read (ADR-0065 §D5.2): still a Nota, drawn neutral.
             return theme.color(.stickyGrey)

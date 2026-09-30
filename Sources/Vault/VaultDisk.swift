@@ -418,14 +418,9 @@ extension VaultDisk {
 
         // One read of the moved file, not two (ADR-0041 §D7): the same bytes are hashed
         // for the watcher and handed to `record(from:attributes:at:)` for the index, rather
-        // than hashing here and re-reading the file after.
-        let movedData = try? Data(contentsOf: destination)
-        let movedAttributes = try? FileManager.default.attributesOfItem(
-            atPath: destination.path(percentEncoded: false)
-        )
-        let movedRecord = movedData.flatMap { bytes in
-            try? store.record(from: bytes, attributes: movedAttributes ?? [:], at: newPath)
-        }
+        // than hashing here and re-reading the file after. Only for a note (ADR-0071 §D3): a
+        // PDF moved here is never read into memory, and a `.txt` never becomes a phantom note.
+        let movedRecord = Self.derivesNoteRecord(newPath) ? noteRecord(at: destination, relativePath: newPath) : nil
         let insertion = IndexMutation(path: newPath, record: movedRecord, sequence: nextSequence(for: newPath))
 
         return [removal, insertion]
@@ -464,15 +459,27 @@ extension VaultDisk {
         }
         try FileManager.default.moveItem(at: source, to: destination)
 
-        // One read of the restored file, `moveFile`'s shape (ADR-0041 §D7).
-        let data = try? Data(contentsOf: destination)
-        let attributes = try? FileManager.default.attributesOfItem(
-            atPath: destination.path(percentEncoded: false)
-        )
-        let record = data.flatMap { bytes in
+        // One read of the restored file, `moveFile`'s shape (ADR-0041 §D7), and for a note only
+        // (ADR-0071 §D3).
+        let record = Self.derivesNoteRecord(relativePath) ? noteRecord(at: destination, relativePath: relativePath) : nil
+        return IndexMutation(path: relativePath, record: record, sequence: nextSequence(for: relativePath))
+    }
+
+    /// Whether a file arriving at `relativePath` is a note the index keeps: a `.md`, the rule the
+    /// scanner applies (`VaultScanner`). Any other file is moved without its bytes being read
+    /// (ADR-0071 §D3).
+    static func derivesNoteRecord(_ relativePath: String) -> Bool {
+        (relativePath as NSString).pathExtension.lowercased() == "md"
+    }
+
+    /// The record a note file at `url` derives, from one read of its bytes, or nil when it cannot
+    /// be read or decoded.
+    private func noteRecord(at url: URL, relativePath: String) -> NoteRecord? {
+        let data = try? Data(contentsOf: url)
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))
+        return data.flatMap { bytes in
             try? store.record(from: bytes, attributes: attributes ?? [:], at: relativePath)
         }
-        return IndexMutation(path: relativePath, record: record, sequence: nextSequence(for: relativePath))
     }
 }
 
