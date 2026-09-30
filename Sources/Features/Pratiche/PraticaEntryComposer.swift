@@ -30,10 +30,11 @@ struct PraticaEntryComposer {
     }
 
     /// «Inserisci qui» (R-28): the midpoint between the two rows the gap sits between,
-    /// so the entry reads back in the place a person put it. `PraticaEntry.midpoint`
-    /// owns the arithmetic; this only says which two rows are the neighbours.
+    /// so the entry reads back in the place a person put it. `PraticaTimelineModel.insertionDate`
+    /// owns the rule (the neighbours' placement times, ADR-0076 §D3, R-07); this only says
+    /// which two rows are the neighbours.
     func insertBetween(_ first: PraticaTimelineEntry, and second: PraticaTimelineEntry, kind: PraticaEntry.Kind) {
-        Task { await insert(kind, at: PraticaEntry.midpoint(between: first.date, and: second.date)) }
+        Task { await insert(kind, at: PraticaTimelineModel.insertionDate(between: first, and: second)) }
     }
 
     /// The one write path both of the above go through.
@@ -147,7 +148,7 @@ struct PraticaEntryComposer {
 
     /// Who the entry is with: the dossier's first counterpart, and the client folder's
     /// name when the dossier names none. Never blank - «Nota ·» with nothing after it
-    /// is a heading `PraticheController.parseEntryHeading` still reads, but a person
+    /// is a heading `PraticaManualEntries.parse` still reads, but a person
     /// cannot.
     func counterpart(of praticaPath: String, fallback: String) -> String {
         guard let root = vault.root,

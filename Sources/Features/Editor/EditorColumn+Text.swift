@@ -137,7 +137,9 @@ extension EditorColumnView {
             outlineRanges: NoteOutline.entries(in: note.text).map {
                 NSRange($0.range, in: note.text)
             },
-            onOutlineEntryChanged: { entry in focused { vault.currentOutlineEntry = entry } },
+            // Not through `focused`: this also fires when the text view loads its note, and
+            // taking the focus there moved it to the other column on returning to Note.
+            onOutlineEntryChanged: { entry in vault.recordOutlineEntry(entry, inColumn: columnIndex) },
             scrollRequest: pendingJump,
             onScrollApplied: { pendingJump = nil },
             // `NoteTab.foldedEntries` is offsets; `NoteTextView`/`NoteFolding` still want the

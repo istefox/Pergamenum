@@ -206,11 +206,29 @@ extension PraticheController {
         )
     }
 
+    /// ADR-0076 §D3 (plan interpretation 7): what the inspector's `.task(id:)` calls. An in-app
+    /// save of `pratica.md` must redraw the placement and refresh `timelineOrigin`, but a
+    /// selection change has already been read by `select(_:in:)`, so the pratica folder is
+    /// parsed again only when `pratica.md`'s current hash (one read through the session, the
+    /// same `NoteStore.hash` as `timelineOrigin`) or the selected pratica moved on since.
+    /// Returns whether it reloaded.
+    @discardableResult
+    func reloadTimelineIfStale(from vault: VaultController) -> Bool {
+        let currentHash = selection.flatMap { selection in
+            try? vault.session?.read(PraticaNaming.praticaNotePath(of: selection)).record.contentHash
+        }
+        guard selection != timelineOriginPraticaPath || currentHash != timelineOrigin else { return false }
+        reloadTimeline(from: vault)
+        return true
+    }
+
     func reloadTimeline(from vault: VaultController) {
+        timelineOriginPraticaPath = selection
         guard let selection, let root = vault.root else {
             timeline = []
             details = [:]
             links = .empty
+            timelineOrigin = nil
             return
         }
         let read = Self.readTimeline(
@@ -222,6 +240,9 @@ extension PraticheController {
         )
         timeline = PraticaTimelineModel.ordered(read.entries)
         details = read.details
+        // ADR-0076 §D3: the hash of the bytes those entries were parsed from, and the only
+        // write of it besides the vault reset's clear.
+        timelineOrigin = read.praticaNoteHash
         // ADR-0049 Task 5 (R-04): the same beat as `timeline`/`details` above, and
         // the one `PraticaCommandActions.reload()` calls after every link write.
         links = PraticaLinks.parse(

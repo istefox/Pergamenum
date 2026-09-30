@@ -70,9 +70,9 @@ extension VaultAPI {
     /// tasks to pratica folders).
     ///
     /// The folder is then read from disk - `pratica.md` plus `email/*.md` - and ordered
-    /// ascending the same way `PraticaTimelineModel.sortDate(of:)`/`.ordered(_:)` order
-    /// the app's own timeline (that type is not shared either, so the ordering rule is
-    /// reproduced here rather than called).
+    /// by the rule the app's own timeline uses, `PraticaTimelineOrder.arrange` (ADR-0076
+    /// §D2): called, not reproduced. A message's date is `PraticaTimelineModel.sortDate(of:)`'s,
+    /// reproduced below because that type is not shared.
     @MainActor
     static func pratica(_ session: VaultSession, _ reference: String) throws -> PraticaTimelinePayload {
         let folders = praticaNotes(among: session.index.allNotes, vaultRoot: session.root).map(\.folder)
@@ -170,15 +170,51 @@ private extension VaultAPI {
     }
 }
 
+// MARK: - Payload shape
+
+// Kept here rather than in `VaultPayloads.swift`, which it would push past SwiftLint's
+// `file_length` warning (the reason `VaultCategories.swift` gives for its own pair).
+extension VaultAPI {
+    /// `pratica <title|path>` → the timeline as ordered entries (SPEC "Connectors").
+    struct PraticaTimelinePayload: Encodable {
+        let path: String
+        let title: String
+        let entries: [Entry]
+
+        /// `{ kind: message|note|call, date, direction, from, subject, attachments,
+        /// body, linkedNote }`, in the SPEC's own field order. `direction`/`from`/
+        /// `linkedNote` are `nil` for a manual entry (ADR-0049 §D12: links cover
+        /// email rows only).
+        ///
+        /// ADR-0076 §D10 (R-22): a manual entry whose first line is an anchor carries the
+        /// Message-ID it names in `anchorMessageID`, and `anchorState` says whether a message
+        /// of this pratica carries it (`"anchored"`, placed under that message) or none does
+        /// (`"orphaned"`, placed at its own heading time). Both stay `nil` for a message and
+        /// for a free entry, and a `nil` optional is left out of the encoded JSON.
+        struct Entry: Encodable {
+            let kind: String
+            let date: String
+            let direction: String?
+            let from: String?
+            let subject: String
+            let attachments: [String]
+            let body: String
+            let linkedNote: PraticaLinkTarget?
+            var anchorMessageID: String?
+            var anchorState: String?
+        }
+    }
+}
+
 // MARK: - Reading one pratica's folder
 
 private extension VaultAPI {
-    /// A row before it is ordered: the payload entry plus the two keys the sort needs.
-    /// `id` breaks a tie the same way `PraticaTimelineModel.ordered(_:)` does, so two
-    /// messages carrying the same header second keep one stable order across runs.
+    /// A row before it is ordered: the payload entry plus what the one ordering rule,
+    /// `PraticaTimelineOrder.arrange` (ADR-0076 §D2), needs to place it. The app's
+    /// `PraticaTimelineModel.ordered(_:)` hands the same rule the same keys, so the two
+    /// surfaces put every row, and every equal instant, in one order (R-08, R-21).
     struct TimelineRow {
-        var date: Date
-        var id: String
+        var item: PraticaTimelineOrder.Item
         var entry: PraticaTimelinePayload.Entry
     }
 
@@ -191,10 +227,23 @@ private extension VaultAPI {
         // One formatter for every row of the call (ADR-0072 §D9, R-14).
         let formatter = isoFormatter()
         let rows = messageRows(in: directory, session: session, formatter: formatter)
-            + manualEntryRows(in: directory, formatter: formatter)
-        return rows
-            .sorted { $0.date == $1.date ? $0.id < $1.id : $0.date < $1.date }
-            .map(\.entry)
+            + entryRows(in: directory, formatter: formatter)
+        return PraticaTimelineOrder.arrange(rows.map(\.item)).map { placed in
+            var entry = rows[placed.index].entry
+            // ADR-0076 §D10 (R-22): the anchor and whether a message of this pratica
+            // carries it. A message and a free entry keep both `nil`.
+            switch placed.placement {
+            case let .anchored(messageID):
+                entry.anchorMessageID = messageID
+                entry.anchorState = "anchored"
+            case let .orphaned(messageID):
+                entry.anchorMessageID = messageID
+                entry.anchorState = "orphaned"
+            case .message, .free:
+                break
+            }
+            return entry
+        }
     }
 
     @MainActor
@@ -217,7 +266,10 @@ private extension VaultAPI {
             // `PraticaTimelineModel.sortDate(of:)`: the header `Date` governs, and the
             // received time stands in only when the header carried none.
             let date = mail.date == .distantPast ? (mail.received ?? mail.date) : mail.date
-            return TimelineRow(date: date, id: name, entry: PraticaTimelinePayload.Entry(
+            // The file name is the tie key: the app passes `<pratica>/email/<file>`, which
+            // sorts the same within one pratica (ADR-0076 §D2).
+            let item = PraticaTimelineOrder.Item(kind: .message(messageID: mail.messageID, tieKey: name), date: date)
+            return TimelineRow(item: item, entry: PraticaTimelinePayload.Entry(
                 kind: "message",
                 date: formatter.string(from: date),
                 direction: mail.direction.rawValue,
@@ -238,64 +290,37 @@ private extension VaultAPI {
         }
     }
 
-    /// `pratica.md`'s own manual entries: `## YYYY-MM-DD HH:MM <Tipo> · <Controparte>`
-    /// and everything under it up to the next heading (SPEC "Manual entries"), read
-    /// through the formatter that wrote them (`PraticaEntry.headingFormatter`).
+    /// `pratica.md`'s own manual entries, parsed by the one shared parser the app reads them
+    /// through, `PraticaManualEntries.parse` (ADR-0076 §D1, R-21). The bytes are decoded by
+    /// `NoteStore.decodedText`, the app's own door, so a byte-order mark reads the same here.
     ///
     /// `direction` and `from` stay `nil`: a manual entry has neither, and the
-    /// counterpart lives in the heading, which is the entry's `subject`.
-    static func manualEntryRows(in praticaFolder: URL, formatter: ISO8601DateFormatter) -> [TimelineRow] {
+    /// counterpart lives in the heading, which is the entry's `subject`. `date` is the
+    /// heading's own time even for an anchored entry, and `body` never holds the anchor
+    /// line (R-01).
+    static func entryRows(in praticaFolder: URL, formatter: ISO8601DateFormatter) -> [TimelineRow] {
         let url = praticaFolder.appending(path: praticaFileName, directoryHint: .notDirectory)
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        guard let data = try? Data(contentsOf: url), let text = NoteStore.decodedText(data) else { return [] }
 
-        var rows: [TimelineRow] = []
-        var open: (date: Date, subject: String, body: [String])?
-
-        func flush() {
-            guard let entry = open else { return }
-            rows.append(TimelineRow(
-                date: entry.date,
-                id: "\(praticaFileName)#\(rows.count)",
+        return PraticaManualEntries.parse(text).map { parsed in
+            TimelineRow(
+                item: PraticaTimelineOrder.Item(
+                    kind: .entry(anchor: parsed.anchor, ordinal: parsed.ordinal), date: parsed.date
+                ),
                 entry: PraticaTimelinePayload.Entry(
-                    kind: entry.subject.hasPrefix(PraticaEntry.Kind.call.label)
-                        ? PraticaEntry.Kind.call.rawValue
-                        : PraticaEntry.Kind.note.rawValue,
-                    date: formatter.string(from: entry.date),
+                    kind: parsed.kind.rawValue,
+                    date: formatter.string(from: parsed.date),
                     direction: nil,
                     from: nil,
-                    subject: entry.subject,
+                    subject: parsed.subject,
                     attachments: [],
-                    body: entry.body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
+                    body: parsed.body,
                     // SPEC "Out of scope": the per-message relation covers email rows
                     // only, never a manual entry.
                     linkedNote: nil
                 )
-            ))
-            open = nil
+            )
         }
-
-        for line in NoteDocument.parse(text).body.components(separatedBy: "\n") {
-            if line.hasPrefix("## ") {
-                flush()
-                open = entryHeading(line)
-                continue
-            }
-            open?.body.append(line)
-        }
-        flush()
-        return rows
-    }
-
-    /// `## 2026-06-10 14:06 Telefonata · Mario Rossi`. Anything else under `##` is an
-    /// ordinary heading of the note and is left alone - the same rule
-    /// `PraticheController.parseEntryHeading` applies on the app's side.
-    static func entryHeading(_ line: String) -> (date: Date, subject: String, body: [String])? {
-        let rest = line.dropFirst(3).trimmingCharacters(in: .whitespaces)
-        let parts = rest.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
-        guard parts.count >= 3,
-              let date = PraticaEntry.headingFormatter.date(from: "\(parts[0]) \(parts[1])")
-        else { return nil }
-        return (date: date, subject: String(parts[2]), body: [])
     }
 
     /// `[[20260610_offerta.pdf]]` → `20260610_offerta.pdf`, alias form included.

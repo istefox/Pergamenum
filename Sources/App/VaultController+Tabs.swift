@@ -21,6 +21,21 @@ extension VaultController {
         set { updateFocusedTab { $0.currentOutlineEntry = newValue } }
     }
 
+    /// The same, for the front tab of one column, without moving the focus.
+    ///
+    /// The text view reports the entry on every selection change, including the one it makes
+    /// itself while loading its note. Written through the focused facade, each column had to
+    /// take the focus first, so coming back to Note with two columns handed the focus to
+    /// whichever loaded last. A click or a key in the text focuses its column already, through
+    /// `CompletingTextView.becomeFirstResponder`.
+    func recordOutlineEntry(_ entry: Int?, inColumn columnIndex: Int) {
+        guard columns.indices.contains(columnIndex),
+              let id = columns[columnIndex].activeID,
+              let index = columns[columnIndex].tabs.firstIndex(where: { $0.id == id })
+        else { return }
+        columns[columnIndex].tabs[index].currentOutlineEntry = entry
+    }
+
     /// Folds or unfolds the section whose heading starts at `offset` (a UTF-16 character
     /// offset, `NoteTab.foldedEntries`'s own key - never an ordinal, which is the identity
     /// that goes stale across an edit).
