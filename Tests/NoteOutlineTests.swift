@@ -35,6 +35,16 @@ private func titles(_ text: String) -> [String] {
     #expect(titles("####### troppi cancelletti").isEmpty)
 }
 
+@Test func aHeadingKeepsItsIntrawordUnderscores() {
+    // ADR-0077 §D5: an intraword `_` opens no emphasis, so the title is not `filenamehere`.
+    #expect(titles("## file_name_here") == ["file_name_here"])
+}
+
+@Test func aHeadingWithAStyledLinkLabelShowsTheLabelWithoutItsMarkup() {
+    // ADR-0077 §D5: the label is parsed as spans, so the title is `Vedi x`, not `Vedi **x**`.
+    #expect(titles("## Vedi [**x**](u)") == ["Vedi x"])
+}
+
 @Test func aHashInsideACodeFenceIsNotAHeading() {
     // The defect closed earlier today, asserted from the other side: this would have been
     // the second place in the project to read a shell comment as markdown.

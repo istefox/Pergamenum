@@ -257,138 +257,78 @@ struct RootView: View {
             .tag(item)
     }
 
+    /// Every pane needs an open vault; without one, each says what it would show and offers
+    /// the folder picker, through one door (PG-147).
     @ViewBuilder
     private var detail: some View {
         switch pane {
-        case .notes: notesPane
-        case .workspace: workspacePane
-        case .today: todayPane
-        case .diary: diaryPane
-        case .tasks: tasksPane
-        case .tags: tagsPane
-        case .views: viewsPane
-        case .starred: starredPane
-        case .recordings: recordingsPane
-        case .pratiche: pratichePane
-        case .contenitore: contenitorePane
+        case .notes:
+            requiringVault(
+                "Scegli la cartella che contiene le note. Pergamenum non la modifica finché non salvi una nota.",
+                shortcut: shortcuts.shortcut(for: .openVault)
+            ) { VaultBrowser() }
+        case .workspace:
+            requiringVault("Il Workspace è una vista spaziale delle cartelle delle note.") { WorkspaceView() }
+        case .today:
+            requiringVault("La vista Oggi mostra la nota giornaliera e la timeline.") { TodayView() }
+        case .diary:
+            requiringVault("Il diario tiene la giornata: il testo libero e le ore che sono state usate.") {
+                DiaryView()
+            }
+        case .tasks:
+            requiringVault("Le attività sono i task scritti nelle note.") { TasksView() }
+        case .tags:
+            requiringVault(
+                "Il pannello Tag raggruppa i tag per namespace e restringe le note a quelli scelti."
+            ) { TagBrowserView() }
+        case .views:
+            requiringVault(
+                "Una vista è una query salvata dentro una nota, disegnata come tabella, board o calendario."
+            ) { ViewsPane() }
+        case .starred:
+            requiringVault("Le preferite sono le note con la stella, tenute in .pergamenum/starred.json.") {
+                StarredPane()
+            }
+        case .recordings:
+            requiringVault(
+                "Le registrazioni Plaud diventano note di trascrizione: senza un vault non c'è dove scriverle."
+            ) { RecordingsPane() }
+        case .pratiche:
+            requiringVault(
+                "Una pratica è una cartella del vault che si riempie da Mail: senza un vault non c'è dove tenerla."
+            ) { PratichePane() }
+        case .contenitore:
+            requiringVault("""
+                Il Contenitore archivia i documenti che metti nella cartella di raccolta: \
+                senza un vault non c'è dove tenerli.
+                """) { ContenitoreView() }
         }
     }
 
+    /// `content` when a vault is open; otherwise what the pane is for and the folder picker.
+    /// Only the Notes pane gives the button its shortcut, as it always has.
     @ViewBuilder
-    private var pratichePane: some View {
-        if vault.root == nil {
-            needsVault("Una pratica è una cartella del vault che si riempie da Mail: senza un vault non c'è dove tenerla.")
-        } else {
-            PratichePane()
-        }
-    }
-
-    @ViewBuilder
-    private var recordingsPane: some View {
-        if vault.root == nil {
-            needsVault("Le registrazioni Plaud diventano note di trascrizione: senza un vault non c'è dove scriverle.")
-        } else {
-            RecordingsPane()
-        }
-    }
-
-    @ViewBuilder
-    private var starredPane: some View {
-        if vault.root == nil {
-            needsVault("Le preferite sono le note con la stella, tenute in .pergamenum/starred.json.")
-        } else {
-            StarredPane()
-        }
-    }
-
-    @ViewBuilder
-    private var viewsPane: some View {
-        if vault.root == nil {
-            needsVault("Una vista è una query salvata dentro una nota, disegnata come tabella, board o calendario.")
-        } else {
-            ViewsPane()
-        }
-    }
-
-    @ViewBuilder
-    private var diaryPane: some View {
-        if vault.root == nil {
-            needsVault("Il diario tiene la giornata: il testo libero e le ore che sono state usate.")
-        } else {
-            DiaryView()
-        }
-    }
-
-    @ViewBuilder
-    private var tagsPane: some View {
-        if vault.root == nil {
-            needsVault("Il pannello Tag raggruppa i tag per namespace e restringe le note a quelli scelti.")
-        } else {
-            TagBrowserView()
-        }
-    }
-
-
-    @ViewBuilder
-    private var todayPane: some View {
-        if vault.root == nil {
-            needsVault("La vista Oggi mostra la nota giornaliera e la timeline.")
-        } else {
-            TodayView()
-        }
-    }
-
-    @ViewBuilder
-    private var tasksPane: some View {
-        if vault.root == nil {
-            needsVault("Le attività sono i task scritti nelle note.")
-        } else {
-            TasksView()
-        }
-    }
-
-    @ViewBuilder
-    private var workspacePane: some View {
-        if vault.root == nil {
-            needsVault("Il Workspace è una vista spaziale delle cartelle delle note.")
-        } else {
-            WorkspaceView()
-        }
-    }
-
-    func needsVault(_ explanation: String) -> some View {
-        VStack(spacing: theme.spacing(.m)) {
-            Image(systemName: "folder")
-                .font(.system(size: 40))
-                .foregroundStyle(theme.color(.textTertiary))
-            Text("Nessuna cartella note aperta").themedText(.title)
-            Text(explanation)
-                .themedText(.body, color: .textSecondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
-            Button("Apri cartella note…") { VaultOpenPanel.chooseVault(into: vault) }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    @ViewBuilder
-    private var notesPane: some View {
+    private func requiringVault(
+        _ explanation: String,
+        shortcut: KeyboardShortcut? = nil,
+        @ViewBuilder content: () -> some View
+    ) -> some View {
         if vault.root == nil {
             VStack(spacing: theme.spacing(.m)) {
                 Image(systemName: "folder")
                     .font(.system(size: 40))
                     .foregroundStyle(theme.color(.textTertiary))
                 Text("Nessuna cartella note aperta").themedText(.title)
-                Text("Scegli la cartella che contiene le note. Pergamenum non la modifica finché non salvi una nota.")
+                Text(explanation)
                     .themedText(.body, color: .textSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 420)
                 Button("Apri cartella note…") { VaultOpenPanel.chooseVault(into: vault) }
-                    .keyboardShortcut(shortcuts.shortcut(for: .openVault))
+                    .keyboardShortcut(shortcut)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            VaultBrowser()
+            content()
         }
     }
 

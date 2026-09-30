@@ -266,7 +266,7 @@ final class Navigation {
     /// only *where it is held* changes here (PG-206).
     ///
     /// Here rather than `@State` in `TasksView`, where it started: that view is recreated
-    /// every time `navigation.pane` becomes `.tasks` again (`RootView.tasksPane`), so a
+    /// every time `navigation.pane` becomes `.tasks` again (`RootView.detail`), so a
     /// `@State` there forgets which category was showing the moment the pane is left -
     /// the inspector's "Vai alla categoria" landed on whatever `.view(.today)` default
     /// `TasksView` was reborn with, and so did "Indietro" after "Vai alla nota" (PG-206).

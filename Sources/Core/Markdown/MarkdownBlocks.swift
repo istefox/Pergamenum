@@ -273,7 +273,9 @@ enum MarkdownBlockParser {
         guard let rest = afterBullet(line), rest.hasPrefix("["), rest.count >= 3 else { return nil }
         let marker = rest[rest.index(rest.startIndex, offsetBy: 1)]
         let closing = rest.index(rest.startIndex, offsetBy: 2)
-        guard rest[closing] == "]" else { return nil }
+        // The task index's own vocabulary, not a copy: `- [1] Rossi, 2020` is a bullet, and a
+        // reading view that drew a box for it would drop the `[1]` (ADR-0077 §D5).
+        guard rest[closing] == "]", TaskParser.state(for: marker) != nil else { return nil }
         let text = String(rest[rest.index(after: closing)...]).trimmingCharacters(in: .whitespaces)
         return MarkdownBlock.TaskLine(isDone: marker == "x" || marker == "X", marker: marker, text: text)
     }
