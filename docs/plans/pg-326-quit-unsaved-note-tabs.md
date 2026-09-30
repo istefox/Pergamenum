@@ -468,6 +468,9 @@ it frontmost.
   the second alert names «Tre», and the buffer is intact. Run `chmod 755` afterwards.
 - **M16** (R-08). Relaunch with tabs remembered: no alert at launch.
 - **M17** (R-08). With every tab clean, switch A to B: no alert, B's tabs show, A's are gone.
+- **M18b** (R-01, ADR-0073 §D5 step 7). With a dirty tab, close the main window with its close
+  button: the alert appears; «Annulla» brings the main window back with the tab still dirty, and
+  the alert does not reappear.
 - **M18** (observation, no R). With a dirty tab, close the main window with its close button and
   record what happens: the app stays with the buffer, or it quits through the alert. File an issue
   only if the buffer is lost without a question.

@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         owesTerminateReply = false
         switch vault?.unsavedTabsDecision(asking: UnsavedNotesPresenter.alert.ask) {
         case .cancel:
+            keepAWindowOnScreen()
             return .terminateCancel
         case .saveAll:
             guard let vault else { return settleBoardThenDiary(attempt: attempt) }
@@ -120,6 +121,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard owes(attempt) else { return }
         owesTerminateReply = false
         NSApp.reply(toApplicationShouldTerminate: shouldTerminate)
+        if !shouldTerminate { keepAWindowOnScreen() }
+    }
+
+    /// Set by the main window's content, the only place `openWindow` can be read from.
+    var showMainWindow: (() -> Void)?
+
+    /// A quit called off after the main window was closed leaves nothing on screen, and AppKit's
+    /// last-window check then quits again as soon as the alert closes: the question came back on
+    /// every «Annulla» (ADR-0073 §D5 step 7). The window comes back instead, with the tabs the
+    /// question kept.
+    private func keepAWindowOnScreen() {
+        guard !NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeMain }) else { return }
+        showMainWindow?()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -339,6 +353,7 @@ struct PergamenumApp: App {
                     appDelegate.vault = vault
                     appDelegate.diary = diary
                 }
+                .modifier(MainWindowReopener(delegate: appDelegate))
                 // Not in `init`: window work and `NSApp` must not happen while the app
                 // is still coming up, and neither the theme nor the vault the panel
                 // reads exists there yet.

@@ -202,6 +202,14 @@ the buffer, through `reconcile` (`VaultController+Watching.swift:43`).
    the current attempt's first caller. A save task that finishes after its cap fired does nothing:
    no settle, no reply. Otherwise a finished save could settle the board or answer a *later* Cmd+Q
    that asked its own question.
+7. **A called-off quit keeps a window on screen.** Closing the main window quits the app (a
+   single `Window` scene), so it reaches this question too. Measured on the checklist (M18): the
+   question appeared, but every «Annulla» brought it straight back, because with no visible window
+   left AppKit's last-window check (`_scheduleCheckForTerminateAfterLastWindowClosed`, read off a
+   backtrace) terminates again as soon as the alert closes. Whenever a quit is called off, by
+   `.cancel` or by a `false` reply, and no window that can become main is visible, the delegate
+   reopens the main window through `openWindow(id: "main")`, handed to it by
+   `MainWindowReopener`. «Annulla» then returns to the tabs it kept.
 
 ### §D6 — Vault switch: the UI goes through one door, and `open(_:)` stops carrying tabs across
 
@@ -259,8 +267,8 @@ the buffer, through `reconcile` (`VaultController+Watching.swift:43`).
   asking. Tabs no longer cross vaults, so that loss would be a missed question, not a write into the
   wrong vault. The plan's verification step checks that `rg -n "\.open\(" Sources/App` shows only
   `switchVault`'s own call and the launch path.
-- Whether closing the main window quits the app, and so reaches §D5, is not verified. The manual
-  checklist records what happens.
+- Closing the main window quits the app and so reaches §D5; measured on the checklist (M18), and
+  the loop it exposed is closed by §D5 step 7.
 - How `XCUIApplication.terminate()` quits the app is not verified. No UI test types into a note
   editor today (`rg` over `UITests/`, 2026-09-29). A future one that leaves a tab dirty could meet
   the alert at teardown.
