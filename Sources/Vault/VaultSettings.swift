@@ -139,6 +139,10 @@ struct VaultSettings: Codable, Equatable, Sendable {
     /// whole repo, so adding a defaulted field here is additive everywhere else.
     var pratiche: PraticheSettings
 
+    /// Settings › Contenitore (ADR-0071 §D13): the drop folder, stored `~`-relative, and the
+    /// Contenitore root. Nested and defaulted like `pratiche`, for the same reason.
+    var contenitore: ContenitoreSettings
+
     /// Named so the memberwise initialiser can default to it without repeating the
     /// string in every test that builds settings by hand.
     static let defaultDiaryFolder = "Diario"
@@ -165,7 +169,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
         rollover: false,
         rolloverDays: VaultSettings.defaultRolloverDays,
         patronSaint: nil,
-        pratiche: .default
+        pratiche: .default,
+        contenitore: .default
     )
 
     /// A week back, which is the unit M12 is about.
@@ -234,6 +239,10 @@ struct VaultSettings: Codable, Equatable, Sendable {
         // existed decodes to `.default` rather than losing the whole file.
         pratiche = try container.decodeIfPresent(PraticheSettings.self, forKey: .pratiche)
             ?? fallback.pratiche
+        // ADR-0071 §D13: additive, so a `settings.json` written before Contenitore existed
+        // decodes to `.default` rather than losing the whole file.
+        contenitore = try container.decodeIfPresent(ContenitoreSettings.self, forKey: .contenitore)
+            ?? fallback.contenitore
     }
 
     init(
@@ -254,7 +263,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
         rolloverDays: Int = VaultSettings.defaultRolloverDays,
         patronSaint: PatronSaint? = nil,
         vaultID: String? = nil,
-        pratiche: PraticheSettings = .default
+        pratiche: PraticheSettings = .default,
+        contenitore: ContenitoreSettings = .default
     ) {
         self.dailyFolder = dailyFolder
         self.diaryFolder = diaryFolder
@@ -274,5 +284,6 @@ struct VaultSettings: Codable, Equatable, Sendable {
         self.patronSaint = patronSaint
         self.vaultID = vaultID
         self.pratiche = pratiche
+        self.contenitore = contenitore
     }
 }

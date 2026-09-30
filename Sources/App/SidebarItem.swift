@@ -87,7 +87,10 @@ enum SidebarItem: Hashable, Identifiable, Sendable {
                 // back to, so it sits above the import row rather than after it. The app
                 // sidebar stays flat - the pratiche tree lives in the pane's own list
                 // column, as the notes do.
-                [.pane(.tasks), .pane(.pratiche), .pane(.recordings)]
+                //
+                // «Contenitore» before Pratiche (ADR-0071 §D11), which keeps Pratiche
+                // immediately before Registrazioni.
+                [.pane(.tasks), .pane(.contenitore), .pane(.pratiche), .pane(.recordings)]
             }
         }
     }

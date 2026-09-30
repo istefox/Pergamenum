@@ -71,6 +71,10 @@ extension VaultController {
 
         case .addTask(let text):
             return await captureTask(text)
+
+        case .contenitore(let id):
+            // ADR-0071 §D10: `VaultController+ContenitoreRoute.swift`.
+            return selectContenitoreDocument(id: id)
         }
     }
 
@@ -196,6 +200,9 @@ extension VaultController {
         var pendingCanvas: (path: String, nodeID: String?)?
         /// A query the quick switcher should start from.
         var pendingSearch: String?
+        /// What a `contenitore?id=` link asked the Contenitore pane to show (ADR-0071 §D10):
+        /// `RootView` switches to the pane when it changes, and the pane consumes it.
+        var pendingContenitore: ContenitoreRouteTarget?
         /// True while `open(_:)` is between installing the session and restoring the tabs.
         var isOpeningVault = false
     }

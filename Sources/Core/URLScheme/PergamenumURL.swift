@@ -25,6 +25,9 @@ enum PergamenumRoute: Equatable, Sendable {
     case capture(text: String, destination: String?, scheduled: String?, due: String?)
     /// `pergamenum://task?add=<text>`
     case addTask(String)
+    /// `pergamenum://contenitore?id=<uuid>` (ADR-0071 §D10): the scheda's note id, selecting
+    /// its document in the Contenitore pane. `note?id=` keeps opening the scheda in the editor.
+    case contenitore(id: String)
 
     /// Parses a URL into a route, or nil when it is not one this app answers.
     ///
@@ -78,6 +81,9 @@ enum PergamenumRoute: Equatable, Sendable {
         case "task":
             guard let add = query("add"), !add.isEmpty else { return nil }
             self = .addTask(add)
+        case "contenitore":
+            guard let id = query("id"), !id.isEmpty else { return nil }
+            self = .contenitore(id: id)
         default:
             return nil
         }
@@ -105,6 +111,7 @@ enum PergamenumRoute: Equatable, Sendable {
         case .search: "search"
         case .capture: "capture"
         case .addTask: "addTask"
+        case .contenitore: "contenitore"
         }
     }
 }
@@ -125,6 +132,12 @@ enum PergamenumLink {
     /// every rename and move the app performs.
     static func note(id: String) -> URL? {
         build(host: "note", queryItems: [URLQueryItem(name: "id", value: id)])
+    }
+
+    /// A `pergamenum://contenitore?id=<id>` link (ADR-0071 §D10): «Copia link Pergamenum» on
+    /// a Contenitore document, the scheda's id, so it survives every pair rename and move.
+    static func contenitore(id: String) -> URL? {
+        build(host: "contenitore", queryItems: [URLQueryItem(name: "id", value: id)])
     }
 
     static func canvas(path: String, nodeID: String? = nil) -> URL? {

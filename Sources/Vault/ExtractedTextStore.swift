@@ -22,6 +22,13 @@ struct ExtractedTextStore: Sendable {
         return try? JSONDecoder().decode(ExtractedText.self, from: data)
     }
 
+    /// The status and method of the record for `sha256`, or nil when there is none or it cannot
+    /// be read. Same file, same format: only the two keys are decoded, never the text.
+    func readSummary(sha256: String) -> ExtractionSummary? {
+        guard let url = fileURL(for: sha256), let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(ExtractionSummary.self, from: data)
+    }
+
     /// Writes `text` as the record for `sha256`, atomically, creating the directory at first use.
     func write(_ text: ExtractedText, sha256: String) throws {
         guard let url = fileURL(for: sha256) else { throw FileOperationError.failed("hash non valido: \(sha256)") }

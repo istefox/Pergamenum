@@ -135,6 +135,11 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     /// the pratica row's context menu from this one declaration (R-21).
     case addToPraticaFromMail
 
+    // ADR-0071 (Contenitore) §D11, plan docs/plans/contenitore.md, Task 6. Appended at the end,
+    // never inserted (ADR-0005 §D8: raw values are the overrides-file keys).
+    /// The twelfth pane: jumps to "Contenitore" (`Navigation.Pane.contenitore`).
+    case paneContenitore
+
     var id: String { rawValue }
 
     /// Which menu the command lives in, so the settings pane can group the list the
@@ -172,7 +177,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneTags,
              .paneDiary, .paneViews, .paneStarred, .toggleInspector,
              .foldSection, .unfoldAll, .goBack, .goForward,
-             .paneRecordings, .refreshRecordings, .panePratiche:
+             .paneRecordings, .refreshRecordings, .panePratiche, .paneContenitore:
             .view
         case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek, .taskAddSubtask:
             .task
@@ -238,6 +243,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .panePratiche: "Vai a Pratiche"
         case .newPratica: "Nuova pratica…"
         case .addToPraticaFromMail: "Aggiungi a pratica da Mail…"
+        case .paneContenitore: "Vai a Contenitore"
         }
     }
 
@@ -359,6 +365,10 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         // Inserisci → "Aggiungi a pratica da Mail…" gets Cmd+Shift+P, the UX
         // blueprint's own binding, checked the same way.
         case .addToPraticaFromMail: KeyBinding("p", [.command, .shift])
+        // Ctrl+Cmd+C, Pratiche's Ctrl+Cmd+P precedent (plan "Assumptions" (c)): measured free
+        // in `com.apple.symbolichotkeys` on 2026-09-29 (58 entries, none on keycode 8, every
+        // Ctrl+Cmd entry disabled), in this catalogue and in `Sources/`.
+        case .paneContenitore: KeyBinding("c", [.command, .control])
         }
     }
 }

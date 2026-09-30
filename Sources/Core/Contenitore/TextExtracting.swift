@@ -45,12 +45,37 @@ struct ExtractedText: Codable, Equatable, Sendable {
     /// testo» (R-11): to the person, a scan with nothing recognisable and an OCR that failed
     /// are the same fact, a document searchable only by its name, description and tags.
     static func displayLabel(_ extracted: ExtractedText?) -> String {
-        guard let extracted else { return "in attesa" }
-        switch extracted.status {
+        ExtractionSummary.displayLabel(extracted.map(ExtractionSummary.init))
+    }
+}
+
+/// Where a document's extraction stands, without its text: what the list's label and the
+/// queue's «is this finished?» need. Decoded from the same record `ExtractedText` is, with only
+/// these two keys read, so a status lookup never materialises megabytes of OCR text.
+struct ExtractionSummary: Decodable, Equatable, Sendable {
+    var method: ExtractionMethod
+    var status: ExtractionStatus
+
+    init(method: ExtractionMethod, status: ExtractionStatus) {
+        self.method = method
+        self.status = status
+    }
+
+    init(_ extracted: ExtractedText) {
+        self.init(method: extracted.method, status: extracted.status)
+    }
+
+    /// True once there is nothing left to extract: `done` or `failed`.
+    var isFinished: Bool { status != .pending }
+
+    /// The rule `ExtractedText.displayLabel` states, applied to the summary.
+    static func displayLabel(_ summary: ExtractionSummary?) -> String {
+        guard let summary else { return "in attesa" }
+        switch summary.status {
         case .pending: return "in estrazione"
         case .failed: return "nessun testo"
         case .done:
-            switch extracted.method {
+            switch summary.method {
             case .textLayer, .plainText: return "testo"
             case .ocr: return "testo da OCR"
             case .none: return "nessun testo"

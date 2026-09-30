@@ -280,6 +280,10 @@ struct EditCommands: Commands {
         CommandGroup(after: .pasteboard) {
             Button("Incolla come testo puro") { actions.run(.pastePlain) }
                 .keyboardShortcut(shortcuts.shortcut(for: .pastePlain))
+            // ADR-0071 §D12: the Contenitore's trash lives here, acting on the pane's selection.
+            Divider()
+            Button(ContenitoreCommand.trash.title) { actions.trashContenitoreSelection() }
+                .disabled(!actions.canTrashContenitoreSelection)
         }
         // **Replacing and not adding.** SwiftUI's standard group is the system Find submenu,
         // which drives `NSTextFinder` and already binds Cmd+F, Cmd+Alt+F, Cmd+G and

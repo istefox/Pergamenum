@@ -37,6 +37,10 @@ final class Navigation {
         /// not Task 8's - Task 8 only measures `panePratiche`'s key against
         /// `com.apple.symbolichotkeys`.
         case pratiche
+        /// The Contenitore of ADR-0071 §D11: a managed document archive with its own column
+        /// (all, «Da classificare», the sub-container tree), list or grid, and inspector.
+        /// Appended like `pratiche`; its sidebar row sits before Pratiche (`SidebarItem`).
+        case contenitore
 
         var id: String { rawValue }
 
@@ -52,6 +56,7 @@ final class Navigation {
             case .views: "Viste"
             case .recordings: "Registrazioni"
             case .pratiche: "Pratiche"
+            case .contenitore: "Contenitore"
             }
         }
 
@@ -71,6 +76,7 @@ final class Navigation {
             // the pane - "plus", "arrow.clockwise", "sidebar.trailing"), so this is the
             // coordinator's own named fallback rather than a guess.
             case .pratiche: "folder.badge.person.crop"
+            case .contenitore: "archivebox"
             }
         }
 
@@ -102,6 +108,8 @@ final class Navigation {
             // are exhausted (`recordings` took the last one), so the eleventh pane takes
             // the next free letter on the same modifier pair instead.
             case .pratiche: .panePratiche
+            // Ctrl+Cmd+C (ADR-0071 §D11), the same modifier pair as Pratiche's.
+            case .contenitore: .paneContenitore
             }
         }
     }

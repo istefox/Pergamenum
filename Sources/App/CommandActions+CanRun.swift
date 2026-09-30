@@ -67,7 +67,9 @@ extension CommandActions {
              // Same convention (ADR-0036 §D8): the pane itself is always reachable, and
              // `PratichePane`'s own body (Task 6/7's coder step) is what shows a
              // needs-vault/no-Full-Disk-Access state once inside it.
-             .panePratiche:
+             .panePratiche,
+             // ADR-0071 §D11: the same convention; the pane shows its own no-vault state.
+             .paneContenitore:
             true
         // Plan Task 8 (R-20, R-21): `vault.root != nil` mirrors `.newNote`/`.newBoard`
         // above: creating a pratica needs somewhere to write it.
@@ -131,6 +133,8 @@ extension CommandActions {
     }
 
     private func canRunOnOpenNote(_ command: ShortcutCommand) -> Bool {
+        // ADR-0071 §D12: with the Contenitore pane shown, File's two entries act on its selection.
+        if let answer = canRunOnContenitoreSelection(command) { return answer }
         guard vault.openNote != nil else { return false }
         return command == .applyTemplate ? !vault.templates.isEmpty : true
     }

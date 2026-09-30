@@ -44,6 +44,7 @@ final class CommandActions {
     /// `canRun(.refreshRecordings)` never consults it - which pane is showing is the whole
     /// condition (blueprint) - so a `nil` here only means the refresh does nothing.
     let recordings: RecordingsController?
+    let contenitore: ContenitoreController?
 
     init(
         navigation: Navigation,
@@ -53,7 +54,8 @@ final class CommandActions {
         capturePanel: CapturePanel,
         history: NavigationHistory,
         pasteboard: NSPasteboard = .general,
-        recordings: RecordingsController? = nil
+        recordings: RecordingsController? = nil,
+        contenitore: ContenitoreController? = nil
     ) {
         self.navigation = navigation
         self.vault = vault
@@ -63,6 +65,7 @@ final class CommandActions {
         self.history = history
         self.pasteboard = pasteboard
         self.recordings = recordings
+        self.contenitore = contenitore
     }
 
     // MARK: Running
@@ -192,7 +195,7 @@ final class CommandActions {
             navigation.pane = .pratiche
             navigation.isShowingNuovaPratica = true
         case .copyLink, .revealInFinder, .toggleStar:
-            runOnOpenNote(command)
+            if !runOnContenitoreSelection(command) { runOnOpenNote(command) }
         default:
             assertionFailure("«\(command.title)» è nella sezione File e non è gestito")
         }
@@ -254,7 +257,7 @@ final class CommandActions {
         switch command {
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneDiary,
              .paneTags, .paneViews, .paneStarred, .paneRecordings, .refreshRecordings,
-             .panePratiche:
+             .panePratiche, .paneContenitore:
             runNavigation(command)
         case .toggleInspector:
             navigation.isShowingInspector.toggle()

@@ -71,6 +71,28 @@ private func temporaryStore() -> ExtractedTextStore {
     #expect(store.read(sha256: hashA) == nil)
 }
 
+/// The label and the queue's catch-up read a record's status without its text: the summary
+/// comes off the same file `write` produced, and a record with no `text` key at all still
+/// yields one, which is what shows the light path never decodes the text.
+@Test func theStoreReadsAStatusWithoutTheText() throws {
+    let store = temporaryStore()
+    defer { try? store.removeAll() }
+    try store.write(
+        ExtractedText(method: .ocr, status: .done, text: String(repeating: "OCR ", count: 10_000)), sha256: hashA
+    )
+
+    #expect(store.readSummary(sha256: hashA) == ExtractionSummary(method: .ocr, status: .done))
+    #expect(store.readSummary(sha256: hashB) == nil)
+
+    let textless = store.directory.appending(path: "\(hashB).json")
+    try Data(#"{"method":"textLayer","status":"pending"}"#.utf8).write(to: textless)
+    #expect(store.read(sha256: hashB) == nil, "the full record needs its text")
+    #expect(store.readSummary(sha256: hashB) == ExtractionSummary(method: .textLayer, status: .pending))
+    #expect(ExtractionSummary.displayLabel(store.readSummary(sha256: hashB)) == "in estrazione")
+    #expect(store.readSummary(sha256: hashB)?.isFinished == false)
+    #expect(store.readSummary(sha256: hashA)?.isFinished == true)
+}
+
 @Test func theStoreRefusesAKeyThatIsNotAHash() {
     let store = temporaryStore()
     defer { try? store.removeAll() }
