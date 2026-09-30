@@ -115,19 +115,23 @@ extension VaultController {
         /// Catches this buffer up with what the disk now holds: ADR-0001 §D3.4 for one buffer
         /// (ADR-0058 §D1), and says what it did (ADR-0064 §D3).
         ///
-        /// - `.asked`: the buffer is dirty, whatever `incoming` is. It is the person's work:
-        ///   never merged, never discarded - the prompt becomes pending with `incoming` as the
-        ///   other side. Newest wins: a deletion replaces a pending text, and a recreation
+        /// - `.asked`: the buffer is dirty and `incoming` is not its text. It is the person's
+        ///   work: never merged, never discarded - the prompt becomes pending with `incoming` as
+        ///   the other side. Newest wins: a deletion replaces a pending text, and a recreation
         ///   replaces a pending deletion, so the banner describes the disk as of the last call.
-        /// - `.adopted`: the buffer is clean and `incoming` is a text. It takes that text, and a
-        ///   prompt still pending on it goes too: a buffer undone back to `savedText` after the
-        ///   banner appeared now holds the newest text, so the older one has nothing to ask.
+        /// - `.adopted`: the buffer is clean and `incoming` is a text, or the buffer is dirty and
+        ///   `incoming` is exactly its text (ADR-0073, implementation notes, departure 15). It
+        ///   takes that text, and a prompt still pending on it goes too: a buffer undone back to
+        ///   `savedText` after the banner appeared now holds the newest text, so the older one has
+        ///   nothing to ask; a dirty copy whose text just landed from another tab (a split editor
+        ///   saved from the other column) has nothing to ask either, since the disk now says
+        ///   what it says.
         /// - `.vanished`: the buffer is clean and its file is gone. Nothing on the buffer
         ///   changes; closing the tab is the caller's job (`closeTabs(_:ofVanishedNote:)`).
         ///   An in-process write passes `.text` and can never get this answer.
         @discardableResult
         mutating func catchUp(to incoming: VaultSession.ExternalChange.Content) -> CatchUp {
-            if hasUnsavedChanges {
+            if hasUnsavedChanges, incoming != .text(text) {
                 externalChangePending = incoming
                 return .asked
             }

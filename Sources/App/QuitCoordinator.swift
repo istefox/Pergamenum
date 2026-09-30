@@ -22,9 +22,12 @@ enum QuitReply: Equatable, Sendable {
 ///    «Salva tutto» saves under `.terminateLater` with a **fail-safe** cap (§D6): elapsed, it
 ///    cancels the quit rather than completing it, because a note buffer lost to a terminate
 ///    cannot be retried.
-/// 3. **The diary** (ADR-0060 §D2), unchanged, and started only after the notes: its **fail-open**
-///    2 s cap races `settle()` in two independent tasks - a task group would wait out a write
-///    that ignores cancellation, and the cap would cap nothing. The Contenitore inspector's
+/// 3. **The diary** (ADR-0060 §D2), started after the question: its **fail-open** 2 s cap races
+///    `settle()` in two independent tasks - a task group would wait out a write that ignores
+///    cancellation, and the cap would cap nothing. On «Salva tutto» the diary settles **before**
+///    the notes are written (departure 17), so a dirty tab showing the day file hears the
+///    diary's write instead of overwriting it; the phase after the notes then finds the diary
+///    settled, unless its cap won the first time. The Contenitore inspector's
 ///    description being typed (ADR-0071 §D11, `ContenitoreController.settleEditing()`) is the
 ///    same kind of holder - one small guarded write, owed and not yet on disk - and settles
 ///    in this phase, started with the diary's flush (not before it) and under the same cap.
@@ -56,10 +59,15 @@ final class QuitCoordinator {
     /// True between a `.later` and its one reply. Every path to `reply` goes through
     /// `answer(_:attempt:)`, which pays this debt once; every later caller finds it paid.
     private var owesReply = false
+    /// True while the question is on screen: `ask` runs a modal loop, inside which AppKit can
+    /// deliver another terminate request.
+    private var isAsking = false
+    /// True while «Salva tutto»'s diary settle and its cap race each other, before the notes.
+    private var diaryPending = false
     /// True while «Salva tutto»'s writes and their cap race each other.
     private var notesPending = false
-    /// Bumped by every `shouldTerminate()`, so a cap or a settle left over from an earlier,
-    /// cancelled quit can never answer a later one.
+    /// Bumped by every `shouldTerminate()` that starts a quit, so a cap or a settle left over
+    /// from an earlier, cancelled quit can never answer a later one.
     private var attempt = 0
 
     /// - Parameter contenitore: the pane's controller, whose unsaved inspector edit is settled
@@ -100,9 +108,16 @@ final class QuitCoordinator {
         self.saveAll = saveAll
     }
 
+    /// Decides one quit request. Two requests never overlap (ADR-0073, implementation notes,
+    /// departure 16): one arriving while the question is on screen answers `.cancel`, because
+    /// the question decides; one arriving while a `.later` is still owed its reply answers
+    /// `.later` and starts nothing, so the pending quit keeps its attempt and gets exactly one
+    /// reply.
     func shouldTerminate() -> QuitReply {
+        if isAsking { return .cancel }
+        if owesReply { return .later }
         attempt += 1
-        owesReply = false
+        diaryPending = false
         notesPending = false
         let vault = vault()
 
@@ -120,7 +135,10 @@ final class QuitCoordinator {
         let review = QuitReview(columns: vault?.columns ?? [])
         guard let vault, !review.isEmpty else { return diaryPhase(covering: review) }
 
-        switch ask(review) {
+        isAsking = true
+        let answer = ask(review)
+        isAsking = false
+        switch answer {
         case .cancel:
             reveal(nil)
             return .cancel
@@ -133,10 +151,48 @@ final class QuitCoordinator {
             return diaryPhase(covering: review)
         case .save:
             owesReply = true
-            notesPending = true
-            saveNotes(review, in: vault, attempt: attempt)
+            settleDiaryThenSaveNotes(review, in: vault, attempt: attempt)
             return .later
         }
+    }
+
+    // MARK: The diary, before «Salva tutto»'s notes
+
+    /// The diary's owed write goes first (ADR-0073, implementation notes, departure 17): its
+    /// write is guarded and announced, so a dirty tab showing the day file is caught up by it
+    /// (the banner) and left unwritten by the save, which then cancels the quit and reveals
+    /// that tab. In the other order the tab's unguarded save landed first, the diary's write
+    /// was refused as stale, and its text was lost with the app. The diary's own fail-open cap
+    /// (ADR-0060 §D2) still applies: when it wins, the notes are saved anyway.
+    private func settleDiaryThenSaveNotes(_ review: QuitReview, in vault: VaultController, attempt: Int) {
+        guard let owed = diary().flatMap({ $0.isSettled ? nil : $0 }) else {
+            startNotes(review, in: vault, attempt: attempt)
+            return
+        }
+        diaryPending = true
+        // Two independent tasks, as in `diaryPhase`: a task group would wait out a write that
+        // ignores cancellation.
+        let diaryWrite = Task { await owed.settle() }
+        Task { [weak self] in
+            await diaryWrite.value
+            self?.diarySettledBeforeNotes(review, in: vault, attempt: attempt)
+        }
+        Task { [weak self] in
+            await self?.sleep(Self.diaryCap)
+            self?.diarySettledBeforeNotes(review, in: vault, attempt: attempt)
+        }
+    }
+
+    /// Whichever of the diary's settle and its cap finishes first starts the notes, once.
+    private func diarySettledBeforeNotes(_ review: QuitReview, in vault: VaultController, attempt: Int) {
+        guard attempt == self.attempt, diaryPending else { return }
+        diaryPending = false
+        startNotes(review, in: vault, attempt: attempt)
+    }
+
+    private func startNotes(_ review: QuitReview, in vault: VaultController, attempt: Int) {
+        notesPending = true
+        saveNotes(review, in: vault, attempt: attempt)
     }
 
     // MARK: The notes phase
@@ -189,7 +245,8 @@ final class QuitCoordinator {
 
     // MARK: The diary phase
 
-    /// ADR-0060 §D2, started only after the notes. `covered` is what the answer covered, for
+    /// ADR-0060 §D2, run after the notes; on «Salva tutto» the diary has already settled once
+    /// before them (departure 17), so this pass usually finds it settled. `covered` is what the answer covered, for
     /// the last check before letting go. Returns the synchronous reply; when a reply is
     /// already owed (the save path), the value is ignored and the phase answers through
     /// `reply`.

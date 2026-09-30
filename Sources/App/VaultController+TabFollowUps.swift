@@ -34,7 +34,9 @@ extension VaultController {
     ///
     /// **A buffer with unsaved changes raises the conflict prompt (ADR-0043 §D7).** The dirty
     /// buffer is the person's work, and ADR-0001 §D3.4 says never to merge and never to discard
-    /// it - ask.
+    /// it - ask. Unless the write landed exactly its text (a split copy of the note saved from
+    /// the other column): then it is adopted, since there is nothing to ask (ADR-0073,
+    /// implementation notes, departure 15).
     ///
     /// **The writer is found by id, not by focus (§D2).** `saveOpenNote()` names its tab
     /// through `origin`, read before the `await`; the focus when the write resumes may be some

@@ -100,6 +100,23 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     #expect(buffer.externalChangePending == nil)
 }
 
+@Test func catchUpOnADirtyBufferAdoptsAnIncomingTextIdenticalToItsOwn() {
+    // A split copy of a dirty note, saved from the other column: the disk now holds exactly
+    // this buffer's text, so there is nothing to ask (ADR-0073, implementation notes,
+    // departure 15). A pending prompt goes too - the disk no longer says what it said.
+    var buffer = VaultController.OpenNote(
+        relativePath: "A.md", title: "A", text: "mine", savedText: "disk",
+        externalChangePending: .deleted
+    )
+
+    #expect(buffer.catchUp(to: .text("mine")) == .adopted)
+
+    #expect(buffer.text == "mine")
+    #expect(buffer.savedText == "mine")
+    #expect(buffer.externalChangePending == nil)
+    #expect(!buffer.hasUnsavedChanges)
+}
+
 // MARK: §D2 - a landed write (`landed(.written(_, origin: nil))`, ADR-0067) reaches every tab showing the path
 
 @MainActor
@@ -229,6 +246,29 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     #expect(copy.note.text == note("A, non salvato nella seconda colonna."))
     #expect(controller.openNote?.hasUnsavedChanges == false)
     #expect(controller.openNote?.externalChangePending == nil, "il proprio salvataggio non è un conflitto")
+}
+
+@MainActor
+@Test func savingADirtyNoteSplitIntoTheOtherColumnCleansTheIdenticalCopyWithoutAPrompt() async throws {
+    // Typed first, split second: `splitEditor` copies the dirty buffer, so both columns hold
+    // the same unsaved text. Saving one writes exactly the other's text (ADR-0073, departure 15).
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    defer { controller.close() }
+    controller.openNote(at: "A.md")
+    let typed = note("A, scritto prima di dividere.")
+    controller.updateOpenNoteText(typed)
+    controller.splitEditor()
+    try #require(try tab(showing: "A.md", in: controller.columns[1]).note.hasUnsavedChanges)
+    controller.focusColumn(0)
+
+    await controller.saveOpenNote()
+
+    let copy = try tab(showing: "A.md", in: controller.columns[1])
+    #expect(copy.note.externalChangePending == nil, "una copia identica non è un conflitto")
+    #expect(copy.note.text == typed)
+    #expect(!copy.note.hasUnsavedChanges)
+    #expect(controller.openNote?.hasUnsavedChanges == false)
 }
 
 @MainActor
