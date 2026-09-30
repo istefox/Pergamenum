@@ -24,41 +24,102 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .notice("delegate notifiche al lancio: \(delegate ?? "nessuno", privacy: .public)")
     }
 
-    /// Holds quit until the Diario's owed writes have landed (ADR-0057 §D8, #497).
-    /// `willTerminateNotification` fires after the decision to exit, so a flush started
-    /// there is an async write nothing waits for. Capped at two seconds: a disk that does
-    /// not answer must not turn «Esci» into a hang.
+    /// Quits in four steps, in this order: the question, the notes, the board, the diary
+    /// (ADR-0073 §D5).
     ///
-    /// Two independent tasks rather than a task group: a group waits for every child when
-    /// it ends, and `settle()` awaits a write that ignores cancellation, so a group would
-    /// wait out a hung write and the cap would cap nothing. Whichever finishes first
-    /// replies; `replyToTerminate()` makes the second a no-op.
+    /// 1. **The question comes first**, when a note tab is dirty in any column: «Salva tutto»
+    ///    / «Non salvare» / «Annulla». Before the board settles, because settling commits an
+    ///    open card edit (ADR-0066 §D2, "navigating away confirms"), and a cancelled quit must
+    ///    leave everything as it was. «Annulla» settles nothing and writes nothing. Nothing is
+    ///    autosaved on quit, on purpose (ADR-0012 §D3).
+    /// 2. **The notes**, on «Salva tutto» only: `saveAllUnsavedTabs()` under its own cap,
+    ///    `noteSaveCap`, and **that cap cancels the quit**. A disk that does not answer costs a
+    ///    second Cmd+Q, never a hang and never a note unwritten. A failed save keeps the app
+    ///    open and says what is still unsaved.
+    /// 3. **The board**, synchronously (#506, ADR-0066): its save is not async, so an edit
+    ///    inside its autosave debounce is written before anything here decides whether to wait.
+    /// 4. **The diary** (ADR-0057 §D8, #497): quit is held until its owed writes land, capped
+    ///    at two seconds, and **that cap lets the quit proceed** - a diary write is not a
+    ///    question the person was asked. It starts only once the notes are written, so it can
+    ///    never let the app exit with a note unsaved.
     ///
-    /// The open Workspace board goes first, and synchronously (#506, ADR-0066): its save is
-    /// not async, so an edit inside its autosave debounce is written before anything here
-    /// decides whether to wait.
+    /// Each phase races two independent tasks rather than a task group: a group waits for
+    /// every child when it ends, and both saves await writes that ignore cancellation, so a
+    /// group would wait out a hung write and the cap would cap nothing. Whichever finishes
+    /// first replies; `replyToTerminate(_:attempt:)` makes the second a no-op.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        terminateAttempt += 1
+        let attempt = terminateAttempt
+        owesTerminateReply = false
+        switch vault?.unsavedTabsDecision(asking: UnsavedNotesPresenter.alert.ask) {
+        case .cancel:
+            return .terminateCancel
+        case .saveAll:
+            guard let vault else { return settleBoardThenDiary(attempt: attempt) }
+            owesTerminateReply = true
+            let cap = Task { [weak self] in
+                try? await Task.sleep(for: Self.noteSaveCap)
+                guard !Task.isCancelled, let self, self.owes(attempt) else { return }
+                vault.recordProblem("Salvataggio delle note non concluso entro 10 s: Pergamenum resta aperto")
+                self.replyToTerminate(false, attempt: attempt)
+                UnsavedNotesPresenter.alert.reportUnsaved(UnsavedNotesPrompt(tabs: vault.unsavedTabs))
+            }
+            Task { [weak self] in
+                let saved = await vault.saveAllUnsavedTabs()
+                // After the cap fired, or once a later Cmd+Q asked its own question, a finished
+                // save does nothing: no settle, no reply.
+                guard let self, self.owes(attempt) else { return }
+                cap.cancel()
+                guard saved else {
+                    self.replyToTerminate(false, attempt: attempt)
+                    UnsavedNotesPresenter.alert.reportUnsaved(UnsavedNotesPrompt(tabs: vault.unsavedTabs))
+                    return
+                }
+                if self.settleBoardThenDiary(attempt: attempt) == .terminateNow {
+                    self.replyToTerminate(true, attempt: attempt)
+                }
+            }
+            return .terminateLater
+        case .discard, nil:
+            return settleBoardThenDiary(attempt: attempt)
+        }
+    }
+
+    /// How long «Salva tutto» may take before the quit is called off (ADR-0073 §D5).
+    private static let noteSaveCap: Duration = .seconds(10)
+
+    /// Numbers each call of `applicationShouldTerminate(_:)`, so a reply belongs to one.
+    private var terminateAttempt = 0
+    /// True between a `.terminateLater` and its one reply, for `terminateAttempt` only.
+    private var owesTerminateReply = false
+
+    /// Steps 3 and 4 of the quit, today's path for «Non salvare» and for nothing dirty: the
+    /// board settles, then `.terminateNow` if the diary has nothing owed, or `.terminateLater`
+    /// with the diary's two racing tasks, which reply `true` either way.
+    private func settleBoardThenDiary(attempt: Int) -> NSApplication.TerminateReply {
         vault?.openBoard?.settleForTermination()
         guard let diary, !diary.isSettled else { return .terminateNow }
         owesTerminateReply = true
         Task { [weak self] in
             await diary.settle()
-            self?.replyToTerminate()
+            self?.replyToTerminate(true, attempt: attempt)
         }
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(2))
-            self?.replyToTerminate()
+            self?.replyToTerminate(true, attempt: attempt)
         }
         return .terminateLater
     }
 
-    /// True between a `.terminateLater` and its one reply.
-    private var owesTerminateReply = false
+    private func owes(_ attempt: Int) -> Bool {
+        owesTerminateReply && attempt == terminateAttempt
+    }
 
-    private func replyToTerminate() {
-        guard owesTerminateReply else { return }
+    /// Answers the current attempt's `.terminateLater`, once; every later caller is a no-op.
+    private func replyToTerminate(_ shouldTerminate: Bool, attempt: Int) {
+        guard owes(attempt) else { return }
         owesTerminateReply = false
-        NSApp.reply(toApplicationShouldTerminate: true)
+        NSApp.reply(toApplicationShouldTerminate: shouldTerminate)
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

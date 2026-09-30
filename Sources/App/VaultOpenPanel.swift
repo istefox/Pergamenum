@@ -12,10 +12,10 @@ enum VaultOpenPanel {
             title: "Scegli la cartella delle note",
             message: "Seleziona la cartella che contiene le note (per esempio Labs)."
         ) else { return }
-        // The recents list is written by `VaultController.open` itself, so a vault
-        // opened from the menu, from a link or from this panel is recorded once, in
-        // one place.
-        Task { await controller.open(url) }
+        // After the picker, so a cancelled picker asks nothing; `switchVault` asks about
+        // unsaved tabs before `open` closes them (ADR-0073 §D6). The recents list is written
+        // by `VaultController.open` itself, so a vault is recorded once, in one place.
+        Task { await controller.switchVault(to: url, presenter: .alert) }
     }
 
     static func chooseHarnessRepository(into controller: VaultController) {

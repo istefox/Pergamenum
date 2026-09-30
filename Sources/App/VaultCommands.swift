@@ -89,7 +89,7 @@ struct VaultCommands: Commands {
                 } else {
                     ForEach(recents, id: \.self) { url in
                         Button(url.lastPathComponent) {
-                            Task { await vault.open(url) }
+                            Task { await vault.switchVault(to: url, presenter: .alert) }
                         }
                         .disabled(url.standardizedFileURL == vault.root?.standardizedFileURL)
                     }

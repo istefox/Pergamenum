@@ -268,6 +268,34 @@ extension VaultController {
         }
     }
 
+    /// Every tab with unsaved changes, in every column, in column-then-tab order (ADR-0073
+    /// §D1). Quit and vault switch ask this, never the focused column alone: a dirty tab behind
+    /// another, or in the other column, is as much the person's work as the one in front.
+    var unsavedTabs: [NoteTab] {
+        columns.flatMap(\.tabs).filter(\.note.hasUnsavedChanges)
+    }
+
+    /// Empties the editor because the vault it showed is going away: one empty column, focus
+    /// on it, no draft (ADR-0073 §D6). `open(_:)` calls it before swapping the session and
+    /// `close()` calls it too, so the two cannot drift.
+    ///
+    /// **It does not call `rememberTabs()`, on purpose.** The outgoing vault's arrangement is
+    /// already on record - every tab door wrote it (ADR-0012 §D10) - and writing it here would
+    /// record an empty arrangement over it. `restoreTabs()` then finds the column empty and
+    /// brings back the incoming vault's own tabs. Without this, a switch carried the outgoing
+    /// tabs into the next vault, bound to its session, where a Cmd+S wrote them (F7).
+    ///
+    /// Dirty buffers are dropped without asking: `open(_:)` stays presenter-free for the launch
+    /// path and the tests, and the UI switches through `switchVault(to:presenter:)`, which
+    /// asks first.
+    func closeAllTabsForVaultChange() {
+        columns = [EditorColumn()]
+        focusedColumnIndex = 0
+        // A draft names a folder in the vault being left, and the composer would otherwise
+        // still be sitting in the editor column of a vault that is gone.
+        endNewNote()
+    }
+
     /// Replaces the open note wholesale, keeping the tab and everything it knows.
     ///
     /// The one door for code outside this file: `openNote` reads the focused tab and cannot

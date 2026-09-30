@@ -6,6 +6,7 @@ import SwiftUI
 /// past the length SwiftLint warns at. The question itself is small and the reason for it is
 /// not - with one note open, explicit saving was safe because the buffer was in front of you;
 /// with six tabs the third one closes with work in it nobody has looked at since.
+/// The same question guards quit and vault switch, for every dirty tab at once (ADR-0073).
 extension EditorColumnView {
     /// What a column with no tabs shows. Here rather than in `VaultBrowser` because it is
     /// now the empty *tab set*, not the pane's own empty state.

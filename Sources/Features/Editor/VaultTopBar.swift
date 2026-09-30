@@ -35,13 +35,17 @@ struct VaultTopBar: View {
             // `hasUnsavedChanges` that reads `false` at rest even with nothing loaded,
             // there is no save state to report here until a note exists to have one -
             // showing "Salvato" over an empty pane would claim to have saved nothing.
+            // «Non salvato», not «Salvataggio…»: a note saves only on Cmd+S (ADR-0012 §D3),
+            // so no save is in progress to announce (ADR-0073 §D7). The board's «Salvataggio…»
+            // is true of an autosave and stays.
             if vault.openNote != nil {
                 Label(
-                    vault.openNote?.hasUnsavedChanges == true ? "Salvataggio…" : "Salvato",
+                    vault.openNote?.hasUnsavedChanges == true ? "Non salvato" : "Salvato",
                     systemImage: vault.openNote?.hasUnsavedChanges == true
-                        ? "arrow.triangle.2.circlepath" : "checkmark.circle"
+                        ? "pencil.circle" : "checkmark.circle"
                 )
                 .themedText(.caption, color: .textSecondary)
+                .accessibilityIdentifier("note-save-indicator")
             }
         }
     }

@@ -104,19 +104,28 @@ extension VaultController {
         /// Catches this buffer up with what the disk now holds: ADR-0001 §D3.4 for one buffer
         /// (ADR-0058 §D1), and says what it did (ADR-0064 §D3).
         ///
-        /// - `.asked`: the buffer is dirty, whatever `incoming` is. It is the person's work:
-        ///   never merged, never discarded - the prompt becomes pending with `incoming` as the
-        ///   other side. Newest wins: a deletion replaces a pending text, and a recreation
-        ///   replaces a pending deletion, so the banner describes the disk as of the last call.
+        /// - `.asked`: the buffer is dirty and `incoming` is anything but its own text. It is the
+        ///   person's work: never merged, never discarded - the prompt becomes pending with
+        ///   `incoming` as the other side. Newest wins: a deletion replaces a pending text, and a
+        ///   recreation replaces a pending deletion, so the banner describes the disk as of the
+        ///   last call.
         /// - `.adopted`: the buffer is clean and `incoming` is a text. It takes that text, and a
         ///   prompt still pending on it goes too: a buffer undone back to `savedText` after the
         ///   banner appeared now holds the newest text, so the older one has nothing to ask.
+        ///   A dirty buffer whose text already equals an incoming `.text` adopts it the same way
+        ///   (ADR-0073 §D4, amending ADR-0058 §D1): buffer and disk agree, so there is nothing to
+        ///   ask - the case of two identical dirty copies «Salva tutto» writes once.
         /// - `.vanished`: the buffer is clean and its file is gone. Nothing on the buffer
         ///   changes; closing the tab is the caller's job (`closeTabs(_:ofVanishedNote:)`).
         ///   An in-process write passes `.text` and can never get this answer.
         @discardableResult
         mutating func catchUp(to incoming: VaultSession.ExternalChange.Content) -> CatchUp {
             if hasUnsavedChanges {
+                if case .text(let incomingText) = incoming, incomingText == text {
+                    savedText = incomingText
+                    externalChangePending = nil
+                    return .adopted
+                }
                 externalChangePending = incoming
                 return .asked
             }

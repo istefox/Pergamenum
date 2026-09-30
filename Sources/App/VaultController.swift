@@ -193,6 +193,8 @@ final class VaultController {
 
     // MARK: Opening
 
+    /// Closes the outgoing vault's tabs without asking (ADR-0073 §D6): the UI goes through
+    /// `switchVault(to:presenter:)`, which asks first.
     func open(_ url: URL) async {
         watcher?.stop()
         watcher = nil
@@ -208,6 +210,7 @@ final class VaultController {
             Self.log.fault("impossibile risolvere Application Support: apertura del vault annullata")
             return
         }
+        closeAllTabsForVaultChange()
         // Holds every route until the tabs are restored (PG-243); cleared before the replay,
         // never after it, since the replay goes back through the same guard.
         routeState.isOpeningVault = true
@@ -262,11 +265,7 @@ final class VaultController {
         indexGenerationBase = indexGeneration + 1
         session = nil
         thumbnails = nil
-        columns = [EditorColumn()]
-        focusedColumnIndex = 0
-        // A draft names a folder in the vault being closed, and the composer would
-        // otherwise still be sitting in the editor column of a vault that is gone.
-        endNewNote()
+        closeAllTabsForVaultChange()
     }
 
     /// Full rebuild from disk. Cheap by design, and the answer to any doubt about the
