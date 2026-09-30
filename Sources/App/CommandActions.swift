@@ -141,7 +141,13 @@ final class CommandActions {
             navigation.pane = .notes
             vault.beginNewTab()
         case .closeTab:
-            vault.closeFocusedTab()
+            // A dirty tab is asked about by its column, where the dialog lives (#708); a clean
+            // one closes here, as it always has.
+            if let tab = vault.focusedTab, tab.note.hasUnsavedChanges {
+                navigation.requestCloseTab(tab.id)
+            } else {
+                vault.closeFocusedTab()
+            }
         case .reopenTab:
             navigation.pane = .notes
             vault.reopenClosedTab()

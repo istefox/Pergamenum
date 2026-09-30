@@ -78,8 +78,9 @@ extension VaultController {
         focusTab(tab.id)
     }
 
-    /// Closes the focused tab. The dialog ADR-0012 D3 asks for belongs to the view that
-    /// can show it; by the time this runs, the question has been answered.
+    /// Closes the focused tab, without asking. The dialog ADR-0012 D3 asks for belongs to the
+    /// column that can show it: «Chiudi tab» sends a dirty tab there through
+    /// `Navigation.requestCloseTab` and calls this only for a clean one (#708).
     func closeFocusedTab() {
         guard let id = focusedTab?.id else { return }
         closeTab(id)

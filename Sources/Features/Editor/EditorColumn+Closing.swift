@@ -30,6 +30,19 @@ extension EditorColumnView {
         }
     }
 
+    /// Answers the menu's «Chiudi tab» for a dirty tab with the same question the close button
+    /// asks. The column holding the tab takes the request, not the focused one: coming back
+    /// from another pane, the other column's editor can take the focus while both appear, and
+    /// a focus guard then dropped the request with no question (measured, #708). Tab ids are
+    /// unique across columns, so only one half ever matches.
+    func takeCloseTabRequest() {
+        guard let id = navigation.pendingCloseTabID,
+              let tab = vault.columns[columnIndex].tabs.first(where: { $0.id == id })
+        else { return }
+        _ = navigation.consumeCloseTabRequest()
+        requestClose(tab)
+    }
+
     /// Saves the tab being closed, which means focusing it first: the save writes the focused
     /// buffer, and the tab under the pointer is not necessarily the one in front.
     /// **`closeTab` must run after the save has resumed, inside the same `Task`** (ADR-0043

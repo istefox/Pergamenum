@@ -122,6 +122,10 @@ struct EditorColumnView: View {
             guard isFocused else { return }
             pendingInsertion = navigation.consumeInsertion()
         }
+        // «Chiudi tab» on a dirty tab (#708). On appear too: from another pane the request
+        // switches to Note, and this column is created after the request was posted.
+        .onChange(of: navigation.pendingCloseTabID) { _, _ in takeCloseTabRequest() }
+        .onAppear { takeCloseTabRequest() }
         .onChange(of: navigation.outlineJump) { _, jump in
             guard isFocused else { return }
             pendingJump = jump

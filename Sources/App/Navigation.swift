@@ -215,6 +215,22 @@ final class Navigation {
         return insertion
     }
 
+    /// «Chiudi tab» on a tab with unsaved edits (ADR-0012 D3, #708): a request the focused
+    /// column turns into the dialog its tab's close button asks, because the column is the
+    /// only place that dialog can show. Consumed once, like `pendingInsertion`.
+    private(set) var pendingCloseTabID: NoteTab.ID?
+
+    func requestCloseTab(_ id: NoteTab.ID) {
+        pendingCloseTabID = id
+        pane = .notes
+    }
+
+    func consumeCloseTabRequest() -> NoteTab.ID? {
+        guard let id = pendingCloseTabID else { return nil }
+        defer { pendingCloseTabID = nil }
+        return id
+    }
+
     /// The Aiuto entries of SPEC §10, and the Diario pane's own.
     var isShowingTaskSyntaxHelp = false
     var isShowingConventionsHelp = false
