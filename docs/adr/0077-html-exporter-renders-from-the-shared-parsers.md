@@ -1,7 +1,8 @@
 # ADR-0077: The HTML exporter renders from the shared markdown parsers, and escapes once, at emission
 
-- Status: **proposed**. Implementation plan: `docs/plans/pg-147-core-app-shell-structure.md`
-  (Tasks 1 to 3), for `PG-147`/#247, sub-item `structure-NoteExport.swift-c0f`.
+- Status: **accepted**. Merged to `main` via PR #737 (`a6063a9a`, 2026-09-30), for `PG-147`/#247,
+  sub-item `structure-NoteExport.swift-c0f`. Implementation plan:
+  `docs/plans/pg-147-core-app-shell-structure.md` (Tasks 1 to 3).
 - Date: 2026-09-30. Written against `096d36a5` on `refactor/pg-147-core-app-shell-structure`, which is
   `origin/main` (clean tree). Every line number, count and output quoted below was read or measured on
   that commit. The old/new comparison in §Context came from a throwaway harness that compiled
