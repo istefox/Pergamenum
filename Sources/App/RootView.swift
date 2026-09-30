@@ -26,6 +26,9 @@ struct RootView: View {
     @Environment(DayController.self) private var day
     /// The places the window has been (ADR-0015).
     @Environment(NavigationHistory.self) private var history
+    /// Handed to `VaultController.reopenMainWindow`: a cancelled quit reopens the window the
+    /// red button closed (ADR-0073 §D7).
+    @Environment(\.openWindow) private var openWindow
 
     /// Optional, which is the shape a macOS sidebar `List` expects: with a
     /// non-optional binding SwiftUI writes the focused row back over the initial
@@ -129,6 +132,7 @@ struct RootView: View {
                     if vault.routeState.pendingCanvas != nil { navigation.pane = .workspace }
                     if let root = vault.root { engine.attach(vaultRoot: root) }
                 }
+                .onAppear { vault.reopenMainWindow = { [openWindow] in openWindow(id: "main") } }
                 // The vault's own themes (SPEC §11.3). Without this the engine never
                 // looked at `.pergamenum/themes/` outside the test suite, so a theme file
                 // in a vault did nothing at all and the picker in Settings could only

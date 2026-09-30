@@ -78,11 +78,26 @@ extension VaultController {
         focusTab(tab.id)
     }
 
-    /// Closes the focused tab. The dialog ADR-0012 D3 asks for belongs to the view that
-    /// can show it; by the time this runs, the question has been answered.
-    func closeFocusedTab() {
-        guard let id = focusedTab?.id else { return }
-        closeTab(id)
+    /// Cmd+W (ADR-0073 §D11). A clean tab closes at once; a dirty one is not closed here but
+    /// handed to its column through `closeRequest`, which raises ADR-0012 §D3's «Salva / Non
+    /// salvare / Annulla» dialog - the same one the chip's close button raises.
+    func requestCloseFocusedTab() {
+        guard let tab = focusedTab else { return }
+        if tab.note.hasUnsavedChanges {
+            closeRequest = tab.id
+        } else {
+            closeTab(tab.id)
+        }
+    }
+
+    /// The column that holds the requested tab takes the request, clearing it; any other
+    /// column gets nil and leaves it for its owner.
+    func takeCloseRequest(forColumn columnIndex: Int) -> NoteTab? {
+        guard let id = closeRequest, columns.indices.contains(columnIndex),
+              let tab = columns[columnIndex].tabs.first(where: { $0.id == id })
+        else { return nil }
+        closeRequest = nil
+        return tab
     }
 }
 
@@ -212,6 +227,19 @@ extension VaultController {
         columns[focusedColumnIndex].activeID = id
         isComposingNote = false
         rememberTabs()
+    }
+
+    /// A tab by id, in whichever column holds it.
+    func tab(withID id: NoteTab.ID) -> NoteTab? {
+        columns.lazy.flatMap(\.tabs).first { $0.id == id }
+    }
+
+    /// Brings a tab of **either** column to the front and gives its column the focus - the
+    /// cancelled quit's reveal (ADR-0073 §D7). `focusTab` alone stays in the focused column.
+    func revealTab(_ id: NoteTab.ID) {
+        guard let columnIndex = columns.firstIndex(where: { $0.tabs.contains { $0.id == id } }) else { return }
+        focusColumn(columnIndex)
+        focusTab(id)
     }
 
     /// Closes one tab by id, focused or not, in whichever column holds it.
