@@ -6,6 +6,9 @@ extension PraticheController {
     struct TimelineRead: Sendable {
         var entries: [PraticaTimelineEntry]
         var details: [String: PraticaRowDetail]
+        /// ADR-0076 §D3: `NoteStore.hash` over the `pratica.md` bytes the entries were parsed
+        /// from; nil when the file could not be read.
+        var praticaNoteHash: String?
     }
 
     /// Every pratica of the open vault: a folder holding a `pratica.md` whose
@@ -179,82 +182,49 @@ extension PraticheController {
     }
 
     /// `pratica.md`'s manual entries: `## YYYY-MM-DD HH:MM <Kind> · <Controparte>` and
-    /// everything under it up to the next heading (SPEC "Manual entries").
+    /// everything under it up to the next heading (SPEC "Manual entries"), parsed by the one
+    /// shared parser, `PraticaManualEntries.parse` (ADR-0076 §D1).
     ///
-    /// Read-only here, deliberately: Task 7 owns writing them
-    /// (`PraticaEntry.insert(kind:at:in:)`), and this pane never writes a text range
-    /// of `pratica.md` - editing goes to the inspector (ADR §D5).
+    /// Read-only here, deliberately: the timeline's writes are `PraticaEntryComposer`'s, and
+    /// this pane never binds a text view to a range of `pratica.md` (ADR-0036 §D5).
+    ///
+    /// The bytes are read once: the same `Data` is hashed with `NoteStore.hash` and decoded
+    /// with `NoteStore.decodedText`, so `praticaNoteHash` is the hash of exactly what was
+    /// parsed and equals `session.read(notePath).record.contentHash` for an unchanged file.
     private nonisolated static func readManualEntries(
         in folder: URL, praticaPath: String, into read: inout TimelineRead
     ) {
         let url = folder.appending(path: praticaFileName, directoryHint: .notDirectory)
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+        guard let data = try? Data(contentsOf: url), let text = NoteStore.decodedText(data) else { return }
+        read.praticaNoteHash = NoteStore.hash(data)
         let notePath = "\(praticaPath)/\(praticaFileName)"
 
-        var current: (entry: PraticaTimelineEntry, body: [String])?
-        // Disambiguates two manual entries whose heading shares the same
-        // to-the-minute timestamp (`entryIDFormatter`'s own resolution) - without
-        // this, the second overwrote the first's `read.details` entry and SwiftUI saw
-        // two rows claiming one identity. The occurrence count is stable across
-        // reloads: it is a function of position in the file, exactly like the
-        // timestamp it disambiguates.
-        var occurrencesByID: [String: Int] = [:]
-        func flush() {
-            guard let open = current else { return }
-            let body = open.body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            var entry = open.entry
-            entry.bodyPreview = firstLine(of: body)
-            let occurrence = occurrencesByID[entry.id, default: 0]
-            occurrencesByID[entry.id] = occurrence + 1
-            if occurrence > 0 { entry.id += "-\(occurrence)" }
-            read.entries.append(entry)
-            read.details[entry.id] = PraticaRowDetail(
-                notePath: notePath, body: body, quotedHistory: nil, signature: nil,
+        for parsed in PraticaManualEntries.parse(text) {
+            // The id is today's, byte for byte: selection, expansion and `details` are keyed
+            // on it. `occurrence` disambiguates two headings sharing a minute
+            // (`entryIDFormatter`'s own resolution); it is a function of position in the
+            // file, so it is stable across reloads like the timestamp it disambiguates.
+            var id = "\(praticaPath)#entry-\(entryIDFormatter.string(from: parsed.date))"
+            if parsed.occurrence > 0 { id += "-\(parsed.occurrence)" }
+            read.entries.append(PraticaTimelineEntry(
+                id: id,
+                kind: parsed.kind == .call ? .call : .note,
+                date: parsed.date,
+                direction: nil,
+                senderDisplayName: parsed.counterpart,
+                subject: parsed.subject,
+                bodyPreview: firstLine(of: parsed.body),
+                hasAttachments: false,
+                messageID: nil,
+                isInMail: true,
+                anchor: parsed.anchor,
+                fileOrdinal: parsed.ordinal
+            ))
+            read.details[id] = PraticaRowDetail(
+                notePath: notePath, body: parsed.body, quotedHistory: nil, signature: nil,
                 attachments: [], storeReferences: [], isPending: false, senderAddress: nil
             )
-            current = nil
         }
-
-        for line in NoteDocument.parse(text).body.components(separatedBy: "\n") {
-            if line.hasPrefix("## ") {
-                flush()
-                if let heading = parseEntryHeading(line, praticaPath: praticaPath) { current = (heading, []) }
-                continue
-            }
-            current?.body.append(line)
-        }
-        flush()
-    }
-
-    /// `## 2026-06-10 14:06 Telefonata · Mario Rossi`. Anything else under `##` is an
-    /// ordinary heading of the note and is left alone.
-    private nonisolated static func parseEntryHeading(
-        _ line: String, praticaPath: String
-    ) -> PraticaTimelineEntry? {
-        let rest = line.dropFirst(3).trimmingCharacters(in: .whitespaces)
-        let parts = rest.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
-        guard parts.count >= 3, let date = entryHeadingFormatter.date(from: "\(parts[0]) \(parts[1])")
-        else { return nil }
-
-        let tail = String(parts[2])
-        let kind: PraticaTimelineEntry.Kind = tail.hasPrefix("Telefonata") ? .call : .note
-        let counterpart = tail
-            .components(separatedBy: " · ")
-            .dropFirst()
-            .joined(separator: " · ")
-
-        return PraticaTimelineEntry(
-            id: "\(praticaPath)#entry-\(entryIDFormatter.string(from: date))",
-            kind: kind,
-            date: date,
-            direction: nil,
-            senderDisplayName: counterpart,
-            subject: tail,
-            bodyPreview: "",
-            hasAttachments: false,
-            messageID: nil,
-            isInMail: true
-        )
     }
 
     /// `[[20260610_offerta.pdf]]` → `20260610_offerta.pdf`, alias form included.
@@ -280,28 +250,13 @@ extension PraticheController {
             .appending(path: praticaFileName, directoryHint: .notDirectory))
     }
 
-    /// `en_US_POSIX`, GMT and a fixed pattern: the heading is a file format, not a
-    /// presentation, and a person whose Mac is set to another locale still has to be
-    /// able to read their own pratica in Obsidian.
-    ///
-    /// The time zone matches `PraticaEntry.headingFormatter`'s, and has to: that is the
-    /// formatter that *writes* the heading this one reads back, and a zone difference
-    /// between them would shift every manual entry by the machine's own offset
-    /// (`Tests/PraticaEntryTests.swift` pins the pattern and the locale of the pair).
-    private nonisolated static let entryHeadingFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd HH:mm"
-        return formatter
-    }()
-
     /// The timestamp the row's accessibility identifier carries
     /// (`pratiche-entry-<timestamp>`, UX-BLUEPRINT's checklist).
     ///
-    /// GMT beside the two heading formatters above, and for the same reason: the id is
-    /// derived from a heading's own digits, so a zone difference would give one entry
-    /// two identifiers depending on where the Mac is standing.
+    /// GMT like `PraticaEntry.headingFormatter`, which both writes and reads the heading
+    /// back (ADR-0076 §D1), and for the same reason: the id is derived from a heading's own
+    /// digits, so a zone difference would give one entry two identifiers depending on where
+    /// the Mac is standing.
     nonisolated static let entryIDFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

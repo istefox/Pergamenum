@@ -81,8 +81,14 @@ struct PratichePane: View {
         // per-pratica throttle makes a second appearance inside the window a no-op.
         .task(id: vault.root) { await pratiche.paneAppeared(in: vault) }
         // ADR-0068 §D16: reloads on a selection change and on any landed write to the
-        // selected pratica's own `pratica.md` («Nota», «Chiudi»/«Riapri»).
-        .task(id: pratiche.inspectorKey(for: vault.session)) { loadInspector() }
+        // selected pratica's own `pratica.md` («Nota», «Chiudi»/«Riapri»). ADR-0076 §D3: the
+        // timeline reloads on the same beat when `pratica.md` moved on since it was read, so an
+        // in-app save (a hand-edited anchor included) redraws the placement and refreshes
+        // `timelineOrigin`, while a selection `select(_:in:)` already read is not parsed twice.
+        .task(id: pratiche.inspectorKey(for: vault.session)) {
+            loadInspector()
+            pratiche.reloadTimelineIfStale(from: vault)
+        }
         .alert(
             "Eliminare «\(pratiche.deletionRequest?.title ?? "")»?",
             isPresented: deletionAlert,
