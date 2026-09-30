@@ -1,6 +1,6 @@
 # ADR-0075: Day-boundary and calendar math — a time block ends at 24:00 and is placed in free time, an event is drawn on each day as the part of it that day covers
 
-- Status: **proposed**. Implementation not on `main` yet.
+- Status: **accepted**. Merged to `main` via PR #722 (`5343eb58`, 2026-09-30), closing `PG-259`/#573.
 - Date: 2026-09-28. Written before the implementation, against `2d1adb40` (`origin/main`), tree clean
   apart from `SPEC.md` (`shasum` `f7c1f58`). Every file:line below was read from that tree today.
 - **Numbering note.** `0069` is the highest ADR under `docs/adr/` on `origin/main`. `0070` is taken
