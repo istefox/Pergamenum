@@ -282,9 +282,9 @@ extension NoteTextView.Coordinator {
     func applyEmbeds(to textView: NSTextView) {
         embeds.apply(
             runs: embedRuns,
-            notePath: parent.notePath,
-            root: parent.vaultRoot,
-            thumbnails: parent.thumbnails,
+            notePath: parent.vault.notePath,
+            root: parent.vault.vaultRoot,
+            thumbnails: parent.vault.thumbnails,
             in: textView
         )
     }

@@ -39,7 +39,7 @@ import Testing
             noteTitles: [],
             tagSuggestions: [],
             onFollowLink: { _ in },
-            transclusions: transclusions
+            vault: .init(transclusions: transclusions)
         )
         let coordinator = view.makeCoordinator()
         let textView = CompletingTextView(usingTextLayoutManager: true)
@@ -79,14 +79,14 @@ import Testing
         let (textView, coordinator) = Self.editor(transclusions: Self.source(generation: 1, text: "# Prove\n\nPrima.\n"))
         coordinator.applyStyling(to: textView, theme: .emergency)
         coordinator.applyTransclusions(to: textView, theme: .emergency)
-        #expect(coordinator.renditionCache.count == 1)
+        #expect(coordinator.transclusion.renditionCache.count == 1)
 
         for generation in 2...4 {
-            coordinator.parent.transclusions = Self.source(generation: generation, text: "# Prove\n\nDopo \(generation).\n")
+            coordinator.parent.vault.transclusions = Self.source(generation: generation, text: "# Prove\n\nDopo \(generation).\n")
             coordinator.applyStyling(to: textView, theme: .emergency)
             coordinator.applyTransclusions(to: textView, theme: .emergency)
-            #expect(coordinator.renditionCache.count == 1)
-            #expect(coordinator.renditionCache.keys.allSatisfy { $0.contains("@\(generation)|") })
+            #expect(coordinator.transclusion.renditionCache.count == 1)
+            #expect(coordinator.transclusion.renditionCache.keys.allSatisfy { $0.contains("@\(generation)|") })
         }
     }
 
@@ -94,12 +94,12 @@ import Testing
         let (textView, coordinator) = Self.editor(transclusions: Self.source(generation: 5, text: "# Prove\n\nPrima.\n"))
         coordinator.applyStyling(to: textView, theme: .emergency)
         coordinator.applyTransclusions(to: textView, theme: .emergency)
-        let cached = coordinator.renditionCache
+        let cached = coordinator.transclusion.renditionCache
         // Same generation, different text behind it: the cache answers, nothing is re-read.
-        coordinator.parent.transclusions = Self.source(generation: 5, text: "# Prove\n\nCambiata.\n")
+        coordinator.parent.vault.transclusions = Self.source(generation: 5, text: "# Prove\n\nCambiata.\n")
         coordinator.applyStyling(to: textView, theme: .emergency)
         coordinator.applyTransclusions(to: textView, theme: .emergency)
-        #expect(coordinator.renditionCache == cached)
+        #expect(coordinator.transclusion.renditionCache == cached)
     }
 
     @Test func theLineNamingANoteReservesSpaceUnderItself() {
@@ -160,7 +160,7 @@ import Testing
             noteTitles: [],
             tagSuggestions: [],
             onFollowLink: { followed = $0 },
-            transclusions: Self.source()
+            vault: .init(transclusions: Self.source())
         )
         let coordinator = view.makeCoordinator()
         let textView = CompletingTextView(usingTextLayoutManager: true)

@@ -41,7 +41,7 @@ import Testing
     // The coder fixed this by changing the call site (shape 1 from the comment above:
     // `EditorDecorationDelegate`'s call now passes `proseFont` unconditionally instead of
     // resolving `font` from the trailing run), not by changing `paragraphStyle`'s own signature
-    // or body. `ListMarkerRenderingComposition` (Tests/MarkupHidingTests.swift) still calls
+    // or body. `ListMarkerRenderingComposition` (Tests/MarkupHidingListTests.swift) still calls
     // `paragraphStyle(level:font:)` directly and pins that it derives the indent from whatever
     // font it's given — that contract is correct and unchanged for a direct caller; only
     // `EditorDecorationDelegate`'s own call site had a bug in which font it was passing.
@@ -89,7 +89,7 @@ import Testing
     }
 
     /// Drives `EditorDecorationDelegate.textContentStorage(_:textParagraphWith:)` by hand over
-    /// the first paragraph of `note`, the same pattern `MarkupHidingTests.swift`'s own
+    /// the first paragraph of `note`, the same pattern `MarkupHidingFixture.swift`'s own
     /// `substitutedParagraph`/`displayedParagraph` helpers use - real `EditorDecorationDelegate`,
     /// real `NSTextContentStorage`, no layout manager needed since the hook only reads the
     /// storage's attributed string.

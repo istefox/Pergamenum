@@ -146,6 +146,39 @@ enum MarkupReveal {
 }
 
 extension NoteTextView.Coordinator {
+    /// `RevealController.apply(to:)`, kept here under the name `updateNSView`, `textDidChange`
+    /// and `textViewDidChangeSelection` call (ADR-0074 §D5).
+    func applyReveal(to textView: NSTextView) {
+        reveal.apply(to: textView)
+    }
+}
+
+// MARK: - The controller (ADR-0074 §D2/§D3)
+
+/// The reveal pass and its state: the paragraphs and inline spans already applied, so an
+/// unchanged set does not invalidate the layout on every view update (ADR-0018 §D2, ADR-0037
+/// §D6). `MarkupReveal` above stays the pure core; `CardTextView+Reveal.swift` calls it too.
+@MainActor
+final class RevealController {
+    /// Read when a pass runs, never captured earlier (ADR-0074 §D3): `matches`, `currentMatch`
+    /// and `revealsInlineSpans` are read at the moment the selection changes.
+    private let parent: () -> NoteTextView?
+    private let decorations: EditorDecorationDelegate
+
+    /// The revealed paragraphs already applied (ADR-0018 §D2), so an unchanged set
+    /// does not invalidate the layout on every view update.
+    private(set) var lastRevealed: Set<Int> = []
+    /// The revealed inline spans (emphasis/strikethrough/link, ADR-0037 §D6) already
+    /// applied, for the same reason as `lastRevealed` above and kept beside it rather
+    /// than folded into it: the two are computed by two different `MarkupReveal`
+    /// functions and compared independently in `apply(to:)`'s early-return guard.
+    private(set) var lastRevealedSpans: [Int: [NSRange]] = [:]
+
+    init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate) {
+        self.parent = parent
+        self.decorations = decorations
+    }
+
     /// Recomputes which paragraphs are drawn in full and, only for the ones that
     /// changed, tells the layout to read them again.
     ///
@@ -153,9 +186,10 @@ extension NoteTextView.Coordinator {
     /// keystroke and can afford to; this runs on every arrow key and every click, and the
     /// 0.89ms round-trip `docs/20260817_TextKit2_live_editing.md` measured was for two
     /// paragraphs, not a document.
-    func applyReveal(to textView: NSTextView) {
-        let currentMatch = parent.currentMatch.flatMap { index in
-            parent.matches.indices.contains(index) ? parent.matches[index] : nil
+    func apply(to textView: NSTextView) {
+        guard let parent = parent() else { return }
+        let currentMatch = parent.find.currentMatch.flatMap { index in
+            parent.find.matches.indices.contains(index) ? parent.find.matches[index] : nil
         }
         let selection = textView.selectedRange()
         let markedRange = textView.markedRange()

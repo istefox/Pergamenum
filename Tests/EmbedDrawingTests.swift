@@ -5,7 +5,7 @@ import Testing
 
 /// ADR-0018 slice 3, Step 3: the delegate branch that draws an embed's own picture in
 /// place of its `![[…]]`/`![alt](…)` syntax - offscreen, on the model of
-/// `MarkupHidingTests.swift`'s own `substitutedParagraph(_:note:)`, since what is under
+/// `MarkupHidingFixture.swift`'s own `substitutedParagraph(_:note:)`, since what is under
 /// test here is a new branch on the same `NSTextContentStorageDelegate` hook, not a new
 /// mechanism: probe 6 (`EmbedAttachmentProbeTests`) already measured that the mechanism
 /// itself - a substituted paragraph's own character swapped for `NSAttachmentCharacter` -
@@ -163,8 +163,8 @@ private func syntheticImage(size: CGSize = CGSize(width: 64, height: 48)) -> NSI
     ) -> (NSTextView, NoteTextView.Coordinator) {
         let view = NoteTextView(
             text: .constant(text), theme: .emergency, noteTitles: [], tagSuggestions: [],
-            hidesMarkup: true, onFollowLink: { _ in }, vaultRoot: root, notePath: "Nota.md",
-            thumbnails: thumbnails
+            hidesMarkup: true, onFollowLink: { _ in },
+            vault: .init(vaultRoot: root, notePath: "Nota.md", thumbnails: thumbnails)
         )
         let coordinator = view.makeCoordinator()
         let textView = NSTextView(usingTextLayoutManager: true)

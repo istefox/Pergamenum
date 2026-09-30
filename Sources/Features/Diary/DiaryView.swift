@@ -113,11 +113,13 @@ struct DiaryView: View {
             revealsInlineSpans: vault.settings.revealsInlineSpans,
             readableWidth: vault.settings.readableWidth,
             onFollowLink: follow,
-            vaultRoot: vault.root,
-            notePath: fileLabel,
-            thumbnails: vault.thumbnails,
-            onDropFile: { url in vault.importFileIntoVault(url, near: fileLabel) },
-            onPasteImage: { data in vault.importPastedImage(data, near: fileLabel) }
+            vault: .init(
+                vaultRoot: vault.root,
+                notePath: fileLabel,
+                thumbnails: vault.thumbnails,
+                onDropFile: { url in vault.importFileIntoVault(url, near: fileLabel) },
+                onPasteImage: { data in vault.importPastedImage(data, near: fileLabel) }
+            )
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("diary-editor")

@@ -22,10 +22,7 @@ extension EditorDecorationDelegate {
         // already refuses at its first line without the setting, but this branch is reached
         // directly too, and ADR-0018 §D10's switch has to mean off wherever it is asked.
         guard hidesMarkup, !revealedParagraphs.contains(range.location) else { return nil }
-        let markers = hiddenMarkers[range.location] ?? []
-        guard let marker = markers.first(where: { $0.kind == .blockquote }),
-              NSMaxRange(marker.range) <= range.length
-        else { return nil }
+        guard let marker = marker(of: .blockquote, at: range) else { return nil }
 
         let text = storage.string as NSString
         let markerRange = NSRange(
@@ -57,6 +54,7 @@ extension EditorDecorationDelegate {
         // file would have collapsed them: this branch returns early, and a quoted line whose
         // text is bold has to render both its bars and its hidden `**` in the one paragraph
         // the hook is allowed to hand back - the reuse `listParagraph` already makes.
+        let markers = hiddenMarkers[range.location] ?? []
         for other in Self.survivors(among: markers.filter { $0.kind != .blockquote }, of: range, in: text) {
             copy.addAttribute(.font, value: Self.collapsedFont, range: other.range)
         }

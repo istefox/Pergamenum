@@ -13,8 +13,8 @@ extension EditorDecorationDelegate {
     /// swaps the opening fence line's first character for `\u{FFFC}` carrying a
     /// `ViewBlockAttachment` wrapping `viewBlockHosts[range.location]`, and collapses the rest
     /// of that line into `collapsedFont` - one character out, one in, the paragraph's own
-    /// length unmoved (`NSTextContentManager.h:120`), `tableParagraph(at:storage:)`'s own
-    /// arithmetic and `embedParagraph`'s before it.
+    /// length unmoved (`NSTextContentManager.h:120`), through `substituteAttachment(_:over:in:)`,
+    /// the arithmetic `tableParagraph(at:storage:)` and `embedParagraph` share.
     ///
     /// Nil whenever there is nothing to draw at all: the hatch is closed (`hidesMarkup` off,
     /// §D12), no `.viewBlock` marker at this offset, no host vended for it yet, or the fence
@@ -37,10 +37,8 @@ extension EditorDecorationDelegate {
     /// `applyViewBlocks`, which simply registers nothing for a revealed fence.
     func viewBlockParagraph(at range: NSRange, storage: NSTextStorage) -> NSTextParagraph? {
         guard hidesMarkup else { return nil }
-        let markers = hiddenMarkers[range.location] ?? []
-        guard let marker = markers.first(where: { $0.kind == .viewBlock }),
+        guard let marker = marker(of: .viewBlock, at: range),
               marker.range.length > 0,
-              NSMaxRange(marker.range) <= range.length,
               let host = viewBlockHosts[range.location]
         else {
             return nil
@@ -59,22 +57,15 @@ extension EditorDecorationDelegate {
         }
 
         let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
-        let attachmentRange = NSRange(location: marker.range.location, length: 1)
-        let restRange = NSRange(location: attachmentRange.location + 1, length: marker.range.length - 1)
-
         let attachment = ViewBlockAttachment()
         // A conditional cast rather than a stored `NSHostingView`: this object is handed a
         // plain `NSView` (`apply(viewBlockHosts:)`) because that is all it needs to know
         // about a host it never builds. Everything the app registers comes from
         // `ViewBlockHostStore` and casts through; anything else draws an empty attachment
-        // rather than refusing to substitute, which keeps the length arithmetic above the
-        // one thing this branch is actually responsible for.
+        // rather than refusing to substitute, which keeps the length-preserving substitution
+        // below the one thing this branch is actually responsible for.
         attachment.hostView = host as? ViewBlockHostView
-        copy.replaceCharacters(in: attachmentRange, with: "\u{FFFC}")
-        copy.addAttribute(.attachment, value: attachment, range: attachmentRange)
-        if restRange.length > 0 {
-            copy.addAttribute(.font, value: Self.collapsedFont, range: restRange)
-        }
+        Self.substituteAttachment(attachment, over: marker, in: copy)
         return NSTextParagraph(attributedString: copy)
     }
 

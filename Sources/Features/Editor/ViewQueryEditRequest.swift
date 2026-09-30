@@ -6,7 +6,7 @@ import Foundation
 ///
 /// `TableGridView.onCommit`'s own shape, not a `Navigation`-routed pending request: a hosted
 /// view is rebuilt with the text view on every styling pass, so the closure below can be
-/// captured directly where the fence is walked (`refreshViewBlockHosts`) rather than routed
+/// captured directly where the fence is walked (`ViewBlockController.refresh`) rather than routed
 /// up through SwiftUI state and back down, which would only add a second staleness window.
 struct ViewQueryEditRequest: Identifiable {
     /// Two clicks on the same fence are two presentations.

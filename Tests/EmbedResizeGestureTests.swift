@@ -45,7 +45,7 @@ import Testing
         )
         #expect(box.width > 0)
         let corner = CGPoint(x: box.maxX - 5, y: box.maxY - 5)
-        let handle = try #require(coordinator.handleRect(forEmbedAt: corner, in: textView))
+        let handle = try #require(coordinator.embedResize.handleRect(forEmbedAt: corner, in: textView))
         // Grown by half a point either side: the two frames come from independent
         // arithmetic (the fragment walk vs. `frameForTextAttachment(at:)`), and this
         // assertion is about containment, not about matching floating-point rounding.
@@ -71,7 +71,7 @@ import Testing
         coordinator.applyEmbeds(to: textView)
         textView.textLayoutManager?.ensureLayout(for: textView.textLayoutManager!.documentRange)
 
-        #expect(coordinator.handleRect(forEmbedAt: CGPoint(x: 50, y: 20), in: textView) == nil)
+        #expect(coordinator.embedResize.handleRect(forEmbedAt: CGPoint(x: 50, y: 20), in: textView) == nil)
     }
 
     /// A `.missing` embed draws a placeholder, not a real picture - "there is nothing
@@ -102,7 +102,7 @@ import Testing
 
         let box = EmbedEditorFixtures.fragmentFrame(at: offset, in: textView)
         #expect(box.width > 0)
-        #expect(coordinator.handleRect(forEmbedAt: CGPoint(x: box.midX, y: box.midY), in: textView) == nil)
+        #expect(coordinator.embedResize.handleRect(forEmbedAt: CGPoint(x: box.midX, y: box.midY), in: textView) == nil)
     }
 
     /// Nothing landed yet, synchronously: the same first-pass state
@@ -128,7 +128,7 @@ import Testing
         #expect(coordinator.embeds.renditions[EmbedEditorFixtures.embedOffset] == nil)
         textView.textLayoutManager?.ensureLayout(for: textView.textLayoutManager!.documentRange)
 
-        #expect(coordinator.handleRect(forEmbedAt: CGPoint(x: 50, y: 20), in: textView) == nil)
+        #expect(coordinator.embedResize.handleRect(forEmbedAt: CGPoint(x: 50, y: 20), in: textView) == nil)
     }
 
     // MARK: - Drag (Task 6)
@@ -281,7 +281,7 @@ import Testing
         let hitRect = EmbedResize.handleHitRect(in: box)
         let began = CGPoint(x: hitRect.midX, y: hitRect.midY)
         #expect(coordinator.resizeEmbed(.began(began), in: textView))
-        let drag = try #require(coordinator.embedDrag)
+        let drag = try #require(coordinator.embedResize.embedDrag)
         // The fixture's own PNG is written 40x30 (`EmbedEditorFixtures.writeImage`) -
         // deliberately not square - but the ratio is read off `drag.natural` rather than
         // assumed, since `ThumbnailStore`'s real render is what the gesture actually
@@ -306,7 +306,7 @@ import Testing
 
         _ = coordinator.resizeEmbed(.moved(p, constrained: true), in: textView)
 
-        let resolved = try #require(coordinator.embedDrag?.size)
+        let resolved = try #require(coordinator.embedResize.embedDrag?.size)
         // The width clamp is unaffected by R-11 (D9: "composes with", not "instead of").
         #expect(resolved.width == unconstrained.width)
         #expect(resolved.height == expectedHeight)
@@ -328,7 +328,7 @@ import Testing
         let hitRect = EmbedResize.handleHitRect(in: box)
         let began = CGPoint(x: hitRect.midX, y: hitRect.midY)
         #expect(coordinator.resizeEmbed(.began(began), in: textView))
-        let drag = try #require(coordinator.embedDrag)
+        let drag = try #require(coordinator.embedResize.embedDrag)
         let pictureFrame = drag.picture
 
         let p = CGPoint(x: began.x + 150, y: began.y + 5)
@@ -341,7 +341,7 @@ import Testing
 
         _ = coordinator.resizeEmbed(.moved(p, constrained: false), in: textView)
 
-        #expect(coordinator.embedDrag?.size == unconstrained)
+        #expect(coordinator.embedResize.embedDrag?.size == unconstrained)
     }
 
     /// R-11's "not only at the moment the handle is grabbed": a sequence of
@@ -372,11 +372,11 @@ import Testing
         _ = coordinator.resizeEmbed(.moved(p1, constrained: true), in: textView)
         _ = coordinator.resizeEmbed(.moved(p2, constrained: false), in: textView)
         _ = coordinator.resizeEmbed(.moved(p3, constrained: true), in: textView)
-        let sequenceResult = try #require(coordinator.embedDrag?.size)
+        let sequenceResult = try #require(coordinator.embedResize.embedDrag?.size)
 
         #expect(coordinator.resizeEmbed(.began(began), in: textView))
         _ = coordinator.resizeEmbed(.moved(p3, constrained: true), in: textView)
-        let singleCallResult = try #require(coordinator.embedDrag?.size)
+        let singleCallResult = try #require(coordinator.embedResize.embedDrag?.size)
 
         #expect(sequenceResult == singleCallResult)
     }
@@ -399,7 +399,7 @@ import Testing
         let hitRect = EmbedResize.handleHitRect(in: box)
         let began = CGPoint(x: hitRect.midX, y: hitRect.midY)
         #expect(coordinator.resizeEmbed(.began(began), in: textView))
-        let drag = try #require(coordinator.embedDrag)
+        let drag = try #require(coordinator.embedResize.embedDrag)
         let ratio = drag.natural.height / drag.natural.width
         let expectedHeight = (column * ratio).rounded()
 
@@ -407,7 +407,7 @@ import Testing
             .moved(CGPoint(x: box.minX + column + 500, y: box.minY + 20), constrained: true), in: textView
         )
 
-        let resolved = try #require(coordinator.embedDrag?.size)
+        let resolved = try #require(coordinator.embedResize.embedDrag?.size)
         #expect(resolved.width == column)
         #expect(resolved.height == expectedHeight)
     }

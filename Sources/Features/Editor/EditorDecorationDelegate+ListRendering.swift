@@ -24,10 +24,7 @@ extension EditorDecorationDelegate {
     /// styling pass.
     func listParagraph(at range: NSRange, storage: NSTextStorage) -> NSTextParagraph? {
         guard !revealedParagraphs.contains(range.location) else { return nil }
-        let markers = hiddenMarkers[range.location] ?? []
-        guard let marker = markers.first(where: { $0.kind == .list }),
-              NSMaxRange(marker.range) <= range.length
-        else { return nil }
+        guard let marker = marker(of: .list, at: range) else { return nil }
 
         let text = storage.string as NSString
         let markerRange = NSRange(
@@ -57,6 +54,7 @@ extension EditorDecorationDelegate {
         // file would have collapsed them: this branch returns early, and a list item whose
         // text is bold has to render both its bullet and its hidden `**` in the one
         // paragraph the hook is allowed to hand back.
+        let markers = hiddenMarkers[range.location] ?? []
         for other in Self.survivors(among: markers.filter { $0.kind != .list }, of: range, in: text) {
             copy.addAttribute(.font, value: Self.collapsedFont, range: other.range)
         }
