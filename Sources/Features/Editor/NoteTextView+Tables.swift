@@ -3,19 +3,19 @@ import AppKit
 /// A table the editor is drawing right now: the grid vended for it and the shape that grid
 /// was built from, as of the last styling pass.
 ///
-/// Declared beside the Coordinator's table half rather than in `NoteTextView+Coordinator.swift`
-/// for the reason `EmbedDrag` is declared beside the resize gesture: the three phases that
-/// fill, read and clear it are all in this file, and the stored property that holds them is
-/// only a place to keep a value between two of them.
+/// Declared beside the table half rather than in `NoteTextView+Coordinator.swift` for the
+/// reason `EmbedDrag` is declared beside the resize gesture: the three phases that fill, read
+/// and clear it are all in this file, and the stored property that holds them is only a place
+/// to keep a value between two of them.
 struct DrawnTable {
     let grid: TableGridView
     let table: GFMTable
 }
 
 /// The Coordinator's own half of the table grid (ADR-0029 §D5/§D6/§D7/§D8; plan
-/// `2026-09-02-editor-wysiwyg-unification`, Task 4/5): the styling pass that recognises a
-/// table and vends its grid, and the commit that writes a cell back into the note's own
-/// characters.
+/// `2026-09-02-editor-wysiwyg-unification`, Task 4/5): the entry point `applyStyling` calls by
+/// name, and the commit that writes a cell back into the note's own characters. The pass and
+/// its state are `TableBlockController`'s, below (ADR-0074 §D2/§D5).
 ///
 /// The commit is on the exact model `NoteTextView+EmbedCaret.swift`'s
 /// `replaceAtomically(_:with:in:)` already set: one atomic
@@ -24,126 +24,13 @@ struct DrawnTable {
 extension NoteTextView.Coordinator {
     // MARK: The styling pass (ADR §D5/§D6)
 
-    /// Registers everything a table needs drawn, from the `.tableRun` spans `applyStyling`
-    /// has just walked: the header line's own `.table` marker, the delimiter and body rows
-    /// that leave the layout, and one `TableGridView` per table.
-    ///
-    /// **Its own guard and its own change check**, because `applyFolding`'s early return does
-    /// not cover tables and `apply(tableRows:)` is a fifth input that must never be merged
-    /// into the fold's own set (§D5). `markers` is `inout` because the header's marker
-    /// belongs in the same table `applyStyling` is about to hand over: a second
-    /// `apply(hiddenMarkers:)` call would be a second producer on one setter, which is
-    /// precisely what the delegate's own header forbids.
-    ///
-    /// With `hidesMarkup` off this registers nothing and clears what it registered before -
-    /// D9's escape hatch, which has to reach the enumeration refusal too or the body rows
-    /// would stay out of the layout with the pipes visible above them.
+    /// `TableBlockController.apply(to:runs:markers:commit:)`, kept here under the name
+    /// `applyStyling` calls in its sequence (ADR-0074 §D5). A grid commits through
+    /// `commitTable`, which stays on the Coordinator because it owns no state.
     func applyTables(to textView: NSTextView, runs: [NSRange], markers: inout [Int: [HiddenMarker]]) {
-        guard parent.hidesMarkup else {
-            clearTables()
-            return
+        tables.apply(to: textView, runs: runs, markers: &markers) { [weak self] edit, header, textView in
+            self?.commitTable(edit, at: header, in: textView) ?? false
         }
-
-        let text = textView.string as NSString
-        var found: [(header: Int, table: GFMTable)] = []
-        var rows: Set<Int> = []
-        var headerOfRow: [Int: Int] = [:]
-
-        for run in runs {
-            guard NSMaxRange(run) <= text.length,
-                  let recognised = EditorDecorationDelegate.tableRun(in: text, atParagraphStart: run.location)
-            else { continue }
-            let header = run.location
-            var start = 0, end = 0, contentsEnd = 0
-            text.getParagraphStart(
-                &start, end: &end, contentsEnd: &contentsEnd,
-                for: NSRange(location: header, length: 0)
-            )
-            guard contentsEnd > start else { continue }
-            // Anchored at the header paragraph's own start and covering its pipes alone, the
-            // convention `.list` and `.blockquote` already use - never the whole run, which
-            // spans paragraphs the delegate is asked about one at a time.
-            markers[header, default: []].append(
-                HiddenMarker(range: NSRange(location: 0, length: contentsEnd - start), kind: .table)
-            )
-            found.append((header, recognised.table))
-
-            var cursor = end
-            while cursor < NSMaxRange(recognised.range) {
-                rows.insert(cursor)
-                headerOfRow[cursor] = header
-                var rowStart = 0, rowEnd = 0, rowContentsEnd = 0
-                text.getParagraphStart(
-                    &rowStart, end: &rowEnd, contentsEnd: &rowContentsEnd,
-                    for: NSRange(location: cursor, length: 0)
-                )
-                guard rowEnd > cursor else { break }
-                cursor = rowEnd
-            }
-        }
-
-        let grids = tableGrids.views(for: found.map(\.header), in: textView)
-        decorations.apply(tableViews: grids)
-        var drawn: [Int: DrawnTable] = [:]
-        for entry in found {
-            guard let grid = grids[entry.header] else { continue }
-            // Re-set on every pass rather than once at build time: the closure carries the
-            // header offset, and an edit above the table moves it. A grid holding last
-            // pass's offset would commit against a range that has since become someone
-            // else's - which D8's guard would refuse, correctly and uselessly.
-            grid.onCommit = { [weak self, weak textView] edit in
-                guard let self, let textView else { return false }
-                return self.commitTable(edit, at: entry.header, in: textView)
-            }
-            drawn[entry.header] = DrawnTable(grid: grid, table: entry.table)
-        }
-        drawnTables = drawn
-
-        guard rows != lastTableRows else { return }
-        lastTableRows = rows
-        decorations.apply(tableRows: rows)
-        pendingTableCaret = tableCaretRescue(in: textView, rows: rows, headers: headerOfRow)
-    }
-
-    /// Draws each grid the note currently holds, and takes the caret out of a row that has
-    /// just left the layout.
-    ///
-    /// **After `storage.endEditing()`, never inside it.** Both halves reach outside the text
-    /// storage - a grid resizes itself, and a caret rescue moves the selection - and doing
-    /// either while an editing transaction is open asks TextKit to lay out a document it has
-    /// been told is mid-change.
-    func refreshTableGrids(in textView: NSTextView, theme: Theme) {
-        for drawn in drawnTables.values {
-            drawn.grid.update(with: drawn.table, theme: theme)
-        }
-        guard let offset = pendingTableCaret else { return }
-        pendingTableCaret = nil
-        textView.setSelectedRange(NSRange(location: offset, length: 0))
-        textView.scrollRangeToVisible(NSRange(location: offset, length: 0))
-    }
-
-    /// `rescueCaret(in:from:)`'s table twin (§D5): a caret inside a row that has just become
-    /// hidden is an insertion point with nowhere to be drawn and nowhere to type. It goes to
-    /// the table's own header offset, which is where a person would look for it - and where
-    /// the grid is.
-    private func tableCaretRescue(
-        in textView: NSTextView, rows: Set<Int>, headers: [Int: Int]
-    ) -> Int? {
-        guard !rows.isEmpty else { return nil }
-        let text = textView.string as NSString
-        let caret = textView.selectedRange().location
-        guard caret <= text.length else { return nil }
-        let line = text.paragraphRange(for: NSRange(location: caret, length: 0)).location
-        guard rows.contains(line) else { return nil }
-        return headers[line]
-    }
-
-    private func clearTables() {
-        drawnTables = [:]
-        decorations.apply(tableViews: [:])
-        guard !lastTableRows.isEmpty else { return }
-        lastTableRows = []
-        decorations.apply(tableRows: [])
     }
 
     // MARK: The commit (ADR §D7/§D8)
@@ -190,6 +77,150 @@ extension NoteTextView.Coordinator {
         // table stays CRLF instead of being rewritten as LF rows (ADR-0065 §D3, PG-316).
         let source = (textView.string as NSString).substring(with: live.range)
         let lineBreak = LineBreak.detected(in: source)
-        return replaceAtomically(live.range, with: edited.serialised(lineBreak: lineBreak), in: textView)
+        return Self.replaceAtomically(live.range, with: edited.serialised(lineBreak: lineBreak), in: textView)
+    }
+}
+
+// MARK: - The controller (ADR-0074 §D2/§D3)
+
+/// The table half's state and passes (ADR-0029 §D5/§D6): the styling pass that recognises a
+/// table and vends its grid, the grid refresh after `endEditing`, and the caret rescue a row
+/// leaving the layout needs.
+///
+/// It holds no Coordinator (ADR-0074 §D3): the view's inputs come through `parent`, read at the
+/// moment a pass uses them, and the commit a grid calls is handed in by `applyTables`.
+@MainActor
+final class TableBlockController {
+    /// Read when a pass runs, never captured earlier (ADR-0074 §D3).
+    private let parent: () -> NoteTextView?
+    private let decorations: EditorDecorationDelegate
+
+    /// The grid every table on screen is drawn with, by table identity (ADR-0029 §D6) - owned
+    /// here for the reason `Coordinator.embeds` is: `EditorDecorationDelegate` cannot be
+    /// `@MainActor` and so cannot build an `NSView`, and it is handed finished values through
+    /// `decorations.apply(tableViews:)`. Grew out of the Step 4.5 tracer-bullet probe's single
+    /// fixed `tableProbeGrid`, which answered §D16 probe 2 and is gone.
+    let grids = TableGridStore()
+    /// Each table on screen and the grid drawing it, by header offset - filled by `apply`
+    /// inside the storage's editing transaction and read by `refresh` once it has closed.
+    private(set) var drawn: [Int: DrawnTable] = [:]
+    /// The delimiter and body rows already taken out of the layout, so an unchanged set does
+    /// not re-invalidate it on every keystroke - the table pass's own change check, which
+    /// `applyFolding`'s early return does not cover (§D5).
+    private(set) var hiddenRows: Set<Int> = []
+    /// Where the caret has to go once that transaction closes, when a row it was sitting in
+    /// has just left the layout (`FoldController.rescueCaret`'s table twin, §D5).
+    private(set) var pendingCaret: Int?
+
+    init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate) {
+        self.parent = parent
+        self.decorations = decorations
+    }
+
+    /// Registers everything a table needs drawn, from the `.tableRun` spans `applyStyling`
+    /// has just walked: the header line's own `.table` marker, the delimiter and body rows
+    /// that leave the layout, and one `TableGridView` per table.
+    ///
+    /// **Its own guard and its own change check**, because `applyFolding`'s early return does
+    /// not cover tables and `apply(tableRows:)` is a fifth input that must never be merged
+    /// into the fold's own set (§D5). `markers` is `inout` because the header's marker
+    /// belongs in the same table `applyStyling` is about to hand over: a second
+    /// `apply(hiddenMarkers:)` call would be a second producer on one setter, which is
+    /// precisely what the delegate's own header forbids.
+    ///
+    /// With `hidesMarkup` off this registers nothing and clears what it registered before -
+    /// D9's escape hatch, which has to reach the enumeration refusal too or the body rows
+    /// would stay out of the layout with the pipes visible above them.
+    ///
+    /// `commit` is what a grid's `onCommit` calls with the header offset, i.e.
+    /// `Coordinator.commitTable(_:at:in:)`.
+    func apply(
+        to textView: NSTextView, runs: [NSRange], markers: inout [Int: [HiddenMarker]],
+        commit: @escaping (TableEdit, Int, NSTextView) -> Bool
+    ) {
+        guard parent()?.hidesMarkup == true else {
+            clear()
+            return
+        }
+
+        let text = textView.string as NSString
+        var found: [(header: Int, table: GFMTable)] = []
+        var rows: Set<Int> = []
+        var headerOfRow: [Int: Int] = [:]
+
+        for run in runs {
+            guard NSMaxRange(run) <= text.length,
+                  let recognised = EditorDecorationDelegate.tableRun(in: text, atParagraphStart: run.location)
+            else { continue }
+            let header = run.location
+            // The header's own pipes are the marker; the delimiter and body rows are the
+            // hidden lines (`HiddenBlockLines`, ADR-0074 §D8).
+            let walked = HiddenBlockLines(text: text, anchor: header, range: recognised.range, kind: .table)
+            guard let marker = walked.marker else { continue }
+            markers[header, default: []].append(marker)
+            found.append((header, recognised.table))
+            for row in walked.starts {
+                rows.insert(row)
+                headerOfRow[row] = header
+            }
+        }
+
+        let views = grids.views(for: found.map(\.header), in: textView)
+        decorations.apply(tableViews: views)
+        var drawn: [Int: DrawnTable] = [:]
+        for entry in found {
+            guard let grid = views[entry.header] else { continue }
+            // Re-set on every pass rather than once at build time: the closure carries the
+            // header offset, and an edit above the table moves it. A grid holding last
+            // pass's offset would commit against a range that has since become someone
+            // else's - which D8's guard would refuse, correctly and uselessly.
+            grid.onCommit = { [weak textView] edit in
+                guard let textView else { return false }
+                return commit(edit, entry.header, textView)
+            }
+            drawn[entry.header] = DrawnTable(grid: grid, table: entry.table)
+        }
+        self.drawn = drawn
+
+        guard rows != hiddenRows else { return }
+        hiddenRows = rows
+        decorations.apply(tableRows: rows)
+        pendingCaret = caretRescue(in: textView, rows: rows, headers: headerOfRow)
+    }
+
+    /// Draws each grid the note currently holds, and takes the caret out of a row that has
+    /// just left the layout.
+    ///
+    /// **After `storage.endEditing()`, never inside it.** Both halves reach outside the text
+    /// storage - a grid resizes itself, and a caret rescue moves the selection - and doing
+    /// either while an editing transaction is open asks TextKit to lay out a document it has
+    /// been told is mid-change.
+    func refresh(in textView: NSTextView, theme: Theme) {
+        for table in drawn.values {
+            table.grid.update(with: table.table, theme: theme)
+        }
+        guard let offset = pendingCaret else { return }
+        pendingCaret = nil
+        CaretRescue.place(offset, in: textView)
+    }
+
+    /// `FoldController.rescueCaret(in:from:)`'s table twin (§D5): a caret inside a row that has just become
+    /// hidden is an insertion point with nowhere to be drawn and nowhere to type. It goes to
+    /// the table's own header offset, which is where a person would look for it - and where
+    /// the grid is. The rule itself is `CaretRescue.target`'s; the owner is the header.
+    private func caretRescue(
+        in textView: NSTextView, rows: Set<Int>, headers: [Int: Int]
+    ) -> Int? {
+        CaretRescue.target(
+            for: textView.selectedRange(), hidden: rows, in: textView.string as NSString
+        ) { headers[$0] }
+    }
+
+    func clear() {
+        drawn = [:]
+        decorations.apply(tableViews: [:])
+        guard !hiddenRows.isEmpty else { return }
+        hiddenRows = []
+        decorations.apply(tableRows: [])
     }
 }

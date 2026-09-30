@@ -75,16 +75,17 @@ extension NoteTextView.Coordinator {
     /// the second one lands in the wrong place; from the bottom, nothing an earlier range
     /// depends on has moved yet. `FindSession.replacements(in:)` is where that order is made.
     /// Whether this exact batch (by value: same ranges, same replacement text, same order)
-    /// is the one `apply(_:to:)` just applied - see `lastAppliedReplacements`'s doc comment.
+    /// is the one `apply(_:to:)` just applied - see `RequestLedger.lastAppliedReplacements`'
+    /// doc comment (`NoteTextView+Requests.swift`).
     func alreadyApplied(_ replacements: [(range: NSRange, text: String)]) -> Bool {
-        replacements.map(\.range) == lastAppliedReplacements
-            && replacements.map(\.text) == lastAppliedReplacementTexts
+        requests.alreadyApplied(replacements)
     }
 
     func apply(_ replacements: [(range: NSRange, text: String)], to textView: NSTextView) {
         guard !replacements.isEmpty else { return }
-        lastAppliedReplacements = replacements.map(\.range)
-        lastAppliedReplacementTexts = replacements.map(\.text)
+        // Recorded before a single range is checked, never after (PG-093): a batch refused
+        // below for a stale range is still remembered, so it is not replayed.
+        requests.recordReplacements(replacements)
         let length = (textView.string as NSString).length
         let ranges = replacements.map(\.range)
         let strings = replacements.map(\.text)

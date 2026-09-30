@@ -16,7 +16,8 @@ extension EditorDecorationDelegate {
     /// swaps the header line's first character for `\u{FFFC}` carrying a `TableAttachment`
     /// wrapping `tableViews[range.location]`, and collapses the rest of the header line into
     /// `collapsedFont` - one character out, one in, the paragraph's own length unmoved,
-    /// `embedParagraph(at:storage:)`'s own arithmetic (`NSTextContentManager.h:120`).
+    /// `substituteAttachment(_:over:in:)`'s arithmetic, shared with the embed and view-block
+    /// branches (`NSTextContentManager.h:120`).
     ///
     /// Nil whenever there is nothing to draw: `hidesMarkup` off (§D9), no `.table` marker at
     /// this offset, no grid vended yet for it, or the marker gone stale against the real
@@ -29,10 +30,8 @@ extension EditorDecorationDelegate {
     /// is one attachment character wide.
     func tableParagraph(at range: NSRange, storage: NSTextStorage) -> NSTextParagraph? {
         guard hidesMarkup else { return nil }
-        let markers = hiddenMarkers[range.location] ?? []
-        guard let marker = markers.first(where: { $0.kind == .table }),
+        guard let marker = marker(of: .table, at: range),
               marker.range.length > 0,
-              NSMaxRange(marker.range) <= range.length,
               let grid = tableViews[range.location]
         else { return nil }
 
@@ -46,19 +45,9 @@ extension EditorDecorationDelegate {
         guard Self.tableRun(in: text, atParagraphStart: range.location) != nil else { return nil }
 
         let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
-        let attachmentRange = NSRange(location: marker.range.location, length: 1)
-        let restRange = NSRange(location: attachmentRange.location + 1, length: marker.range.length - 1)
-
         let attachment = TableAttachment()
         attachment.gridView = grid
-        // A substitution, not an insertion: one character out, one in, the paragraph's own
-        // length unmoved - `NSTextContentManager.h:120`'s constraint and `embedParagraph`'s
-        // own arithmetic, reused rather than restated.
-        copy.replaceCharacters(in: attachmentRange, with: "\u{FFFC}")
-        copy.addAttribute(.attachment, value: attachment, range: attachmentRange)
-        if restRange.length > 0 {
-            copy.addAttribute(.font, value: Self.collapsedFont, range: restRange)
-        }
+        Self.substituteAttachment(attachment, over: marker, in: copy)
         return NSTextParagraph(attributedString: copy)
     }
 

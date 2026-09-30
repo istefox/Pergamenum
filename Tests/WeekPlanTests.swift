@@ -223,6 +223,155 @@ private func task(_ line: String, lineIndex: Int = 0) -> TaskItem {
     #expect(Set(days.keys) == Set([CalendarDate(iso: "2026-08-20")!]))
 }
 
+// MARK: - The part of an event a day covers (ADR-0075 §D5)
+
+/// A fixed zone, so the projection's minutes do not depend on the machine running it.
+private let rome: Calendar = {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Europe/Rome")!
+    return calendar
+}()
+
+private func romeDate(_ iso: String, _ hour: Int, _ minute: Int = 0) -> Date {
+    let day = CalendarDate(iso: iso)!
+    return rome.date(from: DateComponents(year: day.year, month: day.month, day: day.day,
+                                          hour: hour, minute: minute))!
+}
+
+private func romeEvent(from start: Date, to end: Date, allDay: Bool = false) -> CalendarEvent {
+    CalendarEvent(id: "evento", title: "Evento", start: start, end: end,
+                  isAllDay: allDay, calendarTitle: "Lavoro", isEditable: true)
+}
+
+private func projection(_ event: CalendarEvent, on iso: String) -> DayProjection {
+    event.projection(on: CalendarDate(iso: iso)!, calendar: rome)
+}
+
+@Test func aThreeDayEventIsProjectedAsThePartEachDayCovers() {
+    let fair = romeEvent(from: romeDate("2026-08-17", 9), to: romeDate("2026-08-19", 11))
+
+    #expect(projection(fair, on: "2026-08-17") == .timed(startMinute: 540, endMinute: 1440))
+    #expect(projection(fair, on: "2026-08-18") == .allDay)
+    #expect(projection(fair, on: "2026-08-19") == .timed(startMinute: 0, endMinute: 660))
+    #expect(projection(fair, on: "2026-08-20") == DayProjection.none)
+}
+
+@Test func aDinnerPastMidnightIsSplitAtMidnight() {
+    let dinner = romeEvent(from: romeDate("2026-08-20", 22), to: romeDate("2026-08-21", 1))
+
+    #expect(projection(dinner, on: "2026-08-20") == .timed(startMinute: 1320, endMinute: 1440))
+    #expect(projection(dinner, on: "2026-08-21") == .timed(startMinute: 0, endMinute: 60))
+}
+
+@Test func anEventEndingAtMidnightIsNotOnTheNextDay() {
+    let late = romeEvent(from: romeDate("2026-08-20", 22), to: romeDate("2026-08-21", 0))
+
+    #expect(projection(late, on: "2026-08-21") == DayProjection.none)
+}
+
+@Test func midnightToMidnightIsAllDay() {
+    let whole = romeEvent(from: romeDate("2026-08-20", 0), to: romeDate("2026-08-21", 0))
+
+    #expect(projection(whole, on: "2026-08-20") == .allDay)
+}
+
+@Test func aFlaggedAllDayEventIsAllDayOnEveryDayItTouches() {
+    let holiday = romeEvent(from: romeDate("2026-08-14", 0), to: romeDate("2026-08-15", 23, 59),
+                            allDay: true)
+
+    #expect(projection(holiday, on: "2026-08-14") == .allDay)
+    #expect(projection(holiday, on: "2026-08-15") == .allDay)
+    #expect(projection(holiday, on: "2026-08-16") == DayProjection.none)
+}
+
+@Test func aZeroLengthEventIsAMomentOnTheDay() {
+    let reminder = romeEvent(from: romeDate("2026-08-20", 10), to: romeDate("2026-08-20", 10))
+
+    #expect(projection(reminder, on: "2026-08-20") == .timed(startMinute: 600, endMinute: 600))
+}
+
+/// The clocks go back an hour on 2026-10-25 in Rome: the day is 25 hours long, and the
+/// projection speaks clock minutes, not elapsed ones.
+@Test func aDSTDayIsProjectedInClockMinutes() {
+    let morning = romeEvent(from: romeDate("2026-10-25", 0), to: romeDate("2026-10-25", 12))
+
+    #expect(projection(morning, on: "2026-10-25") == .timed(startMinute: 0, endMinute: 720))
+}
+
+@Test func theMiddleDayOfAMultiDayEventGoesInTheAllDayStrip() {
+    let fair = romeEvent(from: romeDate("2026-08-17", 9), to: romeDate("2026-08-19", 11))
+
+    let tuesday = [fair].projected(on: CalendarDate(iso: "2026-08-18")!, calendar: rome)
+
+    #expect(tuesday.allDay.map(\.id) == ["evento"])
+    #expect(tuesday.timed.isEmpty)
+}
+
+/// The week plan reads the same projection: on Tuesday the event is all-day and sorted
+/// first, on Wednesday it starts at midnight rather than at Monday's 09:00 (R-10).
+@Test func theWeekPlacesAMultiDayEventAtThePartEachDayCovers() {
+    let start = EventKitStore.date(CalendarDate(iso: "2026-08-17")!, hour: 9, minute: 0)!
+    let end = EventKitStore.date(CalendarDate(iso: "2026-08-19")!, hour: 11, minute: 0)!
+    let fair = CalendarEvent(id: "fiera", title: "Fiera", start: start, end: end,
+                             isAllDay: false, calendarTitle: "Lavoro", isEditable: true)
+    let meeting = event("Riunione", hour: 9)
+
+    let tuesday = WeekPlan.entries(on: CalendarDate(iso: "2026-08-18")!, events: [meeting, fair],
+                                   blocks: [], tasks: [])
+    #expect(tuesday.first?.title == "Fiera")
+    #expect(tuesday.first?.minutes == nil)
+
+    let wednesday = WeekPlan.entries(on: CalendarDate(iso: "2026-08-19")!, events: [fair],
+                                     blocks: [], tasks: [])
+    #expect(wednesday.first?.minutes == 0)
+    #expect(wednesday.first?.timeText == "00:00")
+}
+
+// MARK: - A deadline is red only once it has passed (ADR-0075 §D6)
+
+private func deadline(_ line: String, today iso: String) throws -> WeekEntry {
+    let entries = WeekPlan.entries(on: planDay, events: [], blocks: [], tasks: [task(line)],
+                                   today: CalendarDate(iso: iso)!)
+    return try #require(entries.first { $0.kind == .deadline })
+}
+
+@Test func aPassedDeadlineOnAnOpenTaskIsOverdue() throws {
+    let entry = try deadline("- [ ] Consegna disegni !2026-08-20", today: "2026-08-21")
+
+    #expect(entry.isOverdue)
+    #expect(entry.token == .taskOverdue)
+}
+
+@Test func aDeadlineNotYetPassedIsNotRed() throws {
+    for today in ["2026-08-20", "2026-08-19"] {
+        let entry = try deadline("- [ ] Consegna disegni !2026-08-20", today: today)
+        #expect(!entry.isOverdue)
+        #expect(entry.token == .textSecondary)
+    }
+}
+
+@Test func aDoneTaskIsNeverOverdue() throws {
+    let entry = try deadline("- [x] Consegna disegni !2026-08-20", today: "2026-08-21")
+
+    #expect(!entry.isOverdue)
+}
+
+@Test func theOtherKindsKeepTheirOwnColour() {
+    let entries = WeekPlan.entries(
+        on: planDay,
+        events: [event("Riunione", hour: 9)],
+        blocks: [TimeBlock(day: planDay, startMinutes: 900, durationMinutes: 60,
+                           title: "Disegno", sourceTaskID: nil, isPublished: false)],
+        tasks: [task("- [ ] Rivedere capitolato >2026-08-20")],
+        today: CalendarDate(iso: "2026-08-25")!
+    )
+
+    #expect(entries.map(\.kind) == [.event, .block, .task])
+    for entry in entries {
+        #expect(entry.token == entry.kind.token)
+    }
+}
+
 // MARK: - The scale itself
 
 @Test func eachScaleMovesByItsOwnUnit() {

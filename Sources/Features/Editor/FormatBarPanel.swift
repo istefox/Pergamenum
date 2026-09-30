@@ -50,7 +50,16 @@ final class FormatBarPanel {
         self.applied = applied
         self.theme = theme
 
-        let panel = panel ?? makePanel()
+        // `hasShadow` not `true`: a window with `hasShadow` computes its own shadow from the
+        // alpha of whatever the backing store holds, and for a shape as tight as this capsule
+        // that computation is what put a ring around the pill - a hard dark line right at the
+        // capsule's edge with a bright one immediately inside it, on every side including the
+        // rounded ends, found by sampling the screenshot pixel by pixel rather than by eye.
+        // `FormatBar`'s own `.themedShadow(.raised)` is the only shadow this panel shows now,
+        // and `shadowMargin` is what gives it room to draw.
+        let panel = panel ?? NeverKeyPanel.make(
+            contentRect: NSRect(x: 0, y: 0, width: 240, height: 32), hasShadow: false
+        )
         self.panel = panel
         render(into: panel)
 
@@ -76,7 +85,7 @@ final class FormatBarPanel {
     }
 
     func hide() {
-        panel?.parent?.removeChildWindow(panel!)
+        if let panel { panel.parent?.removeChildWindow(panel) }
         panel?.orderOut(nil)
     }
 
@@ -106,42 +115,5 @@ final class FormatBarPanel {
             width: padded.width - Self.shadowMargin * 2, height: padded.height - Self.shadowMargin * 2
         )
         panel.setContentSize(padded)
-    }
-
-    /// A panel that cannot become key, enforced rather than assumed - the same guarantee
-    /// `CompletionPanel.NeverKeyPanel` makes, and for the same reason: `.nonactivatingPanel`
-    /// stops the *app* being activated and does not stop the panel becoming this app's key
-    /// window, and a key panel is a text view that has stopped receiving keystrokes.
-    private final class NeverKeyPanel: NSPanel {
-        override var canBecomeKey: Bool { false }
-        override var canBecomeMain: Bool { false }
-    }
-
-    private func makePanel() -> NSPanel {
-        let panel = NeverKeyPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 240, height: 32),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        panel.isFloatingPanel = true
-        panel.level = .popUpMenu
-        // Not `true`: a window with `hasShadow` computes its own shadow from the alpha of
-        // whatever the backing store holds, and for a shape as tight as this capsule that
-        // computation is what put a ring around the pill - a hard dark line right at the
-        // capsule's edge with a bright one immediately inside it, on every side including
-        // the rounded ends, found by sampling the screenshot pixel by pixel rather than by
-        // eye. `FormatBar`'s own `.themedShadow(.raised)` is the only shadow this panel
-        // shows now, and `shadowMargin` above is what gives it room to draw.
-        panel.hasShadow = false
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.hidesOnDeactivate = true
-        panel.animationBehavior = .utilityWindow
-        panel.isReleasedWhenClosed = false
-        // A window that cannot become key can still be clicked, which is what makes the
-        // buttons work while the note keeps the keyboard.
-        panel.ignoresMouseEvents = false
-        return panel
     }
 }

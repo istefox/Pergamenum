@@ -25,9 +25,7 @@ import Testing
             noteTitles: [],
             tagSuggestions: [],
             onFollowLink: { _ in },
-            outlineRanges: ranges,
-            foldedEntries: folded,
-            onToggleFold: onToggleFold
+            outline: .init(outlineRanges: ranges, foldedEntries: folded, onToggleFold: onToggleFold)
         )
         let coordinator = view.makeCoordinator()
         let textView = CompletingTextView(usingTextLayoutManager: true)

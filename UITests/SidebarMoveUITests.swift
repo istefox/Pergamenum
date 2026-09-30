@@ -70,7 +70,7 @@ final class SidebarMoveUITests: XCTestCase {
                                "-disableCalendar", "YES",
                                "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
                                "-disablePlaud", "YES",
-                               "-disableUpdater", "YES",
+                               "-disableUpdater", "YES", "-disableContenitore", "YES",
                                "-stateBase", stateBase.path(percentEncoded: false)]
         app.launch()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10), "il vault non si è aperto")

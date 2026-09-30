@@ -259,6 +259,31 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     #expect(second.block.startMinutes > placed.block.startMinutes)
 }
 
+/// Cut at midnight rather than written past it: a block ending at 1470 used to be
+/// written `00:30` and dropped by the next read (ADR-0075 §D2).
+@MainActor
+@Test func aSessionShortensABlockThatWouldRunPastMidnight() async throws {
+    let vault = try TemporaryVault()
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
+    let day = CalendarDate(iso: "2026-08-11")!
+
+    let placed = try #require(await session.addTimeBlock(title: "Chiusura", on: day, startMinutes: 23 * 60 + 45))
+
+    #expect(placed.block.durationMinutes == 15)
+    #expect(session.timeBlocks(on: day).map(\.endMinutes) == [1440])
+}
+
+@MainActor
+@Test func aSessionRefusesABlockWhenTheLastHourIsFull() async throws {
+    let vault = try TemporaryVault()
+    try vault.write("## Timeline\n\n- 23:00-24:00 Pieno\n", to: "Calendar/20260811.md")
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
+    let day = CalendarDate(iso: "2026-08-11")!
+
+    #expect(await session.addTimeBlock(title: "Tardi", on: day, startMinutes: 23 * 60 + 30) == nil)
+    #expect(session.problems.last?.contains("nessuno spazio libero") == true)
+}
+
 @MainActor
 @Test func aSessionLeavesADayAloneWhenThereIsNothingToWrite() async throws {
     let vault = try TemporaryVault()

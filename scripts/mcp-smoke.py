@@ -574,6 +574,20 @@ def hardening(binary, vault, check):
               "search_vault con limit 0 risponde vuoto")
         check(server.payload("journal_log", {"limit": 0}) == [], "journal_log con limit 0 risponde vuoto")
 
+        # ADR-0075 §D4: a block's duration outside 5...480, or unreadable, is refused with
+        # one sentence rather than clamped or read as the vault default.
+        block = {"title": "Blocco", "at": "09:00", "day": "2026-08-21", "dryRun": False}
+        refused = server.payload("add_time_block", dict(block, minutes=481))
+        check(refused.get("isError") is True and "minutes" in refused.get("text", ""),
+              "add_time_block con minutes 481 è rifiutato e nomina minutes")
+        duration_sentence = refused.get("text", "")
+        for raw in (0, "abc"):
+            refused = server.payload("add_time_block", dict(block, minutes=raw))
+            check(refused.get("isError") is True
+                  and refused.get("text") == duration_sentence.replace("481", str(raw)),
+                  "add_time_block con minutes %r è la stessa frase" % (raw,))
+        check(server.payload("vault_stats").get("notes") is not None, "e il server vive")
+
         for cursor in ("-1", "abc"):
             answer = server.send("resources/list", {"cursor": cursor})
             check(answer.get("error", {}).get("code") == -32602,

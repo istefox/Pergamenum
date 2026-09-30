@@ -48,10 +48,16 @@ struct DiaryTimeline: View {
         .background(theme.color(.backgroundSecondary))
         .safeAreaInset(edge: .top) { header }
         // The clock rather than a timer object: one line that moves once a minute does
-        // not deserve a Combine subscription, and the task stops with the view.
-        .task {
+        // not deserve a Combine subscription, and the task stops with the view. Keyed on
+        // the day shown and running only on today, the one day the line is drawn: a past
+        // day has nothing to tick for. Once the clock leaves that day the last assignment
+        // makes the line go at midnight rather than freeze (ADR-0075 §D7).
+        .task(id: controller.day) {
+            let shown = controller.day
+            guard shown == .today else { return }
             while !Task.isCancelled {
                 now = Date()
+                if CalendarDate(now) != shown { break }
                 try? await Task.sleep(for: .seconds(30))
             }
         }

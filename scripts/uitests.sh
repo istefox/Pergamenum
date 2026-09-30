@@ -159,7 +159,7 @@ classes_for_path() {
         Sources/Features/Tasks/*|Sources/Core/Tasks/*|Sources/Core/Categories/*)
             echo "TaskCategoriesUITests" ;;
         Sources/Features/Diary/*|Sources/Features/Today/*|Sources/Core/Diary/*|Sources/Calendar/*)
-            echo "DayViewUITests DiaryUITests" ;;
+            echo "DayViewUITests DiaryUITests EditorHandCheckUITests" ;;
         Sources/App/SparkleUpdateController*) echo NONE ;;
         Tests/*|docs/*|*.md|.claude/*|.github/*|scripts/*|.gitignore|.swiftlint.yml) echo NONE ;;
         *) echo ALL ;;

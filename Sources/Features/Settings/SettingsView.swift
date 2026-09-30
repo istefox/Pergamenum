@@ -30,6 +30,8 @@ struct SettingsView: View {
             // permission it depends on - and Avanzate stays last, where it has always
             // been. Eleventh either way, which is what the collapse note below counts.
             PraticheSettingsTab().tabItem { Label("Pratiche", systemImage: "folder.badge.person.crop") }
+            // ADR-0071 §D13, mockup 1g: beside Pratiche, Avanzate still last.
+            ContenitoreSettingsTab().tabItem { Label("Contenitore", systemImage: "archivebox") }
             advanced.tabItem { Label("Avanzate", systemImage: "wrench.and.screwdriver") }
         }
         // Taller than it was: the design system pane lists every colour token with
@@ -45,7 +47,14 @@ struct SettingsView: View {
         //     inset around them, so 700 is short by a hair and 760 leaves slack for a
         //     longer label. Widened rather than nesting the tab or putting a
         //     `ScrollView` under it, which is what the plan of that chain requires.
-        .frame(width: 760, height: 560)
+        //   - twelve tabs, after Contenitore (ADR-0071 §D11): measured on 2026-09-30, macOS 27,
+        //     with a throwaway AppKit probe in its own process (an `NSToolbar` in `.preference`
+        //     style carrying these twelve labels and symbols, window never shown, counting
+        //     `visibleItems` per width). The probe first reproduced all four points above: ten
+        //     tabs collapse at 620 and fit at 700, eleven collapse to nine buttons at 700 and
+        //     fit at 760. Twelve collapse to eleven at 799 and fit from 800; 840 keeps 40 pt of
+        //     slack for a longer label.
+        .frame(width: 840, height: 560)
     }
 
     private func installSamples() {

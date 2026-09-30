@@ -210,10 +210,12 @@ private func symlink(to target: URL) throws -> URL {
     let quit = QuitCoordinator(
         vault: { controller },
         diary: { nil },
+        contenitore: { nil },
         commitEditing: {},
         ask: { _ in .save },
         reply: { replies.append($0) },
         reveal: { revealed.append($0) },
+        revealContenitore: { _ in },
         sleep: { _ in try? await Task.sleep(for: .seconds(60)) }
     )
 

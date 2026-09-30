@@ -41,7 +41,7 @@ final class EmbedAttachment: NSTextAttachment {
     ///
     /// Optional where the delegate's own property is not, and that is the whole of how a
     /// `.missing` embed keeps its old drawing: a placeholder is handed no colour, so
-    /// nothing is composited over it, which matches `handleRect(forEmbedAt:in:)` refusing
+    /// nothing is composited over it, which matches `EmbedResizeController.handleRect(forEmbedAt:in:)` refusing
     /// it at `guard case .drawn` (§D8).
     var handleColor: NSColor?
 
@@ -117,7 +117,7 @@ final class EmbedAttachment: NSTextAttachment {
     ///
     /// **The one mirror between two coordinate spaces, and the reason it is here.**
     /// `EmbedResize.handleRect(in:)` answers in the text view's own *flipped* space, where
-    /// `maxY` is the bottom edge - the space `handleRect(forEmbedAt:in:)` hit-tests a click
+    /// `maxY` is the bottom edge - the space `EmbedResizeController.handleRect(forEmbedAt:in:)` hit-tests a click
     /// in. This drawing handler is *unflipped* (`flipped: false`, which is what puts
     /// `source` the right way up), so `maxY` is the top and the square has to be reflected
     /// across `rect`'s own middle. `EmbedResize` is not given an opinion about which way up

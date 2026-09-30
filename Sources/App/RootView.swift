@@ -20,6 +20,8 @@ struct RootView: View {
     /// `PraticaLinkPicker`'s own `PraticaCommandActions` (ADR-0049 §D10), the same
     /// reason `navigation` above is not `private`.
     @Environment(PraticheController.self) var pratiche
+    /// Read by `RootView+Contenitore.swift`'s lifecycle and route handling (ADR-0071 §D10).
+    @Environment(ContenitoreController.self) var contenitore
     @Environment(ShortcutStore.self) private var shortcuts
     /// The day pane's controller, because three sidebar rows are three scales of it
     /// (ADR-0013 §D4) rather than three panes.
@@ -133,6 +135,7 @@ struct RootView: View {
                     if let root = vault.root { engine.attach(vaultRoot: root) }
                 }
                 .onAppear { vault.reopenMainWindow = { [openWindow] in openWindow(id: "main") } }
+                .contenitoreLifecycle()
                 // The vault's own themes (SPEC §11.3). Without this the engine never
                 // looked at `.pergamenum/themes/` outside the test suite, so a theme file
                 // in a vault did nothing at all and the picker in Settings could only
@@ -267,6 +270,7 @@ struct RootView: View {
         case .starred: starredPane
         case .recordings: recordingsPane
         case .pratiche: pratichePane
+        case .contenitore: contenitorePane
         }
     }
 
@@ -352,7 +356,7 @@ struct RootView: View {
         }
     }
 
-    private func needsVault(_ explanation: String) -> some View {
+    func needsVault(_ explanation: String) -> some View {
         VStack(spacing: theme.spacing(.m)) {
             Image(systemName: "folder")
                 .font(.system(size: 40))

@@ -176,7 +176,7 @@ extension ToolCatalogue {
                 "properties": [
                     "title": ["type": "string"],
                     "at": ["type": "string", "description": "ora di inizio, HH:MM"],
-                    "minutes": ["type": "integer", "description": "durata; quella di default del vault se omessa"],
+                    "minutes": ["type": "integer", "description": "da 5 a 480 minuti; se omessa, quella del vault"],
                     "day": ["type": "string", "description": "YYYY-MM-DD, oggi se omesso"],
                     "dryRun": dryRunProperty,
                 ],

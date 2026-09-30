@@ -213,6 +213,33 @@ private func ordinals(in text: String) -> [Int] {
         #expect(fixture.textView.string == text)
     }
 
+    // MARK: ADR-0074 G2 H2: a delete, not a Return, renumbers through `textDidChange`
+
+    /// G2 H2: the entry is `deleteBackward` -> `Coordinator.textDidChange` ->
+    /// `renumberLists(in:)`, not `claimsListCommand`. Deleting a selected middle item leaves
+    /// "1. / 3. / 4." behind, and the run has to come back contiguous, with one undo taking
+    /// the deletion and the renumbering back together. The undo half catches a missing undo
+    /// registration, not a split within one event: event grouping merges those in production
+    /// too. The card's twin is `CardFormattingTests.deletingAMiddleItemOfACardsOrderedRun...`.
+    @Test func deletingAMiddleItemOfAnOrderedRunRenumbersTheRestAndOneUndoRestoresBoth() throws {
+        let text = "1. uno\n2. due\n3. tre\n4. qua"
+        let fixture = editor(text, caret: 0)
+        defer { fixture.window.orderOut(nil) }
+        let undo = try #require(fixture.textView.undoManager)
+        let victim = (text as NSString).range(of: "2. due\n")
+        #expect(victim.location != NSNotFound, "premessa: la riga da cancellare deve esistere")
+        fixture.textView.setSelectedRange(victim)
+
+        fixture.textView.deleteBackward(nil)
+
+        #expect(fixture.textView.string == "1. uno\n2. tre\n3. qua")
+        #expect(ordinals(in: fixture.textView.string) == [1, 2, 3])
+
+        undo.undo()
+
+        #expect(fixture.textView.string == text)
+    }
+
     // MARK: Pinning the documented digit-width-shrink caret boundary (accepted limitation, not a bug)
 
     /// `NoteTextView+ListEditing.renumberLists(in:)`'s own doc comment discloses that the
