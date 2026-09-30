@@ -387,12 +387,15 @@ of failing on a missing source.
 - **Decided with the mockup (G2, 2026-09-30).**
   - A document's colour is a 10 pt dot filled with its sticky token and ringed with
     `color.border.strong`; the row is not tinted.
-  - A «Documento» menu sits between Inserisci and Task, on the «Task» model, active only while the
-    pane is. It carries «Classifica…», «Apri», «Apri scheda», «Rinomina…», «Sposta in…» and «Nuovo
-    sottocontenitore…». «Copia link Pergamenum» and «Rivela nel Finder» stay in File and «Sposta
-    nel Cestino» in Modifica, dispatching to the selection (§D12).
-  - Proposed keys: Cmd+Opt+K «Classifica…», Cmd+Opt+O «Apri scheda», Enter «Apri». Task 7 checks
-    them against the remappable catalogue and changes only a colliding one, saying so.
+  - A «Documento» menu sits between Inserisci and Task. Its items are enabled only while the pane
+    is, gated per item as the Workspace entries are: the «Task» menu itself is not pane-gated
+    (verified at `cd3d9b15`). It carries «Classifica…», «Apri», «Apri scheda», «Rinomina…», «Sposta
+    in…» and «Nuovo sottocontenitore…». «Copia link Pergamenum» and «Rivela nel Finder» stay in
+    File. «Sposta nel Cestino…» is added to Modifica, since no menu-bar trash item existed before.
+    All of them dispatch to the selection (§D12).
+  - Keys: Cmd+Opt+K «Classifica…» and Cmd+Opt+O «Apri scheda», both unused in the remappable
+    catalogue at `cd3d9b15`. Enter «Apri» works on the focused list only, not as a menu key
+    equivalent, which would take Return from the inspector's text fields.
   - Impostazioni gains a twelfth tab, «Contenitore», beside «Pratiche». Task 7 re-measures the
     width at which AppKit collapses the tab bar, the way `SettingsView.swift` records it, and widens
     the window as needed.
@@ -409,8 +412,11 @@ scheda», «Copia link Pergamenum», «Rinomina…», «Sposta in…», «Sposta
 
 - The inspector, the row context menu and the menu bar all render it (R-27, ADR-0023 §D1).
 - While `navigation.pane == .contenitore`, the existing app-wide `copyLink` and `revealInFinder`
-  commands, and the trash command, dispatch to the selected document. The menu bar therefore carries
-  one «Copia link Pergamenum», not two.
+  commands, and the new Modifica «Sposta nel Cestino…», dispatch to the selected document. The menu
+  bar therefore carries one «Copia link Pergamenum», not two.
+- R-19's tree verbs (new sub-container, rename, move, trash) are a second, smaller catalogue,
+  `ContenitoreContainerCommand`, rendered by the tree's context menu. «Nuovo sottocontenitore…» is
+  also in «Documento».
 - The mockup fixes where the remaining entries sit.
 
 «Classifica» validates through `ContenitoreClassification` (R-18):
