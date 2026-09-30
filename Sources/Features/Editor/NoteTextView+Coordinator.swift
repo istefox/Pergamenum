@@ -53,10 +53,15 @@ extension NoteTextView {
         private var lastFoldLayout = NoteFolding.Layout()
         /// The transcluded notes already drawn, for the same reason as `lastFoldLayout`.
         var lastRenditions: [Int: TranscludedRendition] = [:]
-        /// Renditions by reference, section, scan generation and width. Not private
+        /// Renditions by reference, section, index generation and width. Not private
         /// because the code that fills it lives in `NoteTextView+Transclusion`, and not
-        /// unbounded in practice: a note names as many targets as it names.
+        /// unbounded in practice: a note names as many targets as it names, and the entries
+        /// of an older generation are dropped when `renditionGeneration` moves.
         var renditionCache: [String: TranscludedRendition] = [:]
+        /// The generation `renditionCache` was filled at. The index generation moves on every
+        /// save, this note's own included (PG-328), so keeping older generations would grow
+        /// the cache by one entry per transclusion per save.
+        var renditionGeneration: Int?
         /// The revealed paragraphs already applied (ADR-0018 §D2), so an unchanged set
         /// does not invalidate the layout on every view update. Not private for the same
         /// reason as `lastRenditions`: the mutator, `applyReveal`, lives in

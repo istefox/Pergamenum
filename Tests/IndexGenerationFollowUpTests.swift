@@ -102,4 +102,34 @@ private func followUpNote(_ body: String) -> String {
         #expect(EditorColumnView.viewQueryGeneration(for: controller) != before)
         controller.close()
     }
+
+    // PG-328: a `![[N]]` in another note was redrawn on `scanGeneration`, so saving N in the app
+    // left the embed showing N's old text. Discriminating the same way as above: the save moves
+    // the transclusion generation while `scanGeneration` stays put.
+    @Test func anEditorSaveMovesTheTransclusionGenerationButNotTheScan() async throws {
+        let vault = try TemporaryVault()
+        let controller = try await opened(vault)
+        controller.openNote(at: "Note/N.md")
+        let scan0 = controller.scanGeneration
+        let before = EditorColumnView.transclusionGeneration(for: controller)
+
+        controller.updateOpenNoteText(followUpNote("Salvata."))
+        await controller.saveOpenNote()
+
+        #expect(controller.scanGeneration == scan0)
+        #expect(EditorColumnView.transclusionGeneration(for: controller) != before)
+        controller.close()
+    }
+
+    @Test func anExternalEditMovesTheTransclusionGeneration() async throws {
+        let vault = try TemporaryVault()
+        let controller = try await opened(vault)
+        let before = EditorColumnView.transclusionGeneration(for: controller)
+
+        try vault.write(followUpNote("Cambiata fuori."), to: "Note/N.md")
+        await controller.reconcile(["Note/N.md"])
+
+        #expect(EditorColumnView.transclusionGeneration(for: controller) != before)
+        controller.close()
+    }
 }
