@@ -1,8 +1,7 @@
 # ADR-0073: Quitting reviews unsaved notes first: one question, one save door, one reply
 
-- Status: **proposed**. Implementation not on `main` yet; flip to `accepted` with the PR, the merge
-  commit's short hash from `git log --first-parent main` and the date as the first docs change after
-  the merge (`docs/adr/README.md` §2).
+- Status: **accepted**. Merged to `main` via PR #707 (`cd3d9b15`, 2026-09-30), for `PG-326`/#693.
+  The issue stays open until P1, P2, R-18 and the hand checks M1–M8 are verified (R-17).
 - Date: 2026-09-29. Written before the implementation, against `9df450b9` (`origin/main` and
   `fix/pg-326-quit-unsaved-notes` are the same commit). Every line number below was read from that
   tree.
