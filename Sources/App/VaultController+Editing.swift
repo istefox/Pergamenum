@@ -1,5 +1,15 @@
 import Foundation
 
+/// What one save of one tab did (ADR-0073 §D4).
+enum TabSave: Equatable, Sendable {
+    /// The buffer's text reached disk.
+    case saved
+    /// Nothing to save: the tab was clean, or no longer exists.
+    case clean
+    /// The write threw; the message is the problem recorded for it.
+    case failed(String)
+}
+
 /// What the editor does to the note it is showing: saving it, restoring a past version over
 /// it, and settling an external change that arrived underneath it.
 ///
@@ -28,14 +38,63 @@ extension VaultController {
     /// handed to the write as its `origin` (ADR-0067 §D2): the session echoes it back through
     /// `landed(_:)`, which gives that tab its saved text and every other copy the prompt rule.
     /// Nothing is called after the write - the door already delivered it.
+    ///
+    /// Since ADR-0073 §D4 the write itself is `saveTab(_:)`'s, the one save door Cmd+S, the
+    /// «Salva» chip, the tab-close dialog and the quit share. The behaviour is unchanged: no
+    /// precondition, and a pending banner does not stop it.
     func saveOpenNote() async {
-        guard let session, let writer = focusedTab, writer.note.hasUnsavedChanges else { return }
+        guard let id = focusedTab?.id else { return }
+        _ = await saveTab(id)
+    }
+
+    /// Writes one tab's buffer, found by id in **any** column, and says what happened
+    /// (ADR-0073 §D4).
+    ///
+    /// `.clean` when the tab is not dirty or no longer exists; otherwise the text goes through
+    /// `session.write(_:to:origin:)` with the tab's id as `origin`, so `landed(_:)` gives this
+    /// tab its saved text and every other copy of the path the prompt rule (ADR-0067 §D2). The
+    /// text is read before the `await`; anything typed during it stays unsaved. No focusing:
+    /// a background tab, or one of the other column, is saved where it is.
+    func saveTab(_ id: NoteTab.ID) async -> TabSave {
+        guard let writer = tab(withID: id), writer.note.hasUnsavedChanges else { return .clean }
         let note = writer.note
-        do {
-            try await session.write(note.text, to: note.relativePath, origin: writer.id)
-        } catch {
-            recordProblem("\(note.relativePath): \(error)")
+        // A tab that outlived a vault switch names a path of the vault it came from; writing it
+        // here would overwrite, or create, a different file (ADR-0073 §D5, departure 13). The
+        // refusal lives in the one save door so Cmd+S, «Salva» and the close dialog inherit it.
+        guard !writer.isFromPreviousVault else {
+            let message = "\(note.relativePath): la nota è di una cartella note aperta prima, non salvata"
+            recordProblem(message)
+            return .failed(message)
         }
+        guard let session else {
+            let message = "\(note.relativePath): nessuna cartella note aperta"
+            recordProblem(message)
+            return .failed(message)
+        }
+        do {
+            try await session.write(note.text, to: note.relativePath, origin: id)
+            return .saved
+        } catch {
+            let message = "\(note.relativePath): \(error)"
+            recordProblem(message)
+            return .failed(message)
+        }
+    }
+
+    /// The tab-close dialog's «Salva» (ADR-0012 §D3): saves, then closes **only** when the
+    /// save landed or there was nothing to save (ADR-0073 §D4, F6). A failed save leaves the
+    /// tab open and dirty with its problem recorded, and so does text typed while the write
+    /// was suspended: a save that did not take the whole buffer never drops it.
+    @discardableResult
+    func saveAndCloseTab(_ id: NoteTab.ID) async -> TabSave {
+        let outcome = await saveTab(id)
+        switch outcome {
+        case .saved, .clean:
+            if tab(withID: id)?.note.hasUnsavedChanges != true { closeTab(id) }
+        case .failed:
+            break
+        }
+        return outcome
     }
 
     /// Writes a past version back over the open note (ADR-0011, M9).

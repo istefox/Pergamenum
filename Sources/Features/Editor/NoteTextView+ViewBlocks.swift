@@ -200,7 +200,7 @@ final class ViewBlockController {
     /// neither belongs inside an open editing transaction.
     ///
     /// A new root view rather than a new host (ADR §D3): SwiftUI diffs it against the old
-    /// one, and `RenderedViewBlock`'s `.task(id:)` re-runs only when the source, the scan
+    /// one, and `RenderedViewBlock`'s `.task(id:)` re-runs only when the source, the index
     /// generation or an explicit refresh actually changed - never once per keystroke, which
     /// is what ADR-0009 §D7 forbids. Rebuilding the root view every pass is what keeps the
     /// closures below current: `parent` is a struct SwiftUI replaces on each update, so a

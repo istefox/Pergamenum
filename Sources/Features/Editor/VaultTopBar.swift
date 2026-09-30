@@ -35,13 +35,13 @@ struct VaultTopBar: View {
             // `hasUnsavedChanges` that reads `false` at rest even with nothing loaded,
             // there is no save state to report here until a note exists to have one -
             // showing "Salvato" over an empty pane would claim to have saved nothing.
-            if vault.openNote != nil {
-                Label(
-                    vault.openNote?.hasUnsavedChanges == true ? "Salvataggio…" : "Salvato",
-                    systemImage: vault.openNote?.hasUnsavedChanges == true
-                        ? "arrow.triangle.2.circlepath" : "checkmark.circle"
-                )
-                .themedText(.caption, color: .textSecondary)
+            //
+            // «Non salvato», never «Salvataggio…»: a note is saved explicitly, so nothing is
+            // saving it (ADR-0073 §D10).
+            if let note = vault.openNote {
+                let indicator = NoteSaveIndicator(hasUnsavedChanges: note.hasUnsavedChanges)
+                Label(indicator.label, systemImage: indicator.symbol)
+                    .themedText(.caption, color: .textSecondary)
             }
         }
     }

@@ -99,6 +99,12 @@ struct EditorColumnView: View {
         .onTapGesture { vault.focusColumn(columnIndex) }
         .quickLook(urls: previewURLs, isPresented: $isPreviewingEmbed)
         .modifier(UnsavedTabDialog(closing: $closing, column: self))
+        // Cmd+W on a dirty tab (ADR-0073 §D11): the column holding it raises the same dialog
+        // the chip's close button does. `initial: true` so a request made from another pane
+        // is still answered when this column next appears.
+        .onChange(of: vault.closeRequest, initial: true) { _, _ in
+            if let requested = vault.takeCloseRequest(forColumn: columnIndex) { closing = requested }
+        }
         // ADR-0034 §D2: the sheet is handed `viewQuerySource`, the same source the drawn fence
         // itself renders through, so the count in the sheet and the count in the header cannot
         // disagree. `onCommit` clears the request only on a successful write - a refused

@@ -348,10 +348,9 @@ enum BoardCardMenuItems {
     /// `QuickSwitcher.headingGroups` builds its own `Row` from the same enumeration for the same
     /// reason.
     private static func foldRows(in text: String) -> [FoldRow] {
-        NoteOutline.entries(in: text).enumerated().compactMap { ordinal, entry -> FoldRow? in
-            guard case .heading = entry.kind,
-                  !NoteFolding.hiddenParagraphs(in: text, foldedEntries: [ordinal]).isEmpty
-            else { return nil }
+        let foldable = NoteFolding.foldableEntries(in: text)
+        return NoteOutline.entries(in: text).enumerated().compactMap { ordinal, entry -> FoldRow? in
+            guard foldable.contains(ordinal) else { return nil }
             return FoldRow(id: ordinal, title: entry.title.isEmpty ? "Senza titolo" : entry.title)
         }
     }

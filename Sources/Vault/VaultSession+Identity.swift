@@ -92,7 +92,7 @@ extension VaultSession {
     /// when `settings.json` cannot be written. Shaped like a UUID purely so it is
     /// interchangeable everywhere an id names a directory; nothing parses it as one.
     private static func pathDerivedID(for root: URL) -> String {
-        let path = root.resolvingSymlinksInPath().standardizedFileURL.path(percentEncoded: false)
+        let path = root.vaultKey
         let hex = SHA256.hash(data: Data(path.utf8))
             .map { String(format: "%02x", $0) }
             .joined()

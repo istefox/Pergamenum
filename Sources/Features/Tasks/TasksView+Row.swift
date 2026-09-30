@@ -7,7 +7,13 @@ import SwiftUI
 extension TasksView {
     /// `praticaLookup` has no default on purpose: a row drawn without it would silently
     /// lose its pratica badges, and the compiler is what finds every call site.
-    func row(_ task: TaskItem, isRolledOver: Bool = false, praticaLookup: TaskPraticaLookup) -> some View {
+    ///
+    /// `density` has none for the same reason, and is handed in rather than read here
+    /// (PG-268): reading it per row decoded the stored `@AppStorage` JSON map once per task.
+    /// The list decodes it once per render, for the selection showing, and passes it down.
+    func row(
+        _ task: TaskItem, isRolledOver: Bool = false, density: TaskDensity, praticaLookup: TaskPraticaLookup
+    ) -> some View {
         let isSelected = selectedTaskID == task.id
         return ThemedCard(padding: .s) {
             HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.s)) {
@@ -29,7 +35,7 @@ extension TasksView {
                     // The second line is what the compact density drops (ADR-0013 §D6): the
                     // task itself and its marker are what a list is read for, and the note it
                     // came from is what it is worked from.
-                    if options.density == .expanded { details(task, praticaLookup: praticaLookup) }
+                    if density == .expanded { details(task, praticaLookup: praticaLookup) }
                 }
 
                 Spacer()

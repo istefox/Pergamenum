@@ -90,9 +90,14 @@ final class TransclusionController {
     /// The transcluded notes already drawn, so an unchanged set does not invalidate the
     /// layout on every view update.
     private(set) var lastRenditions: [Int: TranscludedRendition] = [:]
-    /// Renditions by reference, section, scan generation and width. Not unbounded in
-    /// practice: a note names as many targets as it names.
+    /// Renditions by reference, section, index generation and width. Not unbounded in
+    /// practice: a note names as many targets as it names, and the entries of an older
+    /// generation are dropped when `renditionGeneration` moves.
     private(set) var renditionCache: [String: TranscludedRendition] = [:]
+    /// The generation `renditionCache` was filled at. The index generation moves on every
+    /// save, this note's own included (PG-328), so keeping older generations would grow
+    /// the cache by one entry per transclusion per save.
+    private(set) var renditionGeneration: Int?
 
     init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate) {
         self.parent = parent
@@ -179,6 +184,10 @@ final class TransclusionController {
         theme: Theme
     ) -> TranscludedRendition? {
         guard let source = parent()?.vault.transclusions else { return nil }
+        if renditionGeneration != source.generation {
+            renditionCache.removeAll()
+            renditionGeneration = source.generation
+        }
         let key = "\(occurrence.reference)#\(occurrence.section ?? "")@\(source.generation)|\(Int(width))"
         if let cached = renditionCache[key] { return cached }
 

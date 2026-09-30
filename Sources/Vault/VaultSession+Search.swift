@@ -82,8 +82,17 @@ extension VaultSession {
 
     /// One candidate: read, matched, and given its excerpt. Nil when it cannot be read or
     /// does not match.
+    ///
+    /// A Contenitore scheda is matched and excerpted together with its document's extracted
+    /// text, looked up by the hash the scheda records (ADR-0071 §D9), so a word found only in a
+    /// scanned PDF finds the scheda and shows the line it sits on.
     private func hit(for record: NoteRecord, matcher: SearchQuery.Matcher) -> SearchResult? {
-        guard let (_, text) = try? read(record.relativePath) else { return nil }
+        guard let (_, noteText) = try? read(record.relativePath) else { return nil }
+        var text = noteText
+        if let hash = record.contenitore?.sha256,
+           let extracted = extractedTexts.read(sha256: hash), !extracted.text.isEmpty {
+            text += "\n\n" + extracted.text
+        }
         guard matcher.matches(record: record, text: text) else { return nil }
         return SearchResult(
             path: record.relativePath,

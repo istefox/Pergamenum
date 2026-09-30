@@ -70,8 +70,9 @@ final class QuickLookHostView: NSView, @preconcurrency QLPreviewPanelDataSource,
     /// view that has since left the window is never kept alive for a hand-back.
     private weak var focusBeforePresentation: NSResponder?
 
-    /// With `claimsFocus == false` (the timeline, ADR-0070 §D4), the host holds first
-    /// responder only for the moment it presents: it records the window's first responder,
+    /// Every presentation goes through here (PG-306); with `claimsFocus == false` (the
+    /// timeline, ADR-0070 §D4) and in the editor, where a text view holds the keyboard, it
+    /// is the only time the host holds first responder: it records the window's first responder,
     /// then takes it, since the panel finds its controller through the responder chain.
     /// Already first responder, it keeps the earlier record rather than recording itself.
     /// PG-307: when nobody held the keyboard (the window itself is first responder, which is
@@ -139,7 +140,8 @@ struct QuickLookTarget: NSViewRepresentable {
     /// every update (`true`, today's behaviour on every surface) or only for the moment it
     /// presents the panel (`false`, the pratica timeline only: a claim there took the
     /// keyboard from the timeline's `List` for good, measured in ADR-0070's implementation
-    /// notes).
+    /// notes). Either way a presentation takes first responder for as long as the panel is
+    /// up (PG-306): only the standing claim differs.
     var claimsFocus: Bool = true
 
     /// PG-298, ADR-0070 §D4: the pure half of "claim now?" on `updateNSView`, so the default
@@ -181,9 +183,13 @@ struct QuickLookTarget: NSViewRepresentable {
         }
 
         if isPresented {
-            // Without the standing claim the host is not in the responder chain, and the
-            // panel would find no controller: take focus for this presentation only.
-            if !claimsFocus { view.claimFocusForPresentation() }
+            // The panel finds its controller through the responder chain, and the host is
+            // in it only while it is first responder: without the standing claim (the
+            // timeline), and in the editor, where the note's text view holds the keyboard
+            // and the standing claim steps aside for it, the panel would open empty. Take
+            // focus for this presentation only; it goes back when the panel closes
+            // (PG-306). On the board the host already holds it and this changes nothing.
+            view.claimFocusForPresentation()
             view.togglePreviewPanel()
             DispatchQueue.main.async { isPresented = false }
         }
@@ -197,8 +203,9 @@ extension View {
     /// surface (source-compatible with every existing call site). The pratica timeline
     /// passes `false`, so a Quick Look preview there no longer keeps the keyboard
     /// once the panel is gone (R-08); the Workspace board and the editor keep the default,
-    /// since the board's bare-spacebar preview depends on the claim and the editor is
-    /// unmeasured (ADR-0070 §D4).
+    /// since the board's bare-spacebar preview depends on the claim (ADR-0070 §D4). In the
+    /// editor the claim always steps aside for the note's text view, so an embed preview
+    /// reaches the panel through the presentation's own claim (PG-306).
     func quickLook(urls: [URL], isPresented: Binding<Bool>, claimsFocus: Bool = true) -> some View {
         background(
             QuickLookTarget(urls: urls, isPresented: isPresented, claimsFocus: claimsFocus)

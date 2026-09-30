@@ -183,6 +183,51 @@ private func armedSession(_ vault: borrowing TemporaryVault) async throws -> Vau
     #expect(try session.read("Sparita.md").text.contains("Nota nuova, non quella di prima."))
 }
 
+// MARK: - ADR-0071 §D3: a note that mentions its own title
+
+// The rename moves the note, then rewrites its own link at the new path, so the file is rightly
+// no longer what the move left. `preflightUndo` holds the move to that later rewrite's hash, which
+// is what makes this ordinary rename undoable; before it, the move's own hash refused the undo.
+
+@MainActor
+@Test func undoOfARenameWhoseNoteMentionsItsOwnTitlePutsTextAndPathBack() async throws {
+    let vault = try TemporaryVault()
+    let original = note("Questa è [[Vecchio titolo]].")
+    try vault.write(original, to: "Vecchio titolo.md")
+    let session = try await armedSession(vault)
+
+    let outcome = try await session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
+    #expect(try session.read(outcome.newPath).text.contains("[[Nuovo titolo]]"))
+    let operationID = try #require(session.journalOnDisk.entries().first?.operation)
+
+    let undone = await session.undo(operation: operationID)
+
+    #expect(undone.failures.isEmpty, "\(undone.failures)")
+    #expect(session.exists("Vecchio titolo.md"))
+    #expect(!session.exists("Nuovo titolo.md"))
+    let restored = try String(contentsOf: vault.root.appending(path: "Vecchio titolo.md"), encoding: .utf8)
+    #expect(restored == original)
+}
+
+@MainActor
+@Test func undoOfASelfMentioningRenameIsRefusedAfterTheRenamedNoteIsEditedByHand() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note("Questa è [[Vecchio titolo]]."), to: "Vecchio titolo.md")
+    let session = try await armedSession(vault)
+
+    let outcome = try await session.renameNote(at: "Vecchio titolo.md", to: "Nuovo titolo")
+    let operationID = try #require(session.journalOnDisk.entries().first?.operation)
+    try await session.write(note("Questa è [[Nuovo titolo]]. Aggiunta a mano."), to: outcome.newPath)
+
+    let undone = await session.undo(operation: operationID)
+
+    #expect(undone.changed.isEmpty)
+    #expect(undone.failures.contains { $0.contains("Nuovo titolo.md") })
+    #expect(session.exists(outcome.newPath))
+    #expect(!session.exists("Vecchio titolo.md"))
+    #expect(try session.read(outcome.newPath).text.contains("Aggiunta a mano."))
+}
+
 // MARK: - Task 4 (R-01, R-03, R-05, R-08): `renameNote`/`moveNote` adopt the guard
 //
 // `renamePlan`'s own read is synchronous and immediately followed by the write with no

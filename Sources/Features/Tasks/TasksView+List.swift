@@ -30,7 +30,8 @@ extension TasksView {
         // pass over every task in the vault on every redraw.
         let rolled = rolledOverGroup(for: taskView)
         // The same reason, one layer down: every read of `options(for:)` decodes the stored
-        // JSON map, and the arrangement is where that answer is actually needed.
+        // JSON map, and the arrangement and every row's density are where that answer is
+        // actually needed (PG-268: the rows used to decode it again, once each).
         let currentOptions = options(for: .view(taskView))
         let arranged = arrangedGroups(for: taskView, options: currentOptions) + rolled
         let rolledIDs = Set(rolled.first?.tasks.map(\.id) ?? [])
@@ -45,7 +46,8 @@ extension TasksView {
                         VStack(alignment: .leading, spacing: theme.spacing(.s)) {
                             if case .project(let parent, _) = group.kind {
                                 project(
-                                    group, parent: parent, rolledIDs: rolledIDs, praticaLookup: praticaLookup
+                                    group, parent: parent, rolledIDs: rolledIDs,
+                                    density: currentOptions.density, praticaLookup: praticaLookup
                                 )
                             } else {
                                 // An ungrouped list has one group with no title, and no
@@ -57,7 +59,7 @@ extension TasksView {
                                 ForEach(group.tasks) { task in
                                     row(
                                         task, isRolledOver: rolledIDs.contains(task.id),
-                                        praticaLookup: praticaLookup
+                                        density: currentOptions.density, praticaLookup: praticaLookup
                                     )
                                 }
                             }
@@ -83,6 +85,8 @@ extension TasksView {
     private func categoryList(_ slug: String, praticaLookup: TaskPraticaLookup) -> some View {
         let category = vault.categories.entries.first { $0.slug == slug }
             ?? Category(slug: slug, name: slug, color: CategoryColor.grigio.rawValue)
+        // Decoded once, for the category and for every row's density (PG-268).
+        let currentOptions = options(for: .category(slug))
         return VStack(alignment: .leading, spacing: 0) {
             TaskListControls(title: category.name, options: optionsBinding(for: .category(slug)))
                 .padding(.horizontal, theme.spacing(.l))
@@ -90,9 +94,9 @@ extension TasksView {
             CategoryView(
                 category: category,
                 isRegistered: vault.categories.entries.contains { $0.slug == slug },
-                options: options(for: .category(slug))
+                options: currentOptions
             ) { task in
-                row(task, praticaLookup: praticaLookup)
+                row(task, density: currentOptions.density, praticaLookup: praticaLookup)
             }
         }
     }
@@ -138,12 +142,6 @@ extension TasksView {
         TaskListOptions.map(fromJSON: storedOptions)[optionsKey(for: selection)]
             ?? defaultOptions(for: selection)
     }
-
-    /// The controls of whatever is showing right now - not `private`, since
-    /// `TasksView+Row.swift`'s `row(_:isRolledOver:praticaLookup:)` reads `options.density` to decide
-    /// whether to draw a task's second line, and a row is only ever drawn while the
-    /// selection it belongs to is the one showing.
-    var options: TaskListOptions { options(for: selection) }
 
     /// One view's tasks, arranged the way its controls ask (ADR-0013 §D6).
     ///
@@ -194,7 +192,8 @@ extension TasksView {
     /// a task, and a heading that only looked like one would be a second row view to keep
     /// in step with this one.
     func project(
-        _ group: TaskGroup, parent: TaskItem, rolledIDs: Set<String>, praticaLookup: TaskPraticaLookup
+        _ group: TaskGroup, parent: TaskItem, rolledIDs: Set<String>,
+        density: TaskDensity, praticaLookup: TaskPraticaLookup
     ) -> some View {
         DisclosureGroup(
             isExpanded: Binding(
@@ -210,14 +209,17 @@ extension TasksView {
         ) {
             VStack(alignment: .leading, spacing: theme.spacing(.s)) {
                 ForEach(group.tasks) { task in
-                    row(task, isRolledOver: rolledIDs.contains(task.id), praticaLookup: praticaLookup)
+                    row(
+                        task, isRolledOver: rolledIDs.contains(task.id),
+                        density: density, praticaLookup: praticaLookup
+                    )
                 }
             }
             .padding(.leading, theme.spacing(.m))
             .padding(.top, theme.spacing(.xs))
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: theme.spacing(.s)) {
-                row(parent, praticaLookup: praticaLookup)
+                row(parent, density: density, praticaLookup: praticaLookup)
                 if case .project(_, let progress) = group.kind {
                     Text("\(progress.done)/\(progress.total)")
                         .themedText(.mono, color: .textTertiary)
@@ -238,7 +240,7 @@ extension TasksView {
                         // sibling of row(parent) rather than a container of it - is
                         // what keeps it from touching anything else. Progress is always
                         // present here because `group.kind` is `.project`, which is why
-                        // this branch runs whenever `project(_:parent:rolledIDs:praticaLookup:)` does -
+                        // this branch runs whenever `project(_:parent:rolledIDs:density:praticaLookup:)` does -
                         // the enum makes that a compile-time pairing (ADR-0021 D6),
                         // not a convention `bySubtasks(_:)` merely has to remember.
                         .accessibilityIdentifier("task-project-group")

@@ -62,6 +62,46 @@ import Testing
         return style.paragraphSpacing
     }
 
+    // PG-328: the rendition cache is keyed by generation, and the index generation moves on
+    // every save, so a cache that kept older generations would grow by one entry per
+    // transclusion per save. Observed through the coordinator's own cache, no window needed.
+    private static func source(generation: Int, text: String) -> TransclusionSource {
+        TransclusionSource(
+            resolve: { reference in
+                guard reference == "Prove" else { return nil }
+                return TransclusionSource.Resolved(title: "Prove", relativePath: "Prove.md", text: text)
+            },
+            generation: generation
+        )
+    }
+
+    @Test func aNewGenerationDropsTheRenditionsOfTheOldOne() {
+        let (textView, coordinator) = Self.editor(transclusions: Self.source(generation: 1, text: "# Prove\n\nPrima.\n"))
+        coordinator.applyStyling(to: textView, theme: .emergency)
+        coordinator.applyTransclusions(to: textView, theme: .emergency)
+        #expect(coordinator.transclusion.renditionCache.count == 1)
+
+        for generation in 2...4 {
+            coordinator.parent.vault.transclusions = Self.source(generation: generation, text: "# Prove\n\nDopo \(generation).\n")
+            coordinator.applyStyling(to: textView, theme: .emergency)
+            coordinator.applyTransclusions(to: textView, theme: .emergency)
+            #expect(coordinator.transclusion.renditionCache.count == 1)
+            #expect(coordinator.transclusion.renditionCache.keys.allSatisfy { $0.contains("@\(generation)|") })
+        }
+    }
+
+    @Test func theSameGenerationKeepsItsCachedRendition() {
+        let (textView, coordinator) = Self.editor(transclusions: Self.source(generation: 5, text: "# Prove\n\nPrima.\n"))
+        coordinator.applyStyling(to: textView, theme: .emergency)
+        coordinator.applyTransclusions(to: textView, theme: .emergency)
+        let cached = coordinator.transclusion.renditionCache
+        // Same generation, different text behind it: the cache answers, nothing is re-read.
+        coordinator.parent.vault.transclusions = Self.source(generation: 5, text: "# Prove\n\nCambiata.\n")
+        coordinator.applyStyling(to: textView, theme: .emergency)
+        coordinator.applyTransclusions(to: textView, theme: .emergency)
+        #expect(coordinator.transclusion.renditionCache == cached)
+    }
+
     @Test func theLineNamingANoteReservesSpaceUnderItself() {
         let (textView, coordinator) = Self.editor(transclusions: Self.source())
         coordinator.applyStyling(to: textView, theme: .emergency)

@@ -24,6 +24,9 @@ struct NoteRecord: Identifiable, Equatable, Sendable {
     /// category"). Defaulted for the same reason `embedTargets` is: the many places
     /// building a record for a test need not say "no category" to mean it.
     var categorySlug: String?
+    /// The scheda facts of a Contenitore document (ADR-0071 §D2), when the note carries
+    /// `pergamenum-contenitore: 1`. Defaulted for the reason `categorySlug` is.
+    var contenitore: ContenitoreFacts? = nil
     /// Tasks found in the body, with their line numbers (SPEC §7.1).
     var tasks: [TaskItem]
     var modifiedAt: Date
@@ -127,6 +130,7 @@ struct NoteStore: Sendable {
             linkTargets: linkTargets(in: document),
             embedTargets: Transclusion.embeddedFiles(in: text),
             categorySlug: CategoryFrontmatter.slug(in: document.frontmatter.foreignKeys),
+            contenitore: ContenitoreScheda.facts(in: document.frontmatter.foreignKeys),
             tasks: TaskParser.tasks(in: text, sourcePath: relativePath),
             modifiedAt: attributes[.modificationDate] as? Date ?? .distantPast,
             byteSize: data.count,
