@@ -31,7 +31,7 @@ struct WeekEntryRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 3) {
             Image(systemName: entry.kind.symbol)
                 .font(.system(size: 7))
-                .foregroundStyle(theme.color(entry.kind.token))
+                .foregroundStyle(theme.color(entry.token))
             VStack(alignment: .leading, spacing: 0) {
                 if let timeText = entry.timeText {
                     Text(timeText).themedText(.caption, color: .textTertiary)
@@ -67,7 +67,7 @@ struct MonthEntryRow: View {
 
     private var row: some View {
         Text(entry.title)
-            .themedText(.caption, color: entry.kind.token)
+            .themedText(.caption, color: entry.token)
             .lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())

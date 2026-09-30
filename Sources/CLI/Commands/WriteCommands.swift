@@ -134,7 +134,7 @@ enum WriteCommands {
             session,
             title: arguments.rest(from: 3),
             at: time,
-            minutes: arguments["minutes"].flatMap(Int.init),
+            minutes: try VaultAPI.blockMinutes(parsing: arguments["minutes"]),
             on: arguments["day"]
         )
         Writing.report(summary, arguments: arguments)

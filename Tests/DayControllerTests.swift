@@ -422,3 +422,116 @@ import Testing
     #expect(onDisk == source, "la nota del task è cambiata")
     vaultController.close()
 }
+
+// MARK: - Shortened, never overlapping (ADR-0075 §D2, §D3)
+
+@MainActor
+@Test func aBlockNearMidnightIsShortenedToFitTheDay() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(dayNoteWithProse, to: "Calendar/20260811.md")
+    let (dayController, vaultController) = try await makeController(vault: vault, store: StubCalendarStore())
+
+    let task = TaskParser.parse(line: "- [ ] Chiusura", sourcePath: "x.md", lineIndex: 0)!
+    let block = try #require(dayController.addBlock(from: task, preferredStart: 23 * 60 + 45))
+    try await waitUntil { dayController.blocks.map(\.id) == [block.id] }
+
+    #expect(block.durationMinutes == 15)
+    let onDisk = try String(contentsOf: vault.root.appending(path: "Calendar/20260811.md"), encoding: .utf8)
+    #expect(onDisk.contains("- 23:45-24:00 Chiusura"))
+    vaultController.close()
+}
+
+@MainActor
+@Test func aBlockIsShortenedBeforeTheNextOneRatherThanOverlappingIt() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(dayNoteWithProse + "\n\n## Timeline\n\n- 10:00-11:00 Riunione\n",
+                    to: "Calendar/20260811.md")
+    let (dayController, vaultController) = try await makeController(vault: vault, store: StubCalendarStore())
+
+    let task = TaskParser.parse(line: "- [ ] Preparare", sourcePath: "x.md", lineIndex: 0)!
+    let block = try #require(dayController.addBlock(from: task, preferredStart: 9 * 60 + 45))
+
+    #expect(block.startMinutes == 9 * 60 + 45)
+    #expect(block.endMinutes == 10 * 60)
+    vaultController.close()
+}
+
+/// The day view's only sentence surface is the drop banner, so a block that found no
+/// room says so there - not only in Impostazioni's problem list (R-07).
+@MainActor
+@Test func aBlockWithNoRoomLeftIsRefusedInTheBanner() async throws {
+    let vault = try TemporaryVault()
+    let note = dayNoteWithProse + "\n\n## Timeline\n\n- 23:00-24:00 Pieno\n"
+    try vault.write(note, to: "Calendar/20260811.md")
+    let (dayController, vaultController) = try await makeController(vault: vault, store: StubCalendarStore())
+    let path = vault.root.appending(path: "Calendar/20260811.md")
+    let before = try Data(contentsOf: path)
+
+    let task = TaskParser.parse(line: "- [ ] Tardi", sourcePath: "x.md", lineIndex: 0)!
+    #expect(dayController.addBlock(from: task, preferredStart: 23 * 60 + 30) == nil)
+
+    let drop = try #require(dayController.lastDrop)
+    #expect(drop.isRefusal)
+    #expect(drop.summary == "Blocco tempo non creato: nessuno spazio libero il 11/08/2026")
+    #expect(drop.journalID == nil)
+    // The problem list keeps the report's own sentence; only the banner speaks the
+    // interface's date.
+    #expect(dayController.problems.contains("blocco tempo: nessuno spazio libero il 20260811"))
+    #expect(try Data(contentsOf: path) == before)
+    vaultController.close()
+}
+
+/// The move has landed and is journalled; the block it asked for was not made. One
+/// banner says both, and «Annulla» still has the move to undo (ADR-0075 §D3).
+@MainActor
+@Test func anHourDropOnAFullHourMovesTheTaskAndSaysTheBlockWasNotMade() async throws {
+    let vault = try TemporaryVault()
+    try vault.write("- [ ] Chiamare >2026-08-10\n", to: "Lavoro.md")
+    try vault.write(dayNoteWithProse + "\n\n## Timeline\n\n- 23:00-24:00 Pieno\n",
+                    to: "Calendar/20260811.md")
+    let (dayController, vaultController) = try await makeController(vault: vault, store: StubCalendarStore())
+
+    let landed = await dayController.drop(
+        TaskDragPayload(path: "Lavoro.md", lineIndex: 0), on: testDay, at: TaskTime(hour: 23, minute: 30)
+    )
+
+    #expect(landed)
+    let drop = try #require(dayController.lastDrop)
+    #expect(drop.isRefusal)
+    #expect(drop.summary.contains("Spostato al"))
+    #expect(drop.summary.hasSuffix("Blocco non creato: nessuno spazio libero il 11/08/2026"))
+    #expect(drop.journalID != nil)
+    vaultController.close()
+}
+
+/// A block ending at 24:00 widens the Day timeline to 24, which draws a «24:00» row as the
+/// day's bottom edge. That row is not a drop target: a task cannot start at 24:00, and the
+/// row used to hand `TaskTime(hour: 24, minute: 0)` to `drop`, which `TaskTime` quietly
+/// clamped to 23:00 (ADR-0075 §D3). The window itself still reaches 24 (R-11).
+@MainActor
+@Test func theMidnightRowIsNotADropTarget() {
+    let widened = DayTimeline.hours(for: .dayDefault, startMinutes: [23 * 60], endMinutes: [24 * 60])
+    #expect(widened.last == 24)
+    #expect(DayTimeline.droppableHours(in: widened) == 6...23)
+    #expect(DayTimeline.droppableHours(in: .diaryDefault) == 6...23)
+    // A window ending before midnight keeps every drawn row a target, its last one included.
+    #expect(DayTimeline.droppableHours(in: .dayDefault) == 6...22)
+    #expect(DayTimeline.droppableHours(in: HourWindow(first: 22, last: 24)) == 22...23)
+}
+
+// MARK: - The Today pane's daily note (ADR-0075 §D7)
+
+/// By exact path: a note that merely has the date in its name is some other note written
+/// that day, and embedding it as the day's note put the wrong text under the timeline.
+@MainActor
+@Test func onlyTheDaysOwnNoteIsItsDailyNote() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(emptyDailyNote, to: "Calendar/20260811.md")
+    let (_, vaultController) = try await makeController(vault: vault, store: StubCalendarStore())
+    let day = CalendarDate(iso: "2026-09-25")!
+
+    #expect(vaultController.isDailyNote("Calendar/20260925.md", for: day))
+    #expect(!vaultController.isDailyNote("Calendar/20260925-riunione.md", for: day))
+    #expect(!vaultController.isDailyNote("Altro/20260925.md", for: day))
+    vaultController.close()
+}
