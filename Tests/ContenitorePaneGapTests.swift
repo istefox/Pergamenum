@@ -233,6 +233,24 @@ private func openedContainerDocument(
 }
 
 @MainActor
+@Test func aScopeOnAContainerRenamedFromTheNotePaneFallsBackToTutti() async throws {
+    let vault = try TemporaryVault()
+    let (harness, _) = try await openedContainerDocument(vault, description: "")
+    harness.contenitore.scope = .container("Contenitore/Fatture")
+    harness.contenitore.dropVanishedScope(in: harness.contenitore.containers())
+    #expect(harness.contenitore.scope == .container("Contenitore/Fatture"), "a scope still on disk stays")
+
+    // The Note pane's folder door, which the Contenitore's own verbs never see.
+    #expect(harness.vault.renameFolder(at: "Contenitore/Fatture", to: "Utenze") != nil)
+    // The door rescans in a task of its own; the pane's tree, and so `onChange(of: tree)`,
+    // moves with that rescan.
+    await harness.vault.rescan()
+    harness.contenitore.dropVanishedScope(in: harness.contenitore.containers())
+
+    #expect(harness.contenitore.scope == .all)
+}
+
+@MainActor
 @Test func trashingAContainerLeavesNoEditToSaveOnADeadPathAndClearsTheSelection() async throws {
     let vault = try TemporaryVault()
     let name = "Prova-\(UUID().uuidString.prefix(8))"

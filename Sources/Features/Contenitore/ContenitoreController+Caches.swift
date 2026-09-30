@@ -134,6 +134,16 @@ extension ContenitoreController {
         containerRevision += 1
     }
 
+    /// A scope naming a container that is no longer in `tree` falls back to «Tutti», rather than
+    /// an empty list under a name that no longer exists. The pane's own verbs follow the folder
+    /// (`ContenitoreCommandActions.followContainer`); this is for what they cannot see: an undo of
+    /// a move, or a rename or move made from the Note pane.
+    func dropVanishedScope(in tree: [ContainerNode]) {
+        guard case .container(let path) = scope,
+              !ContenitoreListModel.allPaths(tree).contains(where: { $0.path == path }) else { return }
+        scope = .all
+    }
+
     private static func readContainerTree(root: String, in session: VaultSession) -> [ContainerNode] {
         guard let rootURL = try? session.store.url(for: root) else { return [] }
         var folders: [String] = []

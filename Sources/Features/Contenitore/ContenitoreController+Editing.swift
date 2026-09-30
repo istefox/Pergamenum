@@ -71,6 +71,12 @@ extension ContenitoreController {
         if editor?.schedaPath != selection { retireEditor() }
     }
 
+    /// What a vault change (`releaseSession()`) says about an inspector edit it could not write.
+    static func lostEditSentence(for schedaPath: String) -> String {
+        let name = ((schedaPath as NSString).lastPathComponent as NSString).deletingPathExtension
+        return "Modifica alla scheda «\(name)» non salvata: il vault è cambiato prima che si potesse scrivere."
+    }
+
     /// Lets go of the current editor. One with something to write is kept in `retiredEditors`
     /// and settled in a task the quit can also wait on; a settled one is simply dropped.
     private func retireEditor() {

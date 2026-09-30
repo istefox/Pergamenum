@@ -378,6 +378,12 @@ move the previous copy aside rather than deleting it.
   own. Without it, any pratiche sync a run happens to trigger reads the person's actual mail, and
   a Full Disk Access grant is what makes that *succeed* rather than fail visibly. A new UI-test
   file wants the flag too.
+- **A UI test that launches the app must never let the Contenitore touch the real drop folder**,
+  the fourth flag of the same family. The suite passes `-disableContenitore YES` (ADR-0071), which
+  makes `ContenitoreController.isIsolated` true, so the controller never lists, ingests, creates or
+  moves anything. Without it, a run launched while `~/Pergamenum Drop` holds files moves them into
+  the test's throwaway vault, and they leave the person's machine with it. Every UI-test file
+  passes it, not only the one that opens the Contenitore. A new UI-test file wants the flag too.
 - **A UI test must not find a control by the words on it.** Prose grows: the quick
   switcher's placeholder gained «, o a una sezione con #…» when Quick Open learned to jump
   to headings, and two tests spent days looking for a field that no longer answered to
