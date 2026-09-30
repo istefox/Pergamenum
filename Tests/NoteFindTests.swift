@@ -253,6 +253,33 @@ private func session(_ query: String, over text: String, scope: NSRange? = nil) 
     #expect(locations == locations.sorted(by: >))
 }
 
+/// G2 H10 (ADR-0074): replace-all reaches the text view through `Coordinator.apply(_:to:)`,
+/// which writes every range inside one `shouldChangeText(inRanges:)` / `didChangeText` pair, so
+/// one Cmd+Z takes all of them back. This catches a missing undo registration, not a split within
+/// one event (event grouping merges those in production too). The plan is the find session's own
+/// (last match first), not
+/// a hand-built list, and the window-backed undo manager is `EmbedEditorFixtures`'.
+@MainActor
+@Test func oneUndoRestoresTheWholeReplaceAllMadeThroughTheCoordinator() throws {
+    let fixture = EmbedEditorFixtures.editor(text: note, hidesMarkup: false, root: nil, thumbnails: nil)
+    defer { fixture.window.orderOut(nil) }
+    let undo = try #require(fixture.textView.undoManager)
+    let find = session("trasmissibilità", over: note)
+    find.replacement = "trasmissione"
+    let planned = find.replacements(in: note)
+    #expect(planned.count == 3)
+
+    fixture.coordinator.apply(planned, to: fixture.textView)
+
+    #expect(fixture.textView.string.components(separatedBy: "trasmissione").count == 4)
+    #expect(!fixture.textView.string.localizedCaseInsensitiveContains("trasmissibilità"))
+
+    undo.undo()
+
+    #expect(fixture.textView.string == note)
+    #expect(!undo.canUndo, "one undo must have consumed the whole replace-all")
+}
+
 // MARK: Focus
 
 /// Scrolling to a match must not take the keyboard.

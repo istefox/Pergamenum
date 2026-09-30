@@ -63,6 +63,32 @@ import Testing
         #expect(lines[0].hasSuffix(")"))
     }
 
+    /// G2 H3 (ADR-0074): the toggle is one edit through `replaceAtomically`, so one undo puts
+    /// the original line back. The plain fixture has no window, hence no undo manager; this one
+    /// is hosted in an offscreen window that is never ordered front, the same shape
+    /// `NoteListEditingTests` uses.
+    @Test func oneUndoTakesTheCheckboxToggleBack() throws {
+        let note = "- [ ] prova\n"
+        let (textView, coordinator) = Self.editor(note: note)
+        let window = NSWindow(
+            contentRect: textView.frame, styleMask: [.titled], backing: .buffered, defer: false
+        )
+        window.contentView = textView
+        defer { window.orderOut(nil) }
+        textView.allowsUndo = true
+        window.makeFirstResponder(textView)
+        let undo = try #require(textView.undoManager)
+        let box = Self.glyphRect(in: textView)
+        #expect(box.width > 0)
+
+        #expect(coordinator.toggleCheckbox(at: CGPoint(x: box.midX, y: box.midY), in: textView))
+        #expect(textView.string.hasPrefix("- [x] prova @done("))
+
+        undo.undo()
+
+        #expect(textView.string == note)
+    }
+
     @Test func aSecondClickTogglesDoneBackToOpenAndDropsDone() {
         let (textView, coordinator) = Self.editor(note: "- [x] prova @done(2026-01-01)\n")
         let box = Self.glyphRect(in: textView)

@@ -206,6 +206,36 @@ import Testing
         #expect(url(of: "foto.png")?.host == MarkdownAttributedText.embedHost)
     }
 
+    /// G2 H8 (ADR-0074): `![[Nota#Sezione]]` reaches `TransclusionController.apply` with the
+    /// occurrence's section, and the rendition drawn holds that section's text only - neither
+    /// the sections around it nor the note's lead-in. A fresh coordinator, so the cache has no
+    /// earlier generation to answer from.
+    @Test func aSectionTransclusionRendersOnlyThatSectionsText() throws {
+        let note = "# Prove\n\nIntro.\n\n## Prima\n\nTesto della prima.\n\n"
+            + "## Seconda\n\nTesto della seconda.\n\n## Terza\n\nTesto della terza.\n"
+        let source = TransclusionSource(
+            resolve: { reference in
+                guard reference == "Prove" else { return nil }
+                return TransclusionSource.Resolved(title: "Prove", relativePath: "Prove.md", text: note)
+            },
+            generation: 1
+        )
+        let (textView, coordinator) = Self.editor(transclusions: source)
+        let host = "# Ospite\n\n![[Prove#Seconda]]\n\ncoda\n"
+        textView.string = host
+        coordinator.applyStyling(to: textView, theme: .emergency)
+        coordinator.applyTransclusions(to: textView, theme: .emergency)
+
+        let offset = (host as NSString).range(of: "![[Prove#Seconda]]").location
+        let rendition = try #require(coordinator.transclusion.lastRenditions[offset])
+        let drawn = rendition.body.string
+        #expect(drawn.contains("Testo della seconda"))
+        #expect(!drawn.contains("Testo della prima"))
+        #expect(!drawn.contains("Testo della terza"))
+        #expect(!drawn.contains("Intro."))
+        #expect(rendition.title == "Prove › Seconda")
+    }
+
     @Test func withoutAVaultBehindItTheLineStaysAnOrdinaryLine() {
         // The Diario's preview and the mockups have no vault to look anything up in, and
         // the honest behaviour there is to leave the text alone.
