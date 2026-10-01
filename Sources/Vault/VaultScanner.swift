@@ -195,11 +195,21 @@ struct VaultScanner: Sendable {
     /// from FSEvents rather than from an enumerator the per-URL `standardizedFileURL` is
     /// the work, not the waste: nothing has canonicalised that spelling yet.
     static func relativePath(of url: URL, under root: URL) -> String {
-        let rootPath = root.standardizedFileURL.path(percentEncoded: false)
-        let filePath = url.standardizedFileURL.path(percentEncoded: false)
+        let rootPath = comparablePath(of: root)
+        let filePath = comparablePath(of: url)
         guard filePath.hasPrefix(rootPath) else { return url.lastPathComponent }
         let trimmed = filePath.dropFirst(rootPath.count)
         return trimmed.hasPrefix("/") ? String(trimmed.dropFirst()) : String(trimmed)
+    }
+
+    /// `standardizedFileURL` drops a leading `/private` only from a path that exists, so under a
+    /// root opened as `/private/tmp/…` a file not created yet - a move target - kept the prefix
+    /// its root had lost, failed the test above and came back as its bare name: the vault root
+    /// (ADR-0076 implementation notes). The prefix is dropped here from both sides alike, which
+    /// keeps the comparison exact even for a directory really named `/private`.
+    private static func comparablePath(of url: URL) -> String {
+        let path = url.standardizedFileURL.path(percentEncoded: false)
+        return path.hasPrefix("/private/") ? String(path.dropFirst("/private".count)) : path
     }
 }
 

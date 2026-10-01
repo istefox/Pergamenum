@@ -521,6 +521,16 @@ Two changes Stefano asked for on the Debug build, shipped in PR #761.
   AppKit's table double-action, which no hosted-view test can drive. The existing M6 step
   (a double-click on body text, then Backspace) is the regression check for check 5. The footer is
   pinned by a hosted-view test.
+- *Hand check, «Sposta in…» on a `/private` vault*: on the hand-check vault, opened as
+  `/private/tmp/…`, «Sposta in…» put the message at the vault root and the undo moved nothing.
+  The anchored call was carried and carried back correctly. The cause predates this ADR (ADR-0068's
+  `PraticaFileOperations`): `VaultScanner.relativePath(of:under:)` compared `standardizedFileURL`
+  paths, and `standardizedFileURL` drops a leading `/private` only from a path that exists. So a
+  move target, which does not exist yet, failed the prefix test against its root and fell back to its
+  bare name. The function now drops the prefix from both sides, which fixes move, copy, undo and the
+  watcher's paths for a deleted file in one place. A vault under the home folder was never affected.
+  Pinned by `VaultScannerRelativePathTests` and
+  `PraticaFileOperationsSessionTests.moveFilesAndMoveBackLandRightUnderAPrivateSpelledRoot`.
 
 ## References
 

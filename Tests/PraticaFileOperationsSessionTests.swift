@@ -85,6 +85,43 @@ private func praticaDetail(notePath: String) -> PraticaRowDetail {
         #expect(stillOpen, "an open tab on the moved note must follow it to its new path, not close")
     }
 
+    /// ADR-0076 implementation notes (hand check): with the vault opened as `/private/…`,
+    /// the move target - not existing yet - used to resolve to its bare file name, so the
+    /// message landed at the vault root and the undo moved it nowhere.
+    @Test func moveFilesAndMoveBackLandRightUnderAPrivateSpelledRoot() async throws {
+        let vault = try TemporaryVault()
+        try vault.write(noteWithAttachmentTokens, to: "Rossi/email/msg.md")
+        try vault.write("da: a@b.it", to: "Rossi/email/msg.eml")
+        let plain = vault.root.path(percentEncoded: false)
+        let root = URL(
+            fileURLWithPath: plain.hasPrefix("/private/") ? plain : "/private" + plain, isDirectory: true
+        )
+        func exists(_ path: String) -> Bool {
+            FileManager.default.fileExists(
+                atPath: root.appending(path: path, directoryHint: .notDirectory).path(percentEncoded: false)
+            )
+        }
+
+        let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+        await controller.open(root)
+        let pratiche = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        let ops = PraticaFileOperations(vault: controller, pratiche: pratiche)
+
+        let (moved, _) = await ops.moveFiles(of: praticaDetail(notePath: "Rossi/email/msg.md"), to: "Bianchi")
+
+        #expect(exists("Bianchi/email/msg.md"), "the message must land in the destination's email folder")
+        #expect(exists("Bianchi/email/msg.eml"))
+        #expect(!exists("msg.md"), "never at the vault root")
+        #expect(!exists("Rossi/email/msg.md"))
+
+        await ops.moveBack(moved)
+
+        #expect(exists("Rossi/email/msg.md"), "the undo must put the message back where it was")
+        #expect(exists("Rossi/email/msg.eml"))
+        #expect(!exists("Bianchi/email/msg.md"))
+        #expect(!exists("msg.md"))
+    }
+
     // MARK: - "Escludi" (R-08): the trash goes through the session and still reaches the watcher
 
     /// ADR-0064 §D6: an in-app trash stays visible to the watcher on purpose - no absence
