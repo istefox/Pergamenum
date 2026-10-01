@@ -277,6 +277,8 @@ final class CommandActions {
             }
         case .unfoldAll:
             vault.foldedEntries = []
+        case .toggleFrontmatter:
+            vault.toggleFrontmatter()
         case .goBack, .goForward:
             walkHistory(command)
         default:
