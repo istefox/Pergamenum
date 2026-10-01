@@ -539,6 +539,32 @@ private func run(
         vaultController.close()
     }
 
+    /// The test above starts every writer from an empty ledger, where four of the six change
+    /// nothing and would leave the file alone even without the refusal. Seeded here with the two
+    /// pratiche every writer has something to change in (PG-192): the seed goes through the door
+    /// as a refused write, which §D3 still applies in memory, so the writer meets a real ledger and
+    /// only the refusal keeps the file intact. The report is the seed's, so it is not asserted again.
+    @Test(arguments: LedgerWriter.allCases)
+    private func anUnreadableLedgerIsLeftByteIdenticalByEveryWriterThatWouldChangeIt(
+        _ writer: LedgerWriter
+    ) async throws {
+        let vault = try TemporaryVault()
+        let (vaultController, session) = try await openedController(on: vault)
+        try plantCorruptLedger(for: session)
+        let pratiche = newController()
+        let seeded = twoPratiche()
+        let seeding = pratiche.updateLedger(.live(session)) { $0 = seeded }
+        #expect(seeding == .refused, "precondition: the seed is refused too")
+        #expect(pratiche.ledger == seeded, "precondition: and applied in memory")
+
+        run(writer, on: pratiche, in: vaultController, session: session)
+
+        #expect(pratiche.ledger != seeded, "\(writer): the writer really changed the ledger")
+        #expect(try bytes(of: session) == corruptBytes, "\(writer): and the unreadable file was still not altered")
+        #expect(pratiche.ledgerOrigin == .unreadable(url(of: session)), "\(writer)")
+        vaultController.close()
+    }
+
     @Test func allSixWritersInTurnReportAnUnreadableLedgerExactlyOnce() async throws {
         let vault = try TemporaryVault()
         let (vaultController, session) = try await openedController(on: vault)
