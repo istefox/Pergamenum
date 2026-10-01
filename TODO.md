@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=351 -->
+<!-- project-tasks: prefix=PG lastId=352 -->
 # PROJECT TASKS
 
-Updated: 2026-10-01 · Open: 83 (P1: 0) · In progress: 1
+Updated: 2026-10-01 · Open: 84 (P1: 0) · In progress: 1
 
 ## GitHub Issues
 - [ ] `PG-347` -> #762 **P3** [feat] Align the editor's emphasis rules (`MarkdownStyler`) with the reading parser's flanking rules: after ADR-0077 §D5, `file_name_here` shows plain in the reading surfaces but still italicises `name` in the editor, and `2 * 3 * 4` differs the same way — `Sources/Features/Editor/MarkdownStyler.swift` · `docs/adr/0077-html-exporter-renders-from-the-shared-parsers.md` §D5 <!-- src:session kind:roadmap opened:2026-09-30 adr:0077 runs:3 promote:2026-10-01 -->
@@ -64,6 +64,7 @@ Updated: 2026-10-01 · Open: 83 (P1: 0) · In progress: 1
 
 ## Open Issues
 - [ ] `PG-351` **P3** [docs] The frontmatter toggle (PR #759) extends ADR-0074's fold pass and moves the frontmatter extent into Core (`NoteFrontmatter`), but no ADR records it; the approved plan called for a short one — `Sources/Core/Markdown/NoteFrontmatter.swift` <!-- src:session kind:fix opened:2026-10-01 runs:2 -->
+- [ ] `PG-352` **P3** [fix] `ContenitoreEditorTests.clickingAnotherRowHandsTheEditToTheBackgroundAndTheQuitCanWaitForIt()` failed once in CI (`ContenitoreEditorTests.swift:180`, `!contenitore.hasUnsettledEdits`, 0.061 s) on PR #758's run and passed on #760's with the same code; presumed timing-dependent, not reproduced locally — `Tests/ContenitoreEditorTests.swift` <!-- src:session kind:fix opened:2026-10-01 runs:2 -->
 - [ ] `PG-348` **P3** [fix] Two PG-334 follow-up checks never run after #744: the real vault-switch `NSAlert` on a Debug build (a dirty note, then «Cartelle recenti»: Salva / Non salvare / Annulla), and the bail branch of `switchVault(to:ask:)` after `open(_:)` fails, untested without a production seam — `Sources/App/VaultController+VaultSwitch.swift` <!-- src:session kind:fix opened:2026-10-01 runs:2 -->
 - [ ] `PG-346` **P3** [fix] `LintFinding` renders `vocabularyUnavailable` through Swift reflection with the module name inside (`vocabularyUnavailable(Pergamenum.TagNamespace.type)` in the test host); `perg` and `pergamenum-mcp` presumably write their own module name there, so a value in the protected lint JSON would differ per binary (inferred, not measured on the tools) — `Tests/LintFindingStringsTests.swift:95` · `Sources/Connector/VaultPayloads.swift` <!-- src:review kind:fix opened:2026-09-30 pr:737 runs:4 -->
 - [ ] `PG-309` **P3** [fix] `VaultWatcherTests.droppedWhileBusy()` failed once in a full `PergamenumTests` run on 2026-09-28 19:14 (Stop hook, PG-260 tree, which touched neither the watcher nor the test): «The test runner exited with code 0 before finishing running tests», no assertion; green on the next full run. Not yet reproduced, cause unknown; the test drives `VaultWatcher` teardown through `deinit` with events in flight, the path of the use-after-free fixed in `bd5b571` — `Tests/VaultWatcherTests.swift:102` <!-- src:session kind:fix opened:2026-09-28 pr:662 runs:22 promote:declined -->
