@@ -147,6 +147,7 @@ extension EditorColumnView {
             // render's own `note.text`, rather than trusting a value computed against a
             // possibly older version of it.
             foldedEntries: foldedOrdinals(ofOffsets: tab?.foldedEntries ?? [], in: note.text),
+            hidesFrontmatter: tab?.hidesFrontmatter ?? false,
             // `entry` here is the heading's own offset, straight from `NoteTextView`'s
             // fold-badge click (`unfold(at:in:)`) - never re-derived through `outlineRanges`,
             // which is exactly the stale lookup that used to name the wrong section.

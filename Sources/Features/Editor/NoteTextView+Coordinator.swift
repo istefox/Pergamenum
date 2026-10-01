@@ -179,8 +179,10 @@ extension NoteTextView {
 
         /// `FoldController.apply(to:folded:theme:)`, kept here under the name `updateNSView`
         /// calls (ADR-0074 §D5, `NoteTextView+Folding.swift`).
-        func applyFolding(to textView: NSTextView, folded: Set<Int>, theme: Theme) {
-            folding.apply(to: textView, folded: folded, theme: theme)
+        func applyFolding(
+            to textView: NSTextView, folded: Set<Int>, hidesFrontmatter: Bool = false, theme: Theme
+        ) {
+            folding.apply(to: textView, folded: folded, hidesFrontmatter: hidesFrontmatter, theme: theme)
         }
 
         func textDidChange(_ notification: Notification) {

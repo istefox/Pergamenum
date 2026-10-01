@@ -48,6 +48,9 @@ extension NoteTextView {
         /// and a fold anchored to a position rather than to the heading itself would silently
         /// re-target the wrong section (PG-021 follow-up, `FoldStateOrdinalIndexStalenessTests`).
         var foldedEntries: Set<Int> = []
+        /// Whether the frontmatter block is left out of the layout (`NoteTab.hidesFrontmatter`).
+        /// Applied by the same pass as the folds, which is why it rides in this group.
+        var hidesFrontmatter = false
         /// Called with the UTF-16 offset of the heading whose fold badge was clicked (PG-021) -
         /// the folded heading's own live layout offset, never re-derived through `outlineRanges`.
         /// `OutlinePane`'s chevron reaches the same `VaultController.toggleFold`, so a section

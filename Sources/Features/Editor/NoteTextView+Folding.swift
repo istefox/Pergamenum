@@ -31,9 +31,18 @@ final class FoldController {
     /// without a character changing - the same trick the reveal-on-caret probe used in
     /// the TextKit study. Skipped entirely when nothing is folded and nothing was, so
     /// an ordinary note pays nothing for this.
-    func apply(to textView: NSTextView, folded: Set<Int>, theme: Theme) {
-        guard decorations.isFolding || !folded.isEmpty else { return }
-        let layout = NoteFolding.layout(in: textView.string, foldedEntries: folded)
+    ///
+    /// `hidesFrontmatter` leaves the frontmatter block's lines out of the layout through the same
+    /// hidden-line set a fold uses, so the text itself is never touched.
+    func apply(to textView: NSTextView, folded: Set<Int>, hidesFrontmatter: Bool = false, theme: Theme) {
+        // `isFolding` reads folded headings only: a hidden frontmatter block leaves it false, so
+        // showing the block again must also look at the layout last applied, or it never reverts.
+        guard decorations.isFolding || !folded.isEmpty || hidesFrontmatter
+            || !lastFoldLayout.hiddenLineOffsets.isEmpty
+        else { return }
+        var layout = NoteFolding.layout(in: textView.string, foldedEntries: folded)
+        let frontmatter = hidesFrontmatter ? NoteFolding.hiddenFrontmatter(in: textView.string) : nil
+        if let frontmatter { layout.hiddenLineOffsets.formUnion(frontmatter.lineOffsets) }
         guard layout != lastFoldLayout else { return }
         lastFoldLayout = layout
 
@@ -48,7 +57,7 @@ final class FoldController {
         if let manager = textView.textLayoutManager {
             manager.invalidateLayout(for: manager.documentRange)
         }
-        rescueCaret(in: textView, from: layout)
+        rescueCaret(in: textView, from: layout, frontmatter: frontmatter)
     }
 
     /// Moves the caret out of a section that has just been folded.
@@ -57,13 +66,18 @@ final class FoldController {
     /// insertion point with nowhere to be drawn and nowhere to type. It goes to the
     /// heading that swallowed it, which is where a person would look for it. The rule is
     /// `CaretRescue`'s (ADR-0074 §D8); the owner is the nearest folded heading at or
-    /// above the caret, and the caret is placed at once rather than after `endEditing`.
-    private func rescueCaret(in textView: NSTextView, from layout: NoteFolding.Layout) {
+    /// above the caret, and the caret is placed at once rather than after `endEditing`. A caret
+    /// inside a hidden frontmatter block has no heading to go to: it goes to the first line after
+    /// the block.
+    private func rescueCaret(
+        in textView: NSTextView, from layout: NoteFolding.Layout, frontmatter: NoteFolding.HiddenFrontmatter?
+    ) {
         let selection = textView.selectedRange()
         let heading = CaretRescue.target(
             for: selection, hidden: layout.hiddenLineOffsets, in: textView.string as NSString
-        ) { _ in
-            layout.foldedHeadings.keys.filter { $0 <= selection.location }.max() ?? 0
+        ) { line in
+            if let frontmatter, frontmatter.lineOffsets.contains(line) { return frontmatter.firstVisibleOffset }
+            return layout.foldedHeadings.keys.filter { $0 <= selection.location }.max() ?? 0
         }
         CaretRescue.place(heading, in: textView)
     }

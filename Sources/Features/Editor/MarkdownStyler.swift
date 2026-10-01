@@ -110,7 +110,7 @@ enum MarkdownStyler {
     static func spans(in text: String) -> [StyledRange] {
         var result: [StyledRange] = []
 
-        let bodyStart = frontmatterRange(in: text).map { range -> String.Index in
+        let bodyStart = NoteFrontmatter.range(in: text).map { range -> String.Index in
             result.append(StyledRange(range: range, span: .frontmatter))
             return range.upperBound
         } ?? text.startIndex
@@ -193,24 +193,6 @@ enum MarkdownStyler {
             merged[merged.count - 1] = NSRange(location: last.location, length: end - last.location)
         }
         return merged
-    }
-
-    /// The `---`-delimited block, only when it opens on the very first line.
-    ///
-    /// The closing `---` is the first line after the opening that starts with it, whichever
-    /// ending the line before it has: a `"\n---"` search never matched in a CRLF note, where
-    /// `"\r\n"` is one `Character`, so its frontmatter was styled as body (PG-274).
-    private static func frontmatterRange(in text: String) -> Range<String.Index>? {
-        guard text.hasPrefix("---") else { return nil }
-        var index = text.index(text.startIndex, offsetBy: 3)
-        while let lineEnd = text[index...].firstIndex(where: LineBreak.isTerminator) {
-            let lineStart = text.index(after: lineEnd)
-            if text[lineStart...].hasPrefix("---") {
-                return text.startIndex..<text.index(lineStart, offsetBy: 3)
-            }
-            index = lineStart
-        }
-        return nil
     }
 
     /// A CRLF line ends before its `\r\n`, one `Character`, so it is styled as a line of its own
