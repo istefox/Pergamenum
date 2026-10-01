@@ -1,4 +1,4 @@
-<!-- project-tasks: prefix=PG lastId=350 -->
+<!-- project-tasks: prefix=PG lastId=352 -->
 # PROJECT TASKS
 
 Updated: 2026-10-01 · Open: 84 (P1: 0) · In progress: 1
@@ -63,7 +63,8 @@ Updated: 2026-10-01 · Open: 84 (P1: 0) · In progress: 1
 - [ ] `#236` PG-136: Dead state and dead tests that each need a yes/no rather than a refactor <!-- src:github state:OPEN labels:bug -->
 
 ## Open Issues
-- [ ] `PG-350` **P3** [fix] `ContenitoreEditorTests.clickingAnotherRowHandsTheEditToTheBackgroundAndTheQuitCanWaitForIt()` failed once in CI (`ContenitoreEditorTests.swift:180`, `!contenitore.hasUnsettledEdits`, 0.061 s) on PR #758's run and passed on #760's with the same code; presumed timing-dependent, not reproduced locally — `Tests/ContenitoreEditorTests.swift` <!-- src:session kind:fix opened:2026-10-01 runs:2 -->
+- [ ] `PG-351` **P3** [docs] The frontmatter toggle (PR #759) extends ADR-0074's fold pass and moves the frontmatter extent into Core (`NoteFrontmatter`), but no ADR records it; the approved plan called for a short one — `Sources/Core/Markdown/NoteFrontmatter.swift` <!-- src:session kind:fix opened:2026-10-01 runs:2 -->
+- [ ] `PG-352` **P3** [fix] `ContenitoreEditorTests.clickingAnotherRowHandsTheEditToTheBackgroundAndTheQuitCanWaitForIt()` failed once in CI (`ContenitoreEditorTests.swift:180`, `!contenitore.hasUnsettledEdits`, 0.061 s) on PR #758's run and passed on #760's with the same code; presumed timing-dependent, not reproduced locally — `Tests/ContenitoreEditorTests.swift` <!-- src:session kind:fix opened:2026-10-01 runs:2 -->
 - [ ] `PG-348` **P3** [fix] Two PG-334 follow-up checks never run after #744: the real vault-switch `NSAlert` on a Debug build (a dirty note, then «Cartelle recenti»: Salva / Non salvare / Annulla), and the bail branch of `switchVault(to:ask:)` after `open(_:)` fails, untested without a production seam — `Sources/App/VaultController+VaultSwitch.swift` <!-- src:session kind:fix opened:2026-10-01 runs:2 -->
 - [ ] `PG-346` **P3** [fix] `LintFinding` renders `vocabularyUnavailable` through Swift reflection with the module name inside (`vocabularyUnavailable(Pergamenum.TagNamespace.type)` in the test host); `perg` and `pergamenum-mcp` presumably write their own module name there, so a value in the protected lint JSON would differ per binary (inferred, not measured on the tools) — `Tests/LintFindingStringsTests.swift:95` · `Sources/Connector/VaultPayloads.swift` <!-- src:review kind:fix opened:2026-09-30 pr:737 runs:4 -->
 - [ ] `PG-309` **P3** [fix] `VaultWatcherTests.droppedWhileBusy()` failed once in a full `PergamenumTests` run on 2026-09-28 19:14 (Stop hook, PG-260 tree, which touched neither the watcher nor the test): «The test runner exited with code 0 before finishing running tests», no assertion; green on the next full run. Not yet reproduced, cause unknown; the test drives `VaultWatcher` teardown through `deinit` with events in flight, the path of the use-after-free fixed in `bd5b571` — `Tests/VaultWatcherTests.swift:102` <!-- src:session kind:fix opened:2026-09-28 pr:662 runs:22 promote:declined -->
@@ -136,6 +137,7 @@ Their GitHub issues were closed 2026-09-12 as "not active work" — kept here as
 
 ## Backlog / To Add
 
+- [ ] `PG-350` **P3** [feat] Command and shortcut for the frontmatter toggle: the note tab bar button (PR #759) has no menu entry or shortcut, so the toggle is mouse only; add it to the command catalogue (ADR-0023) and the shortcut store — `Sources/Features/Editor/NoteTabBar.swift` <!-- src:session kind:roadmap opened:2026-10-01 runs:2 -->
 - [ ] `PG-349` **P3** [refactor] Follow-up to PG-146 (c3e's real duplication): `NoteViolations` defaults its five remaining fields to `[]`, as `taskMarkers` and `categories` already do, and the seven single-axis construction sites write only their axis (`ViewBoardRenderer.swift:141`, `DayController+TaskDrop.swift:34`, `ContenitoreCommand.swift:189`, `NoteRowMenu.swift:109`, `WorkspaceFolderSheets.swift:318`, `ConformanceText.swift:132`, `VaultController+Conformance.swift:16`); same PR fixes the stale comments PG-146 left outside its fence: `CompletingTextView.swift:112`, `MarkdownAttributedText.swift:25`, `VaultController+Notes.swift:189`, the misplaced doc at `NoteTextView+Coordinator.swift:396-406`, `PratichePane+Links.swift:7`, `EmbedAttachment.swift:139`, `CardTextView.swift:44-46`. Touches Core and the editor: perg/mcp builds and a full GUI `--affected` — `docs/plans/pg-146-workspace-structure.md` <!-- src:session kind:roadmap opened:2026-10-01 runs:2 -->
 
 `scripts/uitests.sh` run by hand on 2026-09-10 (114 tests, 88-1400s runs depending on the pass): first
