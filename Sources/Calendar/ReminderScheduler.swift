@@ -26,8 +26,9 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     private let center = UNUserNotificationCenter.current()
 
     /// Where a tapped notification's route goes. Wired once by `PergamenumApp.init` to
-    /// `VaultController.handle(_:)`, the app's one route door; `nil` in tests, where a tap
-    /// is classified by `tap(actionIdentifier:userInfo:)` and delivered nowhere.
+    /// `VaultController.handle(_:)`, the app's one route door; `nil` where a test only
+    /// classifies a tap through `tap(actionIdentifier:userInfo:)`, and a recording closure
+    /// in `Tests/ReminderDeliveryTests.swift`.
     @ObservationIgnored var openRoute: (@MainActor (PergamenumRoute) async -> Void)?
 
     /// The `userInfo` key a scheduled notification carries its route under.
@@ -35,9 +36,14 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
 
     private static let log = Logger(subsystem: AppInfo.bundleIdentifier, category: "reminders")
 
-    override init() {
+    /// Takes the process's notification delegate slot unless told not to.
+    ///
+    /// `becomesDelegate: false` exists for the unit suite only: a scheduler built in a test
+    /// must not take the host process's real delegate slot (`Tests/ReminderTapTests.swift`'s
+    /// header records the hazard). The app always calls `ReminderScheduler()`.
+    init(becomesDelegate: Bool = true) {
         super.init()
-        center.delegate = self
+        if becomesDelegate { center.delegate = self }
     }
 
     /// Shows the notification even when Pergamenum is the app in front.
@@ -73,7 +79,9 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     /// never a problem banner). The raw route string is never logged: it carries note
     /// paths (PG-125). No `NSApp.activate`: a default-action tap already brings the app
     /// forward.
-    private func deliver(_ tap: ReminderTap) async {
+    ///
+    /// Internal, not private: read by `Tests/ReminderDeliveryTests.swift` (ADR-0045 §D3).
+    func deliver(_ tap: ReminderTap) async {
         switch tap {
         case .open(let route):
             Self.log.notice("tap su notifica: \(route.kind, privacy: .public)")
