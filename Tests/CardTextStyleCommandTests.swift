@@ -8,7 +8,7 @@ import Testing
 //
 // `WorkspaceController.setTextColor(_:forNodeIDs:)` and `.setTextAlignment(_:forNodeIDs:)`
 // are the write path the two new `CardCommand` cases (`.textColor`, `.textAlign`) call
-// through - mirroring `setColor(_:forNodeIDs:)`'s own shape (`WorkspaceController.swift:536`):
+// through - mirroring `setColor(_:forNodeIDs:)`'s own shape (`WorkspaceController+Nodes.swift`):
 // one `mutate` call writing at most one prefixed key, removing it rather than writing a
 // default when the value is cleared.
 //

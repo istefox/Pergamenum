@@ -3,11 +3,10 @@ import SwiftUI
 
 /// One of the eight resize grips of SPEC §6.3.
 ///
-/// A view of its own rather than a method on the board layer, for two reasons the
-/// method could not cover: the hover cursor needs state to pop what it pushed, and
-/// the grip needs a target larger than the square it draws.
+/// The hover cursor and the state that pops what it pushed belong to `BoardGripView`;
+/// this view holds no state of its own. It exists for the resize gesture and for a hit
+/// target (`targetSize`) larger than the square the grip draws.
 struct ResizeHandleView: View {
-    @Environment(\.theme) private var theme
     let workspace: WorkspaceController
     let node: CanvasNode
     let handle: BoardGeometry.Handle
@@ -17,43 +16,12 @@ struct ResizeHandleView: View {
     /// Shift, for the proportional resize of SPEC §6.3.
     let modifiers: EventModifiers
 
-    @State private var isHovering = false
-
-    private var visualSize: CGFloat {
-        BoardGeometry.boardUnits(BoardGeometry.handleScreenSize, at: workspace.zoom)
-    }
-
     private var targetSize: CGFloat {
         BoardGeometry.boardUnits(BoardGeometry.handleTargetScreenSize, at: workspace.zoom)
     }
 
     var body: some View {
-        RoundedRectangle(cornerRadius: visualSize / 4, style: .continuous)
-            .fill(theme.color(.surfaceCard))
-            .overlay(
-                RoundedRectangle(cornerRadius: visualSize / 4, style: .continuous)
-                    .strokeBorder(theme.color(.canvasSelection), lineWidth: visualSize / 6)
-            )
-            .frame(width: visualSize, height: visualSize)
-            // The target is more than twice what is drawn. The extra is transparent,
-            // so this costs nothing visually and is the whole reason a corner can be
-            // grabbed at all.
-            .frame(width: targetSize, height: targetSize)
-            .contentShape(Rectangle())
-            .onHover { hovering in
-                isHovering = hovering
-                if hovering { handle.resizeCursor.push() } else { NSCursor.pop() }
-            }
-            // Popped here too, and this is not belt and braces: deselecting the card
-            // while the pointer sits on a grip takes the view away without ever
-            // calling `onHover` again, and the resize cursor would stay on the board
-            // for the rest of the session.
-            .onDisappear {
-                if isHovering {
-                    NSCursor.pop()
-                    isHovering = false
-                }
-            }
+        BoardGripView(handle: handle, zoom: workspace.zoom)
             // High priority, so the grip wins against the card's own drag underneath
             // it instead of racing it.
             .highPriorityGesture(resizeGesture)
@@ -84,6 +52,57 @@ struct ResizeHandleView: View {
                 )
             }
             .onEnded { _ in workspace.endResize() }
+    }
+}
+
+/// What a board grip looks like and what the pointer shows over it: the eight resize grips of
+/// `ResizeHandleView` and the eight crop grips of `BoardCropEditor` draw through this one view,
+/// which is ADR-0020's "the crop grips reuse the resize grip's visual language" made literal.
+///
+/// The look and the cursor only. Each caller adds its own gesture and its own `.position`,
+/// because those are what differ between a resize and a crop.
+struct BoardGripView: View {
+    @Environment(\.theme) private var theme
+    let handle: BoardGeometry.Handle
+    let zoom: CGFloat
+
+    @State private var isHovering = false
+
+    private var visualSize: CGFloat {
+        BoardGeometry.boardUnits(BoardGeometry.handleScreenSize, at: zoom)
+    }
+
+    private var targetSize: CGFloat {
+        BoardGeometry.boardUnits(BoardGeometry.handleTargetScreenSize, at: zoom)
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: visualSize / 4, style: .continuous)
+            .fill(theme.color(.surfaceCard))
+            .overlay(
+                RoundedRectangle(cornerRadius: visualSize / 4, style: .continuous)
+                    .strokeBorder(theme.color(.canvasSelection), lineWidth: visualSize / 6)
+            )
+            .frame(width: visualSize, height: visualSize)
+            // The target is more than twice what is drawn. The extra is transparent,
+            // so this costs nothing visually and is the whole reason a corner can be
+            // grabbed at all.
+            .frame(width: targetSize, height: targetSize)
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                isHovering = hovering
+                if hovering { handle.resizeCursor.push() } else { NSCursor.pop() }
+            }
+            // Popped here too, and this is not belt and braces: deselecting the card
+            // while the pointer sits on a grip takes the view away without ever
+            // calling `onHover` again, and the resize cursor would stay on the board
+            // for the rest of the session.
+            .onDisappear {
+                if isHovering {
+                    NSCursor.pop()
+                    isHovering = false
+                }
+            }
     }
 }
 

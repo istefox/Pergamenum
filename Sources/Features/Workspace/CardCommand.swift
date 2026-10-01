@@ -79,8 +79,8 @@ enum CardCommand: String, CaseIterable, Sendable {
     /// glyph.
     ///
     /// `eye` is deliberately *not* `.open`'s symbol: it already means "Anteprima rapida"
-    /// in this same board toolbar (`WorkspaceView.swift:261`), and reusing it would make
-    /// the two commands indistinguishable.
+    /// in this same board toolbar (the Anteprima button, `WorkspaceView+Toolbar.swift`), and
+    /// reusing it would make the two commands indistinguishable.
     var symbol: String {
         switch self {
         case .open: "arrow.up.forward.square"

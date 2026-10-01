@@ -3,8 +3,8 @@ import Foundation
 /// Duplica (ADR-0023 §D11, R-10/R-11): a new node per target, offset by one grid step
 /// (`WorkspaceController.gridStep`) on both axes, referencing the same file. No file on
 /// disk is touched - `mutate` alone, no `creatingOnDisk`, since nothing is created
-/// (`WorkspaceController.swift:231-233` would otherwise block the undo on a claimed
-/// creation that never happened).
+/// (`apply(_:)`'s `.blocked` branch in `WorkspaceController.swift` would otherwise block
+/// the undo on a claimed creation that never happened).
 ///
 /// Plan `docs/superpowers/plans/2026-08-25-universal-command-surface-parity.md`, Task 2
 /// (R-10, R-11).
@@ -38,7 +38,7 @@ extension WorkspaceController {
             var copy = node
             copy.id = CanvasID.generate(avoiding: taken)
             // One cell down-right. The grid the board draws and the grid it snaps to are
-            // the same constant (`WorkspaceController.swift:265-268`), so the copy lands
+            // the same constant (`WorkspaceController.gridStep`), so the copy lands
             // aligned whether or not snapping is on.
             copy.x += Self.gridStep
             copy.y += Self.gridStep

@@ -25,7 +25,7 @@ extension CardTextView.Coordinator {
     /// Skipped entirely when nothing is folded and nothing was, so a board of ordinary cards -
     /// which is every board until somebody folds something - pays a set-emptiness check per update
     /// and nothing else. The badge's own colours are not set here: `applyStyling` already writes
-    /// them on every pass (`CardTextView.swift`, the two lines above `decorations.apply(hiddenMarkers:
+    /// them on every pass (`CardTextView+Styling.swift`, the two lines above `decorations.apply(hiddenMarkers:
     /// hidingMarkup:)`), so a fold arriving between two styling passes still draws themed.
     func applyFolding(to textView: NSTextView) {
         guard decorations.isFolding || !parent.foldedEntries.isEmpty else { return }

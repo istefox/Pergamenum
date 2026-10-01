@@ -1,5 +1,71 @@
 import Foundation
 
+/// The board's tool catalogue and its tap classification: `Tool` itself, with its
+/// `title`/`symbol`/`shortcut`, and what each tool does when the board is tapped - an
+/// extension file of `WorkspaceController` (ADR-0045 §D2), holding no stored state.
+///
+/// `Tool` is declared inside `extension WorkspaceController`, so it is still spelled
+/// `WorkspaceController.Tool` everywhere it is read.
+extension WorkspaceController {
+    /// The tools of SPEC §6.4, ten of the eleven it lists: ADR-0027 §D8 unified Nota
+    /// into Testo, so `.text` is the only tool of that family and the `n` key is free.
+    /// `forms` is excluded from v1 and kept only so the toolbar layout does not have to
+    /// be redone in v2.
+    enum Tool: String, CaseIterable, Identifiable, Sendable {
+        case select, text, folder, image, document, link, todo, forms, drawing, arrow
+
+        var id: String { rawValue }
+
+        var isAvailable: Bool { self != .forms }
+
+        /// Single-key shortcut. Tools without one are not reachable from the keyboard.
+        var shortcut: String? {
+            switch self {
+            case .select: "v"
+            case .text: "t"
+            case .folder: "f"
+            case .image: "i"
+            case .document: "d"
+            case .link: "l"
+            case .todo: "k"
+            case .drawing: "p"
+            case .arrow: "a"
+            case .forms: nil
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .select: "Seleziona"
+            case .text: "Testo"
+            case .folder: "Cartella"
+            case .image: "Immagine"
+            case .document: "Documento"
+            case .link: "Link"
+            case .todo: "To Do"
+            case .forms: "Moduli (v2)"
+            case .drawing: "Disegno"
+            case .arrow: "Freccia"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .select: "cursorarrow"
+            case .text: "textformat"
+            case .folder: "folder"
+            case .image: "photo"
+            case .document: "doc.text"
+            case .link: "link"
+            case .todo: "checklist"
+            case .forms: "rectangle.on.rectangle.slash"
+            case .drawing: "pencil.tip"
+            case .arrow: "arrow.up.right"
+            }
+        }
+    }
+}
+
 /// What each of the ten tools of SPEC §6.4 does when the board is tapped (eleven in the
 /// SPEC; ADR-0027 §D8 unified Nota into Testo).
 ///
@@ -7,10 +73,6 @@ import Foundation
 /// board view: the view used to hand-write one branch per tool and then restate, in a
 /// trailing `if`, which tools are driven by dragging - two places that had to agree
 /// about eleven cases. Here the classification is one value the view reads.
-///
-/// In an extension file rather than in `WorkspaceController.swift` only because that
-/// file's type body is already over the length SwiftLint errors on; nothing here needs
-/// stored state.
 extension WorkspaceController.Tool {
     enum TapBehaviour {
         case selectNothing

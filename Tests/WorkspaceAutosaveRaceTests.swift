@@ -173,7 +173,7 @@ private func conflictedBoard(
 // either) - there is no suspension point a synchronous, non-concurrent test body can land
 // a second writer inside, and R-10/ADR-0046 §D11 rule out a competing `Task` or a sleep to
 // force one. The guarded branch (`guard allowingRetry else { enterConflicted(...) }` in
-// `WorkspaceController.swift`) is inspectable by reading the code; it is not independently
+// `WorkspaceController+Saving.swift`) is inspectable by reading the code; it is not independently
 // exercised by a test in this file.
 
 // MARK: - Task 5 (R-04)

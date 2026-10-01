@@ -15,7 +15,7 @@ extension WorkspaceView {
 
     /// Acts on a tap on empty board with the selected tool.
     ///
-    /// The classification is `Tool.tapBehaviour`'s (WorkspaceController.swift), not this
+    /// The classification is `Tool.tapBehaviour`'s (`WorkspaceController+Tools.swift`), not this
     /// view's: the eleven tools used to be spelled out here and then restated, in the
     /// trailing reset condition, as "all of them except two".
     func handleTap(at point: CGPoint) {

@@ -166,8 +166,8 @@ private func groupNode() -> CanvasNode {
 // link/Colore/Ridimensiona/Ritaglia anywhere) - so R-13 has nothing to reuse for them and
 // each below is a first choice, recorded here rather than left to a review.
 // `"eye"` is deliberately excluded from `.open`: that symbol already means "Anteprima
-// rapida" in this same board toolbar (`WorkspaceView.swift:261`), and reusing it for
-// `.open` would make the two indistinguishable.
+// rapida" in this same board toolbar (the Anteprima button, `WorkspaceView+Toolbar.swift`),
+// and reusing it for `.open` would make the two indistinguishable.
 @Test func everySymbolMatchesTheTableThisTaskDeclares() {
     let expected: [CardCommand: String] = [
         .open: "arrow.up.forward.square",
