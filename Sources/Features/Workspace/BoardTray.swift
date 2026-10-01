@@ -33,7 +33,9 @@ struct BoardTray: View {
     /// board on every observable change this tray reads - a card dragged across it
     /// included. Refreshed on the document itself, which is `Equatable`: a board's
     /// references cannot change without it changing, and a drag stays transient until it
-    /// commits, so this recomputes once per real mutation rather than once per redraw.
+    /// commits, so this recomputes once per real mutation rather than once per redraw. The
+    /// index generation is in the key too, since a title collapses onto its note's path only
+    /// once the index knows the note (PG-359).
     @State private var references: [String] = []
 
     // Internal, not private: read by `Tests/BoardTrayRefreshTests.swift`.
@@ -136,13 +138,22 @@ struct BoardTray: View {
                 noteRow(reference)
             }
         }
-        .task(id: workspace.document) {
+        .task(id: ReferencesKey(document: workspace.document, generation: vault.indexGeneration)) {
             refreshReferencedNotes()
         }
     }
 
+    /// What `references` was computed from: the document, and the index generation, because
+    /// collapsing a title onto the path it names asks the index (PG-359).
+    private struct ReferencesKey: Equatable {
+        let document: CanvasDocument
+        let generation: Int
+    }
+
     private func refreshReferencedNotes() {
-        references = WorkspaceReferences.notes(in: workspace.document)
+        references = WorkspaceReferences.collapsing(
+            WorkspaceReferences.notes(in: workspace.document), resolve: resolvedPath(for:)
+        )
     }
 
     private func noteRow(_ reference: String) -> some View {

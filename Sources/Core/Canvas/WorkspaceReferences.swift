@@ -45,4 +45,16 @@ enum WorkspaceReferences {
 
         return results
     }
+
+    /// `references` with every entry that names an already-listed note dropped (PG-359).
+    ///
+    /// `notes(in:)` de-duplicates by the string it read, and the same note arrives under two
+    /// spellings: a `.file` card carries its vault path, a wikilink its title. `resolve` turns
+    /// either into the path it names, or nil when it names nothing; an unresolved entry is keyed
+    /// on its own text, so it stays listed once and never collapses into another. First
+    /// occurrence wins, so the order is still the board's.
+    static func collapsing(_ references: [String], resolve: (String) -> String?) -> [String] {
+        var seen: Set<String> = []
+        return references.filter { seen.insert(resolve($0) ?? $0).inserted }
+    }
 }
