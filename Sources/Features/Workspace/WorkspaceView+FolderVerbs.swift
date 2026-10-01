@@ -20,8 +20,9 @@ extension WorkspaceView {
     /// it landed (R-01 … R-05, R-13). Answers with every reason the batch refused, empty
     /// when it committed - the browser has the dialog R-07 asks for.
     ///
-    /// `performBoardVerb`'s bracket, and its first line for the same reason: **flush
-    /// first**. The board autosaves about a second after a change, and that write would
+    /// `performBoardVerb`'s bracket, and its first line for the same reason:
+    /// `settleForVerb()`, which **flushes first** once the conflict guard lets it (PG-288).
+    /// The board autosaves about a second after a change, and that write would
     /// otherwise land on the pre-move path and recreate the file the move just relocated
     /// (ADR-0022 §F10, paid for once already by rename and delete). It is not expressed
     /// *through* `performBoardVerb` because a batch's landing rule takes the moves it
@@ -37,8 +38,8 @@ extension WorkspaceView {
     /// the plan: a batch that both trips it and collides on a name reports the unsaved
     /// note, not the collision. That guard has to be cleared before disk either way.
     private func moveItems(_ items: [VaultItemRef], into destination: String) async -> [String] {
-        flushBoard()
-        guard workspace.canLeaveOpenBoardForVerb() else { return [] }
+        // Guard, settle and flush, guard again: one door, in its order (PG-288).
+        guard workspace.settleForVerb() else { return [] }
         // Read before the suspension, the board the flush above was aimed at (ADR-0043 §D7,
         // #569 point 9): the person can open another board while the move runs, and the
         // landing rule below must follow the board that moved, not whichever is open now.
@@ -165,12 +166,14 @@ extension WorkspaceView {
 
     /// The shape a folder verb has, in the order it has to have it.
     ///
-    /// The order is the whole of the decision: **flush first** - the board autosaves about
-    /// a second after a change and that write would otherwise land on the old path,
-    /// recreating the directory the rename moved or the delete trashed (§F10) - then the
-    /// vault call, then the navigation rule that says where the open board goes next.
-    /// Written once here so a third verb cannot copy one of the two and quietly get the
-    /// order wrong.
+    /// The order is the whole of the decision: `settleForVerb()` first - the conflict
+    /// guard, which settles nothing when it refuses (PG-288), then **flush**, since the
+    /// board autosaves about a second after a change and that write would otherwise land
+    /// on the old path, recreating the directory the rename moved or the delete trashed
+    /// (§F10), then the guard again - then the vault call, then the navigation rule that
+    /// says where the open board goes next. Written once here, and the guard-and-flush
+    /// once on the controller, so a third verb cannot copy one of the two and quietly get
+    /// the order wrong.
     ///
     /// - Parameters:
     ///   - mutate: the vault call, answering with whatever the landing rule needs (a
@@ -178,8 +181,7 @@ extension WorkspaceView {
     ///   - landing: where the open board goes, given the folder it is on now and what
     ///     `mutate` answered with.
     private func performFolderVerb<T>(_ mutate: () -> T?, landing: (_ open: String, _ result: T) -> String) {
-        flushBoard()
-        guard workspace.canLeaveOpenBoardForVerb() else { return }
+        guard workspace.settleForVerb() else { return }
         guard let result = mutate() else { return }
         // Landing somewhere only means something if a board is actually open - with
         // nothing chosen there is nothing to move.
@@ -208,7 +210,7 @@ extension WorkspaceView {
 
     /// The shape a **board** verb has, in the same order and for the same reason.
     ///
-    /// `flushBoard()` first, exactly as above: the ~1s autosave would otherwise land on
+    /// `settleForVerb()` first, exactly as above: the ~1s autosave would otherwise land on
     /// the path the rename just moved away from and write the file back into existence
     /// (ADR-0022 §F10) - or, after a delete, resurrect from the Trash something the user
     /// asked to throw away.
@@ -227,8 +229,7 @@ extension WorkspaceView {
     private func performBoardVerb<T>(
         _ mutate: () -> T?, landing: (_ open: String, _ result: T) -> WorkspaceSelection
     ) {
-        flushBoard()
-        guard workspace.canLeaveOpenBoardForVerb() else { return }
+        guard workspace.settleForVerb() else { return }
         guard let result = mutate() else { return }
         // Landing somewhere only means something if a board is actually open - a rename
         // of one that is merely selected in the tree moves no document on screen.

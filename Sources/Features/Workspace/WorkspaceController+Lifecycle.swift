@@ -100,6 +100,25 @@ extension WorkspaceController {
         flushPendingSave()
     }
 
+    /// The board's half of a sidebar rename/move/trash (`WorkspaceView+FolderVerbs.swift`):
+    /// answers whether the verb may touch disk, and when it may, has already settled and
+    /// flushed the open board. One door, so no verb can run the three steps out of order or
+    /// skip one (PG-288).
+    ///
+    /// The order is the decision. The conflict guard first, so a refused verb settles
+    /// nothing: a conflicted board's open sessions stay sessions rather than being merged
+    /// into a document the verb is about to refuse to leave. Then settle and flush - the
+    /// ~1 s autosave would otherwise land on the path the verb moves away from and recreate
+    /// it (ADR-0022 §F10), and a draft committed after the move would be flushed there too
+    /// (ADR-0066). Then the guard again, because that flush's own write can be refused and
+    /// enter `.conflicted`, and the file must not move out from under a fresh conflict.
+    func settleForVerb() -> Bool {
+        guard canLeaveOpenBoardForVerb() else { return false }
+        settleBoardEditing()
+        flushPendingSave()
+        return canLeaveOpenBoardForVerb()
+    }
+
     /// Drops a reframing owed to the board being left (#569 point 7). A deferred refit that
     /// outlived its board ran after `detach()` emptied the document and framed the viewport
     /// on nothing.

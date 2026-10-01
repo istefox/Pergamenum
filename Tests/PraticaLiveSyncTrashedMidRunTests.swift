@@ -229,7 +229,7 @@ private final class StopSpy {
         pratiche.beginSync(Self.folder)
         pratiche.followFolderTrashing(Self.folder, in: vaultController)
 
-        let outcome = await sync.runExclusive(praticaPath: Self.folder)
+        let outcome = await sync.runExclusive(praticaPath: Self.folder, kind: .fsEvents)
 
         #expect(outcome == .finished, "the caller must not be told a path to ask for: there is none")
         #expect(PraticaLiveSync.requeue(after: outcome, kind: .fsEvents) == nil, "so nothing is re-enqueued")

@@ -232,7 +232,7 @@ final class PraticaLiveSync {
         var currentKind = kind
         while true {
             if vault.session === currentSession, isStillEligible(current, kind: currentKind) {
-                let outcome = await runExclusive(praticaPath: current)
+                let outcome = await runExclusive(praticaPath: current, kind: currentKind)
                 // Round-4 review, §3: a relocation mid-run left `current`'s pratica
                 // sitting at a path this run never got to sync - ask for it again
                 // BEFORE `queue.finished()` dequeues whatever else is waiting, so the

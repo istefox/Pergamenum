@@ -56,13 +56,27 @@ extension PraticaLiveSync {
     }
 
     /// Not `private`: `PraticaLiveSync.swift`'s `run(praticaPath:kind:)` is in a
-    /// separate file, and is this member's only caller.
-    func runExclusive(praticaPath: String) async -> RunOutcome {
+    /// separate file, and is this member's only caller. `kind` is required, with no default,
+    /// so a caller cannot forget to say whether somebody asked for this run (PG-173).
+    func runExclusive(praticaPath: String, kind: PraticaWatcher.Trigger) async -> RunOutcome {
         // ADR-0068 §D14: a «Annulla» belongs to the run it interrupted, never to this one.
         stopRequested = false
         guard let controller, let session = vault.session, let root = vault.root else { return .finished }
         guard let dossier = PraticheController.dossier(at: praticaPath, vaultRoot: root) else {
-            controller.report("«\(praticaPath)» non ha un dossier leggibile in pratica.md.")
+            // PG-173: a run queued for a pratica that was trashed, moved away outside the app
+            // or renamed/moved in-app before it dequeued finds no folder at all. Nothing is left
+            // to sync and nothing is wrong with a dossier, so an automatic or queued run ends
+            // without a word: nobody asked for it. A queued request that holds no claim gets no
+            // tombstone and no redirect either, and that in-app rename/move case is dropped here
+            // on purpose - the watcher's next trigger covers the pratica at its new path.
+            // «Aggiorna ora» (`.manualRefresh`) is somebody asking, so it always gets an answer,
+            // and the missing folder is named apart from a folder whose `pratica.md` is unreadable.
+            let folder = root.appending(path: praticaPath, directoryHint: .isDirectory)
+            if FileManager.default.fileExists(atPath: folder.path(percentEncoded: false)) {
+                controller.report("«\(praticaPath)» non ha un dossier leggibile in pratica.md.")
+            } else if kind == .manualRefresh {
+                controller.report("La cartella «\(praticaPath)» non c'è più.")
+            }
             return .finished
         }
 
@@ -148,8 +162,8 @@ extension PraticaLiveSync {
                 return .relocated(to: to)
             case .praticaTrashed:
                 // PG-169: `.finished`, never `.relocated(to:)` - that drives `Self.requeue`,
-                // and a re-enqueued run for a trashed pratica would only dequeue into the
-                // «non ha un dossier leggibile in pratica.md» report above.
+                // and a re-enqueued run for a trashed pratica would only dequeue into a run
+                // with no folder left to sync (the dossier guard above, PG-173).
                 return .finished
             }
         } catch {
