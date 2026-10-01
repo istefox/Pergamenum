@@ -89,10 +89,10 @@ private let finding = VaultAPI.LintFinding(path: "Nota.md", NoteViolations(
     #expect(finding.tags == [
         #"malformed("topic/x")"#,
         #"notInVocabulary(type-memo)"#,
-        // Module-qualified: `TagNamespace` has no `description`, so reflection names the module
-        // that compiled it, `Pergamenum` in this test host and each tool's own module in the
-        // connectors, which compile the same file (ADR-0007).
-        #"vocabularyUnavailable(Pergamenum.TagNamespace.type)"#,
+        // Module-free (PG-346): `TagNamespace.description` is its raw value, so the app, `perg`
+        // and `pergamenum-mcp` write the same text, although each compiles this file under its
+        // own module (ADR-0007). It read `Pergamenum.TagNamespace.type` here before.
+        #"vocabularyUnavailable(type)"#,
         #"tooMany(count: 8)"#,
         #"multipleStatus([status-draft, status-final])"#,
         #"dateTag(topic-20260930)"#,
