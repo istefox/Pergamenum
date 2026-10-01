@@ -281,6 +281,7 @@ struct PraticaMessageRow: View {
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
+            .accessibilityLabel("Altre azioni sul messaggio")
             .accessibilityIdentifier("pratiche-message-more-\(Self.hash(of: entry))")
         }
     }

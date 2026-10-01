@@ -25,7 +25,7 @@ Handoff bundle: none
 - Column widths for the pane: app sidebar 220 pt, pane list 260 pt, timeline flexible with minimum 360 pt, inspector 280 pt (within UX-BLUEPRINT's 190–320 ranges).
 - Three surface tokens, light/dark each: `surface.received` neutral grey (left lane), `surface.sent` cool tint (right lane), `surface.entry` warm tint (manual entries). Direction is always redundant: glyph + alignment + lane.
 - Lane rows at ~70% width aligned leading (received) / trailing (sent); manual entries full width.
-- Message row anatomy as in 1a: chevron · time · sender · subject (link) · attachment chips · first line; expanded row adds the markdown body, a «Testo citato» disclosure and the footer «Apri in Mail · Escludi · Sposta in ▸ · Aggiungi anche a ▸».
+- Message row anatomy as in 1a: chevron · time · sender · subject (link) · attachment chips · first line; expanded row adds the markdown body, a «Testo citato» disclosure and the footer «Apri in Mail · Aggiungi nota · Aggiungi telefonata · Collega nota… (or Scollega nota) · Altro ▸», where «Altro» holds the rest of the message catalogue in its order (Anteprima allegato, Escludi, Sposta in ▸, Aggiungi anche a ▸, Rigenera…; ADR-0076). The footer falls back to a column when one row does not fit.
 - Tray «Da smistare» sits above the timeline as a collapsible strip with a count subtitle; each proposal shows subject, address, date range, count, and Aggiungi (default) / Ignora.
 - Sync progress is a thin bar with «n di N · Annulla» under the top bar.
 - Full Disk Access banner is inline, above the tray, never modal; carries «Come fare» disclosure and the System Settings button.

@@ -39,9 +39,12 @@ final class MessageAnchorFragment: NSTextLayoutFragment {
     /// evenly, into the space the heading above and the body below already leave.
     var markerFrame: CGRect {
         guard let size = markerImage?.size else { return .null }
-        return CGRect(
-            x: 0, y: (layoutFragmentFrame.height - size.height) / 2, width: size.width, height: size.height
-        )
+        return markerFrame(for: size)
+    }
+
+    /// `markerFrame` for an image already built, so `draw(at:in:)` builds the symbol once.
+    private func markerFrame(for size: CGSize) -> CGRect {
+        CGRect(x: 0, y: (layoutFragmentFrame.height - size.height) / 2, width: size.width, height: size.height)
     }
 
     /// The row's own surface grown to hold the whole envelope - wider than the collapsed text's
@@ -59,7 +62,7 @@ final class MessageAnchorFragment: NSTextLayoutFragment {
     override func draw(at point: CGPoint, in context: CGContext) {
         super.draw(at: point, in: context)
         guard let image = markerImage else { return }
-        let rect = markerFrame.offsetBy(dx: point.x, dy: point.y)
+        let rect = markerFrame(for: image.size).offsetBy(dx: point.x, dy: point.y)
 
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
