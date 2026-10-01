@@ -128,6 +128,8 @@ Swift 6, SwiftUI with the existing AppKit editor (TextKit 2). No new dependency.
 
 A manual entry is the block from its `## YYYY-MM-DD HH:MM <Kind> · <Controparte>` heading up to the
 line before the next `## ` heading or the end of the file (unchanged from the Pratiche spec).
+*Amended 2026-10-01 (PG-356):* the heading may carry a `±hh:mm` offset after the time, as the
+Pratiche spec now states.
 
 An entry is **anchored** when the first line after its heading is exactly, allowing surrounding
 whitespace:
@@ -227,7 +229,7 @@ The look is verified against the approved mockup; placement is covered by the mo
 - [ ] R-06 — An anchored entry is visible only when its message is visible under the current filters; under the text filter an entry that matches shows together with its message. Free and orphaned entries keep the current rule.
 - [ ] R-07 — «Inserisci qui» computes its midpoint from the neighbours' placement times, an anchored entry counting at its message's time.
 - [ ] R-08 — At an exactly equal instant a message sorts before a free manual entry, in the app and in both connectors.
-- [ ] R-09 — An anchored entry is drawn in its message's lane at the lane's width, indented, with the manual-entry colour and symbol, every colour and font through a token, in light and dark themes.
+- [ ] R-09 — An anchored entry is drawn in its message's lane at the lane's width, indented, with the manual-entry colour and symbol, every colour and font through a token, in light and dark themes. *Amended 2026-10-01 (ADR-0076 follow-up): its message's lane width less the indent, taken on the lane's own edge, and coloured by its kind (`surface.entryNote`, `surface.entryCall`).*
 - [ ] R-10 — The anchored-entry row matches a mockup approved before the view is built. (no-test: design approval, checked by reading the approved mockup and the ADR's gate record)
 - [ ] R-11 — «Collega a un messaggio…» on any manual entry opens a picker of this pratica's messages (date, sender, subject, text filter, keyboard reachable, current anchor marked) and writes or replaces the anchor line in one guarded write.
 - [ ] R-12 — «Scollega dal messaggio» on an anchored or orphaned entry removes the anchor line in one guarded write and nothing else of the entry; it is absent on a free entry.

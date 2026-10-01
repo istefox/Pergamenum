@@ -682,7 +682,9 @@ paths were read. Four measured facts amend the decisions above; none reverses on
   open point, not implemented — closed by §D21 below; «Inserisci qui» is a submenu of the row's context menu, not a hover
   gap between rows; the wizard has no «@dominio» counterpart chip because `MembershipRule` has no
   domain arm; the «Aggiungi anche a…» sheet counts messages from the ledger; manual-entry
-  headings are written in UTC (`Z`) as the test pins them; `PraticaTopBar` and the columns gained
+  headings are written in UTC (`Z`) as the test pins them (*superseded 2026-10-01, PG-356*: a
+  heading is now written in local time with an explicit `±hh:mm` offset, and one without an offset
+  is still read as UTC; see ADR-0076's implementation notes); `PraticaTopBar` and the columns gained
   required parameters for the new verbs. `MailDropReceiver` is the §D17 probe shell only.
 
 ## Follow-up — Task 9/10 implementation notes (2026-09-10)

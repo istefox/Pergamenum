@@ -233,6 +233,11 @@ everywhere else. The daily note of the entry's date gets one appended line
 `- [[<pratica title>]] — Telefonata · Rossi` through `VaultSession.write` in the same atomic
 operation family as every other write (SPEC §5 Diario rules for the daily note file location).
 
+*Amended 2026-10-01 (PG-356):* the app writes the heading in local time followed by the zone's
+offset at that instant, `## 2026-06-11 15:30 +02:00 Telefonata · Rossi`. The offset is part of the
+timestamp, never of the title. A heading without an offset, like the examples above and every
+heading written before this change, is read as UTC.
+
 **Per-vault state (not in the vault):** `…/vaults/<id>/pratiche/envelope-index.sqlite` (the copy),
 `ledger.json` (`{ praticaPath: { lastSyncAt, lastOpenedAt, importedMessageIDs: [...], pending: [...] } }`),
 regenerable from disk: deleting it costs one full re-sync, nothing else.
@@ -374,7 +379,10 @@ citato», and a footer «Apri in Mail» + «Escludi dalla pratica» + «Sposta i
 a…».
 Lane: `received` rows aligned left, `sent` rows aligned right, at 70% of the column width, with the
 two lane backgrounds from tokens; manual entries span the full width in a third token colour with
-a phone/pencil symbol.
+a phone/pencil symbol. *Amended 2026-10-01 (ADR-0076 follow-up, PG-354/355):* every row lays out
+in a leading column capped at 720 pt (`spacing.readable`); a message lane is 70 % of what is left
+after the note column (91 % in a narrow timeline), and a note and a call each have their own token
+colour (`surface.entryNote`, `surface.entryCall`).
 Subject click: `NSWorkspace.open(message://…)` built by `EmailHeaders.mailURL`. If the ledger marks
 the message «not in Mail», the subject is plain text with a small caption «non più in Mail».
 Chevron: toggles one row. Opt+click on any chevron: expand/collapse all. Keyboard: Space toggles
@@ -547,10 +555,10 @@ opens the folder with no frontmatter complaint; `perg pratica <title>` prints th
 - [ ] R-22 — Dropping a message dragged from Mail onto the timeline adds it as a seed through the same operation as the Mail-selection path; if the SwiftUI drop cannot read Mail's promise, the ADR records the probe result and the selection path remains the documented way.
 - [ ] R-23 — The timeline lists messages by `pergamenum-mail-date` (fallback received date) interleaved with manual entries by heading timestamp, ascending, with sticky day separators, scrolled to the newest on open.
 - [ ] R-24 — Each message row is collapsed by default showing chevron, time, sender, subject, attachment chips and first body line; the chevron expands the body inline; Opt+click on a chevron expands or collapses all rows; expansion state is per window and not persisted.
-- [ ] R-25 — Received rows sit in the left lane and sent rows in the right lane, each at 70% width with token-defined lane colours; manual entries span the full width in a third token colour.
+- [ ] R-25 — Received rows sit in the left lane and sent rows in the right lane, each at 70% width with token-defined lane colours; manual entries span the full width in a third token colour. *Amended 2026-10-01 (ADR-0076 follow-up): within a 720 pt readable column; a note and a call each take their own token colour.*
 - [ ] R-26 — The subject is a clickable header that opens the message in Apple Mail through the `message://` URL built from `pergamenum-mail-message-id`.
 - [ ] R-27 — Attachment chips open Quick Look on click, the default app on double-click, and offer «Mostra nel Finder» and «Copia» in the context menu; an over-threshold attachment shows a distinct symbol and opens from its store path.
-- [ ] R-28 — «Nota» and «Telefonata» insert a `## YYYY-MM-DD HH:MM <Kind> · <Controparte>` heading in `pratica.md` with the cursor in the body, editable inline with the note editor engine (tasks, wikilinks, tags work); «Inserisci qui» between two rows uses the midpoint timestamp.
+- [ ] R-28 — «Nota» and «Telefonata» insert a `## YYYY-MM-DD HH:MM <Kind> · <Controparte>` heading in `pratica.md` (*amended 2026-10-01, PG-356:* written `## YYYY-MM-DD HH:MM ±hh:mm <Kind> · <Controparte>` in local time; a heading with no offset reads as UTC) with the cursor in the body, editable inline with the note editor engine (tasks, wikilinks, tags work); «Inserisci qui» between two rows uses the midpoint timestamp.
 - [ ] R-29 — Adding a manual entry appends one line `- [[<pratica>]] — <Kind> · <Controparte>` to the daily note of that date through `VaultSession.write`, controlled by the «Scrivi nel diario» setting (on by default).
 - [ ] R-30 — The tray «Da smistare» lists proposed conversations with subject, counterpart, date range and count; «Aggiungi» follows and imports, «Ignora» records the conversation in `pergamenum-dossier-ignored` for this pratica only; the strip is hidden when empty.
 - [ ] R-31 — Per-message commands «Escludi dalla pratica» (files to Trash, id to excluded), «Sposta in…» (files moved, ids updated on both dossiers) and «Aggiungi anche a…» (files copied, both included) exist in the row footer and context menu, and a moved or excluded message is never re-imported.

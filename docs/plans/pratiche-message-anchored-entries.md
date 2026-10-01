@@ -258,7 +258,8 @@ Additions to `Tests/PraticaEntryTests.swift`:
 
 ### Coder
 
-Fill every body. `parse` reuses `PraticaEntry.headingFormatter`; the body offset is the source's
+Fill every body. `parse` reuses `PraticaEntry.headingFormatter` (*2026-10-01, PG-356:* plus an
+optional `±hh:mm` offset token read through `UTCOffset`); the body offset is the source's
 UTF-16 length minus that of `NoteDocument.parse(source).body`.
 
 ## Task 3 — One ordering rule, and the app's model switches to it (R-01, R-04, R-05, R-06, R-07, R-08, R-21)

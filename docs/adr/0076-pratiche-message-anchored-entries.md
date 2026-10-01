@@ -2,9 +2,9 @@
 
 - Status: **accepted**. PR 1 of the two (Tasks 2-5: the Core parser and ordering, the app model
   switch-over, connector parity, the carry on «Sposta in…») landed on `main` via PR #724 (merge
-  `73f17450`, 2026-09-30). PR 2 (Tasks 6-7: the verbs, the picker, the rows, the editor
-  concealment) is not on `main` yet; its merge is added here when it lands (ADR-0071's two-PR
-  precedent, `docs/adr/README.md` rule 2).
+  `73f17450`, 2026-09-30). PR 2 (Tasks 6-8: the verbs, the picker, the rows, the editor
+  concealment, the hand check) landed on `main` via PR #761 (merge `5046d1d0`, 2026-10-01)
+  (ADR-0071's two-PR precedent, `docs/adr/README.md` rule 2).
 - Date: 2026-09-30. Written before the implementation, against `160d3e76` (the branch
   `kepler/docs/spec-pg-338`). `origin/main` is at `c99103c8`. Its diff against `160d3e76` touches
   `NoteFolding`, `OutlinePane`, `TagRenameSheet`, three Tasks views, `BoardCardMenu` and
@@ -145,6 +145,9 @@ the `Sources/Core/**` glob, so `sharedSources` needs no edit.
   parses through `PraticaEntry.headingFormatter`; the kind is `.call` when the tail starts with
   `PraticaEntry.Kind.call.label`; the counterpart is everything after the first ` · `. The body is
   the entry's lines, anchor line excluded, joined by LF and trimmed, as both parsers produce today.
+  *Amended 2026-10-01 (PG-356, Implementation notes):* the heading may carry a `±hh:mm` offset
+  after the time, `yyyy-MM-dd HH:mm ±hh:mm <tail>`, which the parser reads as the zone of the
+  timestamp and keeps out of the kind and the subject; a heading without one is still UTC.
   Lines split on LF and CRLF alike, and a terminator is never part of a parsed value.
 - The body offset is the source's UTF-16 length minus that of `NoteDocument.parse(source).body`,
   which is a verbatim suffix of the source (`Frontmatter.swift`).
@@ -267,6 +270,11 @@ messaggio»:
    changed since the timeline was drawn, the entry's ordinal may name another entry, and the
    command refuses, reloads the timeline and says ««pratica.md» è cambiato: la cronologia è stata
    ricaricata, riprova.» (R-18).
+   *As implemented (2026-10-01):* the hash compared is the entry's own `sourceHash`, the hash of the
+   file the entry was read from, not the controller's current `timelineOrigin`, alongside a check
+   that the timeline still shows this pratica (`PraticaCommandActions+Entries.swift`). A reload
+   while the picker was open advances `timelineOrigin` to the changed file, so comparing it would
+   let a stale ordinal through. An entry with no hash is refused, since it cannot be proven current.
 4. **Transform** by the entry's `fileOrdinal` (`anchoring` or `unanchoring`). `nil` means nothing
    to write.
 5. **Write** with `expecting: record.contentHash`. A `WriteRefusal` is reported like the
@@ -426,7 +434,8 @@ on message files is untouched.
 - **Protected-interface proposal (G2).** `PraticaEntryAnchor.line(for:)` spells an on-disk format
   every anchored entry depends on, the argument that protects `PraticaNaming.messageFileName`.
   Proposed entry: `Sources/Core/Pratiche/PraticaManualEntries.swift:PraticaEntryAnchor.line(for:)`.
-  Adding it is Stefano's decision.
+  Adding it is Stefano's decision. **Approved by Stefano on 2026-10-01** (G2 below); the entry is in
+  `.claude/protected-interfaces`.
 
 ## Alternatives considered
 
@@ -490,7 +499,8 @@ stay free until anchored by hand. `perg` and `pergamenum-mcp` output gains two o
   new tokens) are made by the implementation, following this record and the existing Pratiche
   views, and are reviewed on the Debug build in Task 8's hand check. R-10 is met by this approval
   record, not by a mockup.
-- **G2: the protected-interface entry** of §D12.
+- **G2: the protected-interface entry** of §D12. **Approved by Stefano on 2026-10-01**, after
+  PR 2 merged; the line was added to `.claude/protected-interfaces` in the PG-353 follow-up.
 
 ## Implementation notes
 
@@ -501,7 +511,8 @@ Two changes Stefano asked for on the Debug build, shipped in PR #761.
   amends DESIGN.md's message row anatomy and UX-BLUEPRINT §5, which drew it only on the expanded
   row. No new read is needed, since `PraticheController+TimelineRead` already builds every row's
   `PraticaRowDetail` when the timeline loads. The cost is one caption line per collapsed card, and
-  at the 428 pt minimum the verbs stack (`ViewThatFits`).
+  at the 428 pt minimum the verbs stack (`ViewThatFits`). *Superseded by the 2026-10-01 follow-up
+  below:* the footer now has two primary verbs and stays on one line at 428 pt.
 - *A double-click on a row, or Return on the selected row, toggles its expansion*, through the
   `List`'s own `contextMenu(forSelectionType:menu:primaryAction:)` with an empty menu
   (`PraticaTimelineView.list`, `ContenitoreList`'s shape). No custom gesture competes with
@@ -531,6 +542,86 @@ Two changes Stefano asked for on the Debug build, shipped in PR #761.
   watcher's paths for a deleted file in one place. A vault under the home folder was never affected.
   Pinned by `VaultScannerRelativePathTests` and
   `PraticaFileOperationsSessionTests.moveFilesAndMoveBackLandRightUnderAPrivateSpelledRoot`.
+
+**Follow-up after the merge, 2026-10-01 (PG-353 to PG-356).** Three defects found in the Task 8 hand
+check, plus the hand check's own layout changes, fixed without a new ADR:
+
+- *The sent lane is drawn on the trailing side* (PG-354). `containerRelativeFrame(_:alignment:)`
+  aligns its content inside the frame, and a macOS `List` row puts a narrower frame at its leading
+  edge, so a sent message was drawn on the left. A row is now laid out by one private `Layout` in
+  `PraticaLaneRowLayout` (`LaneRowArrangement`), which places each card on its side from the pure
+  `PraticaTimelineModel.laneAlignment(_:)`.
+- *The note column scales with the timeline* (PG-355). It was a fixed 200 pt, which left a message
+  lane of about 126 pt in the default window. Measured in a hosted `List`, a row's width already
+  excludes the row insets: a 428 pt timeline gives 396 pt, or 379 pt with a legacy scroller. The
+  column is now `min(200, 27 %)` of the row less the gutter, and the message lane takes 70 % of the
+  rest, rising to 91 % in a narrow timeline. That gives at least 240 pt in the default window. A
+  wide timeline no longer keeps the 200 pt column: the readable-column cap below holds every row
+  to 720 pt, so from an 800 pt timeline up the column is 190.1 pt and the card 359.7 pt. The
+  arithmetic is `PraticaTimelineModel+Layout.swift`, and the card, the column
+  and the anchored placeholder are all placed from it (ADR-0049 §D8's one-arithmetic rule).
+- *Hand check on the Debug build, six more changes Stefano chose* (five rounds; a "cards hug
+  their content" round was built, seen in a full-screen window and rejected: the sent card sat
+  about 1000 pt from the rest and the ragged widths read as scattered notes).
+  1. **Mirror placement.** A received card is flush with the column's leading edge and its note
+     column sits on its trailing side; a sent card is flush with the column's trailing edge and its
+     note column sits on its leading side (`PraticaTimelineModel.slotSide(_:)`). A message with no
+     linked note draws no column, only its accessibility identifier, so a card never faces an empty
+     box. A broken link still draws «nota non trovata nel vault».
+  2. **A readable column.** Every row lays out inside a leading column capped at the
+     `spacing.readable` token, 720 pt (ADR-0030 §D7): `columnWidth(row:readable:)` is the row's
+     width capped there, and the arithmetic above runs on it. At a wide window the free space goes
+     to the right of the column, never between messages. Below a 720 pt row nothing changes; from an
+     800 pt timeline up a message card is 359.7 pt and the note column 190.1 pt.
+  3. **Uniform widths.** A message card takes its whole lane, a free entry the whole column, and an
+     anchored entry its message's lane less the `.l` indent, taken on the lane's own edge
+     (`anchoredIndent`): `[indent, L]` under a received message, `[C - L, C - indent]` under a sent
+     one, so its far edge lines up with its message's inner edge. The row is placed by one private
+     `Layout` (`LaneRowArrangement` in `PraticaLaneRowLayout`).
+  4. **Selection on the card.** The native full-row highlight lit the empty half of the row while
+     the card stayed dark. Measured in a hosted `List(selection:)`: the row view draws its highlight
+     in its own layer, under every subview, and `.listRowBackground` adds a full-width hosting view
+     above it. An opaque row background in the pane's colour (`backgroundPrimary`) therefore hides the
+     highlight through public API only, and the selected card draws a 2 pt `accentPrimary` outline
+     (`selectionBorder(isSelected:)`). The binding, ADR-0070's focus and `.onDeleteCommand`, the
+     double-click/Return toggle and every context menu are unchanged. A hosted test pins the layer
+     order, so a macOS that moves the highlight fails a test rather than bringing it back silently.
+  5. **The footer keeps two primary verbs**: «Apri in Mail · Aggiungi nota · Altro ▸»
+     (`MessageCommand.footerSplit`). With four, the footer was about 389 pt on one line, wider than a
+     386 pt lane, so it stacked into a column and doubled every card's height. «Aggiungi
+     telefonata», «Collega nota…» and «Scollega nota» now sit in «Altro», in catalogue order. Every
+     command is still on every surface (ADR-0023 §D1), so R-02 holds. The footer is about 181 pt and
+     stays on one line at 428 pt.
+  6. **Notes and calls have their own surfaces.** The one warm `surface.entry` sat too close to the
+     received grey and read as part of the mail. `color.surface.entryNote` (amber, dark `#453911`,
+     light `#FFF1BF`) and `color.surface.entryCall` (green, dark `#1D3B2C`, light `#DFF2E3`) colour
+     an entry by kind, anchored or free (`PraticaTimelineModel.surfaceToken(for:)`); every kind but a
+     call is a note. Primary, secondary and accent text reach 4.5:1 on all four (the dark amber was
+     darkened from `#4A3D12` for the secondary text). `surface.entry` stays for the Contenitore
+     inspector. A vault theme without the new keys inherits them from the bundled theme of its
+     appearance, so a theme in `.pergamenum/themes/` that overrode `color.surface.entry` no longer
+     colours the timeline's entries until it defines the two new keys.
+
+  These amend DESIGN.md's "~70 % width" and "three surface tokens" binding decisions, R-25 of the
+  Pratiche spec and this ADR's R-09 (amended in place). Pinned by `PraticaTimelineLayoutTests` (the
+  arithmetic), `PraticaTimelineLaneHostedTests` (a hosted `List` at 360, 428, 800, 1200 and 1600 pt
+  with and without a scroller: the column cap, uniform widths, flush edges, the indent on both sides,
+  no overlap, a one-line footer, the selection outline and the highlight's layer order),
+  `PraticaTimelineTests` (one surface per kind) and `DesignSystemTests` (the tokens and their
+  inheritance). The gap under the last row of a day, seen in the hand check, is the `List`'s section
+  spacing before the next day header, the same under a sent or a received message
+  (`PraticaTimelineEntryGapHostedTests`).
+- *A manual entry's heading carries its local time and offset* (PG-356). Headings were written in
+  UTC and the timeline draws local time, so a call logged at 15:30 in Rome read `13:30` in the file.
+  A new heading is `## yyyy-MM-dd HH:mm ±hh:mm <tail>`, in the writer's zone, with the offset of
+  that instant, so daylight saving is right on both sides of a change. A heading with no offset is
+  read as UTC, as before, so every heading already on disk keeps its instant. Row ids stay the GMT
+  rendering of the instant, so existing entries keep theirs. One codec, `UTCOffset`, now reads the
+  `±hh:mm` token for both the heading parser and `MessageDocument`'s dates. A reader built before
+  this change, a `perg` or `pergamenum-mcp` already on the PATH or the app on a second Mac opening
+  the same vault through iCloud, reads a new heading's offset as part of its subject, loses the
+  call kind, and takes the digits as UTC, so the entry sorts and shows hours off (two in a Roman
+  summer). Rerun `scripts/install-cli.sh` and update every Mac after updating.
 
 ## References
 
