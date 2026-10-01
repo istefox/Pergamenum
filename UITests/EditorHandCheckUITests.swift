@@ -78,9 +78,12 @@ final class EditorHandCheckUITests: XCTestCase {
 
         let tally = app.staticTexts["find-tally"].firstMatch
         XCTAssertTrue(tally.waitForExistence(timeout: 5), "nessun conteggio delle corrispondenze")
-        let first = tally.label
+        // A SwiftUI `Text` exposes its string as the element's value on macOS, not its label:
+        // the label is empty before and after, so comparing it could never see a step.
+        let first = text(of: tally)
+        XCTAssertFalse(first.isEmpty, "il conteggio delle corrispondenze è vuoto")
         field.typeKey(.return, modifierFlags: [])
-        XCTAssertTrue(waitUntil { tally.label != first }, "Invio non passa alla corrispondenza successiva")
+        XCTAssertTrue(waitUntil { self.text(of: tally) != first }, "Invio non passa alla corrispondenza successiva")
         XCTAssertEqual(text(of: editor), before, "Invio ha modificato la nota")
     }
 

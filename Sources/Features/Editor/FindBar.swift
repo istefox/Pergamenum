@@ -30,6 +30,9 @@ struct FindBar: View {
         .padding(.vertical, theme.spacing(.s))
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(theme.color(.backgroundSecondary))
+        // Without `.contain` the container's identifier overrides every child's, so
+        // `find-query`, `find-tally` and `find-done` never reached the accessibility tree.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("find-bar")
     }
 
