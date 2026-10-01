@@ -189,6 +189,11 @@ struct CardTextView: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate, LinkNavigatingDelegate {
         var parent: CardTextView
+        /// Read live, at the moment `textView(_:clickedOnLink:at:)` runs, never captured at
+        /// init - `NoteTextView.Coordinator.modifierFlags`'s twin (ADR-0053 §D2 seam #4,
+        /// PG-361). A test injects a fixed value here instead of driving a real `NSEvent`;
+        /// production never overrides the default.
+        var modifierFlags: () -> NSEvent.ModifierFlags = { NSEvent.modifierFlags }
         /// The card's own undo stack (ADR-0027 §D2), never the window's.
         ///
         /// The board's Annulla is `BoardHistory` through `workspace.undo()`, a third stack that
@@ -321,7 +326,7 @@ struct CardTextView: NSViewRepresentable {
         /// `false`/`true` are back to their plain `NSTextViewDelegate` meaning ("did this
         /// navigate") - nothing depends any more on the refusal path returning `true`.
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
-            guard NSEvent.modifierFlags.contains(.command) else { return false }
+            guard modifierFlags().contains(.command) else { return false }
             return performLinkNavigation(link)
         }
 
