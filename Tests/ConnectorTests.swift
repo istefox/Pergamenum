@@ -562,3 +562,18 @@ func theRangeBoundsAreAccepted(_ minutes: Int) async throws {
     #expect(try VaultAPI.blockMinutes(parsing: nil) == nil)
     #expect(try VaultAPI.blockMinutes(parsing: "45") == 45)
 }
+
+@Test func unreadableOrdinalTextIsRefusedNotIgnored() throws {
+    // PG-272: `--ordinal abc` read as «no ordinal», which on a note with one view ran that
+    // view as if the person had asked for it.
+    let unreadable = try #require(limitSentence { try VaultAPI.viewOrdinal(parsing: "abc") })
+    #expect(unreadable.isUsage)
+    #expect(unreadable.description.contains("ordinal"))
+    #expect(unreadable.description.contains("«abc»"))
+    #expect(try #require(limitSentence { try VaultAPI.viewOrdinal(parsing: "") }).isUsage)
+
+    #expect(try VaultAPI.viewOrdinal(parsing: nil) == nil)
+    #expect(try VaultAPI.viewOrdinal(parsing: "2") == 2)
+    // The range is `runView`'s question, asked once it knows how many views there are.
+    #expect(try VaultAPI.viewOrdinal(parsing: "-1") == -1)
+}

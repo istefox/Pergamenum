@@ -116,7 +116,8 @@ final class VaultHost {
             return reply(VaultAPI.views(session))
         case "run_view":
             return reply(try VaultAPI.runView(
-                session, at: try arguments.required("path"), ordinal: arguments.int("ordinal")
+                session, at: try arguments.required("path"),
+                ordinal: try arguments.checkedInt("ordinal", parsing: VaultAPI.viewOrdinal(parsing:))
             ))
         case "vault_stats":
             return reply(VaultAPI.stats(session))

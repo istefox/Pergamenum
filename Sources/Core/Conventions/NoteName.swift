@@ -37,6 +37,13 @@ enum NoteName {
         for character in title where forbiddenCharacters.contains(character) {
             violations.append(.containsForbiddenCharacter(character))
         }
+        // A leading dot makes a hidden file, which every vault walk skips
+        // (`VaultLayout.isExcludedDirectory`, `.skipsHiddenFiles`): the note, board or
+        // folder would be created and never seen again (PG-272). Reported as the existing
+        // forbidden-character case, so no rendering of a violation has to learn a new one.
+        if title.hasPrefix(".") {
+            violations.append(.containsForbiddenCharacter("."))
+        }
         if title.count > maximumLength {
             violations.append(.tooLong(count: title.count))
         }

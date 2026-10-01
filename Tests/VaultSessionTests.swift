@@ -60,6 +60,35 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
     }
 }
 
+/// PG-272: the taken-title check runs before the write's `await`, so it is a filter, not a
+/// guard (ADR-0043 §D7). Two creations of one title started together both passed it and
+/// the second overwrote the first. The guard is `expectingAbsent:`, decided inside the
+/// actor, so exactly one creation lands and the file holds its bytes.
+///
+/// No test-only gate exists at this boundary (see `VaultUnguardedWriteGuardTests.swift`),
+/// so the interleaving is the real one: without the guard the test can pass by luck, with
+/// it it cannot fail. Several rounds make the luck unlikely.
+@MainActor
+@Test func twoCreationsOfOneTitleStartedTogetherLandOnce() async throws {
+    let vault = try TemporaryVault()
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
+    let date = CalendarDate(iso: "2026-08-11")!
+
+    for round in 0..<8 {
+        let title = "Concorrente \(round)"
+        // Both tasks are queued on the main actor before either runs, so the second's
+        // taken-title check runs while the first is suspended in its write.
+        let first = Task { try await session.createNote(title: title, date: date, body: "Prima.\n").text }
+        let second = Task { try await session.createNote(title: title, date: date, body: "Seconda.\n").text }
+        let outcomes = [await first.result, await second.result]
+
+        let landed = outcomes.compactMap { try? $0.get() }
+        #expect(landed.count == 1, "round \(round): \(outcomes)")
+        let onDisk = try String(contentsOf: vault.root.appending(path: "\(title).md"), encoding: .utf8)
+        #expect(landed.first == onDisk)
+    }
+}
+
 @MainActor
 @Test func aSessionRenamesANoteAndTheLinksPointingAtIt() async throws {
     let vault = try TemporaryVault()
@@ -397,6 +426,20 @@ private func openSession(_ root: URL, stateBase: URL) async -> VaultSession {
         == "Rifare la curva di trasmissibilità.")
     // The note never mentions itself, whatever its own body says.
     #expect(!mentions.contains { $0.path == "Curva di trasmissibilità.md" })
+}
+
+/// PG-272: the loop appended before it tested the limit, so `limit: 0` answered one mention
+/// - the shape ADR-0063 §D1.6 fixed in `search`.
+@MainActor
+@Test func unlinkedMentionsWithAZeroLimitAnswerNothing() async throws {
+    let vault = try TemporaryVault()
+    try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\n", to: "Bersaglio.md")
+    try vault.write("---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nParla di Bersaglio.\n",
+                    to: "Menzione.md")
+    let session = await openSession(vault.root, stateBase: vault.stateBase)
+
+    #expect(session.unlinkedMentions(for: "Bersaglio.md").count == 1)
+    #expect(session.unlinkedMentions(for: "Bersaglio.md", limit: 0).isEmpty)
 }
 
 @MainActor

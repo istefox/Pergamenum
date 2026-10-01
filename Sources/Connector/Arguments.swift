@@ -64,6 +64,8 @@ struct Arguments {
             let body = String(token.dropFirst(2))
             if let equals = body.firstIndex(of: "=") {
                 let name = String(body[body.startIndex..<equals])
+                // `--=value` names nothing: kept, it landed under "" where no command reads.
+                guard !name.isEmpty else { throw ParseError.unknownFlagSyntax(token) }
                 if Self.flagNames.contains(name) { throw ParseError.flagTakesNoValue(name) }
                 // Taken verbatim: `--title=--strange` is how a value starting with `--`
                 // gets through.
