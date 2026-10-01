@@ -75,6 +75,32 @@ enum NoteFolding {
         return result
     }
 
+    /// The frontmatter block as lines to leave out of the layout, for the editor's «nascondi
+    /// frontmatter» toggle. Nil when the note has no closed block.
+    ///
+    /// `lineOffsets` is every line of the block, both `---` fences included, in the same
+    /// UTF-16 start-offset form `Layout.hiddenLineOffsets` uses, so the editor merges it into
+    /// the fold's own set. `firstVisibleOffset` is where a caret that was inside the block goes:
+    /// the line right after it, or the note's end when the block is all there is.
+    struct HiddenFrontmatter: Equatable, Sendable {
+        var lineOffsets: Set<Int>
+        var firstVisibleOffset: Int
+    }
+
+    static func hiddenFrontmatter(in text: String) -> HiddenFrontmatter? {
+        guard let block = NoteFrontmatter.range(in: text) else { return nil }
+        let starts = lineStarts(in: text)
+        let lastLine = line(of: block.upperBound, in: starts)
+        var offsets: Set<Int> = []
+        for number in 0...lastLine where starts.indices.contains(number) {
+            offsets.insert(offset(ofLine: number, in: text, starts: starts))
+        }
+        let firstVisible = starts.indices.contains(lastLine + 1)
+            ? offset(ofLine: lastLine + 1, in: text, starts: starts)
+            : text.utf16.count
+        return HiddenFrontmatter(lineOffsets: offsets, firstVisibleOffset: firstVisible)
+    }
+
     /// The hidden lines as paragraph numbers. The readable form of the same answer, and
     /// what the tests are written against.
     ///

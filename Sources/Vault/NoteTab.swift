@@ -20,6 +20,9 @@ struct NoteTab: Identifiable, Equatable, Sendable {
     /// `foldedOrdinals(ofOffsets:in:)` before reaching `NoteFolding`. Not written to the
     /// file: that would mean extending a frontmatter schema SPEC §4.3 closes.
     var foldedEntries: Set<Int> = []
+    /// The frontmatter block is hidden in this tab. Like the folds, a view of the note and not
+    /// part of it: never written to the file, and gone when the tab shows another note.
+    var hidesFrontmatter = false
     /// Which index entry the caret is inside, reported by the editor only when it changes.
     /// Nil until the editor has said, which is any note not yet clicked into.
     var currentOutlineEntry: Int?

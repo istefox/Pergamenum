@@ -54,7 +54,9 @@ extension NoteTextView {
         coordinator.applyStyling(to: textView, theme: theme)
         coordinator.applyEmbeds(to: textView)
         coordinator.applyTransclusions(to: textView, theme: theme)
-        coordinator.applyFolding(to: textView, folded: outline.foldedEntries, theme: theme)
+        coordinator.applyFolding(
+            to: textView, folded: outline.foldedEntries, hidesFrontmatter: outline.hidesFrontmatter, theme: theme
+        )
         // After the styling, always: `applyStyling` rewrites every attribute in the storage
         // and invalidates the layout with them, so a highlight painted before it would be
         // gone by the time anything was drawn.

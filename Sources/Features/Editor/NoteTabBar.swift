@@ -70,7 +70,10 @@ struct NoteTabBar: View {
                 // is divided, and two tabs were all that fitted beside them. The word survives
                 // as the accessibility label of the `Label`; the UI tests find the unsaved chip
                 // by its identifier, `note-save-chip`, never by that word.
-                if tabs.first(where: { $0.id == activeID })?.note.hasUnsavedChanges == true {
+                if let activeTab, NoteFrontmatter.exists(in: activeTab.note.text) {
+                    frontmatterToggle(hidden: activeTab.hidesFrontmatter)
+                }
+                if activeTab?.note.hasUnsavedChanges == true {
                     // Filled with the accent, same language `BoardToolbar` uses for its
                     // selected tool (`BoardChrome.swift`): a solid chip reads as "there is
                     // an action here" rather than a bare glyph easy to lose in the strip.
@@ -115,6 +118,35 @@ struct NoteTabBar: View {
         // the whole signal alone.
         .background(theme.color(isFocused ? .backgroundSecondary : .surfaceSunken))
     }
+
+    /// Shows or hides the note's frontmatter block, beside the save state. Present only for a
+    /// note that has one. A glyph for the reason the save chip is one (the bar's width); the
+    /// action is the accessibility label and the help text, and it is the same pill shape: an
+    /// outline while the block shows, the muted accent fill while it is hidden, so the bar
+    /// says at a glance that something is being left out.
+    private func frontmatterToggle(hidden: Bool) -> some View {
+        let action = hidden ? "Mostra il frontmatter" : "Nascondi il frontmatter"
+        return Button { focus { vault.toggleFrontmatter() } } label: {
+            Label(action, systemImage: hidden ? "eye.slash" : "eye")
+                .labelStyle(.iconOnly)
+                .themedText(.caption, color: hidden ? .textPrimary : .textSecondary)
+                .padding(.horizontal, theme.spacing(.xs))
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous)
+                        .fill(hidden ? theme.color(.accentMuted) : .clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous)
+                        .stroke(theme.color(.borderSubtle))
+                )
+        }
+        .buttonStyle(.plain)
+        .help(action)
+        .accessibilityIdentifier("note-frontmatter-toggle")
+    }
+
+    private var activeTab: NoteTab? { tabs.first { $0.id == activeID } }
 
     private var column: EditorColumn? {
         vault.columns.indices.contains(columnIndex) ? vault.columns[columnIndex] : nil

@@ -15,6 +15,11 @@ extension VaultController {
         set { updateFocusedTab { $0.foldedEntries = newValue } }
     }
 
+    /// Shows or hides the frontmatter block of the focused tab (`NoteTab.hidesFrontmatter`).
+    func toggleFrontmatter() {
+        updateFocusedTab { $0.hidesFrontmatter.toggle() }
+    }
+
     /// Which index entry the caret is inside, in the focused tab.
     var currentOutlineEntry: Int? {
         get { focusedTab?.currentOutlineEntry }
