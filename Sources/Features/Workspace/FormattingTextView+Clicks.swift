@@ -3,8 +3,9 @@ import AppKit
 /// What a click does on a Workspace card's text: the folded heading's badge, the task checkbox,
 /// Cmd+click on a link and the right-click link menu.
 ///
-/// An ADR-0045 size split of `FormattingTextView` that widens nothing: every `private` member
-/// here is read only inside this file, and the range holds no stored property. The wikilink
+/// An ADR-0045 size split of `FormattingTextView`: every `private` member here is read only
+/// inside this file, and the range holds no stored property. `claimsFoldBadge(at:)` is internal
+/// for a test, not for the split (its own comment names the reader). The wikilink
 /// completion stays in `FormattingTextView.swift`, because it holds two access-limited stored
 /// properties (`wikilinkCompletion`, `wikilinkDismissedLocation`) that moving it would widen.
 ///
@@ -114,12 +115,13 @@ extension FormattingTextView {
 
     /// Whether a folded heading's badge is under `point`, and toggling its section when one is.
     ///
-    /// **While editable only.** A card at rest is neither editable nor selectable
-    /// (`CardTextView.Coordinator.configure`), because at rest the pointer belongs to the board's
-    /// own tap, drag and double-click gestures - a text view that swallowed a click there would
-    /// take it from `BoardContentLayer`'s selection, and the badge would be a dead spot on the card
-    /// that also stopped it being picked up. The heading is still reachable from «Ripiega titoli»
-    /// in both states, which is the command this only ever shadows.
+    /// **In both states** (PG-357, ADR-0028 §D9's amendment), like `claimsCheckbox(at:)` below:
+    /// a card at rest hands every other point to the board's own tap, drag and double-click
+    /// gestures, and the click is claimed only on the badge's own drawn rectangle. Gated on
+    /// `isEditable` until PG-357, which left a folded section that a click on its own badge could
+    /// not open until the card was put into edit mode first.
+    ///
+    /// Internal, not private: read by `Tests/CardFoldBadgeTests.swift`.
     ///
     /// The fragment walk below re-states `NoteTextView+Transclusion.decoration(in:claimedBy:)`
     /// rather than extracting it (ADR-0028 §D9): that file is the note editor's, outside this
@@ -127,8 +129,8 @@ extension FormattingTextView {
     /// the point for the reason `NoteTextView+Transclusion.inContainer(_:of:)` exists at all - a
     /// layout fragment's frame is in the container's coordinates and a click arrives in the view's,
     /// and comparing the two directly is a containment test that can never succeed.
-    private func claimsFoldBadge(at point: CGPoint) -> Bool {
-        guard isEditable, let onToggleFold, let manager = textLayoutManager else { return false }
+    func claimsFoldBadge(at point: CGPoint) -> Bool {
+        guard let onToggleFold, let manager = textLayoutManager else { return false }
         let origin = textContainerOrigin
         let inContainer = CGPoint(x: point.x - origin.x, y: point.y - origin.y)
         let text = string
@@ -168,7 +170,7 @@ extension FormattingTextView {
 
     /// A click on a task line's checkbox glyph, naming the line and toggling it.
     ///
-    /// **Not gated on `isEditable`**, unlike `claimsFoldBadge(at:)` above - a task list you must
+    /// **Not gated on `isEditable`**, like `claimsFoldBadge(at:)` above - a task list you must
     /// double-click into before ticking a box is not the interactive list SPEC §6.4 asks for
     /// (plan decision 1). The click still has to land on the glyph's own drawn rect, never merely
     /// somewhere on the task's line: a card at rest hands every other point to the board's own

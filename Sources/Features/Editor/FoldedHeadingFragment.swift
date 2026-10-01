@@ -67,11 +67,14 @@ final class FoldedHeadingFragment: NSTextLayoutFragment {
     /// (the same asymmetric-slack assumption `TranscludedLineFragment.swift` already relies
     /// on for `typographicBounds.maxY`). Centering on the full inflated box therefore pulled
     /// the badge down into the slack, well below the heading text.
+    ///
+    /// The glyph box is the heading face's, the largest font on the line (PG-358). Not the font
+    /// at the line's first character: with markup concealed that character is the hidden `# `
+    /// marker, drawn in a near-zero face, and centring on it put the badge on the baseline.
     func badgeFrame(at point: CGPoint) -> CGRect {
         guard hiddenLines > 0, let line = textLineFragments.first else { return .null }
         let size = badge.size()
-        let font = (line.attributedString.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
-            ?? badgeFont
+        let font = Self.headingFont(of: line) ?? badgeFont
         let glyphBoxMinY = line.typographicBounds.minY + line.glyphOrigin.y - font.ascender
         let glyphBoxHeight = font.ascender - font.descender
         return CGRect(
@@ -81,6 +84,18 @@ final class FoldedHeadingFragment: NSTextLayoutFragment {
             width: size.width + Self.padding.width * 2,
             height: size.height + Self.padding.height * 2
         )
+    }
+
+    /// The largest font on `line`, which on a heading line is the heading's own face whatever
+    /// the concealed marker in front of it is drawn in.
+    private static func headingFont(of line: NSTextLineFragment) -> NSFont? {
+        var largest: NSFont?
+        line.attributedString.enumerateAttribute(.font, in: line.characterRange) { value, _, _ in
+            guard let font = value as? NSFont,
+                  font.pointSize > (largest?.pointSize ?? 0) else { return }
+            largest = font
+        }
+        return largest
     }
 
     /// The badge in the text container's coordinates, which is where a click arrives after

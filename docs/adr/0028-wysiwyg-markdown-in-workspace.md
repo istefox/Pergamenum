@@ -283,6 +283,12 @@ At rest the text view is not selectable and the board's own gestures own every c
 (`BoardContentLayer.selectionGestures(enabled:)`), so there is no in-text affordance at rest and
 none is invented — the submenu is reachable in both states, which the badge is not.
 
+**Amended 2026-10-01 (PG-357):** the badge click now works at rest too, on the model PG-074 set
+for the task checkbox: the click is claimed only on the badge's own drawn rectangle, and every
+other point of a resting card still goes to the board's gestures. A folded section that a click
+on its own badge could not open read as a broken control, and the only way back was entering
+edit mode first.
+
 Fold state lives on `WorkspaceController` as `[nodeID: Set<Int>]` of outline-entry ordinals,
 `@ObservationIgnored`-free so the card redraws, cleared in `attach` and never written to a
 `.canvas` file. R-09's «resets when the board is reopened» is that one line, not a promise.
