@@ -118,8 +118,16 @@ extension VaultController {
     /// the catch-up `landed(_:)` performs reaches every tab showing the path, the writer's own
     /// included; a buffer still dirty after the save - a failed save, or text typed during
     /// either `await` - gets the prompt rather than being overwritten.
+    ///
+    /// A tab of a previous vault is refused before anything, as `saveTab(_:)` refuses it: its
+    /// path names a different file in the open vault (PG-334, ADR-0073 §D5).
     func restoreVersion(_ text: String) async {
-        guard let session, let path = openNote?.relativePath else { return }
+        guard let session, let tab = focusedTab else { return }
+        let path = tab.note.relativePath
+        guard !tab.isFromPreviousVault else {
+            recordProblem("\(path): la nota è di una cartella note aperta prima, versione non ripristinata")
+            return
+        }
         await saveOpenNote()
         do {
             try await session.write(text, to: path)

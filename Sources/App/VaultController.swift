@@ -198,9 +198,6 @@ final class VaultController {
     // MARK: Opening
 
     func open(_ url: URL) async {
-        watcher?.stop()
-        watcher = nil
-
         // Resolved once, ahead of the session: `VaultSession` and `ThumbnailStore`
         // both need it, and a failure here means neither can be built - there is no
         // silent fallback location to write derived state into instead (ADR-0017).
@@ -212,6 +209,9 @@ final class VaultController {
             Self.log.fault("impossibile risolvere Application Support: apertura del vault annullata")
             return
         }
+        // Only once the state directory resolved: a bail above leaves the open vault watching.
+        watcher?.stop()
+        watcher = nil
         // Holds every route until the tabs are restored (PG-243); cleared before the replay,
         // never after it, since the replay goes back through the same guard.
         routeState.isOpeningVault = true
@@ -231,12 +231,15 @@ final class VaultController {
             guard let self, let newSession, self.session === newSession else { return }
             self.landed(change)
         }
-        // PG-334 is not fixed here, but the quit must never write a previous vault's tab into
-        // this one (ADR-0073 §D5): a tab still open when a *different* vault replaces the
-        // session records the root it belongs to, once (the first time it is found foreign), and
-        // the record is dropped when that same root opens again. `showing(_:)` also drops it,
-        // since the tab then shows a note of the current vault. This is the only place a foreign
-        // tab is born, so no tab-creation site tracks a root.
+        // Defence in depth behind `switchVault(to:)` (PG-334), the door every app caller uses:
+        // it reviews the dirty tabs and empties `columns` before a *different* vault gets here,
+        // so no tab survives that way. `open(_:)` itself still keeps `columns`, and nothing may
+        // write a previous vault's tab into this one (ADR-0073 §D5): a tab still open when a
+        // *different* vault replaces the session records the root it belongs to, once (the
+        // first time it is found foreign), and the record is dropped when that same root opens
+        // again. `showing(_:)` also drops it, since the tab then shows a note of the current
+        // vault. This is the only place a foreign tab is born, so no tab-creation site tracks a
+        // root.
         // Compared and stored under `vaultKey` (symlinks resolved), the key the rest of the app
         // identifies a vault by: the open panel hands over an unresolved URL and Recents a
         // resolved one, and `standardizedFileURL` alone tells a link from its target.
