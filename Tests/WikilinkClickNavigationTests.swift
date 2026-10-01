@@ -53,6 +53,52 @@ import Testing
     }
 }
 
+/// The Workspace card's half of the suite above (PG-361): `CardTextView.Coordinator` gained the
+/// same `modifierFlags` seam, so its Cmd guard is held at a fixed value the same way. The text
+/// view handed in is a bare one - the delegate method reads nothing off it, only the link.
+@MainActor
+@Suite struct CardWikilinkClickNavigation {
+    private static func coordinator(following spy: LinkFollowSpy) -> CardTextView.Coordinator {
+        var view = CardTextView(
+            text: .constant("Vedi Destinazione qui"),
+            theme: .emergency,
+            style: CardTextStyle(color: nil, alignment: nil),
+            isEditable: true,
+            hidesMarkup: false
+        )
+        view.onFollowLink = { spy.follow(title: $0) }
+        return view.makeCoordinator()
+    }
+
+    @Test func aPlainClickDoesNotNavigateAndACmdClickFollowsTheSameLink() {
+        let spy = LinkFollowSpy()
+        let coordinator = Self.coordinator(following: spy)
+        let textView = FormattingTextView()
+        let url = MarkdownAttributedText.noteURL(for: "Destinazione")
+
+        coordinator.modifierFlags = { [] }
+        let navigated = coordinator.textView(textView, clickedOnLink: url, at: 5)
+        #expect(!navigated)
+        #expect(spy.titles.isEmpty)
+
+        coordinator.modifierFlags = { .command }
+        let followed = coordinator.textView(textView, clickedOnLink: url, at: 5)
+        #expect(followed)
+        #expect(spy.titles == ["Destinazione"])
+    }
+
+    @Test func otherModifiersHeldWithoutCommandDoNotNavigate() {
+        let spy = LinkFollowSpy()
+        let coordinator = Self.coordinator(following: spy)
+        let url = MarkdownAttributedText.noteURL(for: "Destinazione")
+
+        coordinator.modifierFlags = { [.shift, .option] }
+        let navigated = coordinator.textView(FormattingTextView(), clickedOnLink: url, at: 5)
+        #expect(!navigated)
+        #expect(spy.titles.isEmpty)
+    }
+}
+
 /// `CompletingTextView.placeCaretForPlainClick(at:)` (issue #191): a plain single click on
 /// link-attributed text must place the caret and reveal-on-caret on that first click, since
 /// `applyReveal`'s only trigger is the selection-changed notification `setSelectedRange`
