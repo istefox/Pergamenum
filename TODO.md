@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=351 -->
+<!-- project-tasks: prefix=PG lastId=352 -->
 # PROJECT TASKS
 
-Updated: 2026-10-01 · Open: 83 (P1: 0) · In progress: 1
+Updated: 2026-10-01 · Open: 84 (P1: 0) · In progress: 1
 
 ## GitHub Issues
 - [ ] `PG-351` -> #776 **P3** [docs] The frontmatter toggle (PR #759) extends ADR-0074's fold pass and moves the frontmatter extent into Core (`NoteFrontmatter`), but no ADR records it; the approved plan called for a short one — `Sources/Core/Markdown/NoteFrontmatter.swift` <!-- src:session kind:fix opened:2026-10-01 runs:3 promote:2026-10-01 -->
@@ -67,6 +67,7 @@ Updated: 2026-10-01 · Open: 83 (P1: 0) · In progress: 1
 - [ ] `#236` PG-136: Dead state and dead tests that each need a yes/no rather than a refactor <!-- src:github state:OPEN labels:bug -->
 
 ## Open Issues
+- [ ] `PG-352` **P3** [fix] `ContenitoreEditorTests.clickingAnotherRowHandsTheEditToTheBackgroundAndTheQuitCanWaitForIt()` failed once in CI (`ContenitoreEditorTests.swift:180`, `!contenitore.hasUnsettledEdits`, 0.061 s) on PR #758's run and passed on #760's with the same code; presumed timing-dependent, not reproduced locally — `Tests/ContenitoreEditorTests.swift` <!-- src:session kind:fix opened:2026-10-01 runs:2 -->
 - [ ] `PG-346` **P3** [fix] `LintFinding` renders `vocabularyUnavailable` through Swift reflection with the module name inside (`vocabularyUnavailable(Pergamenum.TagNamespace.type)` in the test host); `perg` and `pergamenum-mcp` presumably write their own module name there, so a value in the protected lint JSON would differ per binary (inferred, not measured on the tools) — `Tests/LintFindingStringsTests.swift:95` · `Sources/Connector/VaultPayloads.swift` <!-- src:review kind:fix opened:2026-09-30 pr:737 runs:5 -->
 - [ ] `PG-309` **P3** [fix] `VaultWatcherTests.droppedWhileBusy()` failed once in a full `PergamenumTests` run on 2026-09-28 19:14 (Stop hook, PG-260 tree, which touched neither the watcher nor the test): «The test runner exited with code 0 before finishing running tests», no assertion; green on the next full run. Not yet reproduced, cause unknown; the test drives `VaultWatcher` teardown through `deinit` with events in flight, the path of the use-after-free fixed in `bd5b571` — `Tests/VaultWatcherTests.swift:102` <!-- src:session kind:fix opened:2026-09-28 pr:662 runs:23 promote:declined -->
 - [ ] `PG-288` **P3** [fix] Sidebar verbs run `flushBoard()` (now a full settle) before `canLeaveOpenBoardForVerb()`, so a conflicted open board gets its open sessions merged into memory even when the verb is then refused; harmless today, it never reaches disk — `Sources/Features/Workspace/WorkspaceView+FolderVerbs.swift:39-45` <!-- src:review kind:fix opened:2026-09-27 pr:598 adr:0066 runs:35 promote:declined -->
