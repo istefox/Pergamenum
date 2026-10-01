@@ -6,9 +6,9 @@ import SwiftUI
 // "Timeline column anatomy" §5-§6.
 //
 // The chronological middle column: one `List` of day sections, oldest first, with
-// messages in two lanes and manual entries full width. The `List` scrolls to its end
-// on open, which is where the newest row is (`PraticaTimelineModel.ordered` is
-// ascending).
+// messages in two lanes and manual entries the width of the readable column. The `List`
+// scrolls to its end on open, which is where the newest row is (`PraticaTimelineModel.ordered`
+// is ascending).
 //
 // One Quick Look host for the whole column and not one per chip: the panel is a
 // single responder (`Sources/Features/QuickLook/QuickLookPresenter.swift`). Here the
@@ -70,6 +70,14 @@ struct PraticaTimelineView: View {
                     ForEach(section.entries) { entry in
                         row(entry, next: next[entry.id])
                             .listRowSeparator(.hidden)
+                            // The selected state is the card's (`praticaCardSelection`), not the
+                            // row's. Measured on macOS 27 (hand check round 4): the row view draws
+                            // its selection highlight into its own layer, and a row background is a
+                            // subview spanning the whole row above it, so an opaque one in the
+                            // pane's own colour hides the highlight and looks like no background.
+                            // `List(selection:)`, its focus, `.onDeleteCommand`, `primaryAction`
+                            // and every context menu are untouched: only the drawing changes.
+                            .listRowBackground(theme.color(.backgroundPrimary))
                     }
                 } header: {
                     Text(PraticaRowFormat.day(section.day))
@@ -120,79 +128,85 @@ struct PraticaTimelineView: View {
         )
     }
 
-    /// ADR-0049 §D8: the aligned column's own fixed width - `BoardTray`'s own
-    /// fixed-width column (`frame(width: 200)`), reused as this feature's own number
-    /// since nothing narrower fits a note's title and no wider is asked for.
-    private static let noteSlotWidth: CGFloat = 200
-
     @ViewBuilder
     private func row(_ entry: PraticaTimelineEntry, next: PraticaTimelineEntry?) -> some View {
-        // ADR-0076 §D3/§D7 (R-09): an anchored entry aligns to its message's lane, at the same
-        // width, indented under it; every other row answers `lane(for:)` as before.
-        let lane = PraticaTimelineModel.hostLane(for: entry)
+        // ADR-0076 §D3/§D7 (R-09): an anchored entry sits on its message's side, indented under
+        // it; every other row answers `lane(for:)` as before. Every row lays out in the readable
+        // column (`spacing.readable`, leading) and every card takes its lane's whole width
+        // (`PraticaLaneRowLayout`): an anchored entry is its message's lane less the indent, a
+        // free entry the whole column.
         let isAnchored = if case .anchored = entry.placement { true } else { false }
-        // An anchored entry reserves the aligned column too, so its lane's arithmetic is its
-        // message's and the two edges line up.
-        let reservesNoteSlot = entry.kind == .message || isAnchored
-        let gutter = theme.spacing(.m)
-        HStack(alignment: .top, spacing: gutter) {
-            Group {
-                if entry.kind == .message {
-                    PraticaMessageRow(
-                        entry: entry,
-                        detail: pratiche.details[entry.id],
-                        isExpanded: pratiche.expansion.isExpanded(entry.id),
-                        onToggle: { expandsAll in toggle(entry, expandsAll: expandsAll) },
-                        onQuickLook: preview(_:),
-                        vaultRoot: vault.root,
-                        actions: rowActions
-                    )
-                } else {
-                    PraticaEntryRow(
-                        entry: entry,
-                        detail: pratiche.details[entry.id],
-                        isExpanded: pratiche.expansion.isExpanded(entry.id),
-                        onToggle: { expandsAll in toggle(entry, expandsAll: expandsAll) },
-                        vaultRoot: vault.root,
-                        onOpenNote: onOpenNote,
-                        actions: rowActions
-                    )
-                    // Indented from the lane's leading edge, whichever side the lane sits on:
-                    // the entry reads as nested under the message above it (gate G1).
-                    .padding(.leading, isAnchored ? theme.spacing(.l) : 0)
-                }
-            }
-            // DESIGN.md "Binding decisions": ~70 % width, leading for received and
-            // trailing for sent; a manual entry is full width. The width is the third
-            // carrier of direction, beside the glyph and the lane's own token (R-25).
-            //
-            // ADR-0049 §D8: a message row also reserves the gutter and the aligned
-            // column's own fixed width here, in this same arithmetic, rather than
-            // leaving the `HStack` to discover it on its own - `containerRelativeFrame`
-            // reads the outer scroll container's width however deeply it is nested, so
-            // without this the lane still claims the column's own space and the two
-            // draw on top of each other (the trap ADR §D8 names by name).
-            .containerRelativeFrame(.horizontal, alignment: alignment(of: lane)) { width, _ in
-                let reserved = reservesNoteSlot ? gutter + Self.noteSlotWidth : 0
-                let available = width - reserved
-                return lane == .entry ? available : available * 0.7
-            }
+        // ADR-0049 §D8: a message row reserves the note slot beside its card - trailing a
+        // received message, leading a sent one - whose width scales with the timeline (PG-355,
+        // `PraticaTimelineModel.noteSlotWidth`). An anchored entry reserves it too, on the same
+        // side, so its lane's arithmetic is its message's.
+        let lane = PraticaTimelineModel.hostLane(for: entry)
+        let indent = PraticaTimelineModel.anchoredIndent(lane: lane, isAnchored: isAnchored, step: theme.spacing(.l))
+        // The selected state is drawn on the card (`praticaCardSelection`), not by the `List` on
+        // the whole row (`list(_:)`'s row background hides that one).
+        let isSelected = pratiche.selectedEntryID == entry.id
+        PraticaLaneRowLayout(
+            lane: lane,
+            reservesSlot: entry.kind == .message || isAnchored,
+            gutter: theme.spacing(.m),
+            columnMaximum: theme.spacing(.readable)
+        ) {
             if entry.kind == .message {
-                PraticaMessageNoteSlot(
-                    reference: pratiche.details[entry.id]?.linkedNote,
-                    hash: PraticaMessageRow.hash(of: entry)
+                PraticaMessageRow(
+                    entry: entry,
+                    detail: pratiche.details[entry.id],
+                    isExpanded: pratiche.expansion.isExpanded(entry.id),
+                    onToggle: { expandsAll in toggle(entry, expandsAll: expandsAll) },
+                    onQuickLook: preview(_:),
+                    vaultRoot: vault.root,
+                    actions: rowActions
                 )
-                .frame(width: Self.noteSlotWidth, alignment: .topLeading)
-            } else if isAnchored {
-                // The aligned column's place, empty: an entry carries no linked note of its own
-                // (ADR-0076 §D11), but its lane must end where its message's does.
-                Color.clear
-                    .frame(width: Self.noteSlotWidth, height: 0)
-                    .accessibilityHidden(true)
+                .praticaCardSelection(isSelected: isSelected)
+            } else {
+                PraticaEntryRow(
+                    entry: entry,
+                    detail: pratiche.details[entry.id],
+                    isExpanded: pratiche.expansion.isExpanded(entry.id),
+                    onToggle: { expandsAll in toggle(entry, expandsAll: expandsAll) },
+                    vaultRoot: vault.root,
+                    onOpenNote: onOpenNote,
+                    actions: rowActions
+                )
+                .praticaCardSelection(isSelected: isSelected)
+                // Indented from the lane's own edge - leading under a received message, trailing
+                // under a sent one - so the box stands in from its message's flush edge and reads
+                // as nested under it on either side (gate G1, `anchoredIndent`).
+                .padding(.leading, indent.leading)
+                .padding(.trailing, indent.trailing)
             }
+        } slot: {
+            noteSlot(for: entry, lane: lane, isAnchored: isAnchored)
         }
+        // A selected row still raises the background's prominence for its content; with the
+        // highlight hidden, nothing in the row may switch to a "selected" style (the text keeps its
+        // own tokens either way).
+        .environment(\.backgroundProminence, .standard)
         .contextMenu { menu(for: entry, next: next) }
         .tag(entry.id)
+    }
+
+    /// What the row's note slot draws: a message's linked note, aligned toward its card.
+    @ViewBuilder
+    private func noteSlot(for entry: PraticaTimelineEntry, lane: PraticaLane, isAnchored: Bool) -> some View {
+        if entry.kind == .message {
+            PraticaMessageNoteSlot(
+                reference: pratiche.details[entry.id]?.linkedNote,
+                hash: PraticaMessageRow.hash(of: entry),
+                side: PraticaTimelineModel.laneAlignment(lane)
+            )
+        } else if isAnchored {
+            // The note slot's place, empty, beside the card as for its message: an entry
+            // carries no linked note of its own (ADR-0076 §D11), but reserving the place
+            // keeps its lane equal to its message's, on either side.
+            Color.clear
+                .frame(height: 0)
+                .accessibilityHidden(true)
+        }
     }
 
     /// The row's context menu: the message catalogue for a message, the entry catalogue for a
@@ -236,14 +250,6 @@ struct PraticaTimelineView: View {
         var actions = self.actions
         actions.onQuickLook = preview(_:)
         return actions
-    }
-
-    private func alignment(of lane: PraticaLane) -> Alignment {
-        switch lane {
-        case .received: .leading
-        case .sent: .trailing
-        case .entry: .center
-        }
     }
 
     private var empty: some View {

@@ -257,6 +257,8 @@ extension Theme {
             .surfaceReceived: RGBA(hex: "#F0F0F0")!,
             .surfaceSent: RGBA(hex: "#E4EEF8")!,
             .surfaceEntry: RGBA(hex: "#FBF0C4")!,
+            .surfaceEntryNote: RGBA(hex: "#FFF1BF")!,
+            .surfaceEntryCall: RGBA(hex: "#DFF2E3")!,
             .borderSubtle: RGBA(hex: "#E0E0E0")!,
             .borderStrong: RGBA(hex: "#C4C4C4")!,
             .textPrimary: RGBA(hex: "#111111")!,

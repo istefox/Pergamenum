@@ -112,6 +112,10 @@ func rejectsMalformedHex(_ input: String) {
         #expect(!theme.inheritedTokens.contains("color.surface.received"), "\(id) should define color.surface.received")
         #expect(!theme.inheritedTokens.contains("color.surface.sent"), "\(id) should define color.surface.sent")
         #expect(!theme.inheritedTokens.contains("color.surface.entry"), "\(id) should define color.surface.entry")
+        // Hand check round 5: a note and a call each have their own surface.
+        for path in ["color.surface.entryNote", "color.surface.entryCall"] {
+            #expect(!theme.inheritedTokens.contains(path), "\(id) should define \(path)")
+        }
 
         // The category dot's own saturated palette, distinct from `color.sticky.*`
         // (`CategoryColor+Token.swift`). Both bundled themes must define all five.
@@ -132,6 +136,16 @@ func rejectsMalformedHex(_ input: String) {
         (.calendarFestive, "#B3261E"),
         (.calendarHoliday, "#D62828"),
     ]
+    for (token, hex) in expected {
+        let rgba = try #require(RGBA(hex: hex))
+        #expect(Theme.emergency.rawColor(token) == rgba, "\(token.rawValue) should resolve to \(hex)")
+    }
+}
+
+/// Hand check round 5: the same contract for the two manual-entry surfaces, whose values mirror
+/// `pergamenum-light.json`.
+@Test func emergencyThemeDefinesTheEntryKindSurfaces() throws {
+    let expected: [(ColorToken, String)] = [(.surfaceEntryNote, "#FFF1BF"), (.surfaceEntryCall, "#DFF2E3")]
     for (token, hex) in expected {
         let rgba = try #require(RGBA(hex: hex))
         #expect(Theme.emergency.rawColor(token) == rgba, "\(token.rawValue) should resolve to \(hex)")
@@ -217,6 +231,38 @@ func rejectsMalformedHex(_ input: String) {
 
     engine.selection = .named("solo-accento")
     #expect(engine.current.id == "solo-accento")
+}
+
+/// Hand check round 5: a vault theme written before `color.surface.entryNote`/`.entryCall`
+/// existed - one that even overrides the old `color.surface.entry` - draws a note and a call in
+/// the bundled theme's colours for its appearance: opaque, never clear, never the emergency's.
+@MainActor
+@Test func aVaultThemeWithoutTheEntryKindSurfacesInheritsThemFromTheBundledTheme() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("pergamenum-themes-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let older = """
+    {
+      "meta": { "name": { "$type": "string", "$value": "Notte vecchia" },
+                "appearance": { "$type": "string", "$value": "dark" } },
+      "color": { "$type": "color", "surface": { "entry": { "$value": "#112233" } } }
+    }
+    """
+    try Data(older.utf8).write(to: directory.appendingPathComponent("notte-vecchia.json"))
+
+    let engine = ThemeEngine(defaults: isolatedDefaults())
+    let bundledDark = try #require(engine.themes.first { $0.id == "pergamenum-dark" })
+    engine.loadUserThemes(in: directory)
+    let custom = try #require(engine.themes.first { $0.id == "notte-vecchia" })
+
+    #expect(engine.problems.isEmpty, "\(engine.problems)")
+    for token in [ColorToken.surfaceEntryNote, .surfaceEntryCall] {
+        #expect(custom.inheritedTokens.contains(token.path))
+        #expect(custom.rawColor(token) == bundledDark.rawColor(token), "\(token.path) not the bundled dark value")
+        #expect(custom.rawColor(token) != Theme.emergency.rawColor(token), "\(token.path) fell to the emergency")
+        #expect(custom.rawColor(token).alpha == 1, "\(token.path) would render clear")
+    }
 }
 
 @MainActor

@@ -200,3 +200,19 @@ final class HostedView<Content: View> {
         return Snapshot(distinctColors: colors.count, png: png)
     }
 }
+
+// MARK: - Frames by name
+
+/// Frames reported by `onGeometryChange`, by name, in the window's coordinates - what a hosted
+/// layout test reads back once the view has settled (`PraticaTimelineLaneHostedTests`,
+/// `PraticaTimelineEntryGapHostedTests`).
+final class FrameBox: @unchecked Sendable {
+    var frames: [String: CGRect] = [:]
+}
+
+extension View {
+    /// Records this view's global frame in `box` under `name`, on every geometry change.
+    func report(_ name: String, into box: FrameBox) -> some View {
+        onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { box.frames[name] = $0 }
+    }
+}

@@ -3,11 +3,15 @@ import SwiftUI
 // ADR-0049 (Pratiche links to notes, tasks and boards), plan
 // docs/plans/pratiche-note-task-workspace-links.md, Task 6 - R-05, R-08; ADR §D8, §D9.
 
-/// The timeline's aligned column (§D8): one message row's own linked note, read-only,
-/// drawn at the row's own height inside the same `HStack` `PraticaTimelineView.row(_:)`
-/// builds - there is no second scroll view, so this never has to sync itself against
-/// one. Empty when the message carries no link at all; marked broken rather than
-/// hidden when the reference no longer resolves (R-08, SPEC's Edge cases).
+/// The timeline's note slot (§D8): one message row's own linked note, read-only,
+/// placed in the same row by `PraticaLaneRowLayout` for `PraticaTimelineView.row(_:next:)`,
+/// at a width that scales with the timeline (PG-355, `PraticaTimelineModel.noteSlotWidth`) -
+/// there is no second scroll view, so this never has to sync itself against one. It sits next
+/// to the card's actual edge, trailing a received message and leading a sent one
+/// (`PraticaTimelineModel.slotSide`), and its content aligns toward the card (`side`). Empty
+/// when the message carries no link at all - nothing is drawn, so the card reads flush with
+/// its edge; marked broken rather than hidden when the reference no longer resolves (R-08,
+/// SPEC's Edge cases).
 ///
 /// Opens the note the same two calls `PratichePane+Inspector.swift`'s
 /// `openPraticaNote` already makes (§D9) - no text view is bound to the note here,
@@ -23,6 +27,13 @@ struct PraticaMessageNoteSlot: View {
     /// `PraticaMessageRow.hash(of:)`'s own value, so this slot's identifier and the
     /// row's indicator identify the same message the same way.
     let hash: String
+    /// `PraticaTimelineModel.laneAlignment` of the row's lane: the side the content aligns
+    /// toward, so a note beside a sent message sits against it from the leading side.
+    let side: PraticaLaneSide
+
+    private var frameAlignment: Alignment { side == .trailing ? .topTrailing : .topLeading }
+    private var stackAlignment: HorizontalAlignment { side == .trailing ? .trailing : .leading }
+    private var textAlignment: TextAlignment { side == .trailing ? .trailing : .leading }
 
     private enum SlotState: Equatable {
         case empty
@@ -34,7 +45,7 @@ struct PraticaMessageNoteSlot: View {
 
     var body: some View {
         content
-            .frame(maxWidth: .infinity, minHeight: 1, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 1, alignment: frameAlignment)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("pratiche-message-note-\(hash)")
             .task(id: reference) { load() }
@@ -46,7 +57,7 @@ struct PraticaMessageNoteSlot: View {
         case .empty:
             Color.clear
         case .broken(let title):
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: stackAlignment, spacing: 2) {
                 HStack(spacing: theme.spacing(.xs)) {
                     Image(systemName: "questionmark.square.dashed")
                         .foregroundStyle(theme.color(.textTertiary))
@@ -61,13 +72,14 @@ struct PraticaMessageNoteSlot: View {
                 vault.openChosenNote(at: path)
                 navigation.pane = .notes
             } label: {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: stackAlignment, spacing: 2) {
                     Text(title).themedText(.caption, color: .accentPrimary).lineLimit(1)
                     if !openingLines.isEmpty {
                         Text(openingLines).themedText(.caption, color: .textSecondary).lineLimit(3)
+                            .multilineTextAlignment(textAlignment)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: frameAlignment)
             }
             .buttonStyle(.plain)
             .padding(theme.spacing(.xs))
