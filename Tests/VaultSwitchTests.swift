@@ -512,8 +512,292 @@ private final class SecondSwitch {
     controller.close()
 }
 
-// Not covered, stated rather than left implicit: the branch after `open(_:)` in `switchVault`
-// (`session === leaving`, then `restoreTabs()`) runs only when `VaultState.processDefaultBase()`
-// throws. That is a static read of the process's defaults and temporary directory; making it
-// throw from a test means changing process-wide state every concurrently running test that
-// opens a vault also reads, and anything narrower would be a new production seam.
+// PG-348: a state base that cannot be resolved. It is reached through
+// `VaultController.resolveStateBase`, replaced on this controller alone, never through the
+// process-wide defaults `VaultState.processDefaultBase()` reads and every other test shares.
+//
+// `switchVault` resolves it first, right after the `isOpeningVault` guard: when it fails, the
+// switch records a problem and returns before asking, saving or clearing anything, so a dirty
+// buffer keeps its text and its tab, and the composer's draft, the reopenable closed tabs and the
+// quick switcher's recents all survive. `open(_:)` alone records a problem too. Every test counts
+// the resolver's calls, so a bail is proved to come from the resolver and from the expected call.
+//
+// The branch after `open(_:)` (`session === leaving`, then `restoreTabs()`) stays reachable only
+// when the base resolves for the preflight and fails inside `open(_:)`; the last test drives it.
+
+private struct UnresolvableStateBase: Error {}
+
+/// Each column's tab paths, in order, and each column's active path.
+@MainActor
+private func arrangement(_ controller: VaultController) -> (tabs: [[String]], active: [String?]) {
+    (
+        controller.columns.map { $0.tabs.map(\.note.relativePath) },
+        controller.columns.map { $0.active?.note.relativePath }
+    )
+}
+
+/// How many problems name the state base, from the switch's preflight or from `open(_:)`.
+@MainActor
+private func stateBaseProblems(_ controller: VaultController, from door: StateBaseDoor) -> Int {
+    controller.problems.filter { $0.hasPrefix(door.rawValue) && $0.contains("Application Support") }.count
+}
+
+private enum StateBaseDoor: String {
+    case switchPreflight = "Apertura di un'altra cartella note annullata"
+    case open = "Apertura della cartella note annullata"
+}
+
+@MainActor
+@Test func aSwitchWithAnUnresolvableStateBaseAsksNothingAndKeepsTheDirtyTab() async throws {
+    let a = try TemporaryVault()
+    let b = try TemporaryVault()
+    let rootA = a.root
+    let rootB = b.root
+    let controller = try await quitController(a)
+    try vaultB(b, rememberedIn: controller)
+    controller.openNoteInNewTab(at: "Progetti/Pressa.md")
+    controller.addColumn()
+    controller.focusColumn(1)
+    controller.openNoteInNewTab(at: "Dopo.md")
+    let dirty = try openDirty("Nexion.md", adding: "\nDi A.\n", inColumn: 0, of: controller)
+    let before = arrangement(controller)
+    #expect(before.tabs == [["Progetti/Pressa.md", "Nexion.md"], ["Dopo.md"]])
+    #expect(before.active == ["Nexion.md", "Dopo.md"])
+    #expect(controller.focusedColumnIndex == 0 && !controller.recentNotePaths.isEmpty)
+    let recentsBefore = controller.recentNotePaths
+    let closedBefore = controller.closedTabPaths
+    let rememberedABefore = remembered(controller, rootA)
+    let sessionA = try #require(controller.session)
+    let watcherA = try #require(controller.watcher)
+    var resolved = 0
+    controller.resolveStateBase = {
+        resolved += 1
+        throw UnresolvableStateBase()
+    }
+    var asked = 0
+
+    let switched = await controller.switchVault(to: rootB) { _ in
+        asked += 1
+        return .discard
+    }
+
+    #expect(!switched)
+    // The preflight bailed before the question, and `open(_:)` was never reached.
+    #expect(asked == 0)
+    #expect(resolved == 1)
+    #expect(stateBaseProblems(controller, from: .switchPreflight) == 1)
+    #expect(stateBaseProblems(controller, from: .open) == 0)
+    // A is still the open folder: the same session, still watched by the same watcher, still
+    // the subscriber's session (ADR-0067 §D4), no opening left half done.
+    #expect(controller.session === sessionA)
+    #expect(controller.root?.vaultKey == rootA.vaultKey)
+    #expect(controller.watcher === watcherA)
+    #expect(sessionA.landedChangeSubscriber != nil)
+    #expect(!controller.routeState.isOpeningVault)
+    // Nothing was cleared: the same arrangement, and the dirty buffer is the same tab, text kept.
+    let after = arrangement(controller)
+    #expect(after.tabs == before.tabs)
+    #expect(after.active == before.active)
+    #expect(controller.focusedColumnIndex == 0)
+    #expect(!controller.columns.flatMap(\.tabs).contains { $0.isFromPreviousVault })
+    let tab = try #require(controller.tab(withID: dirty))
+    #expect(tab.note.hasUnsavedChanges)
+    #expect(tab.note.text.contains("Di A."))
+    #expect(controller.recentNotePaths == recentsBefore)
+    #expect(controller.closedTabPaths == closedBefore)
+    // Nothing written anywhere, and neither folder's remembered arrangement touched.
+    #expect(quitOnDisk(rootA, "Nexion.md") == quitNote("Nexion."))
+    #expect(quitOnDisk(rootB, "Nexion.md") == quitNote("Nexion di B."))
+    #expect(remembered(controller, rootB) == ["SoloB.md"])
+    #expect(remembered(controller, rootA) == rememberedABefore)
+    controller.close()
+}
+
+@MainActor
+@Test func aSwitchWithAnUnresolvableStateBaseKeepsTheDraftTheClosedTabsAndTheRecents() async throws {
+    let a = try TemporaryVault()
+    let b = try TemporaryVault()
+    let rootA = a.root
+    let rootB = b.root
+    let controller = try await quitController(a)
+    try vaultB(b, rememberedIn: controller)
+    controller.openNoteInNewTab(at: "Progetti/Pressa.md")
+    let pressa = try #require(controller.focusedTab?.id)
+    controller.closeTab(pressa)
+    controller.openNoteInNewTab(at: "Nexion.md")
+    controller.beginNewNote(in: "Progetti")
+    controller.noteDraft?.title = "Bozza di A"
+    // Preconditions: what a switch would clear names A's files before it.
+    #expect(controller.isComposingNote)
+    #expect(controller.closedTabPaths == ["Progetti/Pressa.md"])
+    #expect(controller.recentNotePaths.contains("Nexion.md"))
+    let recentsBefore = controller.recentNotePaths
+    let tabsBefore = arrangement(controller).tabs
+    let sessionA = try #require(controller.session)
+    let watcherA = try #require(controller.watcher)
+    var resolved = 0
+    controller.resolveStateBase = {
+        resolved += 1
+        throw UnresolvableStateBase()
+    }
+    var asked = 0
+
+    let switched = await controller.switchVault(to: rootB) { _ in
+        asked += 1
+        return .cancel
+    }
+
+    #expect(!switched)
+    #expect(asked == 0)
+    #expect(resolved == 1)
+    #expect(stateBaseProblems(controller, from: .switchPreflight) == 1)
+    #expect(controller.session === sessionA)
+    #expect(controller.watcher === watcherA)
+    #expect(arrangement(controller).tabs == tabsBefore)
+    // The preflight bailed before the switch cleared anything: the draft is still being
+    // composed, the closed tab is still reopenable and the recents are A's own.
+    #expect(controller.isComposingNote)
+    #expect(controller.noteDraft?.title == "Bozza di A")
+    #expect(controller.closedTabPaths == ["Progetti/Pressa.md"])
+    #expect(controller.recentNotePaths == recentsBefore)
+    #expect(quitOnDisk(rootA, "Progetti/Bozza di A.md") == nil)
+    #expect(quitOnDisk(rootB, "Progetti/Bozza di A.md") == nil)
+    #expect(quitOnDisk(rootB, "Nexion.md") == quitNote("Nexion di B."))
+    controller.close()
+}
+
+@MainActor
+@Test func openAloneWithAnUnresolvableStateBaseLeavesTheOpenVaultUntouched() async throws {
+    let a = try TemporaryVault()
+    let b = try TemporaryVault()
+    let rootA = a.root
+    let rootB = b.root
+    let controller = try await quitController(a)
+    try vaultB(b, rememberedIn: controller)
+    let id = try openDirty("Nexion.md", adding: "\nDi A.\n", inColumn: 0, of: controller)
+    let sessionA = try #require(controller.session)
+    let watcherA = try #require(controller.watcher)
+    let generation = controller.indexGeneration
+    var resolved = 0
+    controller.resolveStateBase = {
+        resolved += 1
+        throw UnresolvableStateBase()
+    }
+
+    await controller.open(rootB)
+
+    #expect(resolved == 1)
+    // With a session open, the bail tells the person why nothing changed.
+    #expect(stateBaseProblems(controller, from: .open) == 1)
+    #expect(controller.session === sessionA)
+    #expect(controller.root?.vaultKey == rootA.vaultKey)
+    #expect(controller.watcher === watcherA)
+    #expect(sessionA.landedChangeSubscriber != nil)
+    #expect(controller.indexGeneration == generation)
+    #expect(!controller.routeState.isOpeningVault)
+    // `open(_:)` keeps `columns` by design; on a bail it does not even mark the tab foreign.
+    let tab = try #require(controller.tab(withID: id))
+    #expect(tab.note.hasUnsavedChanges)
+    #expect(!tab.isFromPreviousVault)
+    #expect(arrangement(controller).tabs == [["Nexion.md"]])
+    #expect(remembered(controller, rootB) == ["SoloB.md"])
+    controller.close()
+}
+
+@MainActor
+@Test func aSwitchWithAnUnresolvableStateBaseSavesNothingEvenBeforeSalva() async throws {
+    let a = try TemporaryVault()
+    let b = try TemporaryVault()
+    let rootA = a.root
+    let rootB = b.root
+    let controller = try await quitController(a)
+    try vaultB(b, rememberedIn: controller)
+    let id = try openDirty("Nexion.md", adding: "\nDi A.\n", inColumn: 0, of: controller)
+    let sessionA = try #require(controller.session)
+    var resolved = 0
+    controller.resolveStateBase = {
+        resolved += 1
+        throw UnresolvableStateBase()
+    }
+    var asked = 0
+
+    let switched = await controller.switchVault(to: rootB) { _ in
+        asked += 1
+        return .save
+    }
+
+    #expect(!switched)
+    #expect(asked == 0)
+    #expect(resolved == 1)
+    #expect(stateBaseProblems(controller, from: .switchPreflight) == 1)
+    // No «Salva» was ever answered: A's file is unchanged and nothing reached B.
+    #expect(quitOnDisk(rootA, "Nexion.md") == quitNote("Nexion."))
+    #expect(quitOnDisk(rootB, "Nexion.md") == quitNote("Nexion di B."))
+    #expect(remembered(controller, rootB) == ["SoloB.md"])
+    // A stays the open folder, and the same tab still holds the unsaved edit.
+    #expect(controller.session === sessionA)
+    #expect(controller.root?.vaultKey == rootA.vaultKey)
+    #expect(arrangement(controller).tabs == [["Nexion.md"]])
+    let tab = try #require(controller.tab(withID: id))
+    #expect(tab.note.hasUnsavedChanges)
+    #expect(tab.note.text.contains("Di A."))
+    controller.close()
+}
+
+// The base resolves for the preflight and fails inside `open(_:)`: the only way left to the
+// branch after `open(_:)`. A's arrangement comes back through `restoreTabs()`, re-read from disk.
+
+@MainActor
+@Test func aStateBaseLostAfterThePreflightRestoresTheLeftVaultsTabs() async throws {
+    let a = try TemporaryVault()
+    let b = try TemporaryVault()
+    let rootA = a.root
+    let rootB = b.root
+    let controller = try await quitController(a)
+    try vaultB(b, rememberedIn: controller)
+    controller.openNoteInNewTab(at: "Progetti/Pressa.md")
+    controller.addColumn()
+    controller.focusColumn(1)
+    controller.openNoteInNewTab(at: "Dopo.md")
+    _ = try openDirty("Nexion.md", adding: "\nDi A.\n", inColumn: 0, of: controller)
+    let before = arrangement(controller)
+    #expect(before.tabs == [["Progetti/Pressa.md", "Nexion.md"], ["Dopo.md"]])
+    let sessionA = try #require(controller.session)
+    let watcherA = try #require(controller.watcher)
+    var resolved = 0
+    controller.resolveStateBase = {
+        resolved += 1
+        if resolved == 1 { return try VaultState.processDefaultBase() }
+        throw UnresolvableStateBase()
+    }
+    var asked = 0
+
+    let switched = await controller.switchVault(to: rootB) { _ in
+        asked += 1
+        return .discard
+    }
+
+    #expect(!switched)
+    #expect(asked == 1)
+    // Once by the preflight, once by `open(_:)`, which is where it bailed.
+    #expect(resolved == 2)
+    #expect(stateBaseProblems(controller, from: .switchPreflight) == 0)
+    #expect(stateBaseProblems(controller, from: .open) == 1)
+    #expect(controller.session === sessionA)
+    #expect(controller.root?.vaultKey == rootA.vaultKey)
+    #expect(controller.watcher === watcherA)
+    #expect(sessionA.landedChangeSubscriber != nil)
+    #expect(!controller.routeState.isOpeningVault)
+    // A's arrangement is back, column by column, in order, with the same tabs in front.
+    let after = arrangement(controller)
+    #expect(after.tabs == before.tabs)
+    #expect(after.active == before.active)
+    #expect(controller.focusedColumnIndex == 0)
+    #expect(!controller.columns.flatMap(\.tabs).contains { $0.isFromPreviousVault })
+    // «Non salvare» covered the buffer: the restored tab shows A's file as it is on disk.
+    #expect(controller.openNote?.text == quitNote("Nexion."))
+    #expect(quitOnDisk(rootA, "Nexion.md") == quitNote("Nexion."))
+    #expect(quitOnDisk(rootB, "Nexion.md") == quitNote("Nexion di B."))
+    #expect(remembered(controller, rootB) == ["SoloB.md"])
+    controller.close()
+}

@@ -157,6 +157,11 @@ final class VaultController {
     @ObservationIgnored weak var openBoard: WorkspaceController?
     /// Reopens the main window for a cancelled quit (ADR-0073 §D7); set by `RootView`'s `openWindow`.
     @ObservationIgnored var reopenMainWindow: (() -> Void)?
+    /// Where `open(_:)` resolves the derived-state base (ADR-0017). No production caller sets it;
+    /// a test replaces it to make the resolution fail on this controller alone, which reaches
+    /// `open(_:)`'s and `switchVault(to:ask:)`'s bail branches without touching the process-wide
+    /// defaults every concurrently running test reads (PG-348).
+    @ObservationIgnored var resolveStateBase: () throws -> URL = { try VaultState.processDefaultBase() }
 
     /// Everything the `pergamenum://` routes hold between arriving and being acted on
     /// (SPEC §9). The type is declared beside the extension that uses it.
@@ -204,9 +209,12 @@ final class VaultController {
         // `processDefaultBase()`, not `applicationSupportBase()` directly: this is the
         // one call every one of the fourteen test files that build a `VaultController`
         // and call `open(_:)` goes through, and it must never be the real directory
-        // from a test run.
-        guard let stateBase = try? VaultState.processDefaultBase() else {
+        // from a test run. Read through `resolveStateBase`, which defaults to it.
+        guard let stateBase = try? resolveStateBase() else {
             Self.log.fault("impossibile risolvere Application Support: apertura del vault annullata")
+            // The open vault, if any, keeps running: tell the person why nothing changed. With no
+            // session there is nowhere to show it (`recordProblem` is the session's door).
+            recordProblem("Apertura della cartella note annullata: impossibile risolvere la cartella di Application Support")
             return
         }
         // Only once the state directory resolved: a bail above leaves the open vault watching.

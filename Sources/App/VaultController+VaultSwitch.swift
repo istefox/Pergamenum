@@ -31,6 +31,11 @@ extension VaultController {
     /// leaving "it" would remember an empty arrangement over the real one. The flag is read at
     /// the start of the door, before anything is asked.
     ///
+    /// Before anything is asked, a different folder's state base is resolved once
+    /// (`resolveStateBase`, the seam `open(_:)` reads): when it cannot be, the switch is refused
+    /// with a recorded problem and nothing is touched - no question, no saved or discarded tab,
+    /// no draft, recents or close request cleared.
+    ///
     /// The session is compared again after the saves' `await` (ADR-0043 §D7): a switch that
     /// landed meanwhile has done its own review, and this one stops rather than empty that
     /// folder's tabs.
@@ -46,6 +51,15 @@ extension VaultController {
         guard let leaving = session, leaving.root.vaultKey != url.vaultKey else {
             await open(url)
             return root?.vaultKey == url.vaultKey
+        }
+        // Preflight: `open(_:)` bails when the state base cannot be resolved, and by then the
+        // review, the draft, the recents and a «Non salvare» buffer would be gone for a switch
+        // that never happens. Nothing is asked or touched unless the switch can proceed.
+        guard (try? resolveStateBase()) != nil else {
+            recordProblem(
+                "Apertura di un'altra cartella note annullata: impossibile risolvere la cartella di Application Support"
+            )
+            return false
         }
         let review = QuitReview(columns: columns)
         if !review.isEmpty {
@@ -78,9 +92,9 @@ extension VaultController {
         recentNotePaths = []
         closeRequest = nil
         await open(url)
-        // `open(_:)` gives up before touching the session or the watcher when the state
-        // directory cannot be resolved: the folder being left is still open and watched, so its
-        // arrangement comes back.
+        // Defence: the preflight above makes this unreachable for an unresolvable state base,
+        // but should `open(_:)` still give up before touching the session or the watcher, the
+        // folder being left is still open and watched, so its arrangement comes back.
         if session === leaving {
             restoreTabs()
             return false
