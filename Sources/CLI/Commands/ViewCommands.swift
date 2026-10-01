@@ -37,7 +37,8 @@ enum ViewCommands {
         guard let path = arguments.word(2) else {
             throw CommandError("«perg view run» vuole il percorso di una nota", code: .usage)
         }
-        let run = try VaultAPI.runView(session, at: path, ordinal: arguments["ordinal"].flatMap(Int.init))
+        let ordinal = try VaultAPI.viewOrdinal(parsing: arguments["ordinal"])
+        let run = try VaultAPI.runView(session, at: path, ordinal: ordinal)
 
         if arguments.has("json") {
             Output.json(run)

@@ -99,13 +99,25 @@ private let sampleBoard = """
     #expect(FolderFileOperations.validate("Ricerca 2026").isEmpty)
 }
 
-// PG-045: `NoteName.validate` has no rule against "." or ".." (a note title is never a
-// relative path segment), so `FolderFileOperations.validate` adds its own check rather
-// than let a folder rename/creation resolve one of these harmlessly - previously
-// blocked only incidentally, by the pre-existing "already exists" collision check.
+// PG-045: "." or ".." as a folder name would resolve harmlessly to a relative path
+// segment - previously blocked only incidentally, by the "already exists" collision
+// check. Since PG-272 `NoteName.validate`'s leading-dot rule refuses both.
 @Test func validateRejectsABareDotOrDotDotAsAFolderName() {
     #expect(!FolderFileOperations.validate(".").isEmpty)
     #expect(!FolderFileOperations.validate("..").isEmpty)
+}
+
+// PG-272: a name starting with "." is a hidden file or directory, which every vault walk
+// skips (`VaultLayout.isExcludedDirectory`, `.skipsHiddenFiles`) - created, then never seen
+// again. The rule lives in `NoteName.validate`, so a note title, a board name and a folder
+// name all answer to it.
+@Test func validateRejectsANameStartingWithADot() {
+    #expect(NoteName.validate(".nascosta") == [.containsForbiddenCharacter(".")])
+    #expect(!FolderFileOperations.validate(".config").isEmpty)
+    #expect(!FolderName.validate(".Bozza").isEmpty)
+    // A dot anywhere else is still an ordinary character.
+    #expect(NoteName.validate("Relazione 2.0 finale").isEmpty)
+    #expect(FolderFileOperations.validate("a.b").isEmpty)
 }
 
 @Test func createFolderThrowsInvalidTitleForADotDotName() throws {

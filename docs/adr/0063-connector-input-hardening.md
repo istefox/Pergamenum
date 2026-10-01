@@ -609,3 +609,25 @@ verbatim.
   and `optional_data_string_conversion` on the `String(decoding:as:)` §D4 prescribes. Also new:
   a `large_tuple` in the new R-14 test. `VaultDisk.swift` and `FolderFileOperations.swift` were
   already past 400 lines and were not split.
+
+### Follow-up: §D9 residuals closed by PG-272 (2026-10-01)
+
+Re-measured on `5f599109` before the fix. Five of §D9's six bullets are closed; the first is
+split into its own ledger entry.
+
+- **`createNote`** now writes with `expectingAbsent: true`. The `exists` check stays as the filter
+  that keeps a rehearsal honest. Two creations of one title started together had both landed in
+  8 of 8 rounds before the fix (`twoCreationsOfOneTitleStartedTogetherLandOnce`); now exactly one
+  lands and the other gets `VaultWriteRefusal.movedOn`.
+- **`--ordinal abc`** is refused by `VaultAPI.viewOrdinal(parsing:)`, the `blockMinutes(parsing:)`
+  shape. Both front ends use it; the MCP server reads it through `checkedInt`. `--minutes abc`
+  had already been closed by ADR-0075 §D4.
+- **`--=value`** is refused as `unknownFlagSyntax`, like the bare `--`.
+- **`unlinkedMentions(limit: 0)`** answers nothing, through `searchPlan`'s guard.
+- **A name starting with `.`** is refused by `NoteName.validate`, so the rule covers note titles
+  as well as board and folder names, which inherit it through `FolderName.validate`. It is
+  reported as `.containsForbiddenCharacter(".")`, the case PG-045 already used for `.`/`..`. That
+  explicit clause is gone because the leading-dot rule covers it.
+- **Not closed here:** `rg -n "root\.appending\(path:" Sources` now gives 25 lines in 19 files,
+  down from 31. Every site read for this follow-up builds its path from the index, the ledger or a
+  constant, not from typed input. The sweep is its own ledger entry.

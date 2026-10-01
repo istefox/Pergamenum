@@ -25,6 +25,18 @@ extension VaultAPI {
             }
     }
 
+    /// An ordinal as a front end received it, as text: nil when it was not given, the number
+    /// when it reads as one, a usage sentence otherwise - so `--ordinal abc` is refused rather
+    /// than read as «no ordinal», which on a note with one view ran that view unasked
+    /// (PG-272, `blockMinutes(parsing:)`'s shape). The range is `runView`'s question.
+    static func viewOrdinal(parsing raw: String?) throws -> Int? {
+        guard let raw else { return nil }
+        guard let number = Int(raw) else {
+            throw ConnectorError("«ordinal» vuole la posizione di una vista, da 0: «\(raw)» non lo è", usage: true)
+        }
+        return number
+    }
+
     /// Evaluates one view and hands back its rows.
     ///
     /// `ordinal` picks the block when a note carries more than one; without it the note must

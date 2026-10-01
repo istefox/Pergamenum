@@ -59,8 +59,13 @@ extension VaultSession {
         // note has had between its frontmatter and its text. With `body` empty - which is
         // every caller that does not pass a template - the bytes are exactly what this
         // wrote before templates existed, and a test pins that rather than trusting it.
+        // The `exists` check above runs before this `await`, so it is a filter that keeps a
+        // rehearsal honest, not a guard (ADR-0043 §D7): two creations of one title both
+        // passed it and the second overwrote the first. `expectingAbsent` is the guard,
+        // decided inside the actor (PG-272); the loser gets `VaultWriteRefusal.movedOn`.
         return try await write(
-            FrontmatterSerializer.render(frontmatter) + "\n" + body, to: relativePath
+            FrontmatterSerializer.render(frontmatter) + "\n" + body, to: relativePath,
+            expectingAbsent: true
         )
     }
 

@@ -41,6 +41,14 @@ import Testing
     }
 }
 
+@Test func anEqualsOptionWithNoNameIsRefused() {
+    // PG-272: `--=value` used to land among the options under the name "", a key no
+    // command reads, so the value vanished without a word.
+    #expect(throws: Arguments.ParseError.unknownFlagSyntax("--=x")) {
+        try Arguments(["note", "new", "T", "--=x"])
+    }
+}
+
 // MARK: - What stays legal (R-10)
 
 @Test func anEqualsValueMayStartWithDoubleDash() throws {

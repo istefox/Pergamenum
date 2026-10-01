@@ -136,7 +136,9 @@ extension VaultSession {
     /// unlinked mention: an alias serves search and never the link target (F-07), so no
     /// backlink exists to remove it from the list.
     func unlinkedMentions(for relativePath: String, limit: Int = 50) -> [SearchResult] {
-        guard let subject = index.note(at: relativePath) else { return [] }
+        // The loop appends before it tests the limit, so without this `0` answered one
+        // mention - `searchPlan`'s guard, ADR-0063 §D1.6 (PG-272).
+        guard limit > 0, let subject = index.note(at: relativePath) else { return [] }
         let names = [subject.title] + subject.frontmatter.aliases
         let alreadyLinking = Set(index.backlinks(toTitle: subject.title).map(\.relativePath))
 
