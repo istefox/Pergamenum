@@ -61,6 +61,19 @@ struct PraticaMessageRow: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityText)
         .accessibilityIdentifier(Self.identifier(for: entry))
+        .accessibilityActions { accessibilityCommands }
+    }
+
+    /// ADR-0076 §D7 (R-02): every argument-free verb of the catalogue, «Aggiungi nota» and
+    /// «Aggiungi telefonata» among them, reachable without opening the row or its menu - the
+    /// same bodies the footer and the context menu run (ADR-0023 §D1).
+    @ViewBuilder
+    private var accessibilityCommands: some View {
+        if let actions {
+            ForEach(actions.accessibilityCommands(for: detail), id: \.self) { command in
+                Button(command.title) { actions.run(command, on: entry, detail: detail) }
+            }
+        }
     }
 
     // MARK: - Collapsed line

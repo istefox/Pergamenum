@@ -82,8 +82,9 @@ import Testing
 }
 
 @Suite struct MessageCommandTests {
-    @Test func theCatalogueHasExactlyEightCommands() {
-        #expect(MessageCommand.allCases.count == 8)
+    /// Ten since ADR-0076 §D7 added «Aggiungi nota» and «Aggiungi telefonata» (PG-338).
+    @Test func theCatalogueHasExactlyTenCommands() {
+        #expect(MessageCommand.allCases.count == 10)
     }
 
     // MARK: - R-31: applicability
@@ -118,7 +119,7 @@ import Testing
         #expect(MessageCommand.moveTo.carriesArgument)
         #expect(MessageCommand.alsoAddTo.carriesArgument)
         for command: MessageCommand in [
-            .openInMail, .previewAttachment, .exclude, .regenerate, .linkNote, .unlinkNote,
+            .openInMail, .previewAttachment, .exclude, .regenerate, .addNote, .addCall, .linkNote, .unlinkNote,
         ] {
             #expect(!command.carriesArgument)
         }
@@ -132,6 +133,8 @@ import Testing
             .moveTo: "Sposta in…",
             .alsoAddTo: "Aggiungi anche a…",
             .regenerate: "Rigenera…",
+            .addNote: "Aggiungi nota",
+            .addCall: "Aggiungi telefonata",
             .linkNote: "Collega nota…",
             .unlinkNote: "Scollega nota",
         ]

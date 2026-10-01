@@ -118,7 +118,13 @@ struct PraticaTimelineView: View {
 
     @ViewBuilder
     private func row(_ entry: PraticaTimelineEntry, next: PraticaTimelineEntry?) -> some View {
-        let lane = PraticaTimelineModel.lane(for: entry)
+        // ADR-0076 §D3/§D7 (R-09): an anchored entry aligns to its message's lane, at the same
+        // width, indented under it; every other row answers `lane(for:)` as before.
+        let lane = PraticaTimelineModel.hostLane(for: entry)
+        let isAnchored = if case .anchored = entry.placement { true } else { false }
+        // An anchored entry reserves the aligned column too, so its lane's arithmetic is its
+        // message's and the two edges line up.
+        let reservesNoteSlot = entry.kind == .message || isAnchored
         let gutter = theme.spacing(.m)
         HStack(alignment: .top, spacing: gutter) {
             Group {
@@ -139,8 +145,12 @@ struct PraticaTimelineView: View {
                         isExpanded: pratiche.expansion.isExpanded(entry.id),
                         onToggle: { expandsAll in toggle(entry, expandsAll: expandsAll) },
                         vaultRoot: vault.root,
-                        onOpenNote: onOpenNote
+                        onOpenNote: onOpenNote,
+                        actions: rowActions
                     )
+                    // Indented from the lane's leading edge, whichever side the lane sits on:
+                    // the entry reads as nested under the message above it (gate G1).
+                    .padding(.leading, isAnchored ? theme.spacing(.l) : 0)
                 }
             }
             // DESIGN.md "Binding decisions": ~70 % width, leading for received and
@@ -154,7 +164,7 @@ struct PraticaTimelineView: View {
             // without this the lane still claims the column's own space and the two
             // draw on top of each other (the trap ADR §D8 names by name).
             .containerRelativeFrame(.horizontal, alignment: alignment(of: lane)) { width, _ in
-                let reserved = entry.kind == .message ? gutter + Self.noteSlotWidth : 0
+                let reserved = reservesNoteSlot ? gutter + Self.noteSlotWidth : 0
                 let available = width - reserved
                 return lane == .entry ? available : available * 0.7
             }
@@ -164,23 +174,32 @@ struct PraticaTimelineView: View {
                     hash: PraticaMessageRow.hash(of: entry)
                 )
                 .frame(width: Self.noteSlotWidth, alignment: .topLeading)
+            } else if isAnchored {
+                // The aligned column's place, empty: an entry carries no linked note of its own
+                // (ADR-0076 §D11), but its lane must end where its message's does.
+                Color.clear
+                    .frame(width: Self.noteSlotWidth, height: 0)
+                    .accessibilityHidden(true)
             }
         }
         .contextMenu { menu(for: entry, next: next) }
         .tag(entry.id)
     }
 
-    /// The row's context menu: the message catalogue for a message, and «Inserisci
-    /// qui» under both - a manual entry has no `MessageCommand` at all (no files, no
-    /// `Message-ID`), which the catalogue says by not being asked for one.
+    /// The row's context menu: the message catalogue for a message, the entry catalogue for a
+    /// manual entry (ADR-0076 §D7), and «Inserisci qui» under both - a manual entry has no
+    /// `MessageCommand` at all (no files, no `Message-ID`), which the catalogue says by not
+    /// being asked for one.
     @ViewBuilder
     private func menu(for entry: PraticaTimelineEntry, next: PraticaTimelineEntry?) -> some View {
         if entry.kind == .message {
             MessageMenuItems.menu(
                 for: entry, detail: pratiche.details[entry.id], actions: rowActions
             )
-            Divider()
+        } else {
+            EntryMenuItems.menu(for: entry, actions: rowActions)
         }
+        Divider()
         insertHere(after: entry, next: next)
     }
 

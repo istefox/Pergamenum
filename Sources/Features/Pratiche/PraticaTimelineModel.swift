@@ -58,6 +58,11 @@ struct PraticaTimelineEntry: Equatable, Sendable, Identifiable {
     var placementDate: Date?
     /// An anchored entry's message's direction, which `hostLane(for:)` aligns it to.
     var hostDirection: MessageDocument.Direction?
+    /// A manual entry's `fileOrdinal` names a position in one specific version of `pratica.md`:
+    /// this is that version's hash (`timelineOrigin` at the read that produced the entry). The
+    /// entry verbs compare it, not the controller's current origin, which a later reload may
+    /// have advanced (ADR-0076 §D5, R-18). Nil for a message.
+    var sourceHash: String?
 
     /// The instant the row counts at for day sections and «Inserisci qui» (R-07).
     var placedAt: Date { placementDate ?? date }

@@ -369,6 +369,7 @@ import Testing
         .blockquoteMarker(level: 1),
         .strikethroughMarker,
         .horizontalRule,
+        .messageAnchor,
         .tableRun,
         .viewBlockRun,
     ]

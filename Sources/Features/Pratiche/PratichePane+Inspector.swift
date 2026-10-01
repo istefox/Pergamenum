@@ -101,7 +101,10 @@ extension PratichePane {
         }
         let url = root.appending(path: path, directoryHint: .notDirectory)
         let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-        inspectorBody = NoteDocument.parse(text).body
+        // ADR-0076 §D7 (R-01): an anchor line appears in no rendered body - the reading parser
+        // has no rule for an HTML comment, so it would read raw here. Removed from the whole
+        // source, where the parser's ranges are addressed, then the body taken.
+        inspectorBody = NoteDocument.parse(PraticaEntryEdit.removingAnchorLines(in: text)).body
     }
 
     /// The editing path (ADR §D13): the note opens in the Note pane's editor, which is

@@ -50,8 +50,19 @@ struct PraticaCommandActions {
     /// only attachments are over-threshold store references, or whose copies are missing
     /// or damaged, no longer offers a command that does nothing.
     func commands(for detail: PraticaRowDetail?) -> [MessageCommand] {
-        let canPreview = Self.previewURL(for: detail, state: Self.chipState(for: detail)) != nil
-        return MessageCommand.available(hasAttachments: canPreview, hasLinkedNote: detail?.linkedNote != nil)
+        MessageCommand.available(hasAttachments: Self.canPreview(detail), hasLinkedNote: detail?.linkedNote != nil)
+    }
+
+    /// The same row's `.accessibilityActions` (ADR-0076 §D7, R-02): every command above that
+    /// carries no argument, by the same preview predicate.
+    func accessibilityCommands(for detail: PraticaRowDetail?) -> [MessageCommand] {
+        MessageCommand.accessibilityCommands(
+            hasAttachments: Self.canPreview(detail), hasLinkedNote: detail?.linkedNote != nil
+        )
+    }
+
+    private static func canPreview(_ detail: PraticaRowDetail?) -> Bool {
+        previewURL(for: detail, state: chipState(for: detail)) != nil
     }
 
     /// Item 16 (ADR-0068 §D17): the first attachment Quick Look can show, by the chip's
@@ -177,6 +188,8 @@ struct PraticaCommandActions {
             requestRegeneration(of: entry, detail: detail)
         case .linkNote, .unlinkNote:
             handleNoteLink(command, entry: entry, detail: detail)
+        case .addNote, .addCall:
+            addAnchoredEntry(command, on: entry, detail: detail)
         case .moveTo, .alsoAddTo:
             break
         }
@@ -493,10 +506,7 @@ struct PraticaCommandActions {
     /// Not `private` (ADR-0045 §D2): `PraticaCommandActions+Links.swift`'s
     /// `handleNoteLink` calls it too, and `private` is file-scoped.
     func praticaPath(detail: PraticaRowDetail?) -> String? {
-        guard let notePath = detail?.notePath,
-              let range = notePath.range(of: "/\(PraticheController.messagesDirectoryName)/")
-        else { return pratiche.selection }
-        return String(notePath[..<range.lowerBound])
+        detail?.praticaFolder ?? pratiche.selection
     }
 
     /// Re-reads what the writes above changed. The index is asked to rescan too,

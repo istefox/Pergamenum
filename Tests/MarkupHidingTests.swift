@@ -300,38 +300,6 @@ import Testing
 /// same generic substitution `MarkupHiding`'s own heading suite exercises, and is laid out
 /// through a `HorizontalRuleFragment` rather than the standard fragment.
 @MainActor
-private func fragments(
-    text: String, markers: [Int: [HiddenMarker]], hidesMarkup: Bool
-) -> [Int: NSTextLayoutFragment] {
-    let content = NSTextContentStorage()
-    let layout = NSTextLayoutManager()
-    content.addTextLayoutManager(layout)
-    let container = NSTextContainer(size: CGSize(width: 400, height: CGFloat.greatestFiniteMagnitude))
-    container.lineFragmentPadding = 0
-    layout.textContainer = container
-
-    let delegate = EditorDecorationDelegate()
-    delegate.apply(hiddenMarkers: markers, hidingMarkup: hidesMarkup)
-    content.delegate = delegate
-    layout.delegate = delegate
-
-    content.textStorage?.setAttributedString(
-        NSAttributedString(
-            string: text, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)]
-        )
-    )
-    layout.ensureLayout(for: layout.documentRange)
-
-    var byOffset: [Int: NSTextLayoutFragment] = [:]
-    layout.enumerateTextLayoutFragments(from: layout.documentRange.location, options: [.ensuresLayout]) { fragment in
-        let offset = content.offset(from: content.documentRange.location, to: fragment.rangeInElement.location)
-        byOffset[offset] = fragment
-        return true
-    }
-    return byOffset
-}
-
-@MainActor
 @Suite struct MarkupHidingRule {
     private static let note = "---\ncorpo\n"
     private static let marker = HiddenMarker(range: NSRange(location: 0, length: 3), kind: .rule)
@@ -350,7 +318,7 @@ private func fragments(
     }
 
     @Test func aRuleParagraphIsLaidOutAsAHorizontalRuleFragment() {
-        let laidOut = fragments(text: Self.note, markers: [0: [Self.marker]], hidesMarkup: true)
+        let laidOut = MarkupHidingFixture.fragments(text: Self.note, markers: [0: [Self.marker]], hidesMarkup: true)
         #expect(laidOut[0] is HorizontalRuleFragment)
     }
 

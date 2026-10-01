@@ -22,6 +22,14 @@ extension PratichePane {
         )
     }
 
+    /// ADR-0076 §D8: «Collega a un messaggio…»'s picker, raised by the entry catalogue.
+    var anchorRequest: Binding<PraticaAnchorRequest?> {
+        Binding(
+            get: { pratiche.anchorRequest },
+            set: { pratiche.anchorRequest = $0 }
+        )
+    }
+
     var regenerationBinding: Binding<PraticheController.RegenerationState?> {
         Binding(
             get: { pratiche.regeneration },

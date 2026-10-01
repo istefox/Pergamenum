@@ -249,6 +249,9 @@ enum MarkdownAttributedText {
         // A whole rule line, drawn as a syntax marker's colour even though `attributes(for:)`
         // never routes it here in practice once Task 2 wires the collapsing branch.
         case .horizontalRule: .textTertiary
+        // A Pratiche anchor line (ADR-0076 §D9): a colour only, the rule's shelf above - raw,
+        // it is syntax a person did not type and need not read.
+        case .messageAnchor: .textTertiary
         // `.tableRun` has its own explicit arm in `attributes(for:)` returning `[:]` (Task 4
         // is what turns it into a real grid attachment) - this entry exists only to keep
         // this table exhaustive, the same shelf as `.embedRun` above.

@@ -236,6 +236,10 @@ final class PraticheController {
     var renameRequest: PraticaListItem?
     /// R-34's «Elimina pratica», the one alert in the whole feature.
     var deletionRequest: PraticaListItem?
+    /// ADR-0076 §D8 (R-11): «Collega a un messaggio…» waiting for its message, the
+    /// `renameRequest` shape - the verb is offered from the timeline only, so the pane's own
+    /// sheet hosts the picker. Cleared with the vault-scoped state.
+    var anchorRequest: PraticaAnchorRequest?
 
     /// ADR §D21: one value that carries «acquiring the replacement» and «ready to show
     /// a diff» rather than two variables kept in sync (ADR-0024 §D2's rule) - the
@@ -658,5 +662,15 @@ extension PraticheController {
         links = .empty
         timelineOrigin = nil
         timelineOriginPraticaPath = nil
+        // ADR-0076 §D8: a picker opened over the vault being left names an entry of it.
+        anchorRequest = nil
     }
+}
+
+/// ADR-0076 §D8 (R-11): the manual entry «Collega a un messaggio…» was invoked on, held until
+/// the picker answers.
+struct PraticaAnchorRequest: Identifiable {
+    let entry: PraticaTimelineEntry
+
+    var id: String { entry.id }
 }

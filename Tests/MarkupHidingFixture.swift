@@ -89,4 +89,40 @@ enum MarkupHidingFixture {
     static func firstParagraphLength(of note: String, at location: Int = 0) -> Int {
         (note as NSString).paragraphRange(for: NSRange(location: location, length: 0)).length
     }
+
+    /// Every laid-out fragment of `text`, keyed by its paragraph's offset, so a suite can ask
+    /// which `NSTextLayoutFragment` subclass a whole-line construct was vended as (moved out of
+    /// `MarkupHidingTests.swift`, file-private there, when ADR-0076's anchor suite needed it too).
+    @MainActor
+    static func fragments(
+        text: String, markers: [Int: [HiddenMarker]], hidesMarkup: Bool
+    ) -> [Int: NSTextLayoutFragment] {
+        let content = NSTextContentStorage()
+        let layout = NSTextLayoutManager()
+        content.addTextLayoutManager(layout)
+        let container = NSTextContainer(size: CGSize(width: 400, height: CGFloat.greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        layout.textContainer = container
+
+        let delegate = EditorDecorationDelegate()
+        delegate.apply(hiddenMarkers: markers, hidingMarkup: hidesMarkup)
+        content.delegate = delegate
+        layout.delegate = delegate
+
+        content.textStorage?.setAttributedString(
+            NSAttributedString(
+                string: text, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)]
+            )
+        )
+        layout.ensureLayout(for: layout.documentRange)
+
+        var byOffset: [Int: NSTextLayoutFragment] = [:]
+        let start = layout.documentRange.location
+        layout.enumerateTextLayoutFragments(from: start, options: [.ensuresLayout]) { fragment in
+            let offset = content.offset(from: content.documentRange.location, to: fragment.rangeInElement.location)
+            byOffset[offset] = fragment
+            return true
+        }
+        return byOffset
+    }
 }

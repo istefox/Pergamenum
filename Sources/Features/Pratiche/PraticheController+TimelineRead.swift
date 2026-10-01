@@ -218,7 +218,8 @@ extension PraticheController {
                 messageID: nil,
                 isInMail: true,
                 anchor: parsed.anchor,
-                fileOrdinal: parsed.ordinal
+                fileOrdinal: parsed.ordinal,
+                sourceHash: read.praticaNoteHash
             ))
             read.details[id] = PraticaRowDetail(
                 notePath: notePath, body: parsed.body, quotedHistory: nil, signature: nil,
