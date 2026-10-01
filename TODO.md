@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=351 -->
+<!-- project-tasks: prefix=PG lastId=352 -->
 # PROJECT TASKS
 
-Updated: 2026-10-01 · Open: 83 (P1: 0) · In progress: 1
+Updated: 2026-10-01 · Open: 84 (P1: 0) · In progress: 1
 
 ## GitHub Issues
 - [ ] `PG-349` -> #774 **P3** [refactor] Follow-up to PG-146 (c3e's real duplication): `NoteViolations` defaults its five remaining fields to `[]`, as `taskMarkers` and `categories` already do, and the seven single-axis construction sites write only their axis (`ViewBoardRenderer.swift:141`, `DayController+TaskDrop.swift:34`, `ContenitoreCommand.swift:189`, `NoteRowMenu.swift:109`, `WorkspaceFolderSheets.swift:318`, `ConformanceText.swift:132`, `VaultController+Conformance.swift:16`); same PR fixes the stale comments PG-146 left outside its fence: `CompletingTextView.swift:112`, `MarkdownAttributedText.swift:25`, `VaultController+Notes.swift:189`, the misplaced doc at `NoteTextView+Coordinator.swift:396-406`, `PratichePane+Links.swift:7`, `EmbedAttachment.swift:139`, `CardTextView.swift:44-46`. Touches Core and the editor: perg/mcp builds and a full GUI `--affected` — `docs/plans/pg-146-workspace-structure.md` <!-- src:session kind:roadmap opened:2026-10-01 runs:3 promote:2026-10-01 -->
@@ -67,6 +67,7 @@ Updated: 2026-10-01 · Open: 83 (P1: 0) · In progress: 1
 - [ ] `#236` PG-136: Dead state and dead tests that each need a yes/no rather than a refactor <!-- src:github state:OPEN labels:bug -->
 
 ## Open Issues
+- [ ] `PG-352` **P3** [fix] `ContenitoreEditorTests.clickingAnotherRowHandsTheEditToTheBackgroundAndTheQuitCanWaitForIt()` failed once in CI (`ContenitoreEditorTests.swift:180`, `!contenitore.hasUnsettledEdits`, 0.061 s) on PR #758's run and passed on #760's with the same code; presumed timing-dependent, not reproduced locally — `Tests/ContenitoreEditorTests.swift` <!-- src:session kind:fix opened:2026-10-01 runs:2 -->
 - [ ] `PG-346` **P3** [fix] `LintFinding` renders `vocabularyUnavailable` through Swift reflection with the module name inside (`vocabularyUnavailable(Pergamenum.TagNamespace.type)` in the test host); `perg` and `pergamenum-mcp` presumably write their own module name there, so a value in the protected lint JSON would differ per binary (inferred, not measured on the tools) — `Tests/LintFindingStringsTests.swift:95` · `Sources/Connector/VaultPayloads.swift` <!-- src:review kind:fix opened:2026-09-30 pr:737 runs:5 -->
 - [ ] `PG-309` **P3** [fix] `VaultWatcherTests.droppedWhileBusy()` failed once in a full `PergamenumTests` run on 2026-09-28 19:14 (Stop hook, PG-260 tree, which touched neither the watcher nor the test): «The test runner exited with code 0 before finishing running tests», no assertion; green on the next full run. Not yet reproduced, cause unknown; the test drives `VaultWatcher` teardown through `deinit` with events in flight, the path of the use-after-free fixed in `bd5b571` — `Tests/VaultWatcherTests.swift:102` <!-- src:session kind:fix opened:2026-09-28 pr:662 runs:23 promote:declined -->
 - [ ] `PG-288` **P3** [fix] Sidebar verbs run `flushBoard()` (now a full settle) before `canLeaveOpenBoardForVerb()`, so a conflicted open board gets its open sessions merged into memory even when the verb is then refused; harmless today, it never reaches disk — `Sources/Features/Workspace/WorkspaceView+FolderVerbs.swift:39-45` <!-- src:review kind:fix opened:2026-09-27 pr:598 adr:0066 runs:35 promote:declined -->
