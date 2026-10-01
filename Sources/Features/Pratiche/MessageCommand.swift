@@ -104,6 +104,27 @@ enum MessageCommand: String, CaseIterable, Sendable {
         available(hasAttachments: hasAttachments, hasLinkedNote: hasLinkedNote).filter { !$0.carriesArgument }
     }
 
+    /// How the expanded row's footer draws `commands` (ADR-0076 §D7, PG-338): a few verbs as text
+    /// buttons, every other one inside «Altro», each group in the order `commands` arrives in, so
+    /// the footer stays one line at a lane's width and no command is listed twice.
+    ///
+    /// Primary: «Apri in Mail», «Aggiungi nota», «Aggiungi telefonata» and one note-link verb -
+    /// «Scollega nota» when the message has a linked note (`commands` holds `.unlinkNote`), else
+    /// «Collega nota…», which then moves to «Altro». An argument-carrying command is never
+    /// primary: it is a submenu of destinations, which «Altro» can nest. The switch is
+    /// exhaustive on purpose, so a new command has to be placed here before it builds.
+    static func footerSplit(_ commands: [MessageCommand]) -> (primary: [MessageCommand], overflow: [MessageCommand]) {
+        let linkVerb: MessageCommand = commands.contains(.unlinkNote) ? .unlinkNote : .linkNote
+        let isPrimary: (MessageCommand) -> Bool = { command in
+            switch command {
+            case .openInMail, .addNote, .addCall: true
+            case .linkNote, .unlinkNote: command == linkVerb
+            case .previewAttachment, .exclude, .moveTo, .alsoAddTo, .regenerate: false
+            }
+        }
+        return (commands.filter(isPrimary), commands.filter { !isPrimary($0) })
+    }
+
     /// The one stable AX identifier for this command's control, shared by the row
     /// footer and the context menu.
     var identifier: String {

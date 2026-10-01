@@ -222,23 +222,27 @@ struct PraticaMessageRow: View {
         }
     }
 
-    /// «Apri in Mail · Escludi · Sposta in ▸ · Aggiungi anche a ▸» (DESIGN.md's message
-    /// row anatomy), built by iterating the catalogue - the *same* iteration the row's
-    /// context menu makes, which is the whole of ADR-0023 §D1: a command is named once
-    /// and rendered twice, never written out twice.
+    /// «Apri in Mail · Aggiungi nota · Aggiungi telefonata · Collega nota… · Altro ▸»: the
+    /// catalogue's commands (the *same* list the row's context menu iterates, ADR-0023 §D1: a
+    /// command is named once and rendered on every surface, never written out twice), split by
+    /// `MessageCommand.footerSplit` into a few text buttons and an «Altro» menu holding the rest,
+    /// so the footer stays one line at a lane's width instead of breaking inside every word.
     ///
-    /// `MessageMenuItems.item` draws an argument-carrying command as a submenu on both
-    /// surfaces, so «Sposta in ▸» offers the same destinations here and in the menu.
+    /// `MessageMenuItems.item` draws an argument-carrying command as a submenu wherever it is
+    /// drawn, so «Sposta in ▸» inside «Altro» offers the same destinations as the context menu.
+    /// Where even the primary verbs do not fit on one line, they stack rather than wrap.
     @ViewBuilder
     private var footer: some View {
         if let actions {
-            HStack(spacing: theme.spacing(.s)) {
-                ForEach(actions.commands(for: detail), id: \.self) { command in
-                    MessageMenuItems.item(command, entry: entry, detail: detail, actions: actions)
-                        .buttonStyle(.plain)
-                        .themedText(.caption, color: .accentPrimary)
+            let split = MessageCommand.footerSplit(actions.commands(for: detail))
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: theme.spacing(.s)) {
+                    footerItems(split, actions: actions)
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
+                    footerItems(split, actions: actions)
+                }
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("pratiche-message-footer-\(Self.hash(of: entry))")
@@ -247,6 +251,37 @@ struct PraticaMessageRow: View {
                 .buttonStyle(.plain)
                 .themedText(.caption, color: .accentPrimary)
                 .accessibilityIdentifier("pratiche-message-open-\(Self.hash(of: entry))")
+        }
+    }
+
+    /// The footer's controls, once for both of `footer`'s arrangements: the primary verbs as
+    /// caption-sized text buttons, then «Altro» with the overflow in the catalogue's order.
+    @ViewBuilder
+    private func footerItems(
+        _ split: (primary: [MessageCommand], overflow: [MessageCommand]), actions: PraticaCommandActions
+    ) -> some View {
+        ForEach(split.primary, id: \.self) { command in
+            MessageMenuItems.item(command, entry: entry, detail: detail, actions: actions)
+                .buttonStyle(.plain)
+                .themedText(.caption, color: .accentPrimary)
+                .lineLimit(1)
+                .fixedSize()
+        }
+        if !split.overflow.isEmpty {
+            Menu {
+                ForEach(split.overflow, id: \.self) { command in
+                    MessageMenuItems.item(command, entry: entry, detail: detail, actions: actions)
+                }
+            } label: {
+                Text("Altro").themedText(.caption, color: .accentPrimary)
+            }
+            // A plain-button menu, the footer buttons' own style: `.borderlessButton` hands the
+            // label to AppKit, which draws it in the system font and colour, ignoring the tokens.
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityIdentifier("pratiche-message-more-\(Self.hash(of: entry))")
         }
     }
 

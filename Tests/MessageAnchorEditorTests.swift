@@ -143,3 +143,58 @@ import Testing
         #expect(coordinator.hiddenMarkers[Self.anchorParagraph] == nil)
     }
 }
+
+// The marker drawn whole: with «Nascondi markup» on, the anchor row is only a few points tall, and
+// a rendering surface sized to the row clipped the envelope to a 2-3 px sliver (PG-338's visual
+// check). The row here is collapsed newline included, the shape the editor actually lays out.
+@MainActor
+@Suite struct MessageAnchorMarkerBounds {
+    private static let line = "<!-- pergamenum-message: <a1@example.com> -->"
+
+    private static func collapsedAnchorFragment() throws -> MessageAnchorFragment {
+        let content = NSTextContentStorage()
+        let layout = NSTextLayoutManager()
+        content.addTextLayoutManager(layout)
+        let container = NSTextContainer(size: CGSize(width: 400, height: CGFloat.greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        layout.textContainer = container
+
+        let marker = HiddenMarker(range: NSRange(location: 0, length: (line as NSString).length), kind: .messageAnchor)
+        let delegate = EditorDecorationDelegate()
+        delegate.apply(hiddenMarkers: [0: [marker]], hidingMarkup: true)
+        content.delegate = delegate
+        layout.delegate = delegate
+
+        let text = NSMutableAttributedString(
+            string: "\(line)\n", attributes: [.font: EditorDecorationDelegate.collapsedFont]
+        )
+        text.append(NSAttributedString(
+            string: "corpo\n", attributes: [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)]
+        ))
+        content.textStorage?.setAttributedString(text)
+        layout.ensureLayout(for: layout.documentRange)
+
+        var first: NSTextLayoutFragment?
+        layout.enumerateTextLayoutFragments(from: layout.documentRange.location, options: [.ensuresLayout]) {
+            first = $0
+            return false
+        }
+        return try #require(first as? MessageAnchorFragment)
+    }
+
+    @Test func theRenderingSurfaceHoldsTheWholeEnvelopeOverACollapsedRow() throws {
+        let fragment = try Self.collapsedAnchorFragment()
+        let marker = fragment.markerFrame
+        try #require(!marker.isNull)
+        // The precondition the defect needs: the envelope is taller than the row it sits on.
+        #expect(fragment.layoutFragmentFrame.height < marker.height)
+        #expect(fragment.renderingSurfaceBounds.contains(marker))
+    }
+
+    @Test func theEnvelopeIsCentredOnTheRowAndStartsAtItsLeadingEdge() throws {
+        let fragment = try Self.collapsedAnchorFragment()
+        let marker = fragment.markerFrame
+        #expect(marker.minX == 0)
+        #expect(abs(marker.midY - fragment.layoutFragmentFrame.height / 2) < 0.001)
+    }
+}

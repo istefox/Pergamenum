@@ -143,6 +143,56 @@ import Testing
         }
     }
 
+    // MARK: - PG-338: the footer's primary verbs and «Altro»
+
+    private static let combinations = [(false, false), (false, true), (true, false), (true, true)]
+
+    @Test func everyAvailableCommandLandsInExactlyOneFooterGroupAndTheUnionKeepsTheCatalogueOrder() {
+        for (hasAttachments, hasLinkedNote) in Self.combinations {
+            let commands = MessageCommand.available(hasAttachments: hasAttachments, hasLinkedNote: hasLinkedNote)
+            let split = MessageCommand.footerSplit(commands)
+            #expect(Set(split.primary).isDisjoint(with: split.overflow))
+            #expect(split.primary.count + split.overflow.count == commands.count)
+            #expect(commands.filter { split.primary.contains($0) || split.overflow.contains($0) } == commands)
+            // Each group keeps the catalogue's own order.
+            #expect(split.primary == commands.filter(split.primary.contains))
+            #expect(split.overflow == commands.filter(split.overflow.contains))
+        }
+    }
+
+    @Test func thePrimaryVerbsAreMailNoteCallAndCollegaWithoutALinkedNote() {
+        for hasAttachments in [false, true] {
+            let split = MessageCommand.footerSplit(
+                MessageCommand.available(hasAttachments: hasAttachments, hasLinkedNote: false)
+            )
+            #expect(split.primary == [.openInMail, .addNote, .addCall, .linkNote])
+        }
+    }
+
+    @Test func aLinkedNoteSwapsCollegaForScollegaAndCollegaMovesToAltro() {
+        for hasAttachments in [false, true] {
+            let split = MessageCommand.footerSplit(
+                MessageCommand.available(hasAttachments: hasAttachments, hasLinkedNote: true)
+            )
+            #expect(split.primary == [.openInMail, .addNote, .addCall, .unlinkNote])
+            #expect(split.overflow.last == .linkNote)
+        }
+    }
+
+    @Test func argumentCarryingCommandsAreAlwaysInAltro() {
+        for (hasAttachments, hasLinkedNote) in Self.combinations {
+            let split = MessageCommand.footerSplit(
+                MessageCommand.available(hasAttachments: hasAttachments, hasLinkedNote: hasLinkedNote)
+            )
+            #expect(split.primary.allSatisfy { !$0.carriesArgument })
+            #expect(split.overflow.contains(.moveTo))
+            #expect(split.overflow.contains(.alsoAddTo))
+            #expect(split.overflow.contains(.exclude))
+            #expect(split.overflow.contains(.regenerate))
+            #expect(split.overflow.contains(.previewAttachment) == hasAttachments)
+        }
+    }
+
     // MARK: - Item 16/R-22: `previewURL(for:state:)` gates «Anteprima allegato»
 
     private func detail(attachments: [PraticaAttachmentRef], storeReferences: [MessageDocument.StoreReference] = []) -> PraticaRowDetail {
