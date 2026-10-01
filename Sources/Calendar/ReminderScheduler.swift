@@ -11,6 +11,18 @@ enum ReminderTap: Equatable, Sendable {
     case unreadableRoute    // not a String, not a URL, or not a route this app answers
 }
 
+/// The three calls `ReminderScheduler.reschedule` makes on the notification centre, named so
+/// the unit suite can hand it a recording double instead (PG-353): the real centre needs a
+/// permission dialog, so a test never got past `access.isGranted` and the loop's cancellation
+/// guards had no test. `UNUserNotificationCenter` conforms as it is.
+protocol ReminderRequestQueue: AnyObject, Sendable {
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String])
+    func add(_ request: UNNotificationRequest) async throws
+    func pendingNotificationRequests() async -> [UNNotificationRequest]
+}
+
+extension UNUserNotificationCenter: ReminderRequestQueue {}
+
 /// Local notifications for `@remind(...)` markers (SPEC §7.1).
 ///
 /// Only local notifications: the app makes no network call anywhere, and a reminder
@@ -24,6 +36,10 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     private(set) var scheduledIDs: Set<String> = []
 
     private let center = UNUserNotificationCenter.current()
+    /// Where requests are added, removed and counted: `center` in the app, a double in
+    /// `Tests/ReminderRescheduleCancellationTests.swift`. Authorisation, settings and the
+    /// delegate slot stay on `center`.
+    private let queue: any ReminderRequestQueue
 
     /// Where a tapped notification's route goes. Wired once by `PergamenumApp.init` to
     /// `VaultController.handle(_:)`, the app's one route door; `nil` where a test only
@@ -41,7 +57,16 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     /// `becomesDelegate: false` exists for the unit suite only: a scheduler built in a test
     /// must not take the host process's real delegate slot (`Tests/ReminderTapTests.swift`'s
     /// header records the hazard). The app always calls `ReminderScheduler()`.
-    init(becomesDelegate: Bool = true) {
+    ///
+    /// `queue` and `access` are the unit suite's too (PG-353): a test passes a double and
+    /// `.granted`, which the real centre would only report after a permission dialog.
+    init(
+        becomesDelegate: Bool = true,
+        queue: (any ReminderRequestQueue)? = nil,
+        access: CalendarAccess = .notDetermined
+    ) {
+        self.queue = queue ?? UNUserNotificationCenter.current()
+        self.access = access
         super.init()
         if becomesDelegate { center.delegate = self }
     }
@@ -182,7 +207,7 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     func reschedule(for tasks: [TaskItem], session: VaultSession?, now: Date = Date()) async {
         guard access.isGranted, !Task.isCancelled else { return }
 
-        center.removePendingNotificationRequests(withIdentifiers: Array(scheduledIDs))
+        queue.removePendingNotificationRequests(withIdentifiers: Array(scheduledIDs))
         scheduledIDs.removeAll()
 
         var noteIDs: [String: String] = [:]
@@ -195,7 +220,7 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
         for request in Self.requests(for: tasks, after: now, noteIDs: noteIDs) {
             guard !Task.isCancelled else { break }
             do {
-                try await center.add(request)
+                try await queue.add(request)
                 scheduledIDs.insert(request.identifier)
             } catch {
                 lastAccessError = "\(request.identifier): \(error.localizedDescription)"
@@ -213,7 +238,7 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     private(set) var pendingCount = 0
 
     func refreshPending() async {
-        pendingCount = await center.pendingNotificationRequests().count
+        pendingCount = await queue.pendingNotificationRequests().count
     }
 
     /// Sends one notification a few seconds from now, to see it arrive.
@@ -237,7 +262,7 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)
         )
         do {
-            try await center.add(request)
+            try await queue.add(request)
             await refreshPending()
             return nil
         } catch {

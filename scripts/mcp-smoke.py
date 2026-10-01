@@ -200,6 +200,15 @@ def read_only(binary, vault, check):
         stats = server.payload("vault_stats")
         check(stats["notes"] == 1, "vault_stats conta la nota del vault di prova")
 
+        # PG-354: the vault has no vocabolari.json, so `type-note` cannot be checked. The
+        # finding is pinned in the app test host; this is the same string from the server's
+        # own module, which once printed it module-qualified (PG-346).
+        lint = server.payload("lint_note", {"path": "Nota.md"})
+        findings = lint.get("findings") or [{}]
+        tags = findings[0].get("tags")
+        check(tags is not None and "vocabularyUnavailable(type)" in tags,
+              "lint_note dice vocabularyUnavailable(type), senza nome di modulo: %r" % (tags,))
+
         unknown = server.call("strumento_inventato")
         check(unknown.get("isError") is True, "uno strumento inesistente è un errore parlante")
     finally:
