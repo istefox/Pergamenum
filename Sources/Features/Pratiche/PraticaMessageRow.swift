@@ -7,7 +7,9 @@ import SwiftUI
 //
 // One message of the timeline. Collapsed it is one line - chevron, time, sender,
 // subject, chips, first line; expanded it adds the body through `MarkdownBlocksView`
-// (R-27), the quoted history under «Testo citato», and the footer.
+// (R-27) and the quoted history under «Testo citato». The footer closes the row in both
+// states (ADR-0076 implementation notes, amending DESIGN.md's expanded-only footer): the
+// verbs are reachable without opening the message first.
 //
 // Direction is carried three ways and never by colour alone (R-25): the lane's
 // alignment, the glyph beside the time, and the spoken label that opens the row's
@@ -50,6 +52,7 @@ struct PraticaMessageRow: View {
                     .themedText(.body, color: .textSecondary)
                     .lineLimit(1)
             }
+            footer
         }
         .padding(theme.spacing(.s))
         // Pending means Mail has the header but not the body yet (R-15): the row is
@@ -197,7 +200,6 @@ struct PraticaMessageRow: View {
                 .themedText(.caption, color: .textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        footer
     }
 
     /// A hand-drawn disclosure, not a `DisclosureGroup`: these rows live inside the

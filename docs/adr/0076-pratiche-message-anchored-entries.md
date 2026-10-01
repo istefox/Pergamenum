@@ -492,6 +492,36 @@ stay free until anchored by hand. `perg` and `pergamenum-mcp` output gains two o
   record, not by a mockup.
 - **G2: the protected-interface entry** of §D12.
 
+## Implementation notes
+
+**Task 8 hand check, 2026-10-01: the footer on every row, and double-click/Return toggle a row.**
+Two changes Stefano asked for on the Debug build, shipped in PR #761.
+
+- *The footer closes every message row, collapsed or expanded* (`PraticaMessageRow.body`). This
+  amends DESIGN.md's message row anatomy and UX-BLUEPRINT §5, which drew it only on the expanded
+  row. No new read is needed, since `PraticheController+TimelineRead` already builds every row's
+  `PraticaRowDetail` when the timeline loads. The cost is one caption line per collapsed card, and
+  at the 428 pt minimum the verbs stack (`ViewThatFits`).
+- *A double-click on a row, or Return on the selected row, toggles its expansion*, through the
+  `List`'s own `contextMenu(forSelectionType:menu:primaryAction:)` with an empty menu
+  (`PraticaTimelineView.list`, `ContenitoreList`'s shape). No custom gesture competes with
+  `List(selection:)` (ADR-0025 §D9). This amends UX-BLUEPRINT's shortcut table: Return toggled
+  nothing and was never wired to «Apri in Mail», and it now opens or closes the row. Every row
+  takes the same toggle, manual entries included.
+- *Measured by hand on the Debug build (gate M), all five checks passed*:
+  1. a double-click on a collapsed card expands it, and a second one collapses it;
+  2. Return toggles the selected row;
+  3. the per-row context menus survive the list-level primary action, «Inserisci qui» included;
+  4. a double-click on an attachment chip opens the file and leaves the row as it was;
+  5. a double-click on a word of an expanded body selects the word and keeps the row open.
+
+  The ordered fallbacks, row menus moved into the list-level closure and a header-only
+  `simultaneousGesture`, were not needed.
+- *GUI tests*: one, `PraticheUITests.testDoubleClickTogglesMessageRow`. The toggle runs in
+  AppKit's table double-action, which no hosted-view test can drive. The existing M6 step
+  (a double-click on body text, then Backspace) is the regression check for check 5. The footer is
+  pinned by a hosted-view test.
+
 ## References
 
 - `docs/specs/pratiche-message-anchored-entries.spec.md`, `docs/plans/pratiche-message-anchored-entries.md`

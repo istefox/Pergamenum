@@ -81,6 +81,15 @@ struct PraticaTimelineView: View {
         // Ascending order plus a bottom anchor is "opens on the newest" with no
         // scroll-to-id dance and no `ScrollViewReader` (SPEC "Timeline model").
         .defaultScrollAnchor(.bottom)
+        // Double-click and Return open or close a row, the chevron's own toggle on a target the
+        // size of the card (ADR-0076 implementation notes). `primaryAction` is the list's own,
+        // `ContenitoreList`'s shape: no gesture of ours competes with `List(selection:)`'s click
+        // (ADR-0025 §D9). The menu is empty on purpose - each row keeps its own `.contextMenu`.
+        .contextMenu(forSelectionType: String.self) { _ in
+            EmptyView()
+        } primaryAction: { ids in
+            if let id = ids.first { pratiche.expansion.toggle(id) }
+        }
         .focused($isListFocused)
         .onChange(of: pratiche.selectedEntryID) { _, selected in
             if selected != nil { isListFocused = true }

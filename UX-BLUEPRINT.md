@@ -58,8 +58,10 @@ No new `Window` scene, no floating panel, no `MenuBarExtra`.
      Received rows aligned leading at 70 % width, sent rows aligned trailing at 70 % width, lane
      background from tokens (`surface.received`, `surface.sent` — new tokens), direction glyph
      `arrow.down.left` / `arrow.up.right` beside the time for colour-blind users.
-   - Message row, expanded: body as `MarkdownBlocksView`, «Testo citato» native disclosure,
-     footer buttons «Apri in Mail» · «Escludi» · «Sposta in ▸» · «Aggiungi anche a ▸».
+   - Message row, expanded: body as `MarkdownBlocksView`, «Testo citato» native disclosure.
+   - Message row footer, collapsed and expanded alike (ADR-0076 implementation notes): «Apri in
+     Mail» · «Aggiungi nota» · «Aggiungi telefonata» · «Collega nota…» · «Altro ▸» (DESIGN.md).
+     Double-click on a row, or Return on the selected row, opens or closes it.
    - Pending row: dimmed, «Corpo non ancora scaricato», «Apri in Mail» button.
    - Not-in-Mail row: subject as plain text + caption «non più in Mail».
    - Manual entry row (full width, token `surface.entry`): glyph `phone` / `pencil`, time,
@@ -100,7 +102,7 @@ Fits 560 pt without scrolling. Shortcuts stay in Impostazioni › Scorciatoie (e
 | Vista | Mostra/Nascondi nota della pratica | Cmd+Opt+I (verify free; else none) | Toggles the inspector column in this pane |
 | Vista | Espandi tutto / Comprimi tutto | Opt+Space (timeline focused, not a menu shortcut) | Row expansion |
 | Pratica (context menu of a row, also under Vista › Pratica submenu) | Apri, Rinomina…, Chiudi/Riapri, Aggiorna ora, Mostra nel Finder, Elimina… | — | ADR-0023: same catalogue, three surfaces |
-| Messaggio (row footer + context menu) | Apri in Mail, Anteprima allegato, Escludi dalla pratica, Sposta in ▸, Aggiungi anche a ▸, Rigenera… | Return, Cmd+Return, Backspace, —, —, — | keys apply when the timeline has focus |
+| Messaggio (row footer + context menu) | Apri in Mail, Anteprima allegato, Escludi dalla pratica, Sposta in ▸, Aggiungi anche a ▸, Rigenera… | —, Cmd+Return, Backspace, —, —, — | keys apply when the timeline has focus; Return opens or closes the selected row instead of «Apri in Mail» (ADR-0076 implementation notes) |
 
 All shortcuts are `ShortcutCommand` cases (rebindable in Impostazioni › Scorciatoie). System-level
 freedom of Cmd+Opt+P and Cmd+Shift+P is checked at wiring time against
