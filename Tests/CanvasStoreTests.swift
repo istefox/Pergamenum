@@ -396,3 +396,18 @@ import Testing
         // refusal - either a boundary violation or VaultWriteRefusal is acceptable.
     }
 }
+
+/// PG-360: the tray's folder goes through the boundary, so a board path whose folder
+/// leaves the vault lists nothing - not the entries of a directory outside it.
+@Test func contentsOfBoardListsNothingForAFolderOutsideTheVault() throws {
+    let parent = try CanvasTemporaryRoot()
+    try parent.makeDirectory("vault")
+    try parent.makeFile("fuori/segreto.md")
+    try parent.makeDirectory("fuori/sotto")
+    let store = CanvasStore(root: parent.url.appending(path: "vault", directoryHint: .isDirectory))
+
+    let contents = store.contents(ofBoard: "../fuori/b.canvas", document: .empty)
+
+    #expect(contents.subfolders.isEmpty)
+    #expect(contents.unplaced.isEmpty)
+}

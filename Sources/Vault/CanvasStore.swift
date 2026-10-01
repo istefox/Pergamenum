@@ -129,14 +129,16 @@ struct CanvasStore: Sendable {
     /// about what the tray *offers*, not about what a board *shows*.
     func contents(ofBoard board: String, document: CanvasDocument) -> FolderContents {
         let folder = (board as NSString).deletingLastPathComponent
-        let directory = folder.isEmpty
-            ? root
-            : root.appending(path: folder, directoryHint: .isDirectory)
+        // Through the boundary (ADR-0041 §D2, PG-360): a folder that leaves the vault has
+        // no tray to offer, the same empty answer as a folder that is not there.
+        let directory: URL? = folder.isEmpty ? root : (try? boundary.url(for: folder))
 
         let keys: [URLResourceKey] = [.isDirectoryKey, .nameKey]
-        let entries = (try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]
-        )) ?? []
+        let entries = directory.flatMap {
+            try? FileManager.default.contentsOfDirectory(
+                at: $0, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]
+            )
+        } ?? []
 
         let placed = Set(document.nodes.compactMap { node -> String? in
             if case .file(let path, _) = node.kind { return path }

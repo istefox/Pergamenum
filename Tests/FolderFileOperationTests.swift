@@ -666,3 +666,27 @@ private let sampleBoard = """
     #expect(try vault.text(at: "Stale.canvas") == originalStale)
     #expect(try vault.text(at: "Fine.canvas").contains("B/A/n.md"))
 }
+
+// MARK: - PG-360: the move's destination goes through the boundary
+
+/// A destination parent that leaves the vault must move nothing and create nothing
+/// outside it, whichever layer (plan or move) refuses it.
+@Test func moveFolderRefusesAParentOutsideTheVaultAndMovesNothing() throws {
+    let vault = try FolderOpsVault()
+    try vault.write(header, to: "A/n.md")
+    let outsideName = "pergamenum-outside-\(UUID().uuidString)"
+    let outside = vault.root.deletingLastPathComponent().appending(path: outsideName, directoryHint: .isDirectory)
+    defer { try? FileManager.default.removeItem(at: outside) }
+
+    var thrown: String?
+    do {
+        _ = try vault.operations.moveFolder(at: "A", toParent: "../\(outsideName)")
+    } catch {
+        thrown = String(describing: error)
+    }
+
+    #expect(thrown != nil, "a destination outside the vault is refused, not performed")
+    #expect(thrown?.contains("outside the vault") == true, "the refusal is named by the boundary's own sentence")
+    #expect(isDirectory("A", in: vault.root), "the folder stays where it was")
+    #expect(!FileManager.default.fileExists(atPath: outside.path(percentEncoded: false)), "nothing is created outside the vault")
+}

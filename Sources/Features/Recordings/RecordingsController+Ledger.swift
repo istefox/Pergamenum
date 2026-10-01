@@ -75,10 +75,17 @@ extension RecordingsController {
         let recordedAt = PlaudTimestamp.parse(proposal.recording.recordedAt) ?? Date.now
         let title = ImportNaming.recordingNoteTitle(recordedAt: recordedAt, name: proposal.recording.name)
         let folder = ledger.notesFolder.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
-        let directory = folder.isEmpty
+        // Through the boundary (ADR-0041 §D1, PG-360), by resolving a file *inside* the folder
+        // and taking its parent: the boundary refuses the vault root itself, so a folder that
+        // spells the root (`.`, `a/..`) cannot be resolved on its own, yet it is a real
+        // directory whose names must be checked for uniqueness. A folder that leaves the vault
+        // gets no uniqueness check here: `importAccepted`'s write resolves the same path,
+        // refuses it and says so on the row.
+        let directory: URL? = folder.isEmpty
             ? session.root
-            : session.root.appending(path: folder, directoryHint: .isDirectory)
-        let fileName = ImportNaming.uniqueFileName(NoteName.fileName(for: title), in: directory)
+            : (try? VaultBoundary(root: session.root).url(for: folder + "/x").deletingLastPathComponent())
+        let proposed = NoteName.fileName(for: title)
+        let fileName = directory.map { ImportNaming.uniqueFileName(proposed, in: $0) } ?? proposed
         return folder.isEmpty ? fileName : "\(folder)/\(fileName)"
     }
 

@@ -497,3 +497,31 @@ private func sampleProposal(recordingID: String, themes: [PlaudTheme]) -> PlaudP
 
     controllerVault.close()
 }
+
+/// PG-360 regression: a notes folder that spells the vault root (`.`, `a/..`) is refused by
+/// `VaultBoundary.url(for:)` on its own, which used to skip the uniqueness check, so a second
+/// import with the same name was written over the first (`importAccepted` passes
+/// `expecting: nil` for a new note). The folder must resolve to the root and the check run.
+@MainActor
+@Test(arguments: [".", "a/.."]) func aNotesFolderThatSpellsTheVaultRootStillGetsAUniqueName(folder: String) async throws {
+    let vault = try TemporaryVault()
+    let controllerVault = await openVaultController(vault.root)
+    let session = try #require(controllerVault.session)
+    let sut = RecordingsController(
+        service: FakePlaudService(), vault: controllerVault, defaults: isolatedDefaults(), isTestHost: false
+    )
+    let store = PlaudVaultStore(directory: session.state.directory)
+    var ledger = store.loadLedger()
+    ledger.notesFolder = folder
+    try store.saveLedger(ledger)
+    await sut.refresh()
+
+    let proposal = sampleProposal(recordingID: "rec-1", themes: [])
+    let first = sut.notePath(for: proposal, in: session)
+    try vault.write("già qui\n", to: (first as NSString).lastPathComponent)
+
+    let second = sut.notePath(for: proposal, in: session)
+
+    #expect(second != first, "the existing note at the root must make the name unique")
+    controllerVault.close()
+}

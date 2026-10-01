@@ -381,10 +381,10 @@ final class CommandActions {
     }
 
     private func revealOpenNote() {
-        guard let note = vault.openNote, let root = vault.root else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([
-            root.appending(path: note.relativePath, directoryHint: .notDirectory),
-        ])
+        // Through the boundary (PG-360): a path outside the vault reveals nothing.
+        guard let note = vault.openNote, let root = vault.root,
+              let url = try? VaultBoundary(root: root).url(for: note.relativePath) else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     /// The pasteboard is rewritten to its plain text and pasted through the responder

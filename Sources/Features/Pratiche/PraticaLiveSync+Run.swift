@@ -71,8 +71,9 @@ extension PraticaLiveSync {
             // on purpose - the watcher's next trigger covers the pratica at its new path.
             // «Aggiorna ora» (`.manualRefresh`) is somebody asking, so it always gets an answer,
             // and the missing folder is named apart from a folder whose `pratica.md` is unreadable.
-            let folder = root.appending(path: praticaPath, directoryHint: .isDirectory)
-            if FileManager.default.fileExists(atPath: folder.path(percentEncoded: false)) {
+            // Through the boundary (PG-360): a path outside the vault reads as no folder.
+            if let folder = try? VaultBoundary(root: root).url(for: praticaPath),
+               FileManager.default.fileExists(atPath: folder.path(percentEncoded: false)) {
                 controller.report("«\(praticaPath)» non ha un dossier leggibile in pratica.md.")
             } else if kind == .manualRefresh {
                 controller.report("La cartella «\(praticaPath)» non c'è più.")
@@ -150,9 +151,8 @@ extension PraticaLiveSync {
             // finished - `engine.sync` has returned - so a directory still standing at the
             // vacated path is a fact, not a race. Reported, never touched.
             if let leftover = PraticaRunStop.leftoverNotice(after: stop),
-               FileManager.default.fileExists(
-                   atPath: root.appending(path: leftover.path, directoryHint: .isDirectory).path(percentEncoded: false)
-               ) {
+               let folder = try? VaultBoundary(root: root).url(for: leftover.path),
+               FileManager.default.fileExists(atPath: folder.path(percentEncoded: false)) {
                 controller.report(leftover.sentence)
             }
             switch stop {

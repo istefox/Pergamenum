@@ -29,12 +29,15 @@ extension EditorColumnView {
     /// broken embed is worth knowing about.
     func preview(embed name: String, in note: VaultController.OpenNote) {
         guard let root = vault.root else { return }
-        guard let relative = Attachment.resolve(name, nearNoteAt: note.relativePath, inVaultAt: root)
+        // The URL through the boundary too (PG-360), so the file previewed is the one the
+        // resolver checked, in the same spelling.
+        guard let relative = Attachment.resolve(name, nearNoteAt: note.relativePath, inVaultAt: root),
+              let url = try? VaultBoundary(root: root).url(for: relative)
         else {
             vault.recordProblem("file non trovato nel vault: \(name)")
             return
         }
-        previewURLs = [root.appending(path: relative, directoryHint: .notDirectory)]
+        previewURLs = [url]
         isPreviewingEmbed = true
     }
 

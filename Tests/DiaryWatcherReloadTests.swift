@@ -87,3 +87,81 @@ private func diaryExternalText(_ body: String) -> String {
     #expect(diary.prose.contains("Contenuto iniziale."))
     controller.close()
 }
+
+/// PG-360: `origin.file` and the path an external change names are both spelled by the
+/// boundary now. With the vault opened through a symlink, the diary must still recognise
+/// its own file and reload on an external change (a spelling mismatch would silently
+/// ignore it).
+@MainActor
+@Test func reloadsACleanDayWhenTheVaultIsOpenedThroughASymlink() async throws {
+    let vault = try TemporaryVault()
+    let link = FileManager.default.temporaryDirectory
+        .appending(path: "pergamenum-link-\(UUID().uuidString)", directoryHint: .notDirectory)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: vault.root)
+    defer { try? FileManager.default.removeItem(at: link) }
+
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(link)
+    let diary = DiaryController(vault: controller)
+    diary.show(testDay)
+    controller.didChangeExternally = { [weak diary] path in diary?.externalChange(at: path) }
+    try #require(diary.isSettled)
+
+    try vault.write(diaryExternalText("Scritto da un altro processo."), to: "Diario/20260811.md")
+    await controller.reconcile(["Diario/20260811.md"])
+
+    #expect(diary.prose.contains("Scritto da un altro processo."))
+    controller.close()
+}
+
+/// PG-360 regression: a diary folder that leaves the vault (`../Diario`, which Impostazioni
+/// accepts) must keep behaving as it did before the boundary spelling: the write is refused
+/// by the session's door with its sentence on `problems`, and the text stays in memory. It
+/// must not be read as «the file is no longer the one read», whose reload erases the day.
+@MainActor
+@Test func aDiaryFolderOutsideTheVaultKeepsTheTypedTextAndReportsTheRefusal() async throws {
+    let vault = try TemporaryVault()
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(vault.root)
+    controller.updateSettings { $0.diaryFolder = "../Diario" }
+    let diary = DiaryController(vault: controller)
+    diary.show(testDay)
+
+    diary.prose += "Frase mia, da non perdere.\n"
+    diary.flush()
+    try await waitUntil { controller.problems.contains { $0.hasPrefix("diario del") } }
+
+    #expect(diary.prose.contains("Frase mia, da non perdere."))
+    #expect(!controller.problems.contains { $0.contains("non è più quello letto") })
+    controller.close()
+}
+
+/// PG-360 regression: the diary's identity for a day's file is a plain join, never a
+/// boundary resolution. With the vault opened through a symlink that stops resolving between
+/// the read and the write (volume unmounted, target moved), a resolved spelling would change
+/// under the pane, `performWrite` would read «a different file than the one read» and
+/// `reload()` would erase the typed day. The write must fail through the session's door and
+/// the text must stay.
+@MainActor
+@Test func aSymlinkThatStopsResolvingKeepsTheTypedText() async throws {
+    let vault = try TemporaryVault()
+    let link = FileManager.default.temporaryDirectory
+        .appending(path: "pergamenum-link-\(UUID().uuidString)", directoryHint: .notDirectory)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: vault.root)
+    defer { try? FileManager.default.removeItem(at: link) }
+
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(link)
+    let diary = DiaryController(vault: controller)
+    diary.show(testDay)
+    try #require(diary.isSettled)
+
+    diary.prose += "Frase mia, da non perdere.\n"
+    try FileManager.default.removeItem(at: link)
+    diary.flush()
+    try await waitUntil { diary.isSettled }
+
+    #expect(diary.prose.contains("Frase mia, da non perdere."))
+    #expect(!controller.problems.contains { $0.contains("non è più quello letto") })
+    controller.close()
+}
