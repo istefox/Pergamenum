@@ -136,37 +136,17 @@ struct BoardCropEditor: View {
     }
 }
 
-/// One of the crop rectangle's eight grips, visually matching `ResizeHandleView` but
-/// driving `WorkspaceController`'s crop state instead of its resize state.
+/// One of the crop rectangle's eight grips, drawn by `BoardGripView` like `ResizeHandleView`'s
+/// but driving `WorkspaceController`'s crop state instead of its resize state.
 private struct CropHandleView: View {
-    @Environment(\.theme) private var theme
     let workspace: WorkspaceController
     let handle: BoardGeometry.Handle
     /// The crop rectangle in the editor's own local space, in board units.
     let rect: CGRect
     let lockAspect: Bool
 
-    private var visualSize: CGFloat {
-        BoardGeometry.boardUnits(BoardGeometry.handleScreenSize, at: workspace.zoom)
-    }
-
-    private var targetSize: CGFloat {
-        BoardGeometry.boardUnits(BoardGeometry.handleTargetScreenSize, at: workspace.zoom)
-    }
-
     var body: some View {
-        RoundedRectangle(cornerRadius: visualSize / 4, style: .continuous)
-            .fill(theme.color(.surfaceCard))
-            .overlay(
-                RoundedRectangle(cornerRadius: visualSize / 4, style: .continuous)
-                    .strokeBorder(theme.color(.canvasSelection), lineWidth: visualSize / 6)
-            )
-            .frame(width: visualSize, height: visualSize)
-            .frame(width: targetSize, height: targetSize)
-            .contentShape(Rectangle())
-            .onHover { hovering in
-                if hovering { handle.resizeCursor.push() } else { NSCursor.pop() }
-            }
+        BoardGripView(handle: handle, zoom: workspace.zoom)
             .highPriorityGesture(gripGesture)
             .position(
                 x: rect.minX + handle.unitPoint.x * rect.width,

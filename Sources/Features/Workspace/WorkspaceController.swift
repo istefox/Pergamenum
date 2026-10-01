@@ -10,64 +10,6 @@ import Observation
 @MainActor
 @Observable
 final class WorkspaceController {
-    /// The tools of SPEC §6.4, ten of the eleven it lists: ADR-0027 §D8 unified Nota
-    /// into Testo, so `.text` is the only tool of that family and the `n` key is free.
-    /// `forms` is excluded from v1 and kept only so the toolbar layout does not have to
-    /// be redone in v2.
-    enum Tool: String, CaseIterable, Identifiable, Sendable {
-        case select, text, folder, image, document, link, todo, forms, drawing, arrow
-
-        var id: String { rawValue }
-
-        var isAvailable: Bool { self != .forms }
-
-        /// Single-key shortcut. Tools without one are not reachable from the keyboard.
-        var shortcut: String? {
-            switch self {
-            case .select: "v"
-            case .text: "t"
-            case .folder: "f"
-            case .image: "i"
-            case .document: "d"
-            case .link: "l"
-            case .todo: "k"
-            case .drawing: "p"
-            case .arrow: "a"
-            case .forms: nil
-            }
-        }
-
-        var title: String {
-            switch self {
-            case .select: "Seleziona"
-            case .text: "Testo"
-            case .folder: "Cartella"
-            case .image: "Immagine"
-            case .document: "Documento"
-            case .link: "Link"
-            case .todo: "To Do"
-            case .forms: "Moduli (v2)"
-            case .drawing: "Disegno"
-            case .arrow: "Freccia"
-            }
-        }
-
-        var symbol: String {
-            switch self {
-            case .select: "cursorarrow"
-            case .text: "textformat"
-            case .folder: "folder"
-            case .image: "photo"
-            case .document: "doc.text"
-            case .link: "link"
-            case .todo: "checklist"
-            case .forms: "rectangle.on.rectangle.slash"
-            case .drawing: "pencil.tip"
-            case .arrow: "arrow.up.right"
-            }
-        }
-    }
-
     /// Zoom bounds from SPEC §6.1.
     static let zoomRange: ClosedRange<CGFloat> = 0.05...4.0
 
@@ -178,9 +120,9 @@ final class WorkspaceController {
     /// Not `private(set)`: the only writer, `loadEmailHeaders(for:)`, lives in
     /// `WorkspaceController+Files.swift`.
     var emailHeaders: [String: EmailHeaders] = [:]
-    private var saveTask: Task<Void, Never>?
-    /// Autosave delay of SPEC §6.1.
-    private let autosaveDelay = Duration.seconds(1)
+    /// Not `private`: `scheduleSave()` and `flushPendingSave()` in
+    /// `WorkspaceController+Saving.swift` own it; `detach()` here cancels it.
+    var saveTask: Task<Void, Never>?
     /// The reframing owed to a viewport that is still changing size, and the debounce
     /// waiting for it to settle. Stored here rather than as three `@State` flags in the
     /// view because it is viewport-framing policy; the behaviour lives in
@@ -514,8 +456,8 @@ final class WorkspaceController {
     /// further edits (ADR-0054 §D5) - the state is resolved only by an explicit choice,
     /// `keepLocalBoard()` or `reloadBoardFromDisk()`, never silently by typing.
     /// `scheduleSave()` still runs after this either way, but `save()` itself returns
-    /// early while `.conflicted` (below), so a reschedule alone produces no further write
-    /// and no further refusal - "must not turn into a refusal per second."
+    /// early while `.conflicted` (`WorkspaceController+Saving.swift`), so a reschedule alone
+    /// produces no further write and no further refusal - "must not turn into a refusal per second."
     private func markPendingUnlessConflicted() {
         if case .conflicted = saveState { return }
         saveState = .pending
@@ -586,7 +528,8 @@ final class WorkspaceController {
     /// look misaligned.
     static let gridStep: CGFloat = 24
 
-    /// the drag translation.
+    /// Pan at the moment the background drag began, held here for the same reason as the
+    /// drag translation.
     var panOrigin: CGSize?
 
     /// The marquee being dragged, in board units (SPEC §6.3).
@@ -663,105 +606,4 @@ final class WorkspaceController {
     /// written once, on release, not on every frame of the gesture.
     var arrowSourceID: String?
     var arrowTranslation: CGSize = .zero
-
-    // MARK: Saving
-
-    private func scheduleSave() {
-        saveTask?.cancel()
-        saveTask = Task { [autosaveDelay] in
-            try? await Task.sleep(for: autosaveDelay)
-            guard !Task.isCancelled else { return }
-            save()
-        }
-    }
-
-    /// Writes now, cancelling any pending debounce. Called when leaving a board or
-    /// closing the vault, where waiting out the delay would lose the edit.
-    func flushPendingSave() {
-        saveTask?.cancel()
-        saveTask = nil
-        if hasUnsavedChanges { save() }
-    }
-
-    /// `.canvas` paths never reach `VaultWatcher` (ADR-0054 §D7), so nothing tells this
-    /// board when another writer has touched the file underneath it. `expecting:` is the
-    /// substitute: the write proves against `origin`'s hash instead, and a mismatch is
-    /// reconciled here rather than silently overwritten or silently discarded.
-    private func save() {
-        guard let store, hasUnsavedChanges else { return }
-        // A conflicted board neither writes nor retries until the person chooses
-        // `keepLocalBoard()` or `reloadBoardFromDisk()` (ADR-0054 §D5) - a retry per edit
-        // would refuse once a second and fill the problem list.
-        if case .conflicted = saveState { return }
-        attemptSave(store: store, allowingRetry: true)
-    }
-
-    /// An origin of `.none`, or one naming a different board than `board`, writes with
-    /// `expecting: nil` - there is nothing to prove and forcing a refusal would make the
-    /// board unsavable.
-    private func attemptSave(store: CanvasStore, allowingRetry: Bool) {
-        let expecting: String? = {
-            guard case .loaded(let originBoard, let hash, _) = origin, originBoard == board else { return nil }
-            return hash
-        }()
-
-        do {
-            let writtenHash = try store.save(document, board: board, expecting: expecting)
-            replaceDocument(document, origin: .loaded(board: board, hash: writtenHash, document: document))
-            saveState = .saved
-        } catch is VaultWriteRefusal {
-            guard allowingRetry else {
-                // A second writer landed inside the retry window; treated as diverged
-                // rather than reconciled and looped again (ADR-0054 §D4).
-                enterConflicted(reason: VaultWriteRefusal.movedOn(board).description)
-                return
-            }
-            reconcileAfterRefusal(store: store)
-        } catch {
-            // Left dirty on purpose: an indicator still showing unsaved changes is
-            // the truth, and the next edit will retry.
-            recordProblem("salvataggio di \(board): \(error)")
-        }
-    }
-
-    /// ADR-0054 §D4: re-reads the board and asks the pure three-way rule what the
-    /// external writer did, using the base `origin` kept from the read this board's
-    /// unsaved edit started from.
-    private func reconcileAfterRefusal(store: CanvasStore) {
-        guard case .loaded(_, _, let base) = origin else {
-            // `expecting` is only ever non-nil when `origin` matches this board, so a
-            // refusal with nothing to reconcile against should not happen; nothing safe
-            // to do but report it.
-            enterConflicted(reason: VaultWriteRefusal.movedOn(board).description)
-            return
-        }
-
-        let theirs: (document: CanvasDocument, hash: String)
-        do {
-            theirs = try store.read(board: board)
-        } catch {
-            recordProblem("salvataggio di \(board): \(error)")
-            return
-        }
-
-        switch CanvasDocument.reconcile(mine: document, base: base, theirs: theirs.document) {
-        case .adopted(let merged):
-            replaceDocument(
-                merged, origin: .loaded(board: board, hash: theirs.hash, document: theirs.document)
-            )
-            attemptSave(store: store, allowingRetry: false)
-        case .diverged(let reasons):
-            enterConflicted(
-                reason: "\(VaultWriteRefusal.movedOn(board).description) (\(reasons.joined(separator: ", ")))"
-            )
-        }
-    }
-
-    /// The one door into `.conflicted` (ADR-0054 §D5): `recordProblem` fires here and only
-    /// here, so re-entering `save()` while already conflicted - which `markPendingUnlessConflicted()`
-    /// makes impossible until an explicit resolution - can never repeat it.
-    private func enterConflicted(reason: String) {
-        saveState = .conflicted(reason: reason)
-        recordProblem(reason)
-    }
 }

@@ -17,7 +17,7 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct HostedViewPrototypeTests {
-    /// `BoardContentLayer` placed the way `WorkspaceView.swift:357-366` places it: zoom and pan
+    /// `BoardContentLayer` placed the way `WorkspaceView+Board.swift`'s `board` places it: zoom and pan
     /// applied around it, the theme and the vault controller in the environment. Both are read
     /// through `@Environment` and are fatal when missing, which is why the layer cannot be
     /// hosted bare.

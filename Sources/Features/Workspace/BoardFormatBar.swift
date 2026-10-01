@@ -125,7 +125,8 @@ enum BoardFormatBarGeometry {
 /// nothing else, so putting a reference to a live `NSTextView` on it would hang a view off the
 /// object every non-view part of the Workspace reads. It is stored there as one `let`, beside
 /// `editingTextNodeID`/`editingTextDraft`, on those two properties' own argument
-/// (`WorkspaceController.swift:482-485`): one value three views share beats three copies.
+/// (`editingTextDraft`'s doc comment, `WorkspaceController.swift`): one value three views share
+/// beats three copies.
 ///
 /// The reference back to the text view is **weak**. A card's text view is deallocated every
 /// time the card crosses `BoardContentLayer.visibleNodes`' culling rect (the reason
@@ -195,8 +196,8 @@ final class CardTextSelection {
 /// Drawn by `BoardFormatBarLayer` (`BoardOverlays.swift`), which is where the decision about
 /// *whether* there is a bar at all lives; this view is only the pill and its position. The layer
 /// is a sibling of `BoardGuides`/`BoardMarquee` in `WorkspaceView`'s own board `ZStack`
-/// (`WorkspaceView.swift:357-359`), **outside** `.scaleEffect(workspace.zoom, anchor: .topLeading)`
-/// (`WorkspaceView.swift:354`) and never inside it - a view inside that scale would shrink the
+/// (`board`, `WorkspaceView+Board.swift`), **outside** `.scaleEffect(workspace.zoom, anchor: .topLeading)`
+/// (the same `ZStack`) and never inside it - a view inside that scale would shrink the
 /// pill exactly as ADR §D5 says a screen-space `NSPanel` might.
 struct BoardFormatBar: View {
     @Environment(\.theme) private var theme

@@ -69,8 +69,6 @@ extension WorkspaceController {
         draggingIDs.contains(nodeID) ? dragTranslation : .zero
     }
 
-    /// Pan at the moment the background drag began, held here for the same reason as
-
     func beginPan() {
         if panOrigin == nil { panOrigin = pan }
     }

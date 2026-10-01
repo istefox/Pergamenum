@@ -7,10 +7,10 @@ import AppKit
 /// and this one moved out when the fold became the third table to release (ADR-0028 §D8). Moved
 /// unchanged.
 ///
-/// Its other half, `Coordinator.releaseDecorations()`, stays in `CardTextView.swift` and is not
-/// merely left there: it empties `hiddenMarkers`, whose setter is `private(set)` to that file, so
-/// the two cannot be filed together without widening an access level that exists to keep
-/// `applyStyling` the only writer of that table.
+/// Its other half, `Coordinator.releaseDecorations()`, lives in `CardTextView+Styling.swift`
+/// beside `applyStyling`, the table's other writer. `hiddenMarkers`' setter was widened from
+/// `private(set)` for that move (ADR-0045 §D3), and the comment on `hiddenMarkers` names both
+/// writers.
 extension CardTextView {
     /// Purges this text view's pending undo actions before SwiftUI releases it.
     ///

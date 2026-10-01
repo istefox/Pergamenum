@@ -57,7 +57,7 @@ extension WorkspaceView {
             // are read with `&&` at the call site, so either one hides the tree.
             //
             // The binding is negated on purpose (2026-08-28): `isWorkspaceTreeCollapsed`
-            // itself is unchanged - `WorkspaceView.swift:133`'s `&&` and MenuCommands.swift's
+            // itself is unchanged - `mainContent`'s `&&` (`WorkspaceView.swift`) and MenuCommands.swift's
             // own checkbox still read it directly, "checked = hidden", the ordinary macOS
             // menu convention. This toolbar icon is not a menu row, it is one of four glyphs
             // with no words on them, and the other two here (Anteprima, Concentrazione) are

@@ -85,45 +85,6 @@ struct BoardTray: View {
 
     // MARK: Dashboard
 
-    /// The shape both dashboard sections have: a caption header with an optional count
-    /// badge, then either one line of empty text or the rows. Written once because the
-    /// two were identical down to the spacing and the colour token on every piece of
-    /// text, and a header that drifts from the one under it is the kind of difference
-    /// nobody decided on.
-    ///
-    /// The refresh trigger stays at the call site: the two watch different things (a task
-    /// generation, the document itself), and that is the one part of a section that is
-    /// genuinely its own.
-    private func traySection<Rows: View>(
-        title: String,
-        badge: String?,
-        accessibilityLabel: String,
-        identifier: String,
-        isEmpty: Bool,
-        emptyText: String,
-        @ViewBuilder rows: () -> Rows
-    ) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            HStack(spacing: theme.spacing(.xs)) {
-                Text(title).themedText(.caption, color: .textTertiary)
-                if let badge {
-                    Text(badge).themedText(.caption, color: .textTertiary)
-                }
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(accessibilityLabel)
-            .accessibilityIdentifier("\(identifier)-header")
-
-            if isEmpty {
-                Text(emptyText).themedText(.caption, color: .textTertiary)
-            } else {
-                rows()
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(identifier)
-    }
-
     /// R-05: the tasks that named this board with `^[[…]]`, completable where they are
     /// shown. `vault.toggle` writes the task's own note, never a copy.
     ///
@@ -131,7 +92,7 @@ struct BoardTray: View {
     /// assignment marker is removed from `TaskItem.links`, so a task appears in exactly
     /// one of the two sections and the pair is not a duplicate list.
     private var assignedTasks: some View {
-        traySection(
+        TraySection(
             title: "TASK ASSEGNATI",
             badge: assigned.tasks.isEmpty ? nil : "\(assigned.open)/\(assigned.tasks.count)",
             accessibilityLabel: "Task assegnati a questa board: \(assigned.tasks.count)",
@@ -163,7 +124,7 @@ struct BoardTray: View {
     /// board", which is a different question and wrong for a card placed and never
     /// linked.
     private var referencedNotes: some View {
-        traySection(
+        TraySection(
             title: "NOTE REFERENZIATE",
             badge: references.isEmpty ? nil : "\(references.count)",
             accessibilityLabel: "Note referenziate da questa board: \(references.count)",
@@ -268,5 +229,47 @@ struct BoardTray: View {
                 }
             }
         }
+    }
+}
+
+/// The shape both dashboard sections have: a caption header with an optional count
+/// badge, then either one line of empty text or the rows. Written once because the
+/// two were identical down to the spacing and the colour token on every piece of
+/// text, and a header that drifts from the one under it is the kind of difference
+/// nobody decided on.
+///
+/// The refresh trigger stays at the call site: the two watch different things (a task
+/// generation, the document itself), and that is the one part of a section that is
+/// genuinely its own.
+private struct TraySection<Rows: View>: View {
+    @Environment(\.theme) private var theme
+    let title: String
+    let badge: String?
+    let accessibilityLabel: String
+    let identifier: String
+    let isEmpty: Bool
+    let emptyText: String
+    @ViewBuilder let rows: Rows
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
+            HStack(spacing: theme.spacing(.xs)) {
+                Text(title).themedText(.caption, color: .textTertiary)
+                if let badge {
+                    Text(badge).themedText(.caption, color: .textTertiary)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityIdentifier("\(identifier)-header")
+
+            if isEmpty {
+                Text(emptyText).themedText(.caption, color: .textTertiary)
+            } else {
+                rows
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(identifier)
     }
 }
