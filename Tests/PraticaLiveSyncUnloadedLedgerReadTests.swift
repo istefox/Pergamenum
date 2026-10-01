@@ -81,7 +81,7 @@ private func dossierNoteText(conversations: [Int]) -> String {
         let sync = PraticaLiveSync(vault: vaultController)
         sync.controller = pratiche
 
-        _ = await sync.runExclusive(praticaPath: Self.folder)
+        _ = await sync.runExclusive(praticaPath: Self.folder, kind: .fsEvents)
 
         let root = try #require(vaultController.root)
         let dossier = try #require(PraticheController.dossier(at: Self.folder, vaultRoot: root))

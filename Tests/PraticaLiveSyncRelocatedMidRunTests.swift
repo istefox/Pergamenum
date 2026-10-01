@@ -97,7 +97,7 @@ private func dossierNoteText(conversations: [Int]) -> String {
         pratiche.followFolderRelocations([MovedNote(old: Self.old, new: Self.new)], in: vaultController)
         let ledgerAtNewBeforeRun = pratiche.ledger.byPraticaPath[Self.new]
 
-        let outcome = await sync.runExclusive(praticaPath: Self.old)
+        let outcome = await sync.runExclusive(praticaPath: Self.old, kind: .fsEvents)
 
         #expect(outcome == .relocated(to: Self.new))
         #expect(
@@ -157,7 +157,7 @@ private func dossierNoteText(conversations: [Int]) -> String {
         pratiche.beginSync(Self.old)
         pratiche.followFolderRelocations([MovedNote(old: Self.old, new: Self.new)], in: vaultController)
 
-        _ = await sync.runExclusive(praticaPath: Self.old)
+        _ = await sync.runExclusive(praticaPath: Self.old, kind: .fsEvents)
 
         #expect(pratiche.ledger.byPraticaPath[Self.old] == nil)
         #expect(
@@ -189,7 +189,7 @@ private func dossierNoteText(conversations: [Int]) -> String {
         pratiche.beginSync(Self.old)
         pratiche.followFolderRelocations([MovedNote(old: Self.old, new: Self.new)], in: vaultController)
 
-        let outcome = await sync.runExclusive(praticaPath: Self.old)
+        let outcome = await sync.runExclusive(praticaPath: Self.old, kind: .fsEvents)
 
         #expect(
             outcome == .relocated(to: Self.new),

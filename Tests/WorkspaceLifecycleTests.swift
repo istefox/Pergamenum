@@ -523,6 +523,122 @@ import Testing
     vaultController.close()
 }
 
+// MARK: - PG-288: settleForVerb()
+
+/// A board whose open document has diverged from the disk and whose save was refused into
+/// `.conflicted` (ADR-0054 §D5), plus the id of a sticky note on it. Answers nil, having
+/// recorded the issue, when the setup does not reach `.conflicted`.
+@MainActor
+private func conflictedBoard(
+    vault: borrowing TemporaryVault, vaultController: VaultController
+) throws -> (controller: WorkspaceController, board: String, nodeID: String)? {
+    let store = CanvasStore(root: vault.root)
+    let boardPath = try store.createBoard(named: "board", in: "")
+    let controller = WorkspaceController()
+    controller.attach(to: store, vault: vaultController)
+    controller.open(board: boardPath)
+    let id = controller.addStickyNote("nota", at: .zero)
+
+    let externalStore = CanvasStore(root: vault.root)
+    var diverged = try externalStore.load(board: boardPath)
+    diverged.nodes.append(CanvasNode(
+        id: "external", kind: .text("altro"), x: 400, y: 400, width: 100, height: 60
+    ))
+    try externalStore.save(diverged, board: boardPath)
+
+    controller.flushPendingSave()
+    guard case .conflicted = controller.saveState else {
+        Issue.record("setup expected .conflicted, got \(controller.saveState)")
+        controller.detach()
+        return nil
+    }
+    return (controller, boardPath, id)
+}
+
+@MainActor
+@Test func settleForVerbOnAConflictedBoardRefusesAndCommitsNoOpenSession() async throws {
+    // Pre-fix (PG-288): the sidebar verbs ran `flushBoard()` - a full settle - before
+    // `canLeaveOpenBoardForVerb()`, so a refused verb still merged the open text draft
+    // into the conflicted board's document on the way out.
+    let vault = try TemporaryVault()
+    let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
+    await vaultController.open(vault.root)
+    guard let setup = try conflictedBoard(vault: vault, vaultController: vaultController) else {
+        vaultController.close()
+        return
+    }
+    let controller = setup.controller
+    let id = setup.nodeID
+    controller.beginTextEdit(nodeID: id)
+    controller.editingTextDraft = "modificato"
+
+    #expect(controller.settleForVerb() == false)
+
+    #expect(controller.editingTextNodeID == id)
+    #expect(controller.editingTextDraft == "modificato")
+    let node = try #require(controller.document.node(id: id))
+    #expect(node.kind == .text("nota"))
+    guard case .conflicted = controller.saveState else {
+        Issue.record("expected to remain .conflicted, got \(controller.saveState)")
+        return
+    }
+
+    controller.detach()
+    vaultController.close()
+}
+
+@MainActor
+@Test func settleForVerbOnACleanBoardCommitsTheOpenSessionAndFlushesIt() throws {
+    // The other half of the door: a board that may be left still settles and flushes
+    // before the verb touches disk (ADR-0022 §F10, ADR-0066).
+    let root = try CanvasTemporaryRoot()
+    let controller = try openedWorkspaceController(rootURL: root.url)
+    let boardPath = controller.board
+    let id = controller.addStickyNote("appunto", at: .zero)
+    controller.beginTextEdit(nodeID: id)
+    controller.editingTextDraft = "modificato"
+
+    #expect(controller.settleForVerb())
+
+    #expect(controller.editingTextNodeID == nil)
+    #expect(controller.saveState == .saved)
+    let onDisk = try CanvasStore(root: root.url).load(board: boardPath)
+    let node = try #require(onDisk.node(id: id))
+    #expect(node.kind == .text("modificato"))
+    controller.detach()
+}
+
+@MainActor
+@Test func settleForVerbRefusesWhenItsOwnFlushEntersConflicted() async throws {
+    // The second guard: the board was not conflicted when the verb asked, but the flush's
+    // write is refused against another writer's bytes, and the file must not move out
+    // from under that fresh conflict.
+    let vault = try TemporaryVault()
+    let vaultController = VaultController(recents: .volatile(), openTabs: .volatile())
+    await vaultController.open(vault.root)
+    let store = CanvasStore(root: vault.root)
+    let boardPath = try store.createBoard(named: "board", in: "")
+    let controller = WorkspaceController()
+    controller.attach(to: store, vault: vaultController)
+    controller.open(board: boardPath)
+    _ = controller.addStickyNote("nota", at: .zero)
+    var diverged = try CanvasStore(root: vault.root).load(board: boardPath)
+    diverged.nodes.append(CanvasNode(
+        id: "external", kind: .text("altro"), x: 400, y: 400, width: 100, height: 60
+    ))
+    try CanvasStore(root: vault.root).save(diverged, board: boardPath)
+    #expect(controller.saveState != .saved)
+
+    #expect(controller.settleForVerb() == false)
+
+    guard case .conflicted = controller.saveState else {
+        Issue.record("expected .conflicted, got \(controller.saveState)")
+        return
+    }
+    controller.detach()
+    vaultController.close()
+}
+
 // MARK: - Item 12: the two new sticky tokens in both bundled themes
 
 @Test func bothBundledThemesDefineTheTwoNewStickyColorTokens() throws {

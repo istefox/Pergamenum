@@ -286,7 +286,7 @@ private func stop(continuing path: String, on controller: PraticheController) ->
         pratiche.load(from: vaultController)
 
         // Control, hook unwired: the old pratica's history is what the next sync inherits.
-        _ = await sync.runExclusive(praticaPath: Self.folder)
+        _ = await sync.runExclusive(praticaPath: Self.folder, kind: .fsEvents)
         #expect(
             pratiche.ledger.byPraticaPath[Self.folder]?.notInStore.contains(stale) == true,
             "control: the leak is real - the old id is reported as gone from Mail by a pratica that never had it"
@@ -307,7 +307,7 @@ private func stop(continuing path: String, on controller: PraticheController) ->
         try vault.write(followedPratica, to: "\(Self.folder)/pratica.md")
         pratiche.load(from: vaultController)
 
-        _ = await sync.runExclusive(praticaPath: Self.folder)
+        _ = await sync.runExclusive(praticaPath: Self.folder, kind: .fsEvents)
 
         #expect(
             PraticaSyncFixtures.mdFiles(under: vault.root).count == 1,
