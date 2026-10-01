@@ -54,6 +54,10 @@
 #     rerun, once: a green rerun makes it `green`, a red rerun with no signal makes it `red`, a
 #     rerun disturbed again leaves it `contaminated`. A run with no reds is `green` whatever the
 #     signals - they are recorded, not acted on (PG-182, PG-186, PG-188).
+#   - **An external monitor connected at the start is refused, by name.** Observed on 2026-09-20,
+#     not a measured cause: with one attached 12 tests failed «not hittable», and the same 12
+#     passed once it was unplugged. The rerun would see the same display, so the run could only
+#     end `contaminated`; `--allow-external-monitor` runs anyway (PG-188).
 #   - **A run that executed no test is an error, not a red.** It is reported, records nothing
 #     and leaves the tree's existing verdict alone (PG-194).
 #   - **A copy of the app that appears mid-run leaves its launch log behind.** About ten seconds
@@ -82,6 +86,10 @@
 #
 #         scripts/uitests.sh --force ...
 #         runs even though the tree already has a full green verdict.
+#
+#         scripts/uitests.sh --allow-external-monitor ...
+#         runs even though an external display is connected, which is otherwise refused before
+#         anything is touched. Goes before any other argument, beside `--force` in either order.
 #
 #         scripts/uitests.sh --self-test
 #         asserts the verdict logic offline: fabricated logs, focus logs, display listings and
@@ -540,32 +548,40 @@ failed_selection() {
         | sort -u || true
 }
 
-# 1 when an external display is connected, else 0 (R-02). The rule is the one measured on this
-# machine: a display of `system_profiler`'s `spdisplays_ndrvs`, on any GPU, that does not carry the
-# `spdisplays_connection_type == spdisplays_internal` key is external. It is read as JSON because
-# the text form prints no connection line at all for an external display and counting displays by
-# indentation is fragile. A listing that cannot be read is 0, never a signal made up.
-# UITESTS_FAKE_DISPLAYS names a file holding that JSON, read instead of the machine.
-external_monitor_present() {
+# The external displays connected now, one name per line, nothing when there is none (R-02). The
+# rule is the one measured on this machine: a display of `system_profiler`'s `spdisplays_ndrvs`, on
+# any GPU, that does not carry the `spdisplays_connection_type == spdisplays_internal` key is
+# external. It is read as JSON because the text form prints no connection line at all for an
+# external display and counting displays by indentation is fragile. A listing that cannot be read
+# names nothing, never a display made up. UITESTS_FAKE_DISPLAYS names a file holding that JSON,
+# read instead of the machine. The pre-run refusal names what it prints (PG-188).
+external_monitors() {
     local listing
     if [ -n "${UITESTS_FAKE_DISPLAYS:-}" ]; then
-        listing=$(cat "$UITESTS_FAKE_DISPLAYS" 2>/dev/null) || { echo 0; return 0; }
+        listing=$(cat "$UITESTS_FAKE_DISPLAYS" 2>/dev/null) || return 0
     else
-        listing=$(/usr/sbin/system_profiler -json SPDisplaysDataType 2>/dev/null) || { echo 0; return 0; }
+        listing=$(/usr/sbin/system_profiler -json SPDisplaysDataType 2>/dev/null) || return 0
     fi
     printf '%s' "$listing" | python3 -c '
 import json, sys
 try:
     gpus = json.load(sys.stdin).get("SPDisplaysDataType", [])
-    external = any(
-        d.get("spdisplays_connection_type") != "spdisplays_internal"
+    names = [
+        d.get("_name") or "schermo senza nome"
         for gpu in gpus
         for d in gpu.get("spdisplays_ndrvs", [])
-    )
+        if d.get("spdisplays_connection_type") != "spdisplays_internal"
+    ]
 except Exception:
-    external = False
-print(1 if external else 0)
-' 2>/dev/null || echo 0
+    names = []
+for name in names:
+    print(name)
+' 2>/dev/null || true
+}
+
+# 1 when an external display is connected, else 0: the monitor signal, by `external_monitors`'s rule.
+external_monitor_present() {
+    if [ -n "$(external_monitors)" ]; then echo 1; else echo 0; fi
 }
 
 # The signals a finished run shows, in `SIGNAL_NAMES` order (R-02). $3 is 1 when an installed copy
@@ -898,6 +914,15 @@ self_test() {
         "$(UITESTS_FAKE_DISPLAYS="$d/displays-garbage.json" external_monitor_present)"
     expect_eq "monitor: un file che non c'è non inventa un segnale" 0 \
         "$(UITESTS_FAKE_DISPLAYS="$d/displays-missing.json" external_monitor_present)"
+    # PG-188: the pre-run refusal names what `external_monitors` prints.
+    printf '%s\n' '{"SPDisplaysDataType":[{"_name":"GPU A","spdisplays_ndrvs":[{"_name":"Color LCD","spdisplays_connection_type":"spdisplays_internal"},{"_name":"EV2450"},{"spdisplays_connection_type":"spdisplays_displayport"}]},{"_name":"GPU B","spdisplays_ndrvs":[{"_name":"DELL U2723QE"}]}]}' >"$d/displays-three.json"
+    expect_eq "monitor: si nominano gli schermi esterni, uno per riga, mai quello interno" \
+        $'EV2450\nschermo senza nome\nDELL U2723QE' \
+        "$(UITESTS_FAKE_DISPLAYS="$d/displays-three.json" external_monitors)"
+    expect_eq "monitor: solo lo schermo interno non nomina nulla" "" \
+        "$(UITESTS_FAKE_DISPLAYS="$d/displays-internal.json" external_monitors)"
+    expect_eq "monitor: un elenco illeggibile non nomina nulla" "" \
+        "$(UITESTS_FAKE_DISPLAYS="$d/displays-garbage.json" external_monitors)"
 
     # R-06: the window of launch log saved around the moment a copy appeared.
     expect_eq "finestra del log: cinque secondi prima e dopo l'avvio della copia" \
@@ -1006,12 +1031,16 @@ if [ "$SELF_TEST" -eq 1 ]; then
 fi
 
 FORCE=0
+ALLOW_EXTERNAL_MONITOR=0
 SCOPE=partial
 selection=()
-if [ "${1:-}" = "--force" ]; then
-    FORCE=1
-    shift
-fi
+while :; do
+    case "${1:-}" in
+        --force) FORCE=1; shift ;;
+        --allow-external-monitor) ALLOW_EXTERNAL_MONITOR=1; shift ;;
+        *) break ;;
+    esac
+done
 if [ "${1:-}" = "--status" ]; then
     [ "$#" -eq 1 ] || fail "--status non si combina con altri argomenti"
     if status_report; then exit 0; else exit 1; fi
@@ -1035,6 +1064,21 @@ if [ "$SCOPE" = full ] && [ "$START_CLEAN" -eq 1 ] && [ "$FORCE" -eq 0 ]; then
             "$(verdict_field "$verdict" date)" "$(verdict_field "$verdict" executed)" \
             "$(verdict_field "$verdict" commit | cut -c1-7)"
         exit 0
+    fi
+fi
+
+# A second display is a known way for a run to go red, not a disturbance that might happen. What
+# was observed, not a measured cause (PG-188, 2026-09-20): with an external display attached a
+# dozen tests failed «not hittable» in 5-15 s, which reads as a real defect, their element frames
+# reported at y -980/-530; the same 12 passed once the monitor was unplugged. The rerun of those
+# reds would see the same display, so the run could only end `contaminated` after the whole suite
+# had been paid for. Refused before anything is touched, naming the display; with
+# `--allow-external-monitor` the run goes ahead and the `external-monitor` signal still records it.
+if [ "$ALLOW_EXTERNAL_MONITOR" -eq 0 ]; then
+    monitors=$(external_monitors)
+    if [ -n "$monitors" ]; then
+        printf 'uitests: monitor esterno collegato:\n%s\n' "$(printf '%s\n' "$monitors" | sed 's/^/  /')" >&2
+        fail "staccalo prima del giro: con un monitor esterno collegato una dozzina di test è fallita «not hittable», e senza è passata (PG-188). --allow-external-monitor per girare lo stesso: con dei rossi il giro risulterà contaminato"
     fi
 fi
 
