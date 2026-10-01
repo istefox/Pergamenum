@@ -89,7 +89,7 @@ struct VaultCommands: Commands {
                 } else {
                     ForEach(recents, id: \.self) { url in
                         Button(url.lastPathComponent) {
-                            Task { await vault.open(url) }
+                            Task { await vault.switchVault(to: url) }
                         }
                         .disabled(url.vaultKey == vault.root?.vaultKey)
                     }

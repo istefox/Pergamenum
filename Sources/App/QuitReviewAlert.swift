@@ -15,27 +15,31 @@ enum QuitReviewAlert {
     /// trailing edge: the document-close convention. The key equivalents are assigned by hand
     /// because NSAlert's defaults key on English titles (ADR-0073 F11): Return saves, Escape
     /// cancels, Cmd+D does not save.
-    static func make(_ copy: QuitReview.Copy) -> NSAlert {
+    ///
+    /// The same alert asks before another notes folder replaces the open one (PG-334); only
+    /// the words and the identifiers differ.
+    static func make(_ copy: QuitReview.Copy, for occasion: QuitReview.Occasion = .quit) -> NSAlert {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = copy.message
         alert.informativeText = copy.informative
+        let identifiers = Identifier.all(for: occasion)
 
         let save = alert.addButton(withTitle: copy.saveLabel)
         save.keyEquivalent = "\r"
         save.keyEquivalentModifierMask = []
-        save.setAccessibilityIdentifier(Identifier.save)
+        save.setAccessibilityIdentifier(identifiers.save)
 
         let cancel = alert.addButton(withTitle: copy.cancelLabel)
         cancel.keyEquivalent = "\u{1b}"
         cancel.keyEquivalentModifierMask = []
-        cancel.setAccessibilityIdentifier(Identifier.cancel)
+        cancel.setAccessibilityIdentifier(identifiers.cancel)
 
         let discard = alert.addButton(withTitle: copy.discardLabel)
         discard.keyEquivalent = "d"
         discard.keyEquivalentModifierMask = .command
         discard.hasDestructiveAction = true
-        discard.setAccessibilityIdentifier(Identifier.discard)
+        discard.setAccessibilityIdentifier(identifiers.discard)
         return alert
     }
 
@@ -45,6 +49,26 @@ enum QuitReviewAlert {
         static let save = "quit-prompt-save"
         static let cancel = "quit-prompt-cancel"
         static let discard = "quit-prompt-discard"
+
+        /// The vault switch's buttons (PG-334): the same pattern under their own prefix.
+        static let vaultSwitchSave = "vault-switch-prompt-save"
+        static let vaultSwitchCancel = "vault-switch-prompt-cancel"
+        static let vaultSwitchDiscard = "vault-switch-prompt-discard"
+
+        static func all(for occasion: QuitReview.Occasion) -> ButtonIdentifiers {
+            switch occasion {
+            case .quit: ButtonIdentifiers(save: save, cancel: cancel, discard: discard)
+            case .vaultSwitch:
+                ButtonIdentifiers(save: vaultSwitchSave, cancel: vaultSwitchCancel, discard: vaultSwitchDiscard)
+            }
+        }
+    }
+
+    /// The three identifiers one alert's buttons carry.
+    struct ButtonIdentifiers {
+        let save: String
+        let cancel: String
+        let discard: String
     }
 
     /// The answer a response stands for, in `make`'s button order.
@@ -59,5 +83,11 @@ enum QuitReviewAlert {
     /// Asks, synchronously (§D3). The coordinator's `ask`.
     static func ask(_ review: QuitReview) -> QuitReview.Answer {
         answer(for: make(review.copy).runModal())
+    }
+
+    /// Asks, synchronously, before another notes folder replaces the open one (PG-334).
+    /// `VaultController.switchVault(to:ask:)`'s default `ask`.
+    static func askBeforeVaultSwitch(_ review: QuitReview) -> QuitReview.Answer {
+        answer(for: make(review.copy(for: .vaultSwitch), for: .vaultSwitch).runModal())
     }
 }

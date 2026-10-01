@@ -2,9 +2,10 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0073 §D5, departure 13 (fix loop, 2026-09-29): a tab that survives a vault switch
-// (PG-334 is the general fix and is not made here) is never written by the quit into the vault
-// that replaced its own.
+// ADR-0073 §D5, departure 13 (fix loop, 2026-09-29): a tab that survives a vault switch is never
+// written by the quit into the vault that replaced its own. These tests call `open(_:)` directly,
+// below `switchVault(to:)` - PG-334's door, which empties the tabs first (`VaultSwitchTests`) - so
+// the mark they pin is the defence in depth behind that door.
 
 /// Vault B: it has a `Nexion.md` of its own, which a stale write from vault A would overwrite,
 /// and no `Dopo.md`, which it would create.

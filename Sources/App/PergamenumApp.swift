@@ -344,8 +344,10 @@ struct PergamenumApp: App {
                     // Reopens the notes folder the app was last in (SPEC §10,
                     // "Cartelle recenti"). Guarded on `root` so a link that already opened one
                     // is not overridden by the previous session's vault.
+                    // Through the switch door like every other opening (PG-334); with no
+                    // folder open it asks nothing.
                     guard vault.root == nil, let recent = RecentVaults().mostRecent else { return }
-                    await vault.open(recent)
+                    await vault.switchVault(to: recent)
                 }
                 // Kept alongside the delegate: SwiftUI consumes the Apple Event
                 // itself, so `application(_:open:)` is never called in a SwiftUI app

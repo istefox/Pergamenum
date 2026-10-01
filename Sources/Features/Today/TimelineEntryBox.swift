@@ -26,6 +26,8 @@ struct TimelineEntryBox<Accessory: View, Footer: View>: View {
     let entry: TimelineEntry
     let firstHour: Int
     let hourHeight: CGFloat
+    /// The column this box takes when other entries overlap it (PG-339).
+    let lane: TimelineLane
     @ViewBuilder let accessory: () -> Accessory
     @ViewBuilder let footer: () -> Footer
 
@@ -33,12 +35,14 @@ struct TimelineEntryBox<Accessory: View, Footer: View>: View {
         entry: TimelineEntry,
         firstHour: Int,
         hourHeight: CGFloat,
+        lane: TimelineLane = .full,
         @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() },
         @ViewBuilder footer: @escaping () -> Footer = { EmptyView() }
     ) {
         self.entry = entry
         self.firstHour = firstHour
         self.hourHeight = hourHeight
+        self.lane = lane
         self.accessory = accessory
         self.footer = footer
     }
@@ -47,6 +51,29 @@ struct TimelineEntryBox<Accessory: View, Footer: View>: View {
     private var height: CGFloat { max(18, CGFloat(entry.duration) / 60 * hourHeight) }
 
     var body: some View {
+        // The lane's share of the width is equal slots in one row, the box in its own and
+        // nothing drawn in the rest: no geometry reader, so the box still widens and
+        // narrows with the column like the full-width case, which is the one-slot row.
+        HStack(spacing: 2) {
+            ForEach(0..<max(1, lane.count), id: \.self) { slot in
+                if slot == lane.index {
+                    box
+                } else {
+                    Color.clear.frame(maxWidth: .infinity, maxHeight: height)
+                }
+            }
+        }
+        .padding(.leading, 52)
+        .padding(.trailing, theme.spacing(.s))
+        // No `geometryGroup()` here, and it is worth the line: it was tried, and grouping
+        // a subtree that changes size on every frame of a drag inside a `ScrollView` left
+        // a composited copy of the old box behind, fading out under the new one. What it
+        // was added to fix - the box arriving before its colour - was the whole grid being
+        // redrawn by a hover, and that is fixed where it belonged, in `TimelineBlockBox`.
+        .offset(y: offset)
+    }
+
+    private var box: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(entry.title).themedText(.caption).lineLimit(1)
             if height > 30 {
@@ -80,13 +107,5 @@ struct TimelineEntryBox<Accessory: View, Footer: View>: View {
         // the grid, an hour of nothing away from the block it belongs to.
         .overlay(alignment: .topTrailing) { accessory() }
         .overlay(alignment: .bottom) { footer() }
-        .padding(.leading, 52)
-        .padding(.trailing, theme.spacing(.s))
-        // No `geometryGroup()` here, and it is worth the line: it was tried, and grouping
-        // a subtree that changes size on every frame of a drag inside a `ScrollView` left
-        // a composited copy of the old box behind, fading out under the new one. What it
-        // was added to fix - the box arriving before its colour - was the whole grid being
-        // redrawn by a hover, and that is fixed where it belonged, in `TimelineBlockBox`.
-        .offset(y: offset)
     }
 }
