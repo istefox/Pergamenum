@@ -28,6 +28,11 @@ extension CommandActions {
             // the board-link branch above gets this for free from `RootView`'s own
             // `pendingCanvas` observer; a note has no such observer to lean on.
             navigation.pane = .notes
+        } else {
+            // A Cmd+click on a title no note answers to (`[[Nota.md]]`, `[[Cartella/Nota]]`, a
+            // typo) used to do nothing at all, indistinguishable from a click that never
+            // arrived (PG-356): say so, the way the board branch above already does.
+            vault.recordProblem("nota non trovata: \(target)")
         }
     }
 }
