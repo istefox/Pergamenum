@@ -1,8 +1,8 @@
 # ADR-0078: A note's frontmatter can be hidden through the fold pass, never through the file
 
-- Status: **proposed**. Becomes `accepted` with the PR number and merge hash once merged. Records
-  work already shipped in PR #759 (merged 2026-10-01) plus its command surface, `PG-350`
-  and `PG-351`.
+- Status: **accepted**. Merged to `main` via PR #785 (`a9bbc88e`, 2026-10-01), for `PG-350`/#775 and
+  `PG-351`/#776. Records work already shipped in PR #759 (merged 2026-10-01) plus its command
+  surface.
 - Date: 2026-10-01. Written against `523de3e0` on `feature/frontmatter-toggle-command`
   (`origin/main`). **Numbering note:** no remote branch and not `origin/main` carries a
   `docs/adr/0078-*` file (checked 2026-10-01). Check again immediately before the merge, per
