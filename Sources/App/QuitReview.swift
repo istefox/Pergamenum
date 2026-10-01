@@ -137,17 +137,39 @@ struct QuitReview: Equatable, Sendable {
         return sharesTitle ? note.relativePath : note.title
     }
 
-    var copy: Copy {
+    /// What the question is asked before: quitting (ADR-0073), or another notes folder
+    /// replacing the open one (PG-334). Same review, same answers, different words.
+    enum Occasion: Equatable, Sendable {
+        case quit, vaultSwitch
+    }
+
+    /// The quit's words.
+    var copy: Copy { copy(for: .quit) }
+
+    func copy(for occasion: Occasion) -> Copy {
         let notes = notes
         let names = notes.map { Self.displayName(of: $0, among: notes) }
+        let before: String
+        let losing: String
+        let staying: String
+        switch occasion {
+        case .quit:
+            before = "prima di uscire?"
+            losing = "Uscendo senza salvare, le modifiche vanno perse."
+            staying = "Pergamenum resta aperto"
+        case .vaultSwitch:
+            before = "prima di aprire un'altra cartella note?"
+            losing = "Aprendo un'altra cartella note senza salvare, le modifiche vanno perse."
+            staying = "La cartella note resta aperta"
+        }
         var paragraphs: [String] = []
         let message: String
         let saveLabel: String
         if notes.count == 1, let name = names.first {
-            message = "Salvare le modifiche a «\(name)» prima di uscire?"
+            message = "Salvare le modifiche a «\(name)» \(before)"
             saveLabel = "Salva"
         } else {
-            message = "Salvare le modifiche a \(notes.count) note prima di uscire?"
+            message = "Salvare le modifiche a \(notes.count) note \(before)"
             saveLabel = "Salva tutto"
             var listed = names.prefix(Self.listedTitleLimit).map { "«\($0)»" }
             if names.count > Self.listedTitleLimit {
@@ -155,17 +177,17 @@ struct QuitReview: Equatable, Sendable {
             }
             paragraphs.append(listed.joined(separator: "\n"))
         }
-        paragraphs.append("Uscendo senza salvare, le modifiche vanno perse.")
+        paragraphs.append(losing)
         for (note, name) in zip(notes, names) where note.isConflicted {
             paragraphs.append(
                 "«\(name)» è cambiata anche su disco: "
-                    + "Pergamenum resta aperto per farti scegliere quale versione tenere."
+                    + "\(staying) per farti scegliere quale versione tenere."
             )
         }
         for (note, name) in zip(notes, names) where note.isFromPreviousVault {
             paragraphs.append(
                 "«\(name)» è di una cartella note aperta prima e non viene salvata in questa: "
-                    + "Pergamenum resta aperto se scegli di salvare."
+                    + "\(staying) se scegli di salvare."
             )
         }
         return Copy(
