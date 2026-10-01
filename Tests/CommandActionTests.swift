@@ -173,3 +173,35 @@ private func makeTask(_ line: String = "- [ ] Capofila", sourcePath: String = "x
         #expect(actions.navigation.pane == pane, "«\(pane.title)» non è stato raggiunto")
     }
 }
+
+// MARK: - PG-350: the frontmatter toggle is a catalogue command
+
+@MainActor
+private func seedNote(_ text: String, in actions: CommandActions) {
+    let note = VaultController.OpenNote(relativePath: "a.md", title: "a", text: text, savedText: text)
+    let tab = NoteTab(note: note)
+    var column = EditorColumn()
+    column.tabs = [tab]
+    column.activeID = tab.id
+    actions.vault.columns = [column]
+}
+
+@MainActor
+@Test func theFrontmatterToggleNeedsANoteThatHasFrontmatter() {
+    let actions = actions()
+    #expect(!actions.canRun(.toggleFrontmatter))
+    seedNote("plain text\n", in: actions)
+    #expect(!actions.canRun(.toggleFrontmatter))
+    seedNote("---\ntags: []\n---\nbody\n", in: actions)
+    #expect(actions.canRun(.toggleFrontmatter))
+}
+
+@MainActor
+@Test func runningTheFrontmatterToggleFlipsTheFocusedTab() {
+    let actions = actions()
+    seedNote("---\ntags: []\n---\nbody\n", in: actions)
+    actions.run(.toggleFrontmatter)
+    #expect(actions.vault.focusedTab?.hidesFrontmatter == true)
+    actions.run(.toggleFrontmatter)
+    #expect(actions.vault.focusedTab?.hidesFrontmatter == false)
+}

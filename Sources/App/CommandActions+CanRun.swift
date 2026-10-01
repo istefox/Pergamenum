@@ -40,6 +40,9 @@ extension CommandActions {
             canRunOnOpenNote(command)
         case .foldSection, .unfoldAll:
             canRunFolding(command)
+        // PG-350: only a note that has a frontmatter block has anything to hide.
+        case .toggleFrontmatter:
+            vault.openNote.map { NoteFrontmatter.exists(in: $0.text) } ?? false
         case .goBack, .goForward:
             command == .goBack ? history.canGoBack : history.canGoForward
         // Both act on the task the list has selected, and neither has anything to do

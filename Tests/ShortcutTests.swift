@@ -310,3 +310,9 @@ private func makeDefaults() -> (UserDefaults, String) {
     let outcome = KeyRecorder.outcome(keyCode: 55, flags: .command, charactersIgnoringModifiers: "")
     #expect(outcome == .ignore)
 }
+
+// PG-350: Cmd+Opt+Y, measured free on 2026-10-01; the generic walks above cover collisions.
+@Test func theFrontmatterToggleLivesInTheViewSectionOnCommandOptionY() {
+    #expect(ShortcutCommand.toggleFrontmatter.section == .view)
+    #expect(ShortcutCommand.toggleFrontmatter.defaultBinding == KeyBinding("y", [.command, .option]))
+}

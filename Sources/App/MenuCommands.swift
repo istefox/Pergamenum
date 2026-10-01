@@ -88,6 +88,12 @@ struct ViewCommands: Commands {
                 .keyboardShortcut(shortcuts.shortcut(for: .unfoldAll))
                 .disabled(!actions.canRun(.unfoldAll))
 
+            Button(vault.focusedTab?.hidesFrontmatter == true ? "Mostra il frontmatter" : "Nascondi il frontmatter") {
+                actions.run(.toggleFrontmatter)
+            }
+            .keyboardShortcut(shortcuts.shortcut(for: .toggleFrontmatter))
+            .disabled(!actions.canRun(.toggleFrontmatter))
+
             Divider()
 
             // ADR-0032: the menu entry and the pane's own `arrow.clockwise` button are the

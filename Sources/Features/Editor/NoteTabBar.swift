@@ -21,6 +21,7 @@ import SwiftUI
 struct NoteTabBar: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
+    @Environment(CommandActions.self) private var commandActions
 
     /// Which column this bar belongs to (ADR-0012 D4). The bar of the column without the
     /// focus is dimmed rather than absent: it still says what is open over there.
@@ -126,7 +127,7 @@ struct NoteTabBar: View {
     /// says at a glance that something is being left out.
     private func frontmatterToggle(hidden: Bool) -> some View {
         let action = hidden ? "Mostra il frontmatter" : "Nascondi il frontmatter"
-        return Button { focus { vault.toggleFrontmatter() } } label: {
+        return Button { focus { commandActions.run(.toggleFrontmatter) } } label: {
             Label(action, systemImage: hidden ? "eye.slash" : "eye")
                 .labelStyle(.iconOnly)
                 .themedText(.caption, color: hidden ? .textPrimary : .textSecondary)

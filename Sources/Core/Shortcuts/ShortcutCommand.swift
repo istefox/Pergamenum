@@ -140,6 +140,10 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     /// The twelfth pane: jumps to "Contenitore" (`Navigation.Pane.contenitore`).
     case paneContenitore
 
+    // PG-350. Appended at the end for the same reason as the case above.
+    /// Hides or shows the open note's frontmatter block (a view of the note, never an edit).
+    case toggleFrontmatter
+
     var id: String { rawValue }
 
     /// Which menu the command lives in, so the settings pane can group the list the
@@ -177,7 +181,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneTags,
              .paneDiary, .paneViews, .paneStarred, .toggleInspector,
              .foldSection, .unfoldAll, .goBack, .goForward,
-             .paneRecordings, .refreshRecordings, .panePratiche, .paneContenitore:
+             .paneRecordings, .refreshRecordings, .panePratiche, .paneContenitore,
+             .toggleFrontmatter:
             .view
         case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek, .taskAddSubtask:
             .task
@@ -244,6 +249,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .newPratica: "Nuova pratica…"
         case .addToPraticaFromMail: "Aggiungi a pratica da Mail…"
         case .paneContenitore: "Vai a Contenitore"
+        case .toggleFrontmatter: "Mostra o nascondi il frontmatter"
         }
     }
 
@@ -369,6 +375,9 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         // in `com.apple.symbolichotkeys` on 2026-09-29 (58 entries, none on keycode 8, every
         // Ctrl+Cmd entry disabled), in this catalogue and in `Sources/`.
         case .paneContenitore: KeyBinding("c", [.command, .control])
+        // Cmd+Opt+Y: no other binding on "y" in this catalogue or in `Sources/`, and no
+        // `com.apple.symbolichotkeys` entry on key code 16 on this machine (2026-10-01).
+        case .toggleFrontmatter: KeyBinding("y", [.command, .option])
         }
     }
 }
