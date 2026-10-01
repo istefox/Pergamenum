@@ -25,6 +25,7 @@ private struct NodeAccessibility: ViewModifier {
 struct BoardContentLayer: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
+    @Environment(Navigation.self) private var navigation
     let workspace: WorkspaceController
     /// Shift and Option as the board is tracking them, for Shift+click and a
     /// proportional resize.
@@ -269,7 +270,7 @@ struct BoardContentLayer: View {
     /// this file, back when the context menu was the only surface there was, and moved to
     /// `BoardCardActions` unchanged.
     private var cardActions: BoardCardActions {
-        BoardCardActions(workspace: workspace, vault: vault)
+        BoardCardActions(workspace: workspace, vault: vault, navigation: navigation)
     }
 
     /// The JSON Canvas preset colours (SPEC §6.2), named as the spec numbers them.

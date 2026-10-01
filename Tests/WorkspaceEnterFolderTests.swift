@@ -67,7 +67,7 @@ import Testing
     let folder = try #require(workspace.subfolder(for: card))
     #expect(folder == OpenStateFixture.boardFolder)
 
-    let actions = BoardCardActions(workspace: workspace, vault: VaultController(recents: .volatile(), openTabs: .volatile()))
+    let actions = BoardCardActions(workspace: workspace, vault: VaultController(recents: .volatile(), openTabs: .volatile()), navigation: Navigation())
     actions.open(card)
 
     #expect(workspace.current == .folder("Vibrofer"))
@@ -90,7 +90,7 @@ import Testing
     let folder = try #require(workspace.subfolder(for: card))
     #expect(folder == OpenStateFixture.emptyFolder)
 
-    let actions = BoardCardActions(workspace: workspace, vault: VaultController(recents: .volatile(), openTabs: .volatile()))
+    let actions = BoardCardActions(workspace: workspace, vault: VaultController(recents: .volatile(), openTabs: .volatile()), navigation: Navigation())
     actions.open(card)
 
     #expect(workspace.current == .folder("Vuota"))
@@ -291,4 +291,40 @@ import Testing
     )
 
     #expect(sentence == "Nota.md: la radice del vault non contiene nessuna board, creane una e riprova")
+}
+
+// MARK: - A note card's «Apri» (PG-355)
+
+// The tab opens in the editor column, which only the Note pane shows: «Apri» and the double
+// click on a `.md` card take the window there, the way `CommandActions.open(link:)` does.
+// Any other file goes to `NSWorkspace` and leaves the pane alone.
+@MainActor
+@Test func openingANoteCardSwitchesToTheNotePane() {
+    let workspace = WorkspaceController()
+    let navigation = Navigation()
+    navigation.pane = .workspace
+    let actions = BoardCardActions(
+        workspace: workspace, vault: VaultController(recents: .volatile(), openTabs: .volatile()),
+        navigation: navigation
+    )
+
+    actions.open(CanvasNode(id: "a", kind: .file(path: "Prova/Brief.md", subpath: nil), x: 0, y: 0, width: 100, height: 100))
+
+    #expect(navigation.pane == .notes)
+}
+
+@MainActor
+@Test func openingANonNoteFileCardLeavesThePaneAlone() {
+    let workspace = WorkspaceController()
+    let navigation = Navigation()
+    navigation.pane = .workspace
+    // No vault is open, so the path resolves to nothing and `NSWorkspace` is never asked.
+    let actions = BoardCardActions(
+        workspace: workspace, vault: VaultController(recents: .volatile(), openTabs: .volatile()),
+        navigation: navigation
+    )
+
+    actions.open(CanvasNode(id: "a", kind: .file(path: "Prova/Scheda.pdf", subpath: nil), x: 0, y: 0, width: 100, height: 100))
+
+    #expect(navigation.pane == .workspace)
 }

@@ -40,6 +40,7 @@ struct HostedViewPrototypeTests {
             .frame(width: viewport.width, height: viewport.height, alignment: .topLeading)
             .clipped()
             .environment(vault)
+            .environment(Navigation())
             .environment(\.theme, .emergency)
         }
     }

@@ -17,6 +17,9 @@ import SwiftUI
 struct BoardCardActions {
     let workspace: WorkspaceController
     let vault: VaultController
+    /// The window's pane, so «Apri» on a note card can show the tab it opens - the same
+    /// step `CommandActions.open(link:)` takes (PG-355).
+    let navigation: Navigation
 
     // MARK: Applicability
 
@@ -187,6 +190,10 @@ struct BoardCardActions {
                 // One of our own drawings: reopen the ink rather than the image.
                 workspace.tool = .drawing
             } else if path.hasSuffix(".md") {
+                // The Note pane first: the tab opens in the editor column, which the
+                // Workspace pane does not show, so without the switch the note opened out
+                // of sight (PG-355).
+                navigation.pane = .notes
                 vault.openNote(at: path)
             } else if let root = vault.root, let url = Self.resolvedOpenURL(for: path, root: root) {
                 NSWorkspace.shared.open(url)

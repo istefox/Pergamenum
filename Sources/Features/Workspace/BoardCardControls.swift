@@ -18,6 +18,7 @@ import SwiftUI
 struct BoardCardControls: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
+    @Environment(Navigation.self) private var navigation
     let workspace: WorkspaceController
 
     /// Whether the bar is shown at all: exactly one selected card, and nothing otherwise
@@ -35,7 +36,7 @@ struct BoardCardControls: View {
 
     var body: some View {
         if let node = selectedNode {
-            let actions = BoardCardActions(workspace: workspace, vault: vault)
+            let actions = BoardCardActions(workspace: workspace, vault: vault, navigation: navigation)
             HStack(spacing: theme.spacing(.xs)) {
                 ForEach(actions.commands(for: node), id: \.self) { command in
                     control(command, node: node, actions: actions)
