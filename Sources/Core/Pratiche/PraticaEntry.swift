@@ -39,17 +39,18 @@ enum PraticaEntry {
         var cursorRange: NSRange
     }
 
-    /// `en_US_POSIX` / `"yyyy-MM-dd HH:mm"` - the one formatter that both writes the
-    /// heading and reads it back (`PraticaManualEntries.parse`, ADR-0076 §D1). A file
-    /// format, not a presentation, so it cannot follow the person's locale.
+    /// `en_US_POSIX` / `"yyyy-MM-dd HH:mm"` in GMT - the formatter behind the heading's date
+    /// and time digits, both ways (`headingTimestamp(_:in:)` and `PraticaManualEntries.parse`,
+    /// ADR-0076 §D1). A file format, not a presentation, so it cannot follow the person's locale.
     ///
-    /// The time zone is pinned to GMT for the same reason the locale is pinned, and
-    /// `Tests/PraticaEntryTests.swift` requires it: a heading written at `14:06Z` reads
-    /// back `14:06` on any Mac, in any zone, which is what makes the file portable and
-    /// the round trip through the shared parser an identity. `DateEntry` and `PlaudTimestamp`
-    /// already pin `secondsFromGMT: 0` on their own file-format formatters. The
-    /// timeline still *draws* the row in the reader's own zone
-    /// (`PraticaRowFormat.time`), as it does for a message's own header date.
+    /// PG-356 (2026-10-01): a heading is written in the writer's own zone, followed by that
+    /// zone's offset (`## 2026-06-10 16:06 +02:00 Telefonata · …`), so the digits on disk are
+    /// the time the person saw when they wrote it, and the offset makes the instant exact on any
+    /// Mac. The digits go through this GMT formatter shifted by the offset rather than through a
+    /// formatter set to the zone, so one shared formatter serves every zone. A heading with no
+    /// offset - every heading written before PG-356, and the connectors' own fixtures - keeps
+    /// meaning UTC, so nothing already on disk moves. The timeline still *draws* the row in the
+    /// reader's own zone (`PraticaRowFormat.time`), as it does for a message's own header date.
     static let headingFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -57,6 +58,15 @@ enum PraticaEntry {
         formatter.dateFormat = "yyyy-MM-dd HH:mm"
         return formatter
     }()
+
+    /// The heading's timestamp: `yyyy-MM-dd HH:mm ±hh:mm`, the wall-clock time in `timeZone` and
+    /// its offset at that instant, so a summer heading in Rome says `+02:00` and a winter one
+    /// `+01:00` (PG-356). `PraticaManualEntries.heading(_:)` reads it back to the same minute.
+    static func headingTimestamp(_ date: Date, in timeZone: TimeZone = .current) -> String {
+        let offset = timeZone.secondsFromGMT(for: date)
+        let wallClock = headingFormatter.string(from: date.addingTimeInterval(TimeInterval(offset)))
+        return "\(wallClock) \(UTCOffset.text(offset))"
+    }
 
     /// R-28: the midpoint between two neighbouring entries' timestamps, for
     /// «Inserisci qui». Pure arithmetic over the two dates the caller (which rows are
@@ -66,10 +76,11 @@ enum PraticaEntry {
             (first.timeIntervalSinceReferenceDate + second.timeIntervalSinceReferenceDate) / 2)
     }
 
-    /// Inserts a `## yyyy-MM-dd HH:mm <Kind> · <Controparte>` heading with one blank
-    /// body line beneath it (R-28). Manual entries append at the end of `source` - the
-    /// timeline's own ascending order is a read-time property (ADR §D5), not something
-    /// this insert has to preserve by placement.
+    /// Inserts a `## yyyy-MM-dd HH:mm ±hh:mm <Kind> · <Controparte>` heading with one blank
+    /// body line beneath it (R-28), the time in `timeZone` (`headingTimestamp(_:in:)`, PG-356;
+    /// injected so a test does not depend on the Mac's zone). Manual entries append at the
+    /// end of `source` - the timeline's own ascending order is a read-time property (ADR §D5),
+    /// not something this insert has to preserve by placement.
     ///
     /// The returned `cursorRange` is the empty body line under the heading, never the
     /// heading itself: the caller resolves it into
@@ -81,9 +92,10 @@ enum PraticaEntry {
     /// `PraticaEntryAnchor.line(for:)` cannot spell writes a free entry, byte-identical to the
     /// call without an anchor.
     static func insert(
-        kind: Kind, at timestamp: Date, counterpart: String, anchor: String? = nil, in source: String
+        kind: Kind, at timestamp: Date, counterpart: String, anchor: String? = nil,
+        timeZone: TimeZone = .current, in source: String
     ) -> Insertion {
-        var heading = "## \(headingFormatter.string(from: timestamp)) \(kind.label) · \(counterpart)"
+        var heading = "## \(headingTimestamp(timestamp, in: timeZone)) \(kind.label) · \(counterpart)"
 
         // One blank line between whatever the note already says and the new heading,
         // and never two: `pratica.md` is a file a person also reads in Obsidian.

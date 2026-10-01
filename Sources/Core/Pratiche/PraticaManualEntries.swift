@@ -7,13 +7,14 @@ import Foundation
 // Foundation-only on purpose: it compiles into `perg` and `pergamenum-mcp` through the
 // `Sources/Core/**` glob.
 
-/// One manual entry of `pratica.md`: a `## yyyy-MM-dd HH:mm <Kind> · <Controparte>` heading and
-/// every line under it up to the next `## ` heading or the end of the file.
+/// One manual entry of `pratica.md`: a `## yyyy-MM-dd HH:mm [±hh:mm] <Kind> · <Controparte>`
+/// heading and every line under it up to the next `## ` heading or the end of the file.
 struct PraticaManualEntry: Equatable, Sendable {
     var kind: PraticaEntry.Kind
-    /// The heading's timestamp, read through `PraticaEntry.headingFormatter`.
+    /// The heading's instant: its digits read through `PraticaEntry.headingFormatter`, less the
+    /// heading's offset when it carries one, as UTC when it does not (PG-356).
     var date: Date
-    /// The heading's tail: everything after the time, e.g. `Telefonata · Mario Rossi`.
+    /// The heading's tail: everything after the time and the offset, e.g. `Telefonata · Mario Rossi`.
     var subject: String
     /// Everything after the tail's first ` · `, which may itself contain ` · `.
     var counterpart: String
@@ -123,16 +124,31 @@ enum PraticaManualEntries {
         var counterpart: String
     }
 
+    /// `## 2026-06-10 16:06 +02:00 Telefonata · Mario Rossi`, or the legacy
     /// `## 2026-06-10 14:06 Telefonata · Mario Rossi`. Anything else under `##` is an ordinary
     /// heading of the note and answers nil.
+    ///
+    /// PG-356: a third token that is exactly `±hh:mm` (`UTCOffset.seconds`) is the zone the
+    /// digits were written in, and never part of the subject or the kind; a heading without one
+    /// is read as UTC, which is what every heading written before PG-356 means. An offset with
+    /// nothing after it is not an entry, as a date and a time with nothing after them are not.
     static func heading(_ line: String) -> Heading? {
         guard line.hasPrefix("## ") else { return nil }
         let rest = line.dropFirst(3).trimmingCharacters(in: .whitespaces)
         let parts = rest.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
         guard parts.count >= 3,
-              let date = PraticaEntry.headingFormatter.date(from: "\(parts[0]) \(parts[1])")
+              let digits = PraticaEntry.headingFormatter.date(from: "\(parts[0]) \(parts[1])")
         else { return nil }
-        let tail = String(parts[2])
+        var tail = String(parts[2])
+        var date = digits
+        let tokens = tail.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        // Two edge cases accepted on purpose: a heading that is only timestamp plus offset is
+        // not an entry, and a hand-written subject starting with a `±hh:mm` token now reads as an offset.
+        if let first = tokens.first, let offset = UTCOffset.seconds(first) {
+            guard tokens.count == 2 else { return nil }
+            tail = tokens[1].trimmingCharacters(in: .whitespaces)
+            date = digits.addingTimeInterval(-TimeInterval(offset))
+        }
         return Heading(
             kind: tail.hasPrefix(PraticaEntry.Kind.call.label) ? .call : .note,
             date: date,
