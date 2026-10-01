@@ -129,6 +129,34 @@ private func parsed(_ path: String, in vault: borrowing TemporaryVault) throws -
     #expect(editor.isSettled)
 }
 
+/// PG-352: `retireEditor()`'s background settle and `settleEditing()` both settle one editor, and
+/// the second queues a save while the first waits. A settle that waited only for its own save
+/// returned with the other still running, so the quit read an owed edit that was on its way.
+@MainActor
+@Test func settleWaitsForASaveQueuedWhileItWaited() async throws {
+    let vault = try TemporaryVault()
+    let harness = try await harness(vault)
+    let session = try #require(harness.vault.session)
+    harness.contenitore.openEditor(for: scheda)
+    let editor = try #require(harness.contenitore.editor)
+    let writesBefore = session.selfWrittenHashes[scheda]?.count ?? 0
+
+    editor.draft.description = "Prima"
+    let settling = Task { await editor.settle(); return editor.isSettled }
+    // The settle's own save has read «Prima» and is on its way to the disk once the session has
+    // recorded its hash, which it does on the main actor before the hop.
+    for _ in 0..<1000 where (session.selfWrittenHashes[scheda]?.count ?? 0) == writesBefore {
+        await Task.yield()
+    }
+    #expect((session.selfWrittenHashes[scheda]?.count ?? 0) > writesBefore, "the settle's save is in flight")
+    editor.draft.description = "Seconda"
+    editor.requestSave() // a real write, queued behind the settle's own
+
+    #expect(await settling.value, "the settle returned only once nothing was queued or running")
+    #expect(editor.isSettled)
+    #expect(try parsed(scheda, in: vault).body == "\nSeconda\n")
+}
+
 // MARK: - A description survives what used to lose it (ADR-0073)
 
 @MainActor

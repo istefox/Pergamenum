@@ -76,18 +76,18 @@ final class ContenitoreEditor {
     }
 
     /// Commits a date typed and not yet committed, then writes everything edited, and returns
-    /// when every save queued so far has ended. Idempotent: an editor with nothing to write
-    /// returns at once.
+    /// when no save is queued or running, including one another caller queued while it waited
+    /// (PG-352: the retired editor's own settle and `settleEditing()` overlap). Idempotent: an
+    /// editor with nothing to write returns at once.
     func settle() async {
         commitPendingDate()
         // What could not be committed is not owed: the field goes back to the draft's date and the
         // sentence commitDate() recorded stays, so the person sees why.
         if dateText != Self.text(of: draft.date) { dateText = Self.text(of: draft.date) }
-        if Self.normalized(draft) != model.draft {
-            await enqueueSave().value
-        } else if let flight {
-            await flight.value
-        }
+        if Self.normalized(draft) != model.draft { enqueueSave() }
+        // `flight` is always the last save queued and each one waits for the one before, so this
+        // ends; a write that fails still brings `saves` to zero and leaves the draft owed.
+        while saves > 0, let flight { await flight.value }
     }
 
     /// Reads the date field: a valid one becomes the draft's and is saved; an invalid one is
