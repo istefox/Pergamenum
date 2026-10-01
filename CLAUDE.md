@@ -439,13 +439,24 @@ move the previous copy aside rather than deleting it.
   launch; `-recentVaults '("/path")'` works. The launch argument outranks the persistent
   domain, so a throwaway vault reaches a Debug build without touching what the installed
   app opens.
-- **Finding the latest Debug build under DerivedData needs `-t`, not plain `ls -d`.** `tuist
-  generate` stamps a fresh `Pergamenum-<hash>` DerivedData folder on each regeneration, and
-  stale ones accumulate. `ls -d .../Pergamenum-*/Build/Products/Debug/Pergamenum.app | head -1`
-  sorts alphabetically by hash, not by build time, and can silently hand you a stale build that
-  still shows an already-fixed regression. Use `ls -dt .../Pergamenum-*/Build/Products/Debug/Pergamenum.app | head -1`
-  (or `APP=$(ls -dt ... | head -1)`) to get the most recently built bundle before an `open -n`
-  hand-check launch.
+- **Finding this checkout's latest Debug build: pick the DerivedData folder by `WorkspacePath`,
+  the build by `Pergamenum.debug.dylib`.** Every worktree gets its own `Pergamenum-<hash>` folder
+  under `~/Library/Developer/Xcode/DerivedData` (274 of them on 2026-10-01), so neither sort order
+  over `Pergamenum-*` is safe: `ls -d` goes alphabetically by hash, and `ls -dt` returns the
+  newest build of *any* worktree - on 2026-09-30 it opened another branch's app, with no
+  Contenitore pane, for a hand check. `-t` on the `.app` is wrong on its own terms too: an
+  incremental rebuild does not touch the bundle directory's mtime, so it returned a 09:10 build
+  twice while the current one was 11:04 (PG-189). The folder's `info.plist` names the workspace it
+  builds, and `Contents/MacOS/Pergamenum.debug.dylib` is rewritten by every build:
+  ```bash
+  WS="$(git rev-parse --show-toplevel)/Pergamenum.xcworkspace"
+  DYLIB=$(for dd in ~/Library/Developer/Xcode/DerivedData/Pergamenum-*; do
+      [ "$(plutil -extract WorkspacePath raw "$dd/info.plist" 2>/dev/null)" = "$WS" ] &&
+          ls "$dd"/Build/Products/Debug/Pergamenum.app/Contents/MacOS/Pergamenum.debug.dylib 2>/dev/null
+  done | xargs ls -t | head -1)
+  APP="${DYLIB%/Contents/MacOS/*}"    # empty: this checkout has no Debug build yet - build it
+  ```
+  then `open -n "$APP" --args …` for the hand check.
 - **A crash at launch in `initializeWithCopy for <SwiftUI type>` on a Debug build is a stale
   incremental build until proven otherwise.** Swift's incremental compiler does not record the
   underlying type of a `some View` property as a dependency of the files that use it: when a
@@ -456,8 +467,9 @@ move the previous copy aside rather than deleting it.
   test host and UI-test app alike (2026-09-29, three DerivedData folders). Confirm by comparing the
   two `.o` timestamps under `Objects-normal/arm64/` (for the UI suite, read the signature from the
   run's `.xcresult` first, as for any red), then move that DerivedData (or `build/uitests-dd`) to
-  the Trash and rebuild clean. Move only this worktree's own `Pergamenum-*` folder, never the
-  newest one by date: with several worktrees building, it may be another session's, mid-build.
+  the Trash and rebuild clean. Move only this worktree's own `Pergamenum-*` folder (the one whose
+  `info.plist` names this checkout's `WorkspacePath`, as above), never the newest one by date:
+  with several worktrees building, it may be another session's, mid-build.
   A clean build never showed it.
 - Build and tests must pass before committing. A change that does not build is not done.
 - Keep commits small and atomic, one logical change each.

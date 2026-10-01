@@ -179,3 +179,93 @@ private let seedID = "3f2c9a4e-8b1d-4c67-9e2a-5d1b7c0e4f13"
         atPath: vault.root.appending(path: ".pergamenum/note-ids 2.json").path(percentEncoded: false)
     ))
 }
+
+// MARK: 13-15. ADR-0059 "Implementation notes" 1-3 (PG-239)
+
+/// Implementation note 1: a registry that is on disk and cannot be read is `.malformed`,
+/// never `.absent` - `CategoryRegistryStore`'s shape would take it for absent, and an
+/// absent registry is one the next door creates, over the file it could not read.
+@MainActor
+@Test func anExistingRegistryThatCannotBeReadIsMalformedAndNeverReplaced() throws {
+    let vault = try TemporaryVault()
+    try vault.write("contenuto", to: "a.md")
+    let original = #"{"version":1,"notes":{"\#(seedID)":"b.md"}}"#
+    try vault.write(original, to: ".pergamenum/note-ids.json")
+    let store = NoteIDStore(root: vault.root)
+    let path = store.file.path(percentEncoded: false)
+    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: path)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path) }
+    #expect((try? Data(contentsOf: store.file)) == nil, "precondition: the file is there and cannot be read")
+
+    let (registry, state) = store.load()
+    #expect(state == .malformed)
+    #expect(registry == .empty)
+
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+    #expect(session.mintNoteID(for: "a.md") == nil, "a door refuses an unreadable registry instead of creating one")
+    try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path)
+    #expect(try String(contentsOf: store.file, encoding: .utf8) == original, "and the file was not replaced")
+}
+
+/// Implementation note 2: when a move's destination lies inside its own source, every
+/// entry under the destination is also under the source, and the stale drop must not
+/// discard what the same move is about to carry.
+@Test func relocatingIntoItsOwnSubfolderCarriesTheEntriesAlreadyUnderTheDestination() {
+    var registry = NoteIDRegistry.empty
+    registry = registry.assigning("id-1", to: "Folder/A.md")
+    registry = registry.assigning("id-2", to: "Folder/Sub/B.md")
+
+    registry = registry.relocating([MovedNote(old: "Folder", new: "Folder/Sub")])
+
+    #expect(registry.path(forID: "id-1") == "Folder/Sub/A.md")
+    #expect(registry.path(forID: "id-2") == "Folder/Sub/Sub/B.md", "carried, not dropped as stale")
+}
+
+/// The other overlap, a destination that is an ancestor of the source: the entry the move
+/// carries survives, and an entry at the destination that the move does not carry is still
+/// stale and still dropped - §D4's intent, unchanged by the guard.
+@Test func relocatingOntoAnAncestorCarriesTheSourceAndStillDropsTheStaleEntry() {
+    var registry = NoteIDRegistry.empty
+    registry = registry.assigning("id-carried", to: "Folder/Sub/x.md")
+    registry = registry.assigning("id-stale", to: "Folder/y.md")
+
+    registry = registry.relocating([MovedNote(old: "Folder/Sub", new: "Folder")])
+
+    #expect(registry.path(forID: "id-carried") == "Folder/x.md")
+    #expect(registry.path(forID: "id-stale") == nil)
+}
+
+/// Implementation note 3: a hand-edited file can map several ids to one path. The
+/// smallest is answered, whatever order the file lists them in, and every other id still
+/// resolves to the path.
+@Test func severalIdsForOnePathAnswerTheSmallestWhateverTheFileOrder() throws {
+    let ids = ["c-3", "a-1", "e-5", "b-2", "d-4"]
+    let orders: [[String]] = [ids, Array(ids.reversed()), ids.sorted(), Array(ids.sorted().reversed())]
+    for order in orders {
+        let entries = order.map { #""\#($0)":"Nota.md""# }.joined(separator: ",")
+        let json = #"{"version":1,"notes":{"# + entries + "}}"
+        let registry = try JSONDecoder().decode(NoteIDRegistry.self, from: Data(json.utf8))
+
+        #expect(registry.id(forPath: "Nota.md") == "a-1", "file order \(order)")
+        for id in ids {
+            #expect(registry.path(forID: id) == "Nota.md")
+        }
+    }
+}
+
+/// The tie-break above runs on one Dictionary layout per file order, and Swift's per-process
+/// hash seeding means a `keys.first` regression only fails it by chance. This one removes the
+/// chance: sixty registries with different id sets (each Dictionary is laid out on its own),
+/// so a non-minimum choice (`keys.first`, `keys.max()`) would have to land on the minimum sixty
+/// times running - a one-in-eight-to-the-sixtieth miss. The correct implementation cannot fail
+/// it, whatever the seed.
+@Test func theSmallestIdWinsOnManyDifferentTiedSets() throws {
+    for round in 0..<60 {
+        let ids = (0..<8).map { "id-\(round)-\(String($0 * 7 % 8))-\(round &* 31 &+ $0 * 13)" }
+        let entries = ids.map { #""\#($0)":"Nota.md""# }.joined(separator: ",")
+        let json = #"{"version":1,"notes":{"# + entries + "}}"
+        let registry = try JSONDecoder().decode(NoteIDRegistry.self, from: Data(json.utf8))
+
+        #expect(registry.id(forPath: "Nota.md") == ids.min(), "round \(round)")
+    }
+}
