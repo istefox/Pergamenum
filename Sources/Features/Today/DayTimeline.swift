@@ -63,7 +63,7 @@ struct DayTimeline: View {
         ScrollView {
             ZStack(alignment: .topLeading) {
                 hourLines
-                ForEach(projectedEvents.timed) { projected in
+                ForEach(Array(zip(timedEvents, eventLanes)), id: \.0.id) { projected, lane in
                     TimelineEntryBox(
                         entry: TimelineEntry(
                             title: projected.event.title, subtitle: projected.event.calendarTitle,
@@ -73,6 +73,7 @@ struct DayTimeline: View {
                         ),
                         firstHour: firstHour,
                         hourHeight: hourHeight,
+                        lane: lane,
                         accessory: { eventNoteMark(projected.event) }
                     )
                     .contextMenu { eventNoteMenuItem(projected.event) }
@@ -232,6 +233,17 @@ struct DayTimeline: View {
     }
 
     private var allDayEvents: [CalendarEvent] { projectedEvents.allDay }
+
+    private var timedEvents: [ProjectedEvent] { projectedEvents.timed }
+
+    /// Side by side where events overlap (PG-339), each measured by the box it is drawn as:
+    /// never shorter than the 15 minutes `TimelineEntry` gives it, or a short event would
+    /// be judged free of the one its box covers.
+    private var eventLanes: [TimelineLane] {
+        TimelineLane.assign(timedEvents.map { projected in
+            (projected.startMinute, projected.startMinute + max(15, projected.endMinute - projected.startMinute))
+        })
+    }
 
     private var header: some View {
         HStack(spacing: theme.spacing(.xs)) {
