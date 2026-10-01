@@ -285,6 +285,37 @@ struct PergamenumApp: App {
         updater.start()
     }
 
+    // Internal, not private: read by `Tests/ReminderRescheduleKeyTests.swift`.
+    /// What reminders are rescheduled on (PG-270). Two parts, because each moves where the
+    /// other does not: `indexGeneration` moves when the index takes in a change - an editor
+    /// save, an external edit, a scan - so a `@remind` typed in the editor is scheduled once the
+    /// note is saved, not at the next rescan, as it was while this keyed on `taskGeneration`
+    /// alone (the PG-324 shape); `taskGeneration` keeps the in-app task writes and the cache
+    /// clear that move it, a board-sourced task write among them. Neither moves per keystroke:
+    /// the index changes only when a write lands. A type rather than a sum so a reset of one
+    /// part can never cancel a move of the other.
+    struct ReminderKey: Equatable {
+        let index: Int
+        let tasks: Int
+    }
+
+    /// Pure, so a test can check it without rendering (the shape of `TodayView.reloadKey`).
+    @MainActor
+    static func reminderKey(for vault: VaultController) -> ReminderKey {
+        ReminderKey(index: vault.indexGeneration, tasks: vault.taskGeneration)
+    }
+
+    /// Whether a change of `reminderKey(for:)` may reschedule. Not with no vault open, nor while
+    /// a scan is rebuilding the index: `reschedule` replaces the pending notifications
+    /// wholesale, so run against a missing session or a half-built index it would cancel every
+    /// reminder. `indexGeneration` moves at `close()` and at `open(_:)` before the scan, which
+    /// `taskGeneration` never did; the scan's own end still moves `taskGeneration` once the
+    /// index is whole (`rescan()`, `clearCache()`), so a skipped run is always followed by one.
+    @MainActor
+    static func shouldReschedule(_ vault: VaultController) -> Bool {
+        vault.session != nil && !vault.isScanning
+    }
+
     var body: some Scene {
         // `Window`, not `WindowGroup`: on macOS a `pergamenum://` link with no window
         // willing to claim it makes the group open a NEW one, so every link from
@@ -331,11 +362,17 @@ struct PergamenumApp: App {
                 .onChange(of: showsMenuBarItem) { _, shown in
                     menuBarItem.setShown(shown)
                 }
-                // Rescheduled on every completed scan and on every task the app writes,
-                // against the whole vault: the tasks on disk are the source of truth, so
-                // the scheduler replaces its pending notifications wholesale rather than
-                // trying to diff them.
-                .task(id: vault.taskGeneration) {
+                // Rescheduled on every completed scan, on every index change and on every
+                // task the app writes, against the whole vault: the tasks on disk are the
+                // source of truth, so the scheduler replaces its pending notifications
+                // wholesale rather than trying to diff them. See `reminderKey(for:)`.
+                .task(id: Self.reminderKey(for: vault)) {
+                    guard Self.shouldReschedule(vault) else { return }
+                    // A burst of landed changes (a Pratiche sync writes one message after
+                    // another) moves the key once per write: the next move cancels this task
+                    // during the pause, so only the last of the burst reschedules.
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard !Task.isCancelled else { return }
                     await reminders.refreshAccessStatus()
                     await reminders.reschedule(for: vault.index.allTasks, session: vault.session)
                     await reminders.refreshPending()

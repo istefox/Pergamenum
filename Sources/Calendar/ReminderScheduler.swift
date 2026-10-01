@@ -173,8 +173,14 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     /// in-app between scheduling and firing is still found (PG-237). `nil` (no vault
     /// open) falls back to the path route unchanged; a board task gets the board route,
     /// whatever `mintNoteID` answers for it (PG-243).
+    ///
+    /// A cancelled run stops before its next `add`: its task list is older than the run that
+    /// cancelled it, and identifiers are task ids, so a stale request added after the newer
+    /// run's would replace a retimed `@remind`. `scheduledIDs` gains an id only once the centre
+    /// has accepted that request, so a run stopped halfway leaves the set naming exactly what
+    /// it added, and the next run removes those.
     func reschedule(for tasks: [TaskItem], session: VaultSession?, now: Date = Date()) async {
-        guard access.isGranted else { return }
+        guard access.isGranted, !Task.isCancelled else { return }
 
         center.removePendingNotificationRequests(withIdentifiers: Array(scheduledIDs))
         scheduledIDs.removeAll()
@@ -187,6 +193,7 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
         }
 
         for request in Self.requests(for: tasks, after: now, noteIDs: noteIDs) {
+            guard !Task.isCancelled else { break }
             do {
                 try await center.add(request)
                 scheduledIDs.insert(request.identifier)

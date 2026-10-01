@@ -53,7 +53,7 @@ struct Vocabulary: Equatable, Sendable, Codable {
 }
 
 /// The eight namespaces of tag.md T-01, in the order the frontmatter must list them.
-enum TagNamespace: String, CaseIterable, Sendable, Comparable {
+enum TagNamespace: String, CaseIterable, Sendable, Comparable, CustomStringConvertible {
     case client
     case competitor
     case project
@@ -79,4 +79,12 @@ enum TagNamespace: String, CaseIterable, Sendable, Comparable {
     static func < (lhs: TagNamespace, rhs: TagNamespace) -> Bool {
         lhs.order < rhs.order
     }
+
+    /// The family's own name, stated rather than left to reflection (PG-346). Without it a
+    /// namespace nested in a value - `TagViolation.vocabularyUnavailable` rendered for
+    /// `VaultAPI.LintFinding` - printed module-qualified, `Pergamenum.TagNamespace.type` in the
+    /// app and the tool's own module name in `perg` and `pergamenum-mcp`, which compile this file
+    /// under their own modules (ADR-0007). Interpolating a bare namespace already gave the case
+    /// name, which is the raw value, so that output does not change.
+    var description: String { rawValue }
 }
