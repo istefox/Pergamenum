@@ -162,6 +162,9 @@ final class PraticheUITests: XCTestCase {
             atomically: true, encoding: .utf8
         )
 
+        // The second paragraph is drawn only when the row is expanded: the collapsed preview is
+        // the body's first line (`PraticheController.firstLine(of:)`), so it never matches
+        // (`testDoubleClickTogglesMessageRow`).
         let withoutAttachment = """
         ---
         date: 2026-09-02
@@ -181,6 +184,8 @@ final class PraticheUITests: XCTestCase {
         ---
 
         Messaggio senza allegati.
+
+        Seconda riga del corpo.
         """
         try withoutAttachment.write(
             to: emailDirectory.appending(path: "senza-allegato.md", directoryHint: .notDirectory),
@@ -299,15 +304,66 @@ final class PraticheUITests: XCTestCase {
         assertExcluded(Self.messageWithAttachmentID, noteFile: "con-allegato.md")
     }
 
+    // MARK: - ADR-0076 implementation notes: a double-click opens or closes a row
+
+    /// The timeline `List`'s own `primaryAction` toggles the double-clicked row, on a target the
+    /// size of the card rather than the chevron alone. A double-click delivered to a live `List`
+    /// reaches nothing in-process (`Tests/HostedViewSupport.swift`), so this is its one witness.
+    func testDoubleClickTogglesMessageRow() throws {
+        selectFirstPratica()
+        let messageID = Self.messageWithoutAttachmentID
+        let secondParagraph = app.staticTexts.matching(
+            NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "Seconda riga", "Seconda riga")
+        ).firstMatch
+        XCTAssertTrue(waitForChevron(ofMessage: messageID, label: "Espandi"), "la riga non parte compressa")
+        XCTAssertFalse(secondParagraph.exists, "il corpo è visibile con la riga compressa")
+
+        doubleClickTrailingHeaderArea(ofMessage: messageID)
+        XCTAssertTrue(secondParagraph.waitForExistence(timeout: 5), "il doppio clic non ha espanso la riga")
+        XCTAssertTrue(waitForChevron(ofMessage: messageID, label: "Comprimi"), "lo chevron non dice «Comprimi»")
+
+        doubleClickTrailingHeaderArea(ofMessage: messageID)
+        XCTAssertTrue(
+            secondParagraph.waitForNonExistence(timeout: 5), "il secondo doppio clic non ha compresso la riga"
+        )
+        XCTAssertTrue(waitForChevron(ofMessage: messageID, label: "Espandi"), "lo chevron non dice «Espandi»")
+    }
+
     // MARK: - PG-298 helpers
 
     /// The header's trailing `Spacer`, not a button - the same coordinate Task 1's probe
     /// scenarios (S1/S2/S3) clicked, kept here so a click selects the row without landing
     /// on the chevron or a chip.
     private func clickTrailingHeaderArea(ofMessage messageID: String) {
+        trailingHeaderArea(ofMessage: messageID).click()
+    }
+
+    /// The same trailing column, on the chevron's own line: an expanded row's middle is its
+    /// body, where a double-click selects a word instead of toggling the row (ADR-0076 notes).
+    private func doubleClickTrailingHeaderArea(ofMessage messageID: String) {
+        trailingHeaderArea(ofMessage: messageID, onHeaderLine: true).doubleClick()
+    }
+
+    private func trailingHeaderArea(ofMessage messageID: String, onHeaderLine: Bool = false) -> XCUICoordinate {
         let row = element("pratiche-message-\(Self.hash(messageID))")
         XCTAssertTrue(row.waitForExistence(timeout: 5), "la riga del messaggio non è comparsa")
-        row.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).click()
+        var dy: CGFloat = 0.5
+        if onHeaderLine {
+            let chevron = element("pratiche-message-chevron-\(Self.hash(messageID))")
+            XCTAssertTrue(chevron.waitForExistence(timeout: 5), "lo chevron del messaggio non è comparso")
+            dy = (chevron.frame.midY - row.frame.minY) / row.frame.height
+        }
+        return row.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: dy))
+    }
+
+    /// Whether the row's chevron says «Espandi» or «Comprimi» within the timeout - its
+    /// accessibility label, the one carrier of the row's state that is not body text.
+    private func waitForChevron(ofMessage messageID: String, label: String) -> Bool {
+        let chevron = element("pratiche-message-chevron-\(Self.hash(messageID))")
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", label), object: chevron
+        )
+        return XCTWaiter().wait(for: [expectation], timeout: 5) == .completed
     }
 
     /// R-01/R-02/R-08's shared assertion: the row is gone, its `.md` left `email/`, and its

@@ -68,6 +68,11 @@ struct HiddenMarker: Equatable, Sendable {
         /// invisible characters - the one construct here that cannot length-preserve into a
         /// full-width line the way the other three can.
         case rule
+        /// A whole Pratiche anchor line, `<!-- pergamenum-message: <Message-ID> -->` (ADR-0076
+        /// §D9, R-20): collapsed into `collapsedFont` on the same generic path as `.rule`, and
+        /// drawn by a `MessageAnchorFragment` as one small marker. A block kind, so the reveal
+        /// is paragraph-grained: the caret entering the line shows it raw.
+        case messageAnchor
         /// A GFM table's own header-line pipe syntax (ADR-0029 §D4; plan
         /// `2026-09-02-editor-wysiwyg-unification`, Task 4) - anchored at the header
         /// paragraph's own start, the same convention `.list` and `.blockquote` use, since
@@ -96,18 +101,19 @@ struct HiddenMarker: Equatable, Sendable {
 extension HiddenMarker.Kind {
     /// Whether this kind's reveal is span-grained under ADR-0037's setting, or stays
     /// paragraph-grained as ADR-0018 §D2 left it (ADR-0037 §D2). A `switch` with no
-    /// `default`, so an eleventh kind cannot be added without answering the question - the
-    /// five kinds with their own dedicated substitution branch (`.embed`, `.list`,
+    /// `default`, so a new kind cannot be added without answering the question - the
+    /// kinds with their own dedicated substitution branch (`.embed`, `.list`,
     /// `.checkbox`, `.blockquote`, `.table`, `.viewBlock`) are already refused by the
-    /// generic path (`stillSpells` answers `false` for every one of them), so `.heading`
-    /// and `.rule` are the only block kinds the generic path ever sees, and
-    /// `.emphasis`/`.strikethrough`/`.link` are the only inline ones.
+    /// generic path (`stillSpells` answers `false` for every one of them), so `.heading`,
+    /// `.rule` and `.messageAnchor` (ADR-0076, its own `stillSpells` arm) are the only block
+    /// kinds the generic path ever sees, and `.emphasis`/`.strikethrough`/`.link` are the
+    /// only inline ones.
     ///
     /// Plan: `2026-09-08-word-grained-markdown-reveal-on-caret-in`, Task 3.
     var isInline: Bool {
         switch self {
         case .emphasis, .strikethrough, .link: true
-        case .heading, .embed, .list, .checkbox, .blockquote, .rule, .table, .viewBlock: false
+        case .heading, .embed, .list, .checkbox, .blockquote, .rule, .messageAnchor, .table, .viewBlock: false
         }
     }
 }
@@ -145,6 +151,12 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// from a token exactly the way `badgeColor` and `handleColor` above are - a view that
     /// uses a colour without going through a token does not pass review (CLAUDE.md).
     nonisolated(unsafe) var ruleColor: NSColor = .separatorColor
+    /// The colour a `MessageAnchorFragment` paints its marker in (ADR-0076 §D9), pushed in from
+    /// a token the way `ruleColor` above is.
+    nonisolated(unsafe) var messageAnchorColor: NSColor = .tertiaryLabelColor
+    /// The point size a `MessageAnchorFragment` draws its marker at, pushed in from a typography
+    /// token beside `messageAnchorColor` above, the way `badgeFont` below is.
+    nonisolated(unsafe) var messageAnchorPointSize: CGFloat = 11
     /// The page's own body face (ADR-0030 §D1/§D5), pushed in from `ProseTypography.prose(_:)`
     /// exactly the way `badgeColor`/`handleColor`/`ruleColor` above are: this object is not
     /// `@MainActor` and cannot read `Theme` itself, so `applyStyling` resolves the token once
@@ -422,6 +434,19 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
                 textElement: textElement, range: textElement.elementRange
             )
             fragment.ruleColor = ruleColor
+            return fragment
+        }
+
+        // A Pratiche anchor line (ADR-0076 §D9), the rule's own shape: its characters are
+        // collapsed by the generic path and one small marker is drawn here, re-validated
+        // against the element's own characters for the same reason as above.
+        if hidesMarkup, !revealedParagraphs.contains(start),
+           (hiddenMarkers[start] ?? []).contains(where: { $0.kind == .messageAnchor }),
+           let paragraph = textElement as? NSTextParagraph,
+           PraticaEntryAnchor.messageID(inLine: paragraph.attributedString.string) != nil {
+            let fragment = MessageAnchorFragment(textElement: textElement, range: textElement.elementRange)
+            fragment.markerColor = messageAnchorColor
+            fragment.markerPointSize = messageAnchorPointSize
             return fragment
         }
 
@@ -782,6 +807,9 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         case .strikethrough: stillSpellsAStrikethroughMarker(text, at: range)
         case .link: stillSpellsALinkDelimiter(text, at: range)
         case .rule: stillSpellsARule(text, at: range)
+        // The rule's twin (ADR-0076 §D9): collapsed here, the marker drawn by
+        // `MessageAnchorFragment` at layout time.
+        case .messageAnchor: stillSpellsAMessageAnchor(text, at: range)
         // Never handled here, for the same structural reason as `.list`/`.blockquote`: a
         // table's own re-validation reads the *whole* `GFMTable` shape back from the live
         // characters (`GFMTable.parse`), not merely whether a marker range is still
@@ -842,6 +870,13 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     private static func stillSpellsARule(_ text: NSString, at range: NSRange) -> Bool {
         guard range.location >= 0, range.length > 0, NSMaxRange(range) <= text.length else { return false }
         return MarkdownBlockParser.isRule(text.substring(with: range))
+    }
+
+    /// Whether `range` still spells a whole Pratiche anchor line - `PraticaEntryAnchor`'s
+    /// grammar, asked of the live characters (ADR-0076 §D9).
+    private static func stillSpellsAMessageAnchor(_ text: NSString, at range: NSRange) -> Bool {
+        guard range.location >= 0, range.length > 0, NSMaxRange(range) <= text.length else { return false }
+        return PraticaEntryAnchor.messageID(inLine: text.substring(with: range)) != nil
     }
 
     private func offset(of location: NSTextLocation, in manager: NSTextContentManager) -> Int {

@@ -83,6 +83,12 @@ enum MarkdownStyler {
         /// rather than restating it, so the reading view and the editor never disagree on
         /// what counts as a rule.
         case horizontalRule
+        /// A whole Pratiche anchor line, `<!-- pergamenum-message: <Message-ID> -->`, surrounding
+        /// whitespace included (ADR-0076 §D9, R-20) - `PraticaEntryAnchor.messageID(inLine:)`'s
+        /// grammar, asked rather than restated. The rule's shape: one span over the whole line,
+        /// concealed on ADR-0029's whole-line path. Path-agnostic: the styler knows no note, and
+        /// only this feature writes the line.
+        case messageAnchor
         /// A whole GFM table's source run - header, delimiter and every body row - emitted
         /// by `tableSpans(in:from:outside:)` (Task 3 of plan
         /// `2026-09-02-editor-wysiwyg-unification`). Declared here, alongside the other
@@ -167,7 +173,9 @@ enum MarkdownStyler {
              .blockquoteMarker, .strikethroughMarker, .horizontalRule, .tableRun,
              // A whole fence's own source run, the same shelf as `.tableRun` immediately
              // above and for the identical reason (ADR-0033 §D1, Task 1).
-             .viewBlockRun:
+             .viewBlockRun,
+             // A Message-ID is an identifier, not prose (ADR-0076 §D9).
+             .messageAnchor:
             true
         // Strikethrough belongs here with bold and italic and not above: `~~` wraps prose,
         // and prose is exactly what a spell checker is for.
@@ -234,6 +242,14 @@ enum MarkdownStyler {
         // reused rather than restated (ADR-0029 §D1).
         if MarkdownBlockParser.isRule(trimmed) {
             result.append(StyledRange(range: lineRange, span: .horizontalRule))
+            return result
+        }
+
+        // A Pratiche anchor line is the whole line and nothing else, the rule's own shape
+        // (ADR-0076 §D9): returning here keeps the comment's `-->` and the id's `<`/`@` from
+        // being read as any other construct.
+        if PraticaEntryAnchor.messageID(inLine: line) != nil {
+            result.append(StyledRange(range: lineRange, span: .messageAnchor))
             return result
         }
 

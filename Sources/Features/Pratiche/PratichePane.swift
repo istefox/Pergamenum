@@ -119,6 +119,13 @@ struct PratichePane: View {
         // sheet is already on screen, and a captured `.preparing` snapshot would never
         // show the diff once it resolves.
         .sheet(item: regenerationBinding) { _ in regenerationSheet() }
+        // ADR-0076 §D8 (R-11): the entry catalogue's «Collega a un messaggio…».
+        .sheet(item: anchorRequest) { request in
+            PraticaMessagePicker(
+                request: request, messages: pratiche.timeline, actions: actions,
+                onClose: { pratiche.anchorRequest = nil }
+            )
+        }
     }
 
     /// The one `PraticaCommandActions` every surface of this pane shares, so the list

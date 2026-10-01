@@ -69,7 +69,18 @@ import Testing
         let lf = try Self.read(Self.source)
         let crlf = try Self.read(Self.source.replacingOccurrences(of: "\n", with: "\r\n"))
 
-        #expect(crlf.entries == lf.entries)
+        // `sourceHash` is the hash of the bytes each entry was read from, so it differs with the
+        // line ending by design; everything the file says about the entry must not.
+        func withoutHash(_ entries: [PraticaTimelineEntry]) -> [PraticaTimelineEntry] {
+            entries.map { entry in
+                var copy = entry
+                copy.sourceHash = nil
+                return copy
+            }
+        }
+        #expect(withoutHash(crlf.entries) == withoutHash(lf.entries))
+        #expect(crlf.entries.allSatisfy { $0.sourceHash == crlf.praticaNoteHash && $0.sourceHash != nil })
+        #expect(lf.entries.allSatisfy { $0.sourceHash == lf.praticaNoteHash && $0.sourceHash != nil })
         #expect(crlf.entries.map { crlf.details[$0.id]?.body } == lf.entries.map { lf.details[$0.id]?.body })
         #expect(crlf.entries.allSatisfy { !$0.bodyPreview.contains("\r") && !$0.subject.contains("\r") })
     }

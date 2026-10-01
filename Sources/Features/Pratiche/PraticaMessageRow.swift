@@ -7,7 +7,9 @@ import SwiftUI
 //
 // One message of the timeline. Collapsed it is one line - chevron, time, sender,
 // subject, chips, first line; expanded it adds the body through `MarkdownBlocksView`
-// (R-27), the quoted history under «Testo citato», and the footer.
+// (R-27) and the quoted history under «Testo citato». The footer closes the row in both
+// states (ADR-0076 implementation notes, amending DESIGN.md's expanded-only footer): the
+// verbs are reachable without opening the message first.
 //
 // Direction is carried three ways and never by colour alone (R-25): the lane's
 // alignment, the glyph beside the time, and the spoken label that opens the row's
@@ -50,6 +52,7 @@ struct PraticaMessageRow: View {
                     .themedText(.body, color: .textSecondary)
                     .lineLimit(1)
             }
+            footer
         }
         .padding(theme.spacing(.s))
         // Pending means Mail has the header but not the body yet (R-15): the row is
@@ -61,6 +64,19 @@ struct PraticaMessageRow: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityText)
         .accessibilityIdentifier(Self.identifier(for: entry))
+        .accessibilityActions { accessibilityCommands }
+    }
+
+    /// ADR-0076 §D7 (R-02): every argument-free verb of the catalogue, «Aggiungi nota» and
+    /// «Aggiungi telefonata» among them, reachable without opening the row or its menu - the
+    /// same bodies the footer and the context menu run (ADR-0023 §D1).
+    @ViewBuilder
+    private var accessibilityCommands: some View {
+        if let actions {
+            ForEach(actions.accessibilityCommands(for: detail), id: \.self) { command in
+                Button(command.title) { actions.run(command, on: entry, detail: detail) }
+            }
+        }
     }
 
     // MARK: - Collapsed line
@@ -184,7 +200,6 @@ struct PraticaMessageRow: View {
                 .themedText(.caption, color: .textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        footer
     }
 
     /// A hand-drawn disclosure, not a `DisclosureGroup`: these rows live inside the
@@ -209,23 +224,27 @@ struct PraticaMessageRow: View {
         }
     }
 
-    /// «Apri in Mail · Escludi · Sposta in ▸ · Aggiungi anche a ▸» (DESIGN.md's message
-    /// row anatomy), built by iterating the catalogue - the *same* iteration the row's
-    /// context menu makes, which is the whole of ADR-0023 §D1: a command is named once
-    /// and rendered twice, never written out twice.
+    /// «Apri in Mail · Aggiungi nota · Aggiungi telefonata · Collega nota… · Altro ▸»: the
+    /// catalogue's commands (the *same* list the row's context menu iterates, ADR-0023 §D1: a
+    /// command is named once and rendered on every surface, never written out twice), split by
+    /// `MessageCommand.footerSplit` into a few text buttons and an «Altro» menu holding the rest,
+    /// so the footer stays one line at a lane's width instead of breaking inside every word.
     ///
-    /// `MessageMenuItems.item` draws an argument-carrying command as a submenu on both
-    /// surfaces, so «Sposta in ▸» offers the same destinations here and in the menu.
+    /// `MessageMenuItems.item` draws an argument-carrying command as a submenu wherever it is
+    /// drawn, so «Sposta in ▸» inside «Altro» offers the same destinations as the context menu.
+    /// Where even the primary verbs do not fit on one line, they stack rather than wrap.
     @ViewBuilder
     private var footer: some View {
         if let actions {
-            HStack(spacing: theme.spacing(.s)) {
-                ForEach(actions.commands(for: detail), id: \.self) { command in
-                    MessageMenuItems.item(command, entry: entry, detail: detail, actions: actions)
-                        .buttonStyle(.plain)
-                        .themedText(.caption, color: .accentPrimary)
+            let split = MessageCommand.footerSplit(actions.commands(for: detail))
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: theme.spacing(.s)) {
+                    footerItems(split, actions: actions)
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
+                    footerItems(split, actions: actions)
+                }
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("pratiche-message-footer-\(Self.hash(of: entry))")
@@ -234,6 +253,38 @@ struct PraticaMessageRow: View {
                 .buttonStyle(.plain)
                 .themedText(.caption, color: .accentPrimary)
                 .accessibilityIdentifier("pratiche-message-open-\(Self.hash(of: entry))")
+        }
+    }
+
+    /// The footer's controls, once for both of `footer`'s arrangements: the primary verbs as
+    /// caption-sized text buttons, then «Altro» with the overflow in the catalogue's order.
+    @ViewBuilder
+    private func footerItems(
+        _ split: (primary: [MessageCommand], overflow: [MessageCommand]), actions: PraticaCommandActions
+    ) -> some View {
+        ForEach(split.primary, id: \.self) { command in
+            MessageMenuItems.item(command, entry: entry, detail: detail, actions: actions)
+                .buttonStyle(.plain)
+                .themedText(.caption, color: .accentPrimary)
+                .lineLimit(1)
+                .fixedSize()
+        }
+        if !split.overflow.isEmpty {
+            Menu {
+                ForEach(split.overflow, id: \.self) { command in
+                    MessageMenuItems.item(command, entry: entry, detail: detail, actions: actions)
+                }
+            } label: {
+                Text("Altro").themedText(.caption, color: .accentPrimary)
+            }
+            // A plain-button menu, the footer buttons' own style: `.borderlessButton` hands the
+            // label to AppKit, which draws it in the system font and colour, ignoring the tokens.
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("Altre azioni sul messaggio")
+            .accessibilityIdentifier("pratiche-message-more-\(Self.hash(of: entry))")
         }
     }
 

@@ -30,6 +30,9 @@ enum MessageMenuItems {
         for entry: PraticaTimelineEntry, detail: PraticaRowDetail?, actions: PraticaCommandActions
     ) -> some View {
         ForEach(actions.commands(for: detail), id: \.self) { command in
+            // ADR-0076 §D7: «Aggiungi nota», «Aggiungi telefonata» and ADR-0049's «Collega
+            // nota…» are the verbs about a note, set apart from the ones about the message.
+            if command == .addNote { Divider() }
             item(command, entry: entry, detail: detail, actions: actions)
         }
     }
@@ -81,13 +84,24 @@ enum MessageMenuItems {
     }
 }
 
+/// A manual-entry row's context menu (ADR-0076 §D7): the entry catalogue, iterated rather than
+/// listed, so the menu and the row's accessibility actions cannot offer different verbs
+/// (ADR-0023 §D1).
+@MainActor
+enum EntryMenuItems {
+    @ViewBuilder
+    static func menu(for entry: PraticaTimelineEntry, actions: PraticaCommandActions) -> some View {
+        ForEach(actions.commands(forEntry: entry), id: \.self) { command in
+            Button(command.title) { actions.run(command, on: entry) }
+                .accessibilityIdentifier(command.identifier)
+        }
+    }
+}
+
 extension PraticaCommandActions {
     /// The folder a row's file sits in, for the destinations submenu - the same
-    /// arithmetic `praticaPath(detail:)` does, reachable from the menu builder.
+    /// `PraticaRowDetail.praticaFolder` `praticaPath(detail:)` reads, reachable from the menu builder.
     func praticaPathForMenu(of detail: PraticaRowDetail?) -> String {
-        guard let notePath = detail?.notePath,
-              let range = notePath.range(of: "/\(PraticheController.messagesDirectoryName)/")
-        else { return pratiche.selection ?? "" }
-        return String(notePath[..<range.lowerBound])
+        detail?.praticaFolder ?? pratiche.selection ?? ""
     }
 }

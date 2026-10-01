@@ -26,10 +26,24 @@ struct PraticaEntryRow: View {
     var vaultRoot: URL?
     /// «Apri la nota della pratica» - the one editing path (ADR §D13).
     var onOpenNote: (() -> Void)?
+    /// The pane's command runner, for the entry catalogue's accessibility actions (ADR-0076
+    /// §D7). Optional, `PraticaMessageRow.actions`' own reason: `nil` draws no action.
+    var actions: PraticaCommandActions?
+
+    private var isAnchored: Bool {
+        if case .anchored = entry.placement { true } else { false }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
             header
+            // ADR-0076 §D3 (R-09): an orphaned entry keeps its date slot and says why it no
+            // longer sits under a message, in words as well as by position.
+            if let caption = PraticaTimelineModel.orphanCaption(for: entry) {
+                Text(caption)
+                    .themedText(.caption, color: .textTertiary)
+                    .accessibilityIdentifier("pratiche-entry-orphan-\(Self.timestamp(of: entry))")
+            }
             if isExpanded {
                 expandedBody
             } else if !entry.bodyPreview.isEmpty {
@@ -45,6 +59,18 @@ struct PraticaEntryRow: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityText)
         .accessibilityIdentifier(Self.identifier(for: entry))
+        .accessibilityActions { accessibilityCommands }
+    }
+
+    /// The entry catalogue (ADR-0076 §D7) as VoiceOver actions - the same list the row's
+    /// context menu iterates, so the two cannot offer different verbs (ADR-0023 §D1).
+    @ViewBuilder
+    private var accessibilityCommands: some View {
+        if let actions {
+            ForEach(actions.commands(forEntry: entry), id: \.self) { command in
+                Button(command.title) { actions.run(command, on: entry) }
+            }
+        }
     }
 
     private var header: some View {
@@ -59,6 +85,12 @@ struct PraticaEntryRow: View {
             .accessibilityLabel(isExpanded ? "Comprimi" : "Espandi")
             .accessibilityIdentifier("pratiche-entry-chevron-\(Self.timestamp(of: entry))")
 
+            // ADR-0076 §D3 (R-05): an anchored entry hangs off the message above it.
+            if isAnchored {
+                Image(systemName: "arrow.turn.down.right")
+                    .themedText(.caption, color: .textTertiary)
+                    .accessibilityHidden(true)
+            }
             Image(systemName: entry.kind == .call ? "phone" : "square.and.pencil")
                 .themedText(.caption, color: .textSecondary)
             Text(PraticaRowFormat.time(entry.date))
@@ -95,12 +127,15 @@ struct PraticaEntryRow: View {
     /// label, with `PraticaTimelineModel.laneLabel` as its first word so the lane is
     /// carried by words as well as by colour (R-25).
     private var accessibilityText: String {
-        [
+        var parts = [
             PraticaTimelineModel.laneLabel(.entry),
             PraticaRowFormat.spokenDate(entry.date),
             entry.subject,
-            isExpanded ? "espansa" : "compressa",
-        ].joined(separator: ", ")
+        ]
+        if isAnchored { parts.append("collegata al messaggio") }
+        if let caption = PraticaTimelineModel.orphanCaption(for: entry) { parts.append(caption) }
+        parts.append(isExpanded ? "espansa" : "compressa")
+        return parts.joined(separator: ", ")
     }
 
     /// `pratiche-entry-<timestamp>` (UX-BLUEPRINT's checklist), the timestamp spelled

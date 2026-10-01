@@ -217,7 +217,10 @@ enum CardTextAttributes {
         // `.viewBlockRun` joins the same shelf for the identical reason (ADR-0033 §D1; plan
         // `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 1) - a colour only,
         // never a kind mapping: `CardTextView.swift` stays untouched by this chain too.
-        case .strikethroughMarker, .blockquoteMarker, .horizontalRule, .tableRun, .viewBlockRun:
+        //
+        // `.messageAnchor` too (ADR-0076 §D9): a colour only - `CardTextView`'s kind mapping is
+        // not touched, so a Workspace card never conceals the line (ADR-0029 §D17).
+        case .strikethroughMarker, .blockquoteMarker, .horizontalRule, .tableRun, .viewBlockRun, .messageAnchor:
             .textTertiary
         case .tag, .linkTarget, .embedTarget: .accentPrimary
         case .codeToken(let token): token.colorToken

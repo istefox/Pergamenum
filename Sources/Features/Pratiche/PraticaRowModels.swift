@@ -31,6 +31,16 @@ struct PraticaRowDetail: Equatable, Sendable {
     /// so `PraticaCommandActions.commands(for:)` can compute `MessageCommand`'s
     /// `hasLinkedNote:` argument without a second field added later.
     var linkedNote: String?
+
+    /// The pratica folder a message row's file sits in: `notePath` up to its
+    /// `/<messagesDirectoryName>/` component. Nil for a row whose file is not under one, a
+    /// manual entry's `pratica.md` among them; each caller picks its own fallback. The one
+    /// copy of this arithmetic on the app side (`PraticaCommandActions.praticaPath(detail:)`,
+    /// `praticaPathForMenu(of:)`, `PraticaEntryComposer`).
+    var praticaFolder: String? {
+        guard let range = notePath.range(of: "/\(PraticheController.messagesDirectoryName)/") else { return nil }
+        return String(notePath[..<range.lowerBound])
+    }
 }
 
 /// One attachment chip's file (R-10). `url` is absolute and may not exist: a copy that

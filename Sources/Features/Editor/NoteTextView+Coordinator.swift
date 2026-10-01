@@ -342,6 +342,13 @@ extension NoteTextView {
             // from a text token: it is a separator between blocks, which is what that token
             // names, and it is the only decoration here that is not drawn over text.
             decorations.ruleColor = NSColor(theme.color(.borderSubtle))
+            // The Pratiche anchor line's marker (ADR-0076 §D9), from `textTertiary`: the colour
+            // the raw line takes (`MarkdownAttributedText`), so revealing it changes its shape and
+            // not its tone.
+            decorations.messageAnchorColor = NSColor(theme.color(.textTertiary))
+            // Its size from the caption token, the fold badge's own (below): both are small chrome
+            // drawn beside a line, not text of the note.
+            decorations.messageAnchorPointSize = theme.nsFont(.caption).pointSize
             // The two faces the delegate draws with (ADR-0030 §D2), resolved here for the same
             // reason the three colours above are: `EditorDecorationDelegate` is not
             // `@MainActor` and cannot read a `Theme` itself, so it is handed finished values.
@@ -428,6 +435,8 @@ extension NoteTextView {
             case .blockquoteMarker: .blockquote
             case .strikethroughMarker: .strikethrough
             case .horizontalRule: .rule
+            // ADR-0076 §D9: the rule's whole-line path, one line over.
+            case .messageAnchor: .messageAnchor
             case .linkSyntax: .link
             // The one ADR-0029 construct that is *not* mapped here, and the reason is
             // structural rather than an omission: a `.tableRun` covers the header line, the
