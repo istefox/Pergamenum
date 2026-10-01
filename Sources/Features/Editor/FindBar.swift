@@ -30,6 +30,10 @@ struct FindBar: View {
         .padding(.vertical, theme.spacing(.s))
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(theme.color(.backgroundSecondary))
+        // `.contain` is what keeps the children's own identifiers: a bare identifier on the
+        // container is propagated to every descendant and overwrites `find-query`,
+        // `find-tally` and the rest (PG-342).
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("find-bar")
     }
 
