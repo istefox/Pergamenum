@@ -365,3 +365,30 @@ private let boardWithUnrelatedQuotedBullet = """
     #expect(!change.after.contains("Piano editoriale\\\"\\n- altro"))
     #expect(change.after.contains("01 Progetti/Piano editoriale.md"))
 }
+
+private let boardWithWikilinkAndUnrelatedQuotedBullet = """
+{"nodes":[{"id":"a","type":"file","file":"01 Progetti/Capture.md","x":0,"y":0,"width":260,"height":180},\
+{"id":"b","type":"text","text":"vedi [[Capture]] per il dettaglio\\n- \\"Capture\\"\\n- altro punto","x":300,"y":0,"width":260,"height":180}],"edges":[]}
+"""
+
+@Test func renamePlanRewritesTheWikilinkAndLeavesTheQuotedBulletInTheSameTextCard() throws {
+    // PG-100 (#214): the compound case of the test above. One `.text` card carries both a
+    // real `[[Capture]]` wikilink, which the rename must repoint, and a plain quoted
+    // bullet that only fold-matches the old title, which it must leave alone - the
+    // wikilink rewrite and the quoted-related fallback are two different rules and the
+    // second must not ride along with the first inside one card.
+    let vault = try OpsVault()
+    try vault.write(header, to: "01 Progetti/Capture.md")
+    try vault.write(boardWithWikilinkAndUnrelatedQuotedBullet, to: "Labs.canvas")
+
+    let plan = try vault.operations.renamePlan(
+        "01 Progetti/Capture.md", to: "Piano editoriale", knownPaths: ["01 Progetti/Capture.md"]
+    )
+
+    let change = try #require(plan.boardChanges.first { $0.path == "Labs.canvas" })
+    #expect(change.after.contains("[[Piano editoriale]]"))
+    #expect(!change.after.contains("[[Capture]]"))
+    #expect(change.after.contains("- \\\"Capture\\\""))
+    #expect(!change.after.contains("\\\"Piano editoriale\\\""))
+    #expect(change.after.contains("01 Progetti/Piano editoriale.md"))
+}
