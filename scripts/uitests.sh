@@ -70,6 +70,14 @@
 #         with no arguments the whole bundle runs; an argument REPLACES that selection
 #         rather than adding to it, so a single suite can be run:
 #         scripts/uitests.sh -only-testing:PergamenumUITests/TaskCategoriesUITests
+#         A class path is taken too, with or without the bundle, and becomes that flag:
+#         scripts/uitests.sh PergamenumUITests/TaskCategoriesUITests
+#         scripts/uitests.sh TaskCategoriesUITests/testSomething
+#         The class must match a UITests/<Class>.swift name exactly, case included.
+#         Anything else is refused by name before anything is touched, never passed to
+#         xcodebuild, which would read it as a build action (PG-221). That includes every
+#         other xcodebuild flag (`-skip-testing:`, `-destination`, ...): only `-only-testing:`
+#         is taken.
 #
 #         scripts/uitests.sh --status
 #         says whether this tree, and `main`, already has a verdict, and what changed since the
@@ -172,6 +180,40 @@ classes_for_path() {
         Tests/*|docs/*|*.md|.claude/*|.github/*|scripts/*|.gitignore|.swiftlint.yml) echo NONE ;;
         *) echo ALL ;;
     esac
+}
+
+# MARK: selection arguments
+
+# One positional argument to the `-only-testing:` flag it means, left in SELECTION_FLAG, or a
+# refusal that names the cause (PG-221). Anything else handed to `xcodebuild` is read as a build
+# action, dies with «Unknown build action», and the run reports only «nessun test eseguito».
+# Three forms are taken: the flag itself, as it is; a path inside the bundle,
+# `PergamenumUITests[/<Class>[/<test>]]`; and the same path without the bundle, `<Class>[/<test>]`.
+# A class must have its own `UITests/<Class>.swift`, the convention `classes_for_path` reads too,
+# so a misspelt name is refused here instead of running zero tests. The name is compared with
+# the basenames UITests/ lists, not tested with `-f`: APFS is case-insensitive by default, so
+# `dayviewuitests` would find `DayViewUITests.swift`, while xcodebuild matches the test name
+# case-sensitively and would run zero tests.
+selection_flag() {
+    local arg="$1" path cls file found=0
+    case "$arg" in
+        -only-testing:*) SELECTION_FLAG="$arg"; return 0 ;;
+        --force|--allow-external-monitor) fail "$arg va prima di ogni altro argomento" ;;
+        --status|--affected|--self-test) fail "$arg non si combina con altri argomenti" ;;
+        PergamenumUITests) SELECTION_FLAG="-only-testing:PergamenumUITests"; return 0 ;;
+    esac
+    path="${arg#PergamenumUITests/}"
+    case "$path" in
+        ""|-*|/*|*/|*//*|*/*/*|*[!A-Za-z0-9_/]*)
+            fail "argomento non riconosciuto: «${arg}» - xcodebuild lo leggerebbe come un'azione di build; si accettano -only-testing:..., PergamenumUITests/<Classe>[/<test>] o <Classe>[/<test>]" ;;
+    esac
+    cls="${path%%/*}"
+    for file in "$REPO"/UITests/*.swift; do
+        if [ "${file##*/}" = "$cls.swift" ]; then found=1; fi
+    done
+    [ "$found" -eq 1 ] \
+        || fail "nessuna classe ${cls}: UITests/${cls}.swift non esiste (si accettano -only-testing:..., PergamenumUITests/<Classe>[/<test>] o <Classe>[/<test>])"
+    SELECTION_FLAG="-only-testing:PergamenumUITests/$path"
 }
 
 # MARK: --self-test arguments
@@ -1012,6 +1054,26 @@ self_test() {
         "$(contains "$out" "  main  full     green il 2026-09-28 10:00")"
     expect_eq "--status non scrive né cambia alcun verdetto" "$before" "$(ls "$d"; cat "$d"/*.verdict)"
 
+    # PG-221: a positional argument becomes an `-only-testing:` flag or is refused by name, never
+    # handed to xcodebuild raw. The refusals run in a subshell, since `fail` exits.
+    expect_eq "selezione: il flag passa com'è" "-only-testing:PergamenumUITests/DayViewUITests" \
+        "$(selection_flag -only-testing:PergamenumUITests/DayViewUITests; echo "$SELECTION_FLAG")"
+    expect_eq "selezione: il percorso nel bundle diventa il flag" "-only-testing:PergamenumUITests/WikilinkNavigationUITests" \
+        "$(selection_flag PergamenumUITests/WikilinkNavigationUITests; echo "$SELECTION_FLAG")"
+    expect_eq "selezione: la classe da sola diventa il flag" "-only-testing:PergamenumUITests/WikilinkNavigationUITests" \
+        "$(selection_flag WikilinkNavigationUITests; echo "$SELECTION_FLAG")"
+    expect_eq "selezione: classe e test diventano il flag" "-only-testing:PergamenumUITests/DayViewUITests/testA" \
+        "$(selection_flag DayViewUITests/testA; echo "$SELECTION_FLAG")"
+    expect_eq "selezione: il bundle da solo diventa il flag" "-only-testing:PergamenumUITests" \
+        "$(selection_flag PergamenumUITests; echo "$SELECTION_FLAG")"
+    # `dayviewuitests` names a file APFS would find under its own case, and zero tests xcodebuild would run.
+    for s in build -skip-testing:PergamenumUITests NessunaClasseUITests dayviewuitests "DayViewUITests/a/b" --force --status; do
+        rc=0
+        out=$(selection_flag "$s" 2>&1) || rc=$?
+        expect_eq "selezione: «${s}» rifiutato (uscita 1)" 1 "$rc"
+        expect_eq "selezione: «${s}» rifiutato dicendo perché" si "$(contains "$out" "uitests: ")"
+    done
+
     # --self-test stands alone. The nested call is told it is nested, so a refusal that ever broke
     # would end here as a failed check instead of a self-test spawning self-tests without end.
     if [ -z "${UITESTS_SELFTEST_NESTED:-}" ]; then
@@ -1050,6 +1112,12 @@ if [ "${1:-}" = "--affected" ]; then
     affected_selection
 elif [ "$#" -eq 0 ]; then
     SCOPE=full
+else
+    # Checked here, before a tree is read or an instance killed: a refused argument costs nothing.
+    for arg in "$@"; do
+        selection_flag "$arg"
+        selection+=("$SELECTION_FLAG")
+    done
 fi
 
 # The tree this run is about, taken before anything moves. A full run over a tree that already
@@ -1218,13 +1286,10 @@ printf 'uitests: la macchina è occupata (la suite intera ~25 minuti), non tocca
 
 # The whole bundle unless the caller named something narrower. Not both: two
 # `-only-testing` arguments are a union, so appending one to the default would silently
-# run everything and look like it had run one suite.
+# run everything and look like it had run one suite. A caller's arguments are already in
+# `selection`, each mapped by `selection_flag`, never handed on raw (PG-221).
 if [ "${#selection[@]}" -eq 0 ]; then
-    if [ "$#" -gt 0 ]; then
-        selection=("$@")
-    else
-        selection=(-only-testing:PergamenumUITests)
-    fi
+    selection=(-only-testing:PergamenumUITests)
 fi
 
 # The external monitor is sampled, not polled: once here and once after the run, which sees it

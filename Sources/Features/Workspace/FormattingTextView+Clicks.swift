@@ -38,6 +38,19 @@ extension FormattingTextView {
         super.mouseDown(with: event)
     }
 
+    /// The character index under `point` when the character there carries `.editorLink`,
+    /// otherwise nil - the card's own copy of `CompletingTextView.linkCharacterIndex(at:)`, for
+    /// the reason `followLinkIfPresent(at:)` below gives. `rightMouseDown`, `followLinkIfPresent`
+    /// and `menu(for:)` all resolve their point here, so the three cannot drift apart (PG-220).
+    private func linkCharacterIndex(at point: CGPoint) -> Int? {
+        guard let storage = textStorage else { return nil }
+        let index = characterIndexForInsertion(at: point)
+        guard index < storage.length,
+              storage.attribute(.editorLink, at: index, effectiveRange: nil) is URL
+        else { return nil }
+        return index
+    }
+
     /// The card's half of `CompletingTextView.rightMouseDown(with:)`'s own addition (issue
     /// #188) - identical reason, including the selection-restore step: `menu(for:)`'s own
     /// `super.menu(for: event)` call selects the link's whole range as an internal AppKit
@@ -45,14 +58,7 @@ extension FormattingTextView {
     /// reveal-on-caret reacts to. See that method's own comment for the full mechanism.
     override func rightMouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        guard let storage = textStorage else {
-            super.rightMouseDown(with: event)
-            return
-        }
-        let index = characterIndexForInsertion(at: point)
-        guard index < storage.length,
-              storage.attribute(.editorLink, at: index, effectiveRange: nil) is URL
-        else {
+        guard linkCharacterIndex(at: point) != nil else {
             super.rightMouseDown(with: event)
             return
         }
@@ -69,10 +75,8 @@ extension FormattingTextView {
     /// `MarkdownAttributedText.clickTarget(for:)` already, which is where the real logic lives.
     @discardableResult
     func followLinkIfPresent(at point: CGPoint) -> Bool {
-        guard let storage = textStorage else { return false }
-        let index = characterIndexForInsertion(at: point)
-        guard index < storage.length,
-              let url = storage.attribute(.editorLink, at: index, effectiveRange: nil) as? URL
+        guard let index = linkCharacterIndex(at: point),
+              let url = textStorage?.attribute(.editorLink, at: index, effectiveRange: nil) as? URL
         else { return false }
         return delegate?.textView?(self, clickedOnLink: url, at: index) ?? false
     }
@@ -82,10 +86,8 @@ extension FormattingTextView {
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         let base = super.menu(for: event)
-        guard let storage = textStorage else { return base }
-        let index = characterIndexForInsertion(at: point)
-        guard index < storage.length,
-              let url = storage.attribute(.editorLink, at: index, effectiveRange: nil) as? URL
+        guard let index = linkCharacterIndex(at: point),
+              let url = textStorage?.attribute(.editorLink, at: index, effectiveRange: nil) as? URL
         else { return base }
         let menu = base ?? NSMenu()
         let item = NSMenuItem(

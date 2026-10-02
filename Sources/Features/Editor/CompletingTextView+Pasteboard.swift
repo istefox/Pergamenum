@@ -72,11 +72,11 @@ extension CompletingTextView {
     /// nil - `.editorLink`'s presence is exactly "this span is clickable", the same signal
     /// `followLinkIfPresent(at:)` keys off.
     ///
-    /// Shared by `mouseDown`'s click-1 branch above and `placeCaretForPlainClick(at:)`
-    /// below, both issue-#191-chain code needing the same answer from the same point. The
-    /// three #188-era resolution sites (`rightMouseDown`, `followLinkIfPresent`, `menu(for:)`)
-    /// deliberately keep their own copies: folding them in would widen a bugfix into a
-    /// refactor of code this defect does not touch.
+    /// The one point-to-link resolution in this view: `mouseDown`'s click-1 branch above,
+    /// `placeCaretForPlainClick(at:)`, and the three #188-era sites (`rightMouseDown`,
+    /// `followLinkIfPresent`, `menu(for:)`) all ask it, so no two of them can resolve the same
+    /// point two different ways (PG-220). The two that need the URL read it back off the
+    /// index this returns.
     func linkCharacterIndex(at point: CGPoint) -> Int? {
         guard let storage = textStorage else { return nil }
         let index = characterIndexForInsertion(at: point)
@@ -134,14 +134,7 @@ extension CompletingTextView {
     /// R-07/R-08.
     override func rightMouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        guard let storage = textStorage else {
-            super.rightMouseDown(with: event)
-            return
-        }
-        let index = characterIndexForInsertion(at: point)
-        guard index < storage.length,
-              storage.attribute(.editorLink, at: index, effectiveRange: nil) is URL
-        else {
+        guard linkCharacterIndex(at: point) != nil else {
             super.rightMouseDown(with: event)
             return
         }
@@ -160,10 +153,8 @@ extension CompletingTextView {
     /// two can never resolve a click point two different ways.
     @discardableResult
     func followLinkIfPresent(at point: CGPoint) -> Bool {
-        guard let storage = textStorage else { return false }
-        let index = characterIndexForInsertion(at: point)
-        guard index < storage.length,
-              let url = storage.attribute(.editorLink, at: index, effectiveRange: nil) as? URL
+        guard let index = linkCharacterIndex(at: point),
+              let url = textStorage?.attribute(.editorLink, at: index, effectiveRange: nil) as? URL
         else { return false }
         return delegate?.textView?(self, clickedOnLink: url, at: index) ?? false
     }
@@ -265,10 +256,8 @@ extension CompletingTextView {
         // "Apri collegamento" (R-07): the non-modifier alternative to Cmd+click, prepended
         // only when the right-click itself landed on a link/wikilink range - everywhere else
         // this falls straight through to the menu above, unchanged.
-        guard let storage = textStorage else { return base }
-        let index = characterIndexForInsertion(at: point)
-        guard index < storage.length,
-              let url = storage.attribute(.editorLink, at: index, effectiveRange: nil) as? URL
+        guard let index = linkCharacterIndex(at: point),
+              let url = textStorage?.attribute(.editorLink, at: index, effectiveRange: nil) as? URL
         else { return base }
         let menu = base ?? NSMenu()
         let item = NSMenuItem(

@@ -188,3 +188,77 @@ func anUnrecognisedEdgeColourRoundTrips(_ colour: String) throws {
 
     #expect(CanvasDocument.reconcile(mine: mine, base: duplicated, theirs: duplicated) == .adopted(mine))
 }
+
+// MARK: - PG-281: an opaque element stays beside its readable neighbours
+
+/// The encoded `nodes` array, an opaque element shown as `#<number>` and a node by its id.
+private func nodeOrder(_ document: CanvasDocument) throws -> [String] {
+    try encodedArray("nodes", of: document).map { element in
+        if let number = element as? NSNumber { return "#\(number)" }
+        return (element as? [String: Any])?["id"] as? String ?? "?"
+    }
+}
+
+private let opaqueBetween = #"{"nodes":[\#(FormatEdgeCorpus.nodeA),42,\#(FormatEdgeCorpus.nodeB)],"edges":[]}"#
+
+@Test func deletingTheNodeBeforeAnOpaqueElementKeepsItBeforeTheNextOne() throws {
+    var document = try decoded(opaqueBetween)
+    document.nodes.removeAll { $0.id == "a" }
+    #expect(try nodeOrder(document) == ["#42", "b"])
+}
+
+@Test func deletingTheNodeAfterAnOpaqueElementKeepsItAfterThePreviousOne() throws {
+    var document = try decoded(opaqueBetween)
+    document.nodes.removeAll { $0.id == "b" }
+    #expect(try nodeOrder(document) == ["a", "#42"])
+}
+
+@Test func insertingANodeAheadKeepsTheOpaqueElementAfterItsNeighbour() throws {
+    var document = try decoded(opaqueBetween)
+    document.nodes.insert(node("c", "C"), at: 0)
+    #expect(try nodeOrder(document) == ["c", "a", "#42", "b"])
+}
+
+@Test func anOpaqueElementWithBothNeighboursGoneFallsBackToItsIndex() throws {
+    var document = try decoded(opaqueBetween)
+    document.nodes.removeAll()
+    #expect(try nodeOrder(document) == ["#42"])
+}
+
+@Test func anOpaqueElementBetweenDuplicatedIDsRoundTrips() throws {
+    let second = #"{"id":"a","type":"text","text":"A2","x":10,"y":10,"width":100,"height":50}"#
+    let json = #"{"nodes":[\#(FormatEdgeCorpus.nodeA),\#(second),7,\#(FormatEdgeCorpus.nodeB),8],"edges":[]}"#
+    try expectRoundTrip(json)
+    #expect(try nodeOrder(try decoded(json)) == ["a", "a", "#7", "b", "#8"])
+}
+
+@Test func anOpaqueElementAtTheStartStaysFirstWhenTheNodeAfterItIsDeleted() throws {
+    let json = #"{"nodes":[42,\#(FormatEdgeCorpus.nodeA),\#(FormatEdgeCorpus.nodeB)],"edges":[]}"#
+    var document = try decoded(json)
+    document.nodes.removeAll { $0.id == "a" }
+    #expect(try nodeOrder(document) == ["#42", "b"])
+}
+
+@Test func insertingANodeAtTheEndKeepsAFinalOpaqueElementLast() throws {
+    let json = #"{"nodes":[\#(FormatEdgeCorpus.nodeA),42],"edges":[]}"#
+    var document = try decoded(json)
+    document.nodes.append(node("c", "C"))
+    #expect(try nodeOrder(document) == ["a", "#42", "c"])
+}
+
+@Test func twoAdjacentOpaqueElementsKeepTheirOrderWhenTheirNeighbourIsDeleted() throws {
+    let json = #"{"nodes":[\#(FormatEdgeCorpus.nodeA),1,2,\#(FormatEdgeCorpus.nodeB)],"edges":[]}"#
+    var document = try decoded(json)
+    document.nodes.removeAll { $0.id == "a" }
+    #expect(try nodeOrder(document) == ["#1", "#2", "b"])
+}
+
+@Test func anOpaqueEdgeStaysBesideItsNeighbourWhenAnEarlierEdgeIsDeleted() throws {
+    let json = #"{"nodes":[\#(FormatEdgeCorpus.nodeA),\#(FormatEdgeCorpus.nodeB)],"edges":[\#(FormatEdgeCorpus.edgeAB),99,{"id":"e2","fromNode":"b","toNode":"a"}]}"#
+    var document = try decoded(json)
+    document.edges.removeAll { $0.id == "e1" }
+    let order = try encodedArray("edges", of: document).map { element -> String in
+        (element as? NSNumber).map { "#\($0)" } ?? ((element as? [String: Any])?["id"] as? String ?? "?")
+    }
+    #expect(order == ["#99", "e2"])
+}

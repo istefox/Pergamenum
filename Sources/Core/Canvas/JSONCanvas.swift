@@ -16,7 +16,8 @@ struct CanvasDocument: Equatable, Sendable {
     /// Elements of `nodes`/`edges` the codec cannot read - an object without `id` or `type`
     /// (nodes), without `id`, `fromNode` or `toNode` (edges), a node with a required key present
     /// with a wrong JSON type (`"x": "12"`, `"text": 42`, closing §D13.4), or anything that is not
-    /// an object - kept with their original index and written back there (ADR-0065 §D5.4, R-08).
+    /// an object - kept with their original index and their readable neighbours, and written back
+    /// beside them (ADR-0065 §D5.4, R-08, PG-281).
     var opaqueNodes: [CanvasOpaqueElement]
     var opaqueEdges: [CanvasOpaqueElement]
 
@@ -67,8 +68,8 @@ struct CanvasDocument: Equatable, Sendable {
         }
         guard let object = root as? [String: Any] else { throw DecodingError.notAnObject }
 
-        (nodes, opaqueNodes) = try Self.elements(of: "nodes", in: object, read: CanvasNode.init)
-        (edges, opaqueEdges) = try Self.elements(of: "edges", in: object, read: CanvasEdge.init)
+        (nodes, opaqueNodes) = try Self.elements(of: "nodes", in: object, read: CanvasNode.init, id: \.id)
+        (edges, opaqueEdges) = try Self.elements(of: "edges", in: object, read: CanvasEdge.init, id: \.id)
         unknown = object
             .filter { $0.key != "nodes" && $0.key != "edges" }
             .compactMapValues(JSONValue.init)
@@ -77,10 +78,12 @@ struct CanvasDocument: Equatable, Sendable {
     /// Reads one array element by element, so one element the codec cannot read is kept as an
     /// opaque value instead of emptying the whole board (ADR-0065 §D5.4). An absent key reads as
     /// empty - JSON Canvas makes both optional - and a present non-array refuses the open (§D5.5).
+    /// `id` names a readable element, so each opaque one can be anchored to its neighbours.
     private static func elements<Element>(
         of key: String,
         in object: [String: Any],
-        read: ([String: Any]) -> Element?
+        read: ([String: Any]) -> Element?,
+        id: (Element) -> String
     ) throws -> ([Element], [CanvasOpaqueElement]) {
         guard let raw = object[key] else { return ([], []) }
         guard let list = raw as? [Any] else { throw DecodingError.notAList(key) }
@@ -93,13 +96,17 @@ struct CanvasDocument: Equatable, Sendable {
                 opaque.append(CanvasOpaqueElement(index: index, value: value))
             }
         }
-        return (readable, opaque)
+        return (readable, CanvasOpaqueElement.anchoring(opaque, amid: readable.map(id)))
     }
 
     func encoded() throws -> Data {
         var object: [String: Any] = unknown.mapValues(\.rawValue)
-        object["nodes"] = CanvasOpaqueElement.interleaving(opaqueNodes, into: nodes.map(\.rawValue))
-        object["edges"] = CanvasOpaqueElement.interleaving(opaqueEdges, into: edges.map(\.rawValue))
+        object["nodes"] = CanvasOpaqueElement.interleaving(
+            opaqueNodes, into: nodes.map(\.rawValue), ids: nodes.map(\.id)
+        )
+        object["edges"] = CanvasOpaqueElement.interleaving(
+            opaqueEdges, into: edges.map(\.rawValue), ids: edges.map(\.id)
+        )
         // Sorted keys so a file that did not change in content does not change on
         // disk either, which keeps the vault quiet under version control and under
         // iCloud sync. Slashes stay unescaped: `\/` is legal JSON and every parser
@@ -115,21 +122,72 @@ struct CanvasDocument: Equatable, Sendable {
     func node(id: String) -> CanvasNode? { nodes.first { $0.id == id } }
 }
 
-/// An element of `nodes` or `edges` the codec cannot read, with the index it had in the file
-/// (ADR-0065 §D5.4).
+/// An element of `nodes` or `edges` the codec cannot read, with the index it had in the file and
+/// the readable elements on either side of it there (ADR-0065 §D5.4, PG-281).
 struct CanvasOpaqueElement: Equatable, Sendable {
     var index: Int
     var value: JSONValue
+    /// The readable element right before it in the file; nil when none was.
+    var after: Anchor?
+    /// The readable element right after it in the file; nil when none was.
+    var before: Anchor?
 
-    /// Re-inserts each opaque element at its original index, in ascending order, clamped to the
-    /// array's end: an unedited document encodes its array exactly as it read it, and an edited one
-    /// keeps every opaque element in its original relative order.
-    static func interleaving(_ opaque: [Self], into readable: [Any]) -> [Any] {
-        var result = readable
-        for element in opaque.sorted(by: { $0.index < $1.index }) {
-            result.insert(element.value.rawValue, at: min(max(element.index, 0), result.count))
+    /// A readable element, named by its id and by which occurrence of that id it is, so that a
+    /// duplicated id (ADR-0065 §D6.1) still names exactly one element.
+    struct Anchor: Hashable, Sendable {
+        var id: String
+        var occurrence: Int
+    }
+
+    /// `opaque` with each element's neighbours filled in from `ids`, the readable elements' ids in
+    /// file order. Called once, when the file is read.
+    static func anchoring(_ opaque: [Self], amid ids: [String]) -> [Self] {
+        let anchors = Self.anchors(of: ids)
+        return opaque.sorted { $0.index < $1.index }.enumerated().map { rank, element in
+            let gap = Self.gap(of: element, rank: rank, count: anchors.count)
+            var anchored = element
+            anchored.after = gap > 0 ? anchors[gap - 1] : nil
+            anchored.before = gap < anchors.count ? anchors[gap] : nil
+            return anchored
+        }
+    }
+
+    /// Writes each opaque element back beside the readable neighbour it had: right after the
+    /// element it followed while that one is still there, else right before the one it preceded,
+    /// else at its file index clamped to the array's end. An unedited document encodes its array
+    /// exactly as it read it, and an edited one keeps each opaque element next to whichever
+    /// neighbour survived: `[A, opaque, B]` with `A` deleted writes `[opaque, B]`, not
+    /// `[B, opaque]` (PG-281). Opaque elements that land in one place keep their file order.
+    /// `ids` are `readable`'s ids, in the same order.
+    static func interleaving(_ opaque: [Self], into readable: [Any], ids: [String]) -> [Any] {
+        let position = Dictionary(uniqueKeysWithValues: Self.anchors(of: ids).enumerated().map { ($1, $0) })
+        var placed: [Int: [Self]] = [:]
+        for (rank, element) in opaque.sorted(by: { $0.index < $1.index }).enumerated() {
+            let gap = element.after.flatMap { position[$0] }.map { $0 + 1 }
+                ?? element.before.flatMap { position[$0] }
+                ?? Self.gap(of: element, rank: rank, count: readable.count)
+            placed[min(gap, readable.count), default: []].append(element)
+        }
+        var result: [Any] = []
+        for gap in 0...readable.count {
+            result += (placed[gap] ?? []).map(\.value.rawValue)
+            if gap < readable.count { result.append(readable[gap]) }
         }
         return result
+    }
+
+    /// How many readable elements came before `element` in the file: its index less the opaque
+    /// elements ahead of it (`rank`), clamped to the `count` there are.
+    private static func gap(of element: Self, rank: Int, count: Int) -> Int {
+        min(max(element.index - rank, 0), count)
+    }
+
+    private static func anchors(of ids: [String]) -> [Anchor] {
+        var seen: [String: Int] = [:]
+        return ids.map { id in
+            defer { seen[id, default: 0] += 1 }
+            return Anchor(id: id, occurrence: seen[id, default: 0])
+        }
     }
 }
 

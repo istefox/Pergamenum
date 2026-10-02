@@ -226,16 +226,26 @@ enum RelatedSection {
     /// section that was not there, and «Collega» wrote under it. Lines are walked on unicode
     /// scalars, because a CRLF pair is one `Character` and a `Character` search for `\n` finds no
     /// line end in a CRLF note at all (ADR-0065 §D3).
+    ///
+    /// A line inside a backtick or tilde fence is neither the heading nor the line that ends the
+    /// section (PG-278): a note quoting the convention in a code block has no section there, and
+    /// a `# comment` in a shell block under the section does not cut it short. The fences come
+    /// from `WikilinkParser.codeRanges(in:)`, the rule that already keeps a `[[link]]` in a fence
+    /// from being a link, CRLF included. Its inline code spans can contain a line start, when a
+    /// span opens at column 0, but such a line begins with a backtick and is never the heading or
+    /// a `#` line, so only the fences change the answer here.
     static func sectionRange(in body: String) -> Range<String.Index>? {
         let scalars = body.unicodeScalars
+        let code = WikilinkParser.codeRanges(in: body)
         var start: String.Index?
         var lineStart = scalars.startIndex
         while lineStart < scalars.endIndex {
             let lineEnd = scalars[lineStart...].firstIndex(of: "\n") ?? scalars.endIndex
             let line = String(scalars[lineStart..<lineEnd])
+            let isCode = code.contains { $0.contains(lineStart) }
             if let start {
-                if line.hasPrefix("#") { return start..<lineStart }
-            } else if isHeading(line) {
+                if !isCode, line.hasPrefix("#") { return start..<lineStart }
+            } else if !isCode, isHeading(line) {
                 start = lineStart
             }
             guard lineEnd < scalars.endIndex else { break }

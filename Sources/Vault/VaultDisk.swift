@@ -142,12 +142,14 @@ extension VaultDisk {
         // Boundary check + atomic byte write, in one call: `NoteStore.write` resolves
         // `relativePath` through `VaultBoundary` and throws before a single byte lands
         // anywhere, on or off the vault.
-        let hash = try store.write(text, to: relativePath)
+        let written = try store.writeBytes(text, to: relativePath)
+        let hash = NoteStore.hash(written)
 
-        // Stat, then derive the record from the bytes this call itself wrote.
+        // Stat, then derive the record from the bytes this call itself wrote - a kept BOM
+        // included, or `byteSize` reads three bytes short of the file (PG-282).
         let fileURL = try store.url(for: relativePath)
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))
-        let record = try store.record(from: Data(text.utf8), attributes: attributes, at: relativePath)
+        let record = try store.record(from: written, attributes: attributes, at: relativePath)
 
         // Unconditional and scoped to notes (ADR-0011 §D2): the decision itself is made by
         // the caller on the main actor and handed in as `recordsHistory` - only the write
@@ -247,11 +249,13 @@ extension VaultDisk {
             }
         }
 
-        let hash = try store.write(text, to: relativePath, requiringExistingFolder: requiringExistingFolder)
+        let written = try store.writeBytes(text, to: relativePath, requiringExistingFolder: requiringExistingFolder)
+        let hash = NoteStore.hash(written)
 
+        // From the bytes written, a kept BOM included (PG-282).
         let fileURL = try store.url(for: relativePath)
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))
-        let record = try store.record(from: Data(text.utf8), attributes: attributes, at: relativePath)
+        let record = try store.record(from: written, attributes: attributes, at: relativePath)
 
         if recordsHistory {
             history.record(text, for: relativePath)
@@ -328,8 +332,7 @@ extension VaultDisk {
             }
         }
 
-        let data = Data(text.utf8)
-        try store.write(text, to: relativePath)
+        let data = try store.writeBytes(text, to: relativePath)
         let fileURL = try store.url(for: relativePath)
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))
         let record = try? store.record(from: data, attributes: attributes, at: relativePath)
@@ -366,8 +369,8 @@ extension VaultDisk {
             throw VaultWriteRefusal.movedOn(relativePath)
         }
 
-        let data = Data(text.utf8)
-        let hash = try store.write(text, to: relativePath)
+        let data = try store.writeBytes(text, to: relativePath)
+        let hash = NoteStore.hash(data)
         let fileURL = try store.url(for: relativePath)
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path(percentEncoded: false))
         let record = try? store.record(from: data, attributes: attributes, at: relativePath)
