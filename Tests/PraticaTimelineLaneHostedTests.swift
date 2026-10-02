@@ -185,7 +185,7 @@ extension PraticaTimelineLaneHostedTests {
     )
 
     /// With a linked note the header gains the link glyph and «Altro» trades nothing: «Scollega
-    /// nota» joins «Collega nota…» there.
+    /// nota» joins «Collega una nota…» there.
     private static func detail(linkedNote: String?) -> PraticaRowDetail {
         PraticaRowDetail(
             notePath: "email/messaggio.md", body: "Buongiorno", quotedHistory: nil, signature: nil,

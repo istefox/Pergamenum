@@ -250,7 +250,7 @@ struct DayTimeline: View {
             Text("TIMELINE").themedText(.caption, color: .textTertiary)
             Spacer()
             if calendar.eventAccess == .notDetermined {
-                Button("Consenti Calendario") {
+                Button("Consenti calendario") {
                     Task { await calendar.requestAccess(); await controller.load() }
                 }
                 .buttonStyle(.plain)

@@ -41,7 +41,7 @@ struct ContenitoreSettingsTab: View {
                         .accessibilityIdentifier("settings-contenitore-drop-folder-label")
                     Button("Scegli…") { chooseDropFolder() }
                         .accessibilityIdentifier("settings-contenitore-drop-folder-choose")
-                    Button("Rivela nel Finder") {
+                    Button("Mostra nel Finder") {
                         if let folder = contenitore.resolvedDropFolder { contenitore.revealFiles([folder]) }
                     }
                 }

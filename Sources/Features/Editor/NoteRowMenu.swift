@@ -54,7 +54,7 @@ struct NoteRowMenu: View {
         rowCommand(.noteHistory)
         rowCommand(.applyTemplate)
         Divider()
-        Button("Rivela nel Finder") {
+        Button("Mostra nel Finder") {
             // Through the boundary (PG-360): a path outside the vault reveals nothing.
             guard let root = vault.root,
                   let url = try? VaultBoundary(root: root).url(for: note.relativePath) else { return }

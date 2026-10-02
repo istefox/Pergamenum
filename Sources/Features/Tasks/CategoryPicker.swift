@@ -36,7 +36,7 @@ struct CategoryPicker: View {
     // MARK: Header
 
     private var header: some View {
-        Text("Assegna categoria").themedText(.title)
+        Text("Assegna una categoria").themedText(.title)
             .padding(theme.spacing(.m))
     }
 

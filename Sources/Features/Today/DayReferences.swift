@@ -134,14 +134,14 @@ struct DayReferences: View {
         .draggable(TaskDragPayload(path: task.sourcePath, lineIndex: task.lineIndex).text)
     }
 
-    /// What «Inserisci Blocco Tempo» was, in the menu instead of on the row.
+    /// What «Inserisci blocco tempo» was, in the menu instead of on the row.
     ///
     /// The button took a third of the row's width from the thing the row is about, and
     /// since §D5 the ordinary way to block out a task is to drag it onto the hour you
     /// mean. It stays here because a gesture is not an affordance: a drag is invisible
     /// until somebody tries it, and this is the entry that says the feature exists.
     private func blockMenuItem(for task: TaskItem) -> some View {
-        Button("Inserisci Blocco Tempo") { controller.addBlock(from: task) }
+        Button("Inserisci blocco tempo") { controller.addBlock(from: task) }
             .help("Mette il task sulla timeline del giorno, \(vault.settings.blockMinutes) minuti")
             .accessibilityIdentifier("insert-time-block")
     }

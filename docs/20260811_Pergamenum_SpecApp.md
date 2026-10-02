@@ -423,7 +423,7 @@ Ogni nota, canvas e card espone "Copia link Pergamenum" nel menu contestuale, pe
 
 **Pergamenum**: Informazioni · Impostazioni… (Cmd+,) · Servizi · Nascondi · Esci
 
-**File**: Nuova nota (Cmd+N) · Nuova board (Cmd+Shift+C) · Nuovo task rapido (Cmd+Shift+N) · Apri vault… · Vault recenti · Importa file… (con rinomina assistita §4.2) · Importa convenzioni… (§4.6) · Esporta nota (PDF/HTML/MD, con rimozione frontmatter e "Note correlate" per consegna a terzi, frontmatter.md 6.3 e wikilink.md 6.3) · Rivela nel Finder (Cmd+Shift+R) · Chiudi (Cmd+W)
+**File**: Nuova nota (Cmd+N) · Nuova board (Cmd+Shift+C) · Nuovo task rapido (Cmd+Shift+N) · Apri vault… · Vault recenti · Importa file… (con rinomina assistita §4.2) · Importa convenzioni… (§4.6) · Esporta nota (PDF/HTML/MD, con rimozione frontmatter e "Note correlate" per consegna a terzi, frontmatter.md 6.3 e wikilink.md 6.3) · Mostra nel Finder (Cmd+Shift+R) · Chiudi (Cmd+W)
 
 **Modifica**: Annulla/Ripeti · Taglia/Copia/Incolla · Incolla come testo puro · Copia link Pergamenum (Cmd+Shift+L) · Trova nella nota (Cmd+F) · Sostituisci · Ricerca globale (Cmd+Shift+F)
 
@@ -525,7 +525,7 @@ Ordine vincolante M0→M6: ogni milestone produce un'app usabile. Non si inizia 
 | Ricorrenze infinite | Delegate a Promemoria Apple | Evita un motore di ricorrenze completo |
 | Sync | iCloud Drive sulla cartella vault | Nessun server; pattern validato da VisualOS e NotePlan |
 | Quick Look per .eml | Non usato come renderer | Da Catalina mostra solo gli header; il parser interno basta |
-| Aggiornamenti | Sparkle, controllo solo manuale (ADR-0031 §D13) | Unica eccezione nominata al principio «fully offline»: la richiesta parte da «Cerca Aggiornamenti…» e da nient'altro - nessun timer, nessun controllo all'avvio, nessun task in background. Passano i soli identificatori di versione dell'app, mai contenuto del vault; `SUSendsSystemProfile` resta `false`, quindi il profilo hardware di Sparkle è spento. L'eccezione non viaggia: `perg` e `pergamenum-mcp` non sanno che Sparkle esista |
+| Aggiornamenti | Sparkle, controllo solo manuale (ADR-0031 §D13) | Unica eccezione nominata al principio «fully offline»: la richiesta parte da «Cerca aggiornamenti…» e da nient'altro - nessun timer, nessun controllo all'avvio, nessun task in background. Passano i soli identificatori di versione dell'app, mai contenuto del vault; `SUSendsSystemProfile` resta `false`, quindi il profilo hardware di Sparkle è spento. L'eccezione non viaggia: `perg` e `pergamenum-mcp` non sanno che Sparkle esista |
 
 ---
 

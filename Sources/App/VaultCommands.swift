@@ -33,7 +33,7 @@ struct VaultCommands: Commands {
             Button("Nuova pratica…") { actions.run(.newPratica) }
                 .keyboardShortcut(shortcuts.shortcut(for: .newPratica))
                 .disabled(!actions.canRun(.newPratica))
-            Button("Oggi") { actions.run(.dailyNote) }
+            Button(ShortcutCommand.dailyNote.title) { actions.run(.dailyNote) }
                 .keyboardShortcut(shortcuts.shortcut(for: .dailyNote))
                 .disabled(!actions.canRun(.dailyNote))
             Button("Nuovo task rapido") { actions.run(.quickTask) }
@@ -60,11 +60,8 @@ struct VaultCommands: Commands {
             // whether or not Pergamenum is in front (ADR-0008 §D1). A menu equivalent
             // here as well, because a hot key the system refused leaves the command
             // reachable, and because a command with no menu entry cannot be discovered.
-            Button("Cattura rapida") { actions.run(.globalCapture) }
+            Button(ShortcutCommand.globalCapture.title) { actions.run(.globalCapture) }
                 .disabled(!actions.canRun(.globalCapture))
-            Button("Anteprima rapida") { actions.run(.quickLook) }
-                .keyboardShortcut(shortcuts.shortcut(for: .quickLook))
-                .disabled(!actions.canRun(.quickLook))
             Button("Ricerca globale…") { actions.run(.globalSearch) }
                 .keyboardShortcut(shortcuts.shortcut(for: .globalSearch))
                 .disabled(!actions.canRun(.globalSearch))
@@ -127,7 +124,7 @@ struct VaultCommands: Commands {
             Button("Copia link Pergamenum") { actions.run(.copyLink) }
                 .keyboardShortcut(shortcuts.shortcut(for: .copyLink))
                 .disabled(!actions.canRun(.copyLink))
-            Button("Rivela nel Finder") { actions.run(.revealInFinder) }
+            Button(ShortcutCommand.revealInFinder.title) { actions.run(.revealInFinder) }
                 .keyboardShortcut(shortcuts.shortcut(for: .revealInFinder))
                 .disabled(!actions.canRun(.revealInFinder))
         }
