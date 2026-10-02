@@ -54,6 +54,9 @@ struct CanvasDocument: Equatable, Sendable {
     }
 
     init(data: Data) throws {
+        // The BOM is a property of the file, not of the board (ADR-0065 §D4's rule for a note,
+        // PG-280 for a canvas): it is skipped here, and `CanvasStore.save` puts it back.
+        let data = ByteOrderMark.stripping(data)
         // An empty file is a valid empty canvas: Obsidian creates one that way, and
         // failing to open it would strand the board.
         guard !data.isEmpty else {

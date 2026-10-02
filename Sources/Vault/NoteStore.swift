@@ -169,16 +169,13 @@ struct NoteStore: Sendable {
 
         // ADR-0065 §D4.3: the BOM belongs to the file. A file that starts with one keeps it when
         // the new bytes do not bring their own; a new file, or one without, never gains one.
-        var data = Data(text.utf8)
-        if !data.starts(with: Self.byteOrderMark), Self.startsWithByteOrderMark(fileURL) {
-            data = Self.byteOrderMark + data
-        }
+        let data = ByteOrderMark.keeping(of: fileURL, onto: Data(text.utf8))
         try data.write(to: fileURL, options: .atomic)
         return data
     }
 
     /// The UTF-8 byte-order mark, `EF BB BF`.
-    static let byteOrderMark = Data([0xEF, 0xBB, 0xBF])
+    static let byteOrderMark = ByteOrderMark.utf8
 
     /// The one decode door for a note's bytes (ADR-0065 §D4.1): one leading BOM is removed, then
     /// the rest is decoded as UTF-8. The text the app works on never starts with a BOM read from a
@@ -188,14 +185,7 @@ struct NoteStore: Sendable {
     }
 
     private static func withoutByteOrderMark(_ data: Data) -> Data {
-        data.starts(with: byteOrderMark) ? data.dropFirst(byteOrderMark.count) : data
-    }
-
-    /// Reads three bytes, not the file: one extra small read per note write.
-    private static func startsWithByteOrderMark(_ url: URL) -> Bool {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
-        defer { try? handle.close() }
-        return (try? handle.read(upToCount: byteOrderMark.count)) == byteOrderMark
+        ByteOrderMark.stripping(data)
     }
 
     /// The one guarded write for a planned note rewrite (ADR-0055 §D1), beside
