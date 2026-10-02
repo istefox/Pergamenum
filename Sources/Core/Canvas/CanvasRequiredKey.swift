@@ -8,9 +8,10 @@ import Foundation
 ///   omits geometry still opens drawn.
 /// - present with the expected JSON type: the value. Geometry takes any JSON number, fractional or
 ///   negative included, since this app's own boards write fractional geometry.
-/// - present with any other type, `null` included: `nil`, so the element is kept opaque at its index
-///   and written back verbatim. Never coerced: `"12"` is not 12 and `true` is not 1, because either
-///   guess would change the value's JSON type on the next save.
+/// - present with any other type, `null` included: `nil`, so the element is kept opaque beside its
+///   readable neighbours (its index only as a fallback, PG-281) and written back verbatim. Never
+///   coerced: `"12"` is not 12 and `true` is not 1, because either guess would change the value's
+///   JSON type on the next save.
 ///
 /// The type is judged through `JSONValue(_:)`, which already tells a `CFBoolean` from a number.
 enum CanvasRequiredKey {

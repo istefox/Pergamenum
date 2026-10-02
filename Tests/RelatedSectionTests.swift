@@ -94,3 +94,50 @@ private func isAllCRLF(_ text: String) -> Bool {
     #expect(unlinked.components(separatedBy: "\n").filter { $0 == "---\r" }.count == 2)
     #expect(!unlinked.contains("[[A]]"))
 }
+
+// PG-278: the heading is found only outside fenced code.
+
+@Test(arguments: [
+    "# T\n\n```markdown\n## Note correlate\n\n- [[A]] — motivo\n```\n",
+    "# T\n\n~~~\n## Note correlate\n\n- [[A]] — motivo\n~~~\n",
+    "# T\r\n\r\n```\r\n## Note correlate\r\n\r\n- [[A]] — motivo\r\n```\r\n",
+])
+func aHeadingInsideAFenceIsNotTheSection(body: String) {
+    #expect(RelatedSection.sectionRange(in: body) == nil)
+    #expect(RelatedSection.parse(from: body).isEmpty)
+    #expect(NoteExport.markdown(from: body).contains("## Note correlate"))
+}
+
+@Test func theRealHeadingAfterAFencedOneIsFound() {
+    let body = "# T\n\n```\n## Note correlate\n- [[X]] — finto\n```\n\n## Note correlate\n\n- [[A]] — motivo\n"
+    #expect(RelatedSection.parse(from: body) == [StructuralLink(target: "A", reason: "motivo")])
+}
+
+@Test func aFencedHashLineDoesNotEndTheSection() {
+    let body = "## Note correlate\r\n\r\n- [[A]] — r\r\n\r\n"
+        + "```sh\r\n# commento\r\n```\r\n\r\n- [[B]] — s\r\n\r\n## Altro\r\n"
+    #expect(RelatedSection.parse(from: body).map(\.target) == ["A", "B"])
+    let section = RelatedSection.sectionRange(in: body)
+    #expect(section.map { body[$0].hasSuffix("- [[B]] — s\r\n\r\n") } == true)
+}
+
+@Test func collegaBesideAFencedHeadingWritesARealSection() throws {
+    let fenced = "```\n## Note correlate\n```\n"
+    let text = note("# Nota\n\n" + fenced)
+
+    let linked = try RelatedLink.add(target: "A", reason: "motivo", to: text, selfTitle: "Nota")
+
+    #expect(linked.contains(fenced + "\n## Note correlate\n\n- [[A]] — motivo\n"))
+}
+
+@Test func anUnclosedFenceHidesAHeadingBelowItButNotOneAbove() {
+    let above = "## Note correlate\n\n- [[A]] — r\n\n```\ncodice\n"
+    #expect(RelatedSection.parse(from: above).map(\.target) == ["A"])
+    let below = "# T\n\n```\n## Note correlate\n- [[A]] — r\n"
+    #expect(RelatedSection.sectionRange(in: below) == nil)
+}
+
+@Test func aFencedHeadingIsNotAnotherSectionsEndEither() {
+    let body = "## Note correlate\n\n- [[A]] — r\n\n~~~\n## Altro\n~~~\n\n- [[B]] — s\n"
+    #expect(RelatedSection.parse(from: body).map(\.target) == ["A", "B"])
+}

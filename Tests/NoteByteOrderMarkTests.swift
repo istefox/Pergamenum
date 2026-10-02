@@ -132,6 +132,21 @@ private var crlfWithCategory: String {
     #expect(await session.reconcile(["Nota.md"]).isEmpty)
 }
 
+/// PG-282: the record a write derives counts the BOM the write kept, so a `size` column reads the
+/// file's own size straight after a save, not three bytes short until the next rescan.
+@MainActor
+@Test func aBOMNotesIndexedSizeAfterAWriteIsItsSizeOnDisk() async throws {
+    let vault = try TemporaryVault()
+    try writeBytes(bom + Data(FormatEdgeCorpus.crlfWithFrontmatter.text.utf8), to: "Nota.md", in: vault.root)
+    let session = await openSession(root: vault.root, stateBase: vault.stateBase)
+
+    #expect(await session.linkCategory("presse", toNoteAt: "Nota.md").result != nil)
+
+    let onDisk = try bytes(of: "Nota.md", in: vault.root)
+    #expect(onDisk.starts(with: bom))
+    #expect(session.index.note(at: "Nota.md")?.byteSize == onDisk.count)
+}
+
 @MainActor
 @Test func theReadTextOfABOMNoteHasNoBOM() async throws {
     let vault = try TemporaryVault()

@@ -153,6 +153,13 @@ struct NoteStore: Sendable {
     /// flag is what makes losing that check's race loud instead of quiet.
     @discardableResult
     func write(_ text: String, to relativePath: String, requiringExistingFolder: Bool = false) throws -> String {
+        Self.hash(try writeBytes(text, to: relativePath, requiringExistingFolder: requiringExistingFolder))
+    }
+
+    /// `write` above, returning the bytes that landed rather than their hash - a kept BOM
+    /// included, which `Data(text.utf8)` does not have. A record derived from these has the
+    /// file's own `byteSize`, not one three bytes short (PG-282).
+    func writeBytes(_ text: String, to relativePath: String, requiringExistingFolder: Bool = false) throws -> Data {
         let fileURL = try boundary.url(for: relativePath)
 
         if !requiringExistingFolder {
@@ -167,7 +174,7 @@ struct NoteStore: Sendable {
             data = Self.byteOrderMark + data
         }
         try data.write(to: fileURL, options: .atomic)
-        return Self.hash(data)
+        return data
     }
 
     /// The UTF-8 byte-order mark, `EF BB BF`.

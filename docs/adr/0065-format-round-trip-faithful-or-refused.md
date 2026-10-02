@@ -1025,6 +1025,34 @@ Named, not addressed:
 - `MarkdownBlockParser` splits on `.newlines`, so a lone `\r`, U+2028, U+2029 and U+0085 break a
   line there and not in `ViewCatalogue`. Pre-existing, and not a delimiter test.
 
+### Follow-up: PG-281
+
+Written 2026-10-02, closing the gap «Follow-up: PG-277» named (PG-281, #605), on
+`fix/burn-down-2026-10-02-pg-220`. Plan: `docs/plans/burn-down-2026-10-02-pg-220.md`. It changes
+where §D5.4's encode puts an opaque element back, and no other decision of this ADR: no on-disk
+format, no `IndexCache.schemaVersion`, no protected interface.
+
+**The defect.** §D5.4 re-inserted an opaque element at its file index. That index goes stale as
+soon as the app deletes or inserts a readable element before it (`WorkspaceController.delete` does
+not touch `opaqueNodes`): `[A, opaque, B]` with `A` deleted wrote `[B, opaque]`. Relative order
+only, no content lost.
+
+**The rule now.** On decode, each `CanvasOpaqueElement` also records its readable neighbours in the
+file, `after` (the element right before it) and `before` (the element right after it). Each is an
+`Anchor` of id plus occurrence, so a duplicated id (§D6.1) still names one element. On encode it is
+written right after `after` while that element is still there, else right before `before`, else at
+its file index less the opaque elements ahead of it, clamped to the array's end. `[A, opaque, B]`
+with `A` deleted now writes `[opaque, B]`. An unedited document still encodes its array exactly as
+it read it, and opaque elements that land in the same place keep their file order. The rule applies
+to `edges` as it does to `nodes`.
+
+**Unchanged.** The element keeps its `index`, which is the fallback above and what
+`CanvasDocument.reconcile` still pairs opaque elements by and names in a divergence reason (§D6.3).
+§D5.4's body, and «Follow-up: PG-277»'s "kept opaque at its index", describe the rule before this
+note and are left as written.
+
+The tests are in `Tests/CanvasRoundTripTests.swift`, under `PG-281`.
+
 ## References
 
 - `SPEC.md` (Approved 2026-09-26), R-01 to R-24.
