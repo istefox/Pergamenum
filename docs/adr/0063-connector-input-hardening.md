@@ -694,7 +694,7 @@ reported through it. Where it is a pure UI read, a refusal does what a missing f
   but sit outside the one-line pattern, either because they span lines or because the receiver is
   spelled `vaultRoot`. Each one reads a path that comes from the index, the ledger or the current
   selection, not from typed input. Converting them spans the connector and two feature modules,
-  so they are their own follow-up:
+  so they are their own follow-up (closed by PG-368, below):
   `Sources/Connector/VaultPratiche.swift:111`, `Sources/Connector/VaultPraticheLinks.swift:43`,
   `Sources/Features/Pratiche/PraticheController+Ledger.swift:249`,
   `Sources/Features/Tasks/TasksView+Pratiche.swift:37`,
@@ -718,3 +718,41 @@ reported through it. Where it is a pure UI read, a refusal does what a missing f
   and `a/..`) pins that a notes folder spelling the vault root still gets the uniqueness check. The remaining
   converted sites sit behind a check that already refuses first, as `moveFolder`'s source does
   behind `movePlan`'s `isDirectory`, or they are AppKit or UI actions that no unit test reaches.
+
+#### PG-368: the index-derived residuals (2026-10-02)
+
+All six joins PG-360 left «Not closed here» now resolve through `VaultBoundary`. A refused path
+degrades the way the site already degraded for an unreadable file, or is reported where the site
+has a channel. What the boundary refuses is narrow: `VaultBoundary` resolves the root's symlinks
+but standardizes the relative path lexically, so it refuses a `..` escape and an absolute path
+only, and a symlink inside the vault that points outside it is still read through (measured by
+hand with a throwaway probe while writing this step's tests; no committed test pins it):
+
+- `VaultAPI.praticaNotes` (`VaultPratiche.swift`) builds one boundary for the list and skips a
+  refused `pratica.md`, as it skips one with no readable dossier. Every connector pratica lookup
+  goes through it, so a refused folder is never a pratica to the connectors.
+- `VaultAPI.praticaLinks` (`VaultPraticheLinks.swift`) resolves through `session.store.url(for:)`
+  and throws a refusal as a `ConnectorError` carrying the violation's sentence, the shape
+  `createAndLinkPraticaBoard` already used.
+- `reloadTimeline`'s `links` (`PraticheController+Ledger.swift`) and `taskPraticaLookup`
+  (`TasksView+Pratiche.swift`, one boundary per lookup) read a refused `pratica.md` as
+  `PraticaLinks.empty`, which is what a missing file gives.
+- `readTimeline` returns an empty `TimelineRead` for a refused folder, as for a missing one.
+- `dossier(at:vaultRoot:)` answers `nil`, which every caller already handles as «no pratica».
+
+None of these URLs is compared with another spelling. They are opened for reading and dropped.
+`readTimeline`'s folder also roots the `allegati/` boundary, but that boundary resolves its own
+root, so the attachment URLs keep the spelling they had. Five tests were added, in
+`Tests/PraticaBoundaryJoinTests.swift`. Two show a refusal over a `../Offerta` traversal to a
+real pratica beside the vault: `readTimelineAndDossierRefuseAPathThatLeavesTheVault` and
+`reloadTimelineReadsNothingFromASelectionThatLeavesTheVault`. The other three are positive
+controls under a symlinked root, so the boundary's resolved spelling breaks no read:
+`readTimeline` and `dossier(at:vaultRoot:)`, `reloadTimeline`'s links read, and the connector's
+`pratiche`, `pratica` and `praticaLinks`. No unit test reaches `praticaNotes`'s skip, the
+`praticaLinks` refusal branch or `taskPraticaLookup`: the first two take their paths from the
+index, which never holds a `..`, so a refused path cannot arrive there, and the third needs a live
+`TasksView`. `perg` and `pergamenum-mcp` build. Two patterns, `(vaultRoot|root)\s*\.appending\(`
+and the same receiver followed by a line break and `.appending(path:`, now find only the joins
+«Left on purpose» above,
+the other `VaultLayout.privateDirectory` joins (`VaultState.resolve` among them), and
+`VaultBoundary.url(for:)` itself.

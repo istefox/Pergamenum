@@ -244,12 +244,10 @@ extension PraticheController {
         // write of it besides the vault reset's clear.
         timelineOrigin = read.praticaNoteHash
         // ADR-0049 Task 5 (R-04): the same beat as `timeline`/`details` above, and
-        // the one `PraticaCommandActions.reload()` calls after every link write.
-        links = PraticaLinks.parse(
-            praticaFileAt: root.appending(
-                path: PraticaNaming.praticaNotePath(of: selection), directoryHint: .notDirectory
-            )
-        )
+        // the one `PraticaCommandActions.reload()` calls after every link write. Through the
+        // boundary (PG-368): a refused path reads as no links, as a missing file does.
+        let praticaNote = try? VaultBoundary(root: root).url(for: PraticaNaming.praticaNotePath(of: selection))
+        links = praticaNote.map { PraticaLinks.parse(praticaFileAt: $0) } ?? .empty
     }
 
     private func markOpened(_ praticaPath: String, in vault: VaultController) {

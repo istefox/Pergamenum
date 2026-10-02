@@ -110,8 +110,10 @@ extension PraticheController {
     nonisolated static func readTimeline(
         praticaPath: String, vaultRoot: URL, notInStore: Set<String> = []
     ) -> TimelineRead {
-        let folder = vaultRoot.appending(path: praticaPath, directoryHint: .isDirectory)
         var read = TimelineRead(entries: [], details: [:])
+        // Through the boundary (PG-368): a refused folder reads as an empty timeline, as a
+        // missing one does.
+        guard let folder = try? VaultBoundary(root: vaultRoot).url(for: praticaPath) else { return read }
         readMessages(in: folder, praticaPath: praticaPath, notInStore: notInStore, into: &read)
         readManualEntries(in: folder, praticaPath: praticaPath, into: &read)
         return read
@@ -245,11 +247,12 @@ extension PraticheController {
     }
 
     /// The dossier of one pratica, read from disk rather than from the index: a sync
-    /// must act on the file as it is now, not as the last scan saw it.
+    /// must act on the file as it is now, not as the last scan saw it. Through the boundary
+    /// (PG-368): a refused path is no pratica, as an unreadable `pratica.md` is not.
     static func dossier(at praticaPath: String, vaultRoot: URL) -> Dossier? {
-        Dossier.parse(praticaFileAt: vaultRoot
-            .appending(path: praticaPath, directoryHint: .isDirectory)
-            .appending(path: praticaFileName, directoryHint: .notDirectory))
+        let praticaNote = PraticaNaming.praticaNotePath(of: praticaPath)
+        guard let url = try? VaultBoundary(root: vaultRoot).url(for: praticaNote) else { return nil }
+        return Dossier.parse(praticaFileAt: url)
     }
 
     /// The timestamp the row's accessibility identifier carries
