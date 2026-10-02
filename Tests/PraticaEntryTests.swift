@@ -12,7 +12,7 @@ import Testing
         return formatter.date(from: iso)!
     }
 
-    /// PG-356: the heading is written in the writer's zone with its offset, so every heading
+    /// PG-367: the heading is written in the writer's zone with its offset, so every heading
     /// test names its zone instead of depending on the Mac's. UTC here, so the digits are the
     /// instant's; `PraticaEntryHeadingZoneTests` covers the other zones.
     private static let utc = TimeZone(secondsFromGMT: 0)!
@@ -85,7 +85,7 @@ import Testing
         #expect(PraticaEntry.headingFormatter.dateFormat == "yyyy-MM-dd HH:mm")
         #expect(PraticaEntry.headingFormatter.locale?.identifier == "en_US_POSIX")
         // GMT: the writer shifts the instant by the offset before formatting, and the reader
-        // shifts the digits back (PG-356), so the formatter's own zone must not add a second one.
+        // shifts the digits back (PG-367), so the formatter's own zone must not add a second one.
         #expect(PraticaEntry.headingFormatter.timeZone.secondsFromGMT() == 0)
     }
 

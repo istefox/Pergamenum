@@ -7,7 +7,7 @@ import SwiftUI
 // UX-BLUEPRINT "Timeline column anatomy" §5.
 //
 // A «Nota» or «Telefonata» written by hand: one `## YYYY-MM-DD HH:MM [±hh:mm] <Kind> ·
-// <Controparte>` heading of `pratica.md` and everything under it (PG-356: the offset is the
+// <Controparte>` heading of `pratica.md` and everything under it (PG-367: the offset is the
 // zone the digits were written in; a heading without one reads as UTC).
 //
 // **Read-only, deliberately** (ADR §D13): the blueprint's inline text view bound to a

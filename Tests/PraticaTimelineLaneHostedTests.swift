@@ -3,7 +3,7 @@ import SwiftUI
 import Testing
 @testable import Pergamenum
 
-// PG-354, PG-355 and the hand check's rounds (the mirror, then the readable column): the
+// PG-365, PG-366 and the hand check's rounds (the mirror, then the readable column): the
 // production row layout (`PraticaLaneRowLayout`) in a real `List(selection:)` with a day section,
 // the timeline's own shape, built in a window that is never shown (`HostedViewSupport.swift`).
 // A small stand-in card - a subject line closed by the production rows' own
@@ -101,7 +101,7 @@ struct PraticaTimelineLaneHostedTests {
         }
     }
 
-    /// 360/428 pt timelines keep PG-355's behaviour (all column, a lane of at least 240 pt at
+    /// 360/428 pt timelines keep PG-366's behaviour (all column, a lane of at least 240 pt at
     /// 428, nothing overlapping at 360); 800/1200/1600 pt timelines lay out in the 720 pt
     /// readable column, leading, with the free space to its right.
     @Test(arguments: [360.0, 428.0, 800.0, 1200.0, 1600.0], [0, 60])
@@ -165,7 +165,7 @@ struct PraticaTimelineLaneHostedTests {
         } else {
             #expect(abs(row.minX + lane + Self.gutter - slot.minX) <= 0.5, "slot not trailing - \(context)")
         }
-        // PG-355's acceptance, on the row the list really hands out.
+        // PG-366's acceptance, on the row the list really hands out.
         if width == 428 {
             #expect(lane >= 240, "lane \(lane) pt in a \(row.width) pt row")
         }

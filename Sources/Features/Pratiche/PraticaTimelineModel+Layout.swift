@@ -1,6 +1,6 @@
 import Foundation
 
-// PG-354, PG-355: the arithmetic of a timeline row's two columns - which side the lane sits
+// PG-365, PG-366: the arithmetic of a timeline row's two columns - which side the lane sits
 // on, which side of it the note slot sits on (mirrored: beside the lane, away from the lane's
 // edge), how wide the lane is, how wide the note slot is (ADR-0049 §D8) - pure, so the
 // numbers are pinned by `Tests/PraticaTimelineLayoutTests.swift` rather than by eye. A sibling
@@ -34,7 +34,7 @@ struct PraticaRowColumns: Equatable, Sendable {
 }
 
 extension PraticaTimelineModel {
-    /// Received on the leading side, sent on the trailing side (PG-354). A free manual entry
+    /// Received on the leading side, sent on the trailing side (PG-365). A free manual entry
     /// takes the whole column, so its side only decides where it starts: leading.
     static func laneAlignment(_ lane: PraticaLane) -> PraticaLaneSide {
         switch lane {
@@ -70,7 +70,7 @@ extension PraticaTimelineModel {
     }
 
     /// ADR-0049 §D8's note slot, on either side of the lane (`slotSide`): `BoardTray`'s 200 pt
-    /// at most, and never more than 27 % of the column once the gutter is taken out (PG-355), so
+    /// at most, and never more than 27 % of the column once the gutter is taken out (PG-366), so
     /// a narrow timeline does not hand the slot most of what the message needs. In the timeline
     /// `container` is the readable column (`columnWidth`), never more than 720 pt, so the slot
     /// tops out at (720 - 16) × 27 % = 190.08 pt there: the 200 pt cap is reached only by a

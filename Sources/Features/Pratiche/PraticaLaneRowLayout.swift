@@ -1,6 +1,6 @@
 import SwiftUI
 
-// ADR-0049 §D8, PG-354, PG-355: one timeline row's two columns, the card and the note slot
+// ADR-0049 §D8, PG-365, PG-366: one timeline row's two columns, the card and the note slot
 // beside it on the side away from the lane's edge (`PraticaTimelineModel.slotSide`), laid out
 // from `PraticaTimelineModel+Layout.swift`'s arithmetic inside the readable column. Its own view,
 // not a part of `PraticaTimelineView.row(_:next:)`, so `Tests/PraticaTimelineLaneHostedTests.swift`
@@ -44,7 +44,7 @@ struct PraticaLaneRowLayout<Lane: View, Slot: View>: View {
 /// slot come out of it in the same arithmetic, never left for a stack to discover - without that
 /// a card at its widest claims the slot's space and the two draw on top of each other (the trap
 /// ADR-0049 §D8 names). The arrangement fills the row, so a sent card is placed at the column's
-/// trailing edge rather than at the leading edge the way a bare `List` row would put it (PG-354).
+/// trailing edge rather than at the leading edge the way a bare `List` row would put it (PG-365).
 private struct LaneRowArrangement: Layout {
     let lane: PraticaLane
     let reservesSlot: Bool

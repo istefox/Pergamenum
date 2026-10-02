@@ -5,7 +5,7 @@ import SwiftUI
 
 /// The timeline's note slot (§D8): one message row's own linked note, read-only,
 /// placed in the same row by `PraticaLaneRowLayout` for `PraticaTimelineView.row(_:next:)`,
-/// at a width that scales with the timeline (PG-355, `PraticaTimelineModel.noteSlotWidth`) -
+/// at a width that scales with the timeline (PG-366, `PraticaTimelineModel.noteSlotWidth`) -
 /// there is no second scroll view, so this never has to sync itself against one. It sits next
 /// to the card's actual edge, trailing a received message and leading a sent one
 /// (`PraticaTimelineModel.slotSide`), and its content aligns toward the card (`side`). Empty

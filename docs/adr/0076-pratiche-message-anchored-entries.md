@@ -145,7 +145,7 @@ the `Sources/Core/**` glob, so `sharedSources` needs no edit.
   parses through `PraticaEntry.headingFormatter`; the kind is `.call` when the tail starts with
   `PraticaEntry.Kind.call.label`; the counterpart is everything after the first ` · `. The body is
   the entry's lines, anchor line excluded, joined by LF and trimmed, as both parsers produce today.
-  *Amended 2026-10-01 (PG-356, Implementation notes):* the heading may carry a `±hh:mm` offset
+  *Amended 2026-10-01 (PG-367, Implementation notes):* the heading may carry a `±hh:mm` offset
   after the time, `yyyy-MM-dd HH:mm ±hh:mm <tail>`, which the parser reads as the zone of the
   timestamp and keeps out of the kind and the subject; a heading without one is still UTC.
   Lines split on LF and CRLF alike, and a terminator is never part of a parsed value.
@@ -500,7 +500,7 @@ stay free until anchored by hand. `perg` and `pergamenum-mcp` output gains two o
   views, and are reviewed on the Debug build in Task 8's hand check. R-10 is met by this approval
   record, not by a mockup.
 - **G2: the protected-interface entry** of §D12. **Approved by Stefano on 2026-10-01**, after
-  PR 2 merged; the line was added to `.claude/protected-interfaces` in the PG-353 follow-up.
+  PR 2 merged; the line was added to `.claude/protected-interfaces` in the PG-364 follow-up.
 
 ## Implementation notes
 
@@ -543,15 +543,15 @@ Two changes Stefano asked for on the Debug build, shipped in PR #761.
   Pinned by `VaultScannerRelativePathTests` and
   `PraticaFileOperationsSessionTests.moveFilesAndMoveBackLandRightUnderAPrivateSpelledRoot`.
 
-**Follow-up after the merge, 2026-10-01 (PG-353 to PG-356).** Three defects found in the Task 8 hand
+**Follow-up after the merge, 2026-10-01 (PG-364 to PG-367).** Three defects found in the Task 8 hand
 check, plus the hand check's own layout changes, fixed without a new ADR:
 
-- *The sent lane is drawn on the trailing side* (PG-354). `containerRelativeFrame(_:alignment:)`
+- *The sent lane is drawn on the trailing side* (PG-365). `containerRelativeFrame(_:alignment:)`
   aligns its content inside the frame, and a macOS `List` row puts a narrower frame at its leading
   edge, so a sent message was drawn on the left. A row is now laid out by one private `Layout` in
   `PraticaLaneRowLayout` (`LaneRowArrangement`), which places each card on its side from the pure
   `PraticaTimelineModel.laneAlignment(_:)`.
-- *The note column scales with the timeline* (PG-355). It was a fixed 200 pt, which left a message
+- *The note column scales with the timeline* (PG-366). It was a fixed 200 pt, which left a message
   lane of about 126 pt in the default window. Measured in a hosted `List`, a row's width already
   excludes the row insets: a 428 pt timeline gives 396 pt, or 379 pt with a legacy scroller. The
   column is now `min(200, 27 %)` of the row less the gutter, and the message lane takes 70 % of the
@@ -611,7 +611,7 @@ check, plus the hand check's own layout changes, fixed without a new ADR:
   inheritance). The gap under the last row of a day, seen in the hand check, is the `List`'s section
   spacing before the next day header, the same under a sent or a received message
   (`PraticaTimelineEntryGapHostedTests`).
-- *A manual entry's heading carries its local time and offset* (PG-356). Headings were written in
+- *A manual entry's heading carries its local time and offset* (PG-367). Headings were written in
   UTC and the timeline draws local time, so a call logged at 15:30 in Rome read `13:30` in the file.
   A new heading is `## yyyy-MM-dd HH:mm ±hh:mm <tail>`, in the writer's zone, with the offset of
   that instant, so daylight saving is right on both sides of a change. A heading with no offset is

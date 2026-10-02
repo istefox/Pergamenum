@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// PG-354, PG-355: the timeline row's arithmetic (`PraticaTimelineModel+Layout.swift`) - which
+// PG-365, PG-366: the timeline row's arithmetic (`PraticaTimelineModel+Layout.swift`) - which
 // side a lane sits on, the readable column, how wide the lane and the note slot beside the card
 // are, where a card and its slot go, an anchored entry's indent and the selected card's token.
 // The production layout itself, in a real `List`, is `PraticaTimelineLaneHostedTests`.
@@ -23,7 +23,7 @@ import Testing
         PraticaTimelineModel.noteSlotWidth(container: container, gutter: gutter)
     }
 
-    // MARK: - PG-354: the side
+    // MARK: - PG-365: the side
 
     @Test func aReceivedLaneSitsLeadingAndASentLaneTrailing() {
         #expect(PraticaTimelineModel.laneAlignment(.received) == .leading)
@@ -45,7 +45,7 @@ import Testing
         #expect(PraticaTimelineModel.slotSide(lane) != PraticaTimelineModel.laneAlignment(lane))
     }
 
-    // MARK: - PG-355: the widths
+    // MARK: - PG-366: the widths
     //
     // `container` is the column width, never the timeline's own width: measured in
     // `PraticaTimelineLaneHostedTests`, a 360/428/800 pt timeline gives a 328/396/768 pt row, and
@@ -63,7 +63,7 @@ import Testing
 
     @Test(arguments: [396.0, 379.0])
     func aDefaultTimelineKeepsAMessageLaneOfAtLeast240Points(container: Double) {
-        // 396 pt with no scroller, 379 pt beside a legacy one. Before PG-355 the lane was
+        // 396 pt with no scroller, 379 pt beside a legacy one. Before PG-366 the lane was
         // (row - 216) * 0.7: about 126 and 114 pt.
         let width = CGFloat(container)
         let column = (width - Self.gutter) * 0.27

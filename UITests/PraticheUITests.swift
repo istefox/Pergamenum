@@ -26,7 +26,7 @@ import XCTest
 // (M10). M9 is `AttachmentChipContextMenuUITests`'s own; M5 has no subject, since the inspector
 // renders `pratica.md` read-only; the beep and the board's preview (M8) stay by hand.
 //
-// The fixture builder and the helpers live in `PraticheUITests+Support.swift` (PG-353).
+// The fixture builder and the helpers live in `PraticheUITests+Support.swift` (PG-364).
 final class PraticheUITests: XCTestCase {
     /// One conformant pratica, seeded on disk before `launch()`, so the list column
     /// has a row and the timeline/inspector/add-note/add-call surfaces - all gated on

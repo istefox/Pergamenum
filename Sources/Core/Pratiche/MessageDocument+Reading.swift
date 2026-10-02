@@ -65,7 +65,7 @@ extension MessageDocument {
     /// The offset a stored date was written in (ADR-0065 §D8.2): `±hh:mm` as seconds east of
     /// UTC, and `Z` - or a zero offset, which renders as `Z` - as `nil`, so render → parse →
     /// render stays identical. The `±hh:mm` itself is `UTCOffset`'s, the codec the manual-entry
-    /// heading shares (PG-356).
+    /// heading shares (PG-367).
     private static func isoOffset(_ text: String) -> Int? {
         guard let seconds = UTCOffset.seconds(text.suffix(6)) else { return nil }
         return seconds == 0 ? nil : seconds

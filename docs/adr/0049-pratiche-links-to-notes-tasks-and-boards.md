@@ -256,7 +256,7 @@ at the trailing edge. The lane's own ~70 % (R-25's third carrier of direction) i
 `width - gutter` inside the `containerRelativeFrame` closure the row already has
 (`PraticaTimelineView.swift:140-142`), so lanes and column cannot overlap.
 
-*Amended 2026-10-01 (ADR-0076 follow-up, PG-354/355):* the slot now scales (`min(200, 27 %)`)
+*Amended 2026-10-01 (ADR-0076 follow-up, PG-365/366):* the slot now scales (`min(200, 27 %)`)
 and sits beside each card on its free side, trailing for a received message, leading for a sent
 one, inside a 720 pt readable column, and the row is laid out by one `Layout`, not
 `containerRelativeFrame`. It is still one row and one scroll view.

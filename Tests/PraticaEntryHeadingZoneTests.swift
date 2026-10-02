@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// PG-356: a manual entry's heading is written in the writer's zone with that zone's offset
+// PG-367: a manual entry's heading is written in the writer's zone with that zone's offset
 // (`## 2026-06-10 16:06 +02:00 Telefonata · Mario Rossi`) and read back to the same instant; a
 // heading with no offset keeps meaning UTC (`PraticaManualEntriesTests` pins that legacy read).
 

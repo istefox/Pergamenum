@@ -43,12 +43,12 @@ enum PraticaEntry {
     /// and time digits, both ways (`headingTimestamp(_:in:)` and `PraticaManualEntries.parse`,
     /// ADR-0076 §D1). A file format, not a presentation, so it cannot follow the person's locale.
     ///
-    /// PG-356 (2026-10-01): a heading is written in the writer's own zone, followed by that
+    /// PG-367 (2026-10-01): a heading is written in the writer's own zone, followed by that
     /// zone's offset (`## 2026-06-10 16:06 +02:00 Telefonata · …`), so the digits on disk are
     /// the time the person saw when they wrote it, and the offset makes the instant exact on any
     /// Mac. The digits go through this GMT formatter shifted by the offset rather than through a
     /// formatter set to the zone, so one shared formatter serves every zone. A heading with no
-    /// offset - every heading written before PG-356, and the connectors' own fixtures - keeps
+    /// offset - every heading written before PG-367, and the connectors' own fixtures - keeps
     /// meaning UTC, so nothing already on disk moves. The timeline still *draws* the row in the
     /// reader's own zone (`PraticaRowFormat.time`), as it does for a message's own header date.
     static let headingFormatter: DateFormatter = {
@@ -61,7 +61,7 @@ enum PraticaEntry {
 
     /// The heading's timestamp: `yyyy-MM-dd HH:mm ±hh:mm`, the wall-clock time in `timeZone` and
     /// its offset at that instant, so a summer heading in Rome says `+02:00` and a winter one
-    /// `+01:00` (PG-356). `PraticaManualEntries.heading(_:)` reads it back to the same minute.
+    /// `+01:00` (PG-367). `PraticaManualEntries.heading(_:)` reads it back to the same minute.
     static func headingTimestamp(_ date: Date, in timeZone: TimeZone = .current) -> String {
         let offset = timeZone.secondsFromGMT(for: date)
         let wallClock = headingFormatter.string(from: date.addingTimeInterval(TimeInterval(offset)))
@@ -77,7 +77,7 @@ enum PraticaEntry {
     }
 
     /// Inserts a `## yyyy-MM-dd HH:mm ±hh:mm <Kind> · <Controparte>` heading with one blank
-    /// body line beneath it (R-28), the time in `timeZone` (`headingTimestamp(_:in:)`, PG-356;
+    /// body line beneath it (R-28), the time in `timeZone` (`headingTimestamp(_:in:)`, PG-367;
     /// injected so a test does not depend on the Mac's zone). Manual entries append at the
     /// end of `source` - the timeline's own ascending order is a read-time property (ADR §D5),
     /// not something this insert has to preserve by placement.

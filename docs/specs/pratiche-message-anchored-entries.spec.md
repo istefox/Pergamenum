@@ -128,7 +128,7 @@ Swift 6, SwiftUI with the existing AppKit editor (TextKit 2). No new dependency.
 
 A manual entry is the block from its `## YYYY-MM-DD HH:MM <Kind> · <Controparte>` heading up to the
 line before the next `## ` heading or the end of the file (unchanged from the Pratiche spec).
-*Amended 2026-10-01 (PG-356):* the heading may carry a `±hh:mm` offset after the time, as the
+*Amended 2026-10-01 (PG-367):* the heading may carry a `±hh:mm` offset after the time, as the
 Pratiche spec now states.
 
 An entry is **anchored** when the first line after its heading is exactly, allowing surrounding

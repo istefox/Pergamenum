@@ -265,7 +265,7 @@ import Testing
         #expect(written.counterpart == sender)
         #expect(written.body.isEmpty)
         #expect(written.date >= started.addingTimeInterval(-60) && written.date <= Date())
-        // PG-356: the composer writes the Mac's own zone and its offset.
+        // PG-367: the composer writes the Mac's own zone and its offset.
         let heading = "## \(PraticaEntry.headingTimestamp(written.date, in: .current)) Telefonata · \(sender)"
         #expect(text.hasSuffix("\n\n" + heading + "\n" + Self.anchorOf(Rig.freeMessageID) + "\n\n"))
         #expect(session.landedGeneration(at: Rig.sourceNote) == generation + 1, "una sola scrittura")

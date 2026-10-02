@@ -258,7 +258,7 @@ Additions to `Tests/PraticaEntryTests.swift`:
 
 ### Coder
 
-Fill every body. `parse` reuses `PraticaEntry.headingFormatter` (*2026-10-01, PG-356:* plus an
+Fill every body. `parse` reuses `PraticaEntry.headingFormatter` (*2026-10-01, PG-367:* plus an
 optional `±hh:mm` offset token read through `UTCOffset`); the body offset is the source's
 UTF-16 length minus that of `NoteDocument.parse(source).body`.
 

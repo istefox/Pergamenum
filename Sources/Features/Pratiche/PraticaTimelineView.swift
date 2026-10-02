@@ -137,7 +137,7 @@ struct PraticaTimelineView: View {
         // free entry the whole column.
         let isAnchored = if case .anchored = entry.placement { true } else { false }
         // ADR-0049 §D8: a message row reserves the note slot beside its card - trailing a
-        // received message, leading a sent one - whose width scales with the timeline (PG-355,
+        // received message, leading a sent one - whose width scales with the timeline (PG-366,
         // `PraticaTimelineModel.noteSlotWidth`). An anchored entry reserves it too, on the same
         // side, so its lane's arithmetic is its message's.
         let lane = PraticaTimelineModel.hostLane(for: entry)

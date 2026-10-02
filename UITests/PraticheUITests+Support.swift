@@ -1,7 +1,7 @@
 import XCTest
 
 // `PraticheUITests`'s fixture and helpers, split out of `PraticheUITests.swift` in ADR-0045's
-// `Type+Aspect.swift` shape so neither file trips SwiftLint's `file_length` (PG-353). The tests
+// `Type+Aspect.swift` shape so neither file trips SwiftLint's `file_length` (PG-364). The tests
 // themselves stay in `PraticheUITests.swift`, unchanged. A member below that the tests call is
 // `internal` rather than `private`, since `private` does not reach across files; each says so.
 extension PraticheUITests {

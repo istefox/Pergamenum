@@ -12,7 +12,7 @@ import Foundation
 struct PraticaManualEntry: Equatable, Sendable {
     var kind: PraticaEntry.Kind
     /// The heading's instant: its digits read through `PraticaEntry.headingFormatter`, less the
-    /// heading's offset when it carries one, as UTC when it does not (PG-356).
+    /// heading's offset when it carries one, as UTC when it does not (PG-367).
     var date: Date
     /// The heading's tail: everything after the time and the offset, e.g. `Telefonata · Mario Rossi`.
     var subject: String
@@ -128,9 +128,9 @@ enum PraticaManualEntries {
     /// `## 2026-06-10 14:06 Telefonata · Mario Rossi`. Anything else under `##` is an ordinary
     /// heading of the note and answers nil.
     ///
-    /// PG-356: a third token that is exactly `±hh:mm` (`UTCOffset.seconds`) is the zone the
+    /// PG-367: a third token that is exactly `±hh:mm` (`UTCOffset.seconds`) is the zone the
     /// digits were written in, and never part of the subject or the kind; a heading without one
-    /// is read as UTC, which is what every heading written before PG-356 means. An offset with
+    /// is read as UTC, which is what every heading written before PG-367 means. An offset with
     /// nothing after it is not an entry, as a date and a time with nothing after them are not.
     static func heading(_ line: String) -> Heading? {
         guard line.hasPrefix("## ") else { return nil }
