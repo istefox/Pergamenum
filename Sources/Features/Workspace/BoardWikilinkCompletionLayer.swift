@@ -29,10 +29,10 @@ enum BoardWikilinkCompletionGeometry {
         CGSize(width: width, height: CGFloat(count) * rowHeight)
     }
 
-    /// **Strategy: flip below, never clamp** - `BoardFormatBarGeometry`'s own house style,
-    /// restated here rather than reused: that file's `placement(...)` is shaped around a
-    /// selection rectangle and this one around a caret point, and pulling the shared half out
-    /// into a third function would cost a signature neither call site needs for one `if`.
+    /// **Strategy: flip below, never clamp vertically; clamp horizontally inside the viewport**
+    /// - `BoardFormatBarGeometry`'s own house style, restated here rather than reused: that
+    /// file's `placement(...)` is shaped around a selection rectangle and this one around a
+    /// caret point. The horizontal clamp is the one shared piece, `clampedX` (PG-135).
     static func placement(
         caretFrame: CGRect,
         cardOrigin: CGPoint,
@@ -47,11 +47,13 @@ enum BoardWikilinkCompletionGeometry {
             y: (cardOrigin.y + caretFrame.origin.y) * zoom + pan.height
         )
         let height = size(forRowCount: rowCount).height
-        // `viewport` is threaded through for the same reason `BoardFormatBarGeometry` takes
-        // it: a future horizontal clamp has what it needs without another signature change,
-        // even though nothing drawn today reads it.
         let flipsBelow = origin.y - gap - height < 0
-        return Placement(origin: origin, flipsBelow: flipsBelow)
+        return Placement(
+            origin: CGPoint(
+                x: BoardFormatBarGeometry.clampedX(origin.x, width: width, viewport: viewport), y: origin.y
+            ),
+            flipsBelow: flipsBelow
+        )
     }
 }
 

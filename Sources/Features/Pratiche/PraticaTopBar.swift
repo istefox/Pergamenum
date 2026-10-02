@@ -64,8 +64,10 @@ struct PraticaTopBar: View {
         if let pratica = pratiche.selectedPratica {
             Menu {
                 ForEach(statusCommands(for: pratica), id: \.self) { command in
-                    Button(command.title) { actions.run(command, on: pratica) }
-                        .accessibilityIdentifier(command.identifier)
+                    Button { actions.run(command, on: pratica) } label: {
+                        Label(command.title, systemImage: command.symbol)
+                    }
+                    .accessibilityIdentifier(command.identifier)
                 }
             } label: {
                 Text(Self.statusTitle(pratica.status))

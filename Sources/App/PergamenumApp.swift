@@ -117,6 +117,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let schedaPath { contenitore?.selection = schedaPath }
     }
 
+    /// Which app was in front before this one, so an all-capture batch can give the
+    /// foreground back (PG-132, SPEC §9). Created with the delegate, before any link.
+    private let foreground = ForegroundHandBack()
+
     func application(_ application: NSApplication, open urls: [URL]) {
         let routes = urls.compactMap(PergamenumRoute.init)
         guard !routes.isEmpty else { return }
@@ -126,9 +130,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         //
         // No explicit `NSApp.activate` here: opening the URL already brings the app
         // forward when it should, and calling it from a non-user-triggered path is
-        // exactly the case the AppKit guidance warns about.
-        Task { @MainActor [vault] in
+        // exactly the case the AppKit guidance warns about. The opposite case is the one
+        // handled: a batch made only of captures must not leave the app in front
+        // (`PergamenumRoute.raisesApp`), so once every route has landed the foreground
+        // goes back to the app it was taken from.
+        let handsBack = ForegroundHandBack.handsBackActivation(after: routes)
+        Task { @MainActor [vault, foreground] in
             for route in routes { await vault?.handle(route) }
+            if handsBack { foreground.handBack() }
         }
     }
 }

@@ -151,3 +151,52 @@ import Testing
     )
     #expect(!visible)
 }
+
+// MARK: - `clampedX(...)`: the horizontal clamp both floating panels share (PG-135)
+
+@Test func clampedXLeavesAPanelAlreadyInsideTheViewportWhereItIs() {
+    #expect(BoardFormatBarGeometry.clampedX(100, width: 200, viewport: CGSize(width: 800, height: 600)) == 100)
+}
+
+@Test func clampedXMovesAPanelPastTheRightEdgeBackInside() {
+    let x = BoardFormatBarGeometry.clampedX(750, width: 200, viewport: CGSize(width: 800, height: 600))
+    #expect(x == 600)
+}
+
+@Test func clampedXMovesAPanelPastTheLeftEdgeToZero() {
+    #expect(BoardFormatBarGeometry.clampedX(-40, width: 200, viewport: CGSize(width: 800, height: 600)) == 0)
+}
+
+@Test func clampedXIsInertWhileTheViewportIsUnmeasuredOrNarrowerThanThePanel() {
+    // `.zero` is what `WorkspaceView` reports before its first layout; a viewport narrower
+    // than the panel has no position that keeps the panel inside, so the caret wins.
+    #expect(BoardFormatBarGeometry.clampedX(300, width: 200, viewport: .zero) == 300)
+    #expect(BoardFormatBarGeometry.clampedX(300, width: 200, viewport: CGSize(width: 150, height: 600)) == 300)
+}
+
+@Test func placementClampsTheOriginHorizontallyAndNeverVertically() {
+    // A selection far to the right of a 800-wide viewport: x is pulled back so the pill
+    // stays visible, y is left alone (flip below, never clamp - the vertical strategy).
+    let placement = BoardFormatBarGeometry.placement(
+        selectionFrame: CGRect(x: 0, y: 0, width: 40, height: 16),
+        cardOrigin: CGPoint(x: 1000, y: 900),
+        zoom: 1,
+        pan: .zero,
+        viewport: CGSize(width: 800, height: 600)
+    )
+    #expect(placement.origin.x == 800 - BoardFormatBarGeometry.pillSize.width)
+    #expect(placement.origin.y == 900)
+}
+
+@Test func theCompletionPopupClampsThroughTheSameRule() {
+    let placement = BoardWikilinkCompletionGeometry.placement(
+        caretFrame: CGRect(x: 0, y: 0, width: 1, height: 16),
+        cardOrigin: CGPoint(x: 1000, y: 300),
+        rowCount: 3,
+        zoom: 1,
+        pan: .zero,
+        viewport: CGSize(width: 800, height: 600)
+    )
+    #expect(placement.origin.x == 800 - BoardWikilinkCompletionGeometry.width)
+    #expect(placement.origin.y == 300)
+}
