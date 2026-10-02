@@ -28,15 +28,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Set beside `vault`: a cancelled quit brings the Note pane back (ADR-0073 §D7).
     weak var navigation: Navigation?
 
+    /// Whether this process hosts the unit suite (`VaultState.isRunningUnderTest`, the
+    /// `XCTestConfigurationFilePath` check of ADR-0017). PG-363: a Quit AppleEvent reaching
+    /// the Debug test host (Quit from the Dock on the running `it.stefer.pergamenum.debug`)
+    /// ended a unit run with «The test runner exited with code 0 before finishing running
+    /// tests», which read as a flaky test twice (PG-308, PG-309). The host refuses it instead.
+    /// Safe because XCTest never ends its host through `NSApp.terminate`: `XCTestCore`
+    /// carries no `terminate:` selector and finishes through
+    /// `flushIDEConnectionAndExitWithCode:timeout:` and `_exit` (checked against Xcode 27.0,
+    /// 27A266a). Not set in the app the UI suite launches - that variable reaches the
+    /// `xctrunner` process only (`VaultState.processDefaultBase()`) - so `QuitReviewUITests`'
+    /// real Cmd+Q still goes through the review. A `var` so a test sets it explicitly
+    /// (`TerminationSupportTests`) rather than relying on where it runs.
+    /// The accepted trade-off: while a unit run is active, the test host cancels a logout,
+    /// restart or shutdown, and an orphaned host cannot be quit from the Dock or with Cmd+Q
+    /// (kill it instead) - acceptable for a Debug-only process that lives for one run.
+    var isTestHost = VaultState.isRunningUnderTest
+
     /// The one door every termination goes through (ADR-0073 §D1): an open field editor
     /// ends (a table cell reaches its note), the board settles, the
     /// dirty note tabs are reviewed - asked about app-modally, before anything replies - and
     /// then the Diario's owed writes are waited for, capped at two seconds (ADR-0057 §D8,
     /// ADR-0060 §D2). `willTerminateNotification` fires after the decision to exit, so
     /// nothing that must be asked or awaited can live there. The order, the caps and the
-    /// one-reply guarantee are `QuitCoordinator`'s; this keeps only AppKit's spelling.
+    /// one-reply guarantee are `QuitCoordinator`'s; this keeps only AppKit's spelling, plus
+    /// one exception that is deliberately outside the coordinator: the unit-test host
+    /// refuses every termination before the coordinator is asked (`isTestHost` above,
+    /// PG-363), since the coordinator knows nothing of the process environment.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        switch quit.shouldTerminate() {
+        if isTestHost {
+            Logger(subsystem: AppInfo.bundleIdentifier, category: "quit")
+                .notice("uscita rifiutata: processo ospite dei test unitari (PG-363)")
+            return .terminateCancel
+        }
+        return switch quit.shouldTerminate() {
         case .now: .terminateNow
         case .later: .terminateLater
         case .cancel: .terminateCancel
