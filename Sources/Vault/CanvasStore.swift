@@ -90,7 +90,9 @@ struct CanvasStore: Sendable {
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
         )
-        let data = try document.encoded()
+        // The BOM belongs to the file (ADR-0065 §D4.3, PG-280): a `.canvas` that starts with one
+        // keeps it, one without never gains one. The hash skips it either way.
+        let data = ByteOrderMark.keeping(of: fileURL, onto: try document.encoded())
         try data.write(to: fileURL, options: .atomic)
         return NoteStore.hash(data)
     }

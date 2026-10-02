@@ -274,18 +274,24 @@ enum RelatedSection {
     /// plain hyphen are accepted as the separator, because a note typed by hand will
     /// have whichever the keyboard produced, and rejecting one would report a
     /// conformant note as broken.
+    ///
+    /// A line is a link only in the role `RelatedLink` gives it (PG-378): a bullet outside a
+    /// fence, indented by at most three columns, and not a sub-item of the bullet above. A `-`
+    /// line inside a fence, a nested `  - [[X]]` under another bullet or a line indented four
+    /// columns or more is not a structural link here, exactly as «Collega» never sorts, inserts
+    /// or removes one there; counting it made «Collega» write nothing and the linter report
+    /// `tooManyLinks` and W-06 on lines no verb treats as links.
     static func parse(from body: String) -> [StructuralLink] {
         guard let section = sectionRange(in: body),
               let start = bulletsStart(in: body, section: section)
         else { return [] }
 
         var links: [StructuralLink] = []
-        // The section already ends at the next heading. A CRLF line keeps its `\r` through the
-        // split, so it is trimmed with the newlines.
-        for line in body[start..<section.upperBound].components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard trimmed.hasPrefix("-") else { continue }
-
+        let lines = lines(of: body, in: start..<section.upperBound)
+        let roles = roles(of: lines, code: WikilinkParser.codeRanges(in: body))
+        for (line, role) in zip(lines, roles) where role == .bullet {
+            // A CRLF line keeps its `\r` through the split, so it is trimmed with the newlines.
+            let trimmed = line.text.trimmingCharacters(in: .whitespacesAndNewlines)
             let content = String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
             guard let link = WikilinkParser.links(in: content).first, !link.isEmbed else { continue }
 
