@@ -6,18 +6,21 @@ import Foundation
 /// `VaultController.swift` where it began: the verdict on a note is not a fact about
 /// the app's user interface, and `perg lint` has to name the same type the Conformità
 /// pane does (ADR-0007 §D2).
+///
+/// Every field defaults to empty, so a caller with findings on one axis writes only that
+/// axis (a refused drop's tags, a refused name). The linter,
+/// `VaultSession.violations(path:title:text:)`, is the one construction that fills every
+/// axis, and a field added later must be added there by hand: an axis left out there
+/// compiles and reports nothing.
 struct NoteViolations: Equatable, Sendable {
-    var name: [NoteName.Violation]
-    var frontmatter: [FrontmatterViolation]
-    var tags: [TagViolation]
-    var relatedMissingInSection: [String]
-    var relatedMissingInFrontmatter: [String]
-    /// The two advisory task-marker rules of ADR-0021 §D11 (R-11, R-12). Defaulted so
-    /// the six existing construction sites, all passing the same five labelled
-    /// arguments above, keep compiling untouched.
+    var name: [NoteName.Violation] = []
+    var frontmatter: [FrontmatterViolation] = []
+    var tags: [TagViolation] = []
+    var relatedMissingInSection: [String] = []
+    var relatedMissingInFrontmatter: [String] = []
+    /// The two advisory task-marker rules of ADR-0021 §D11 (R-11, R-12).
     var taskMarkers: [TaskMarkerViolation] = []
-    /// The two advisory `pergamenum-category` rules of ADR-0047 (R-10). Defaulted so
-    /// the seven existing construction sites keep compiling untouched.
+    /// The two advisory `pergamenum-category` rules of ADR-0047 (R-10).
     var categories: [CategoryViolation] = []
 
     var isEmpty: Bool {

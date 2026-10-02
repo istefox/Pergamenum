@@ -186,10 +186,7 @@ struct ContenitoreCommandActions {
         case .valid: nil
         case .yearName: "Un nome di quattro cifre è riservato alle cartelle anno."
         case .invalid(let violations):
-            ConformanceText.lines(NoteViolations(
-                name: violations, frontmatter: [], tags: [],
-                relatedMissingInSection: [], relatedMissingInFrontmatter: []
-            )).joined(separator: ". ")
+            ConformanceText.lines(NoteViolations(name: violations)).joined(separator: ". ")
         }
     }
 

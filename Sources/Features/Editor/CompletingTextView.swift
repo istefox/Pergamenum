@@ -109,8 +109,8 @@ final class CompletingTextView: NSTextView {
     /// shape `onClickInMargin` already has and for the same reason: asked before `super`, so
     /// the click never places the caret in the paragraph and never triggers
     /// `NoteTextView+Reveal`'s reveal-on-caret for it (the trap `claimsFoldBadge`/
-    /// `claimsCheckbox` in `Sources/Features/Workspace/FormattingTextView.swift` were written
-    /// against, on the Workspace card surface).
+    /// `claimsCheckbox` in `Sources/Features/Workspace/FormattingTextView+Clicks.swift` were
+    /// written against, on the Workspace card surface).
     var onToggleCheckbox: ((CGPoint) -> Bool)?
 
     /// Claims a keyboard command before the ordinary editing behaviour gets it, while the

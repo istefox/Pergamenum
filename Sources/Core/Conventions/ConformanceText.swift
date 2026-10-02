@@ -129,10 +129,7 @@ extension ConformanceText {
         case .alreadyExists(let path):
             return "Esiste già una nota in \(path)"
         case .invalidTitle(let violations):
-            let named = NoteViolations(
-                name: violations, frontmatter: [], tags: [],
-                relatedMissingInSection: [], relatedMissingInFrontmatter: []
-            )
+            let named = NoteViolations(name: violations)
             return lines(named).joined(separator: "; ")
         }
     }

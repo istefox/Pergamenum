@@ -136,7 +136,7 @@ final class EmbedAttachment: NSTextAttachment {
         // `image(for:…)` is asked for sizes the drag never chose.
         guard rect.contains(mirrored) else { return }
         color.setFill()
-        // The corner radius `ResizeHandleView` already gives the Workspace's own grips -
+        // The corner radius `BoardGripView` already gives the Workspace's own grips -
         // a quarter of the side - so the two resize affordances in this app are the same
         // shape at two sizes rather than two shapes.
         NSBezierPath(

@@ -55,6 +55,25 @@ private func isAllCRLF(_ text: String) -> Bool {
     #expect(violations.relatedMissingInFrontmatter.isEmpty)
 }
 
+/// PG-349: once every `NoteViolations` field defaults to empty, the compiler no longer makes the
+/// linter fill this axis. The other six are pinned end to end in `VaultTests.swift`,
+/// `theLinterInventsNoDiscrepancyFromASubHeading`, `TaskMarkerLintTests.swift` and
+/// `CategoryLintTests.swift`.
+@MainActor
+@Test func theLinterReportsASectionLinkMissingFromRelated() throws {
+    let vault = try TemporaryVault()
+    let session = VaultSession(
+        root: vault.root, stateBase: vault.stateBase,
+        bundledVocabulary: Bundle.pergamenumResources.url(forResource: "vocabolari", withExtension: "json")
+    )
+    let text = note(related: ["[[A]]"], "## Note correlate\n\n- [[A]] — motivo\n- [[B]] — motivo\n")
+
+    let violations = session.violations(path: "Nota.md", title: "Nota", text: text)
+
+    #expect(violations.relatedMissingInFrontmatter == ["B"])
+    #expect(violations.relatedMissingInSection.isEmpty)
+}
+
 @Test func exportOfACRLFNoteStopsAtTheNextHeading() {
     let text = "---\r\ndate: 2026-09-26\r\ntags:\r\n  - type-note\r\n---\r\n# T\r\n\r\n"
         + "## Note correlate\r\n\r\n- [[A]] — r\r\n\r\n## Altro\r\n\r\nTesto.\r\n"

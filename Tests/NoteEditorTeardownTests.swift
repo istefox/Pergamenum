@@ -18,10 +18,10 @@ import Testing
 /// test follows that one's proven shape rather than a new one.
 ///
 /// A real, titled, never-shown `NSWindow` is required here and that sibling test needs
-/// none: `CardTextView.Coordinator` owns a private `UndoManager()` of its own
-/// (`CardTextView.swift:199`), but `NoteTextView.Coordinator.undoManager` is captured from
-/// `textView.window?.undoManager` (`NoteTextView+Update.swift`'s `pushInputs(to:coordinator:)`,
-/// run by `updateNSView`) precisely because it is the
+/// none: `CardTextView.Coordinator` owns a private `UndoManager()` of its own (its
+/// `undoManager`, `CardTextView.swift`), but `NoteTextView.Coordinator.undoManager` is captured
+/// from `textView.window?.undoManager` (`NoteTextView+Update.swift`'s
+/// `pushInputs(to:coordinator:)`, run by `updateNSView`) precisely because it is the
 /// *window's* shared stack this bug is about - a windowless text view would exercise a
 /// different undo manager than production ever shares with the sidebar.
 ///
