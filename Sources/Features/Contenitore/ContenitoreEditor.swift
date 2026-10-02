@@ -28,11 +28,21 @@ import Observation
 final class ContenitoreEditor {
     let schedaPath: String
     /// What the fields show and the controls edit. The view binds to it.
-    var draft: ContenitoreDraft
+    var draft: ContenitoreDraft {
+        // A draft back at the baseline owes nothing, so a failure recorded for an earlier one
+        // must not be pinned on the next edit, which nothing has tried to write yet (PG-373).
+        didSet { if isAtBaseline { lastWriteFailed = false } }
+    }
     /// The date field's text, committed by `commitDate()`.
     var dateText: String
     /// The last edit's problem sentence, nil after a good one.
     private(set) var problem: String?
+
+    /// Whether the last write failed (`.failed`) and left the draft owed; false after one that
+    /// ended otherwise, after the draft came back to the baseline, or after the baseline moved
+    /// with the disk: what the quit review asks about, so a write that keeps failing can be given
+    /// up with «Non salvare» rather than cancelling every Cmd+Q (PG-373).
+    @ObservationIgnored private(set) var lastWriteFailed = false
 
     /// The text and hash the last read or write left, what every write is guarded by.
     @ObservationIgnored private var model: ContenitoreInspectorModel
@@ -59,7 +69,12 @@ final class ContenitoreEditor {
     /// SPEC §Decisions) is not owed, so it never holds a selection change or the quit. What
     /// they wait for.
     var isSettled: Bool {
-        saves == 0 && Self.normalized(draft) == model.draft && !owesDateText
+        saves == 0 && isAtBaseline
+    }
+
+    /// No field edited and no committable date text owed, whatever is queued or running.
+    private var isAtBaseline: Bool {
+        Self.normalized(draft) == model.draft && !owesDateText
     }
 
     /// A date text typed that would commit to something other than the baseline's date.
@@ -116,12 +131,18 @@ final class ContenitoreEditor {
     /// never be written, since every write is guarded by the hash of a file that is gone (PG-341).
     var isSchedaGone: Bool { !model.session.exists(schedaPath) }
 
+    /// The last write of an owed edit failed and no save is queued or running to retry it
+    /// (PG-373). A save still in flight is not this: the quit waits for it, and only its failure
+    /// makes the edit one the next question names.
+    var owesFailedWrite: Bool { saves == 0 && !isAtBaseline && lastWriteFailed }
+
     /// Drops what is owed: the fields go back to the last text read or written, so nothing is
-    /// left to write. The quit's «Non salvare» over a scheda that is gone (PG-341): a save
-    /// queued after this finds nothing changed, and one already running is refused by its
-    /// guard, as it would have been anyway.
+    /// left to write. The quit's «Non salvare» over a scheda that is gone (PG-341) or whose
+    /// write failed (PG-373): a save queued after this finds nothing changed, and one already
+    /// running is refused by its guard or lands an edit the next settle writes back over.
     func discard() {
         adoptModel()
+        lastWriteFailed = false
     }
 
     /// Reports a sentence the view found before there was anything to save (a tag that is not a
@@ -152,6 +173,10 @@ final class ContenitoreEditor {
             description: wanted.description, date: wanted.date, colour: wanted.colour, tags: wanted.tags
         )
         model = local
+        lastWriteFailed = false
+        // A draft brought back to the baseline while this write ran owes nothing: its failure is
+        // not one the next, untried edit inherits.
+        defer { if isAtBaseline { lastWriteFailed = false } }
         switch outcome {
         case .saved, .unchanged:
             problem = nil
@@ -169,8 +194,10 @@ final class ContenitoreEditor {
         case .failed(let reason):
             // The disk did not change and the file is what the model holds, so nothing is
             // adopted: the draft stays owed (`isSettled` false), the next save or settle retries
-            // it, and the quit does not go with it lost (ADR-0073 §D7).
+            // it, and the quit does not go with it lost (ADR-0073 §D7) unless the person gives
+            // it up with the question's «Non salvare» (PG-373).
             problem = "Modifica non salvata: \(reason)"
+            lastWriteFailed = true
         }
     }
 
@@ -200,6 +227,9 @@ final class ContenitoreEditor {
         )
         if !dateWasEdited { dateText = Self.text(of: draft.date) }
         model = fresh
+        // The failure was a write over the old baseline: what is still owed over the new one has
+        // not been tried yet.
+        lastWriteFailed = false
     }
 
     private func adoptModel() {

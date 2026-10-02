@@ -11,6 +11,7 @@ private final class GapProbe {
     var replies: [Bool] = []
     var revealed: [NoteTab.ID?] = []
     var revealedContenitore: [String?] = []
+    var asked = 0
     let hold = Gate()
 
     func coordinator(
@@ -205,18 +206,25 @@ private final class GapProbe {
     try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory)
     defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory) }
     let probe = GapProbe()
-    let quit = probe.coordinator(harness.vault, diary: nil, contenitore: harness.contenitore) { _ in .cancel }
+    // The first quit asks nothing (the edit was never tried); the second names the failed write
+    // (PG-373), and «Salva» retries it.
+    let quit = probe.coordinator(harness.vault, diary: nil, contenitore: harness.contenitore) { [unowned probe] _ in
+        probe.asked += 1
+        return .save
+    }
 
     #expect(quit.shouldTerminate() == .later)
     try await waitUntil { !probe.replies.isEmpty }
 
+    #expect(probe.asked == 0, "the first quit has no failed write to name yet")
     #expect(probe.replies == [false], "an edit that is not on disk never lets the app go")
     #expect(probe.revealedContenitore == [scheda])
     #expect(editor.draft.description == "Scrittura che fallisce")
 
     try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory)
-    #expect(quit.shouldTerminate() == .later, "the retry writes it")
+    #expect(quit.shouldTerminate() == .later, "«Salva» retries it, and the retry writes it")
     try await waitUntil { probe.replies.count == 2 }
+    #expect(probe.asked == 1, "the second quit asks once, naming the failed write (PG-373)")
     #expect(probe.replies == [false, true])
     #expect(try ContenitoreFixture.text(scheda, in: vault.root).contains("Scrittura che fallisce"))
     probe.hold.open()

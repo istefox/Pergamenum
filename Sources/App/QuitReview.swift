@@ -26,12 +26,22 @@ struct QuitReview: Equatable, Sendable {
         let previousVaultRoot: URL?
     }
 
-    /// A Contenitore scheda whose inspector edit is owed and can never reach disk, because the
-    /// scheda is no longer at its path (PG-341). The question names it like a note, so its
-    /// «Non salvare» lets the app go; «Salva» retries the write, which cannot land, so the quit
-    /// is cancelled and the pane brought back, and the next Cmd+Q offers the choice again.
+    /// A Contenitore scheda whose inspector edit is owed and did not reach disk: the scheda is
+    /// no longer at its path (PG-341), or it is but the edit's last write failed (PG-373). The
+    /// question names it like a note, so its «Non salvare» lets the app go; «Salva» retries the
+    /// write, and one that cannot land cancels the quit and brings the pane back, and the next
+    /// Cmd+Q offers the choice again.
     struct Scheda: Equatable, Sendable {
+        /// Why the edit did not reach disk, which decides what the question says about it.
+        enum Problem: Equatable, Sendable {
+            /// The scheda is no longer at its path: no write can land.
+            case gone
+            /// The scheda is there and its write failed: «Salva» retries it.
+            case writeFailed
+        }
+
         let path: String
+        var problem: Problem = .gone
 
         /// The scheda's file name without `.md`, as the pane lists it.
         var name: String { ((path as NSString).lastPathComponent as NSString).deletingPathExtension }
@@ -60,12 +70,18 @@ struct QuitReview: Equatable, Sendable {
 
     /// Every dirty tab, column order then tab order.
     let entries: [Entry]
-    /// Every Contenitore scheda whose owed edit cannot be written (PG-341). Only the quit
-    /// passes any: a vault switch and a column close never reach the Contenitore.
+    /// Every Contenitore scheda whose owed edit was not written (PG-341, PG-373), the vanished
+    /// ones first. Only the quit passes any: a vault switch and a column close never reach the
+    /// Contenitore.
     let schede: [Scheda]
 
-    init(columns: [EditorColumn], vanishedSchede: [String] = []) {
-        schede = vanishedSchede.map(Scheda.init(path:))
+    init(
+        columns: [EditorColumn],
+        vanishedSchede: [String] = [],
+        failedSchede: [String] = []
+    ) {
+        schede = vanishedSchede.map { Scheda(path: $0, problem: .gone) }
+            + failedSchede.map { Scheda(path: $0, problem: .writeFailed) }
         entries = columns.flatMap { column in
             column.tabs.compactMap { tab -> Entry? in
                 guard tab.note.hasUnsavedChanges else { return nil }
@@ -223,11 +239,8 @@ struct QuitReview: Equatable, Sendable {
                     + "\(staying) se scegli di salvare."
             )
         }
-        for name in schedaNames {
-            paragraphs.append(
-                "La scheda «\(name)» non è più al suo posto e la sua modifica non può essere salvata: "
-                    + "«Non salvare» la scarta."
-            )
+        for (scheda, name) in zip(schede, schedaNames) {
+            paragraphs.append(Self.sentence(for: scheda, named: name, saveLabel: saveLabel))
         }
         return Copy(
             message: message,
@@ -236,6 +249,19 @@ struct QuitReview: Equatable, Sendable {
             discardLabel: "Non salvare",
             cancelLabel: "Annulla"
         )
+    }
+
+    /// Why a scheda's edit is in the question: its file is gone (PG-341), or its write failed
+    /// and «Salva» tries it again (PG-373).
+    private static func sentence(for scheda: Scheda, named name: String, saveLabel: String) -> String {
+        switch scheda.problem {
+        case .gone:
+            "La scheda «\(name)» non è più al suo posto e la sua modifica non può essere salvata: "
+                + "«Non salvare» la scarta."
+        case .writeFailed:
+            "La modifica alla scheda «\(name)» non si è potuta salvare: "
+                + "«\(saveLabel)» riprova, «Non salvare» la scarta."
+        }
     }
 
     /// What changes with the occasion: what the question is asked before, what not saving
