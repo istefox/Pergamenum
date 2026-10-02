@@ -128,6 +128,17 @@ extension WorkspaceController {
         pendingRefit = nil
     }
 
+    /// Cancels the deferred refit but keeps what was asked for (PG-289): a concentrazione
+    /// «dimensione reale» requested within the ~350 ms debounce before a board change was
+    /// lost by `cancelPendingRefit()`, and the fit-on-open of the new board ran in its place.
+    /// The request is about the viewport, not the board, so `load(board:)` keeps it and
+    /// `applyPendingRefit(in:)` applies it to the board that is on screen once the layout
+    /// settles.
+    func deferPendingRefit() {
+        refitTask?.cancel()
+        refitTask = nil
+    }
+
     // MARK: - After an `await` (#569 point 9)
 
     /// A board read before an `await`, asked again after it (ADR-0043 §D7): the person can

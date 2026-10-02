@@ -94,7 +94,7 @@ struct DayToolbar: ToolbarContent {
             // that vanishes leaves the user looking for a feature they were told
             // exists, and the Impostazioni pane is where the grant is explained.
             Button { controller.isCreatingEvent = true } label: {
-                Label("Nuovo evento", systemImage: "calendar.badge.plus")
+                Label("Nuovo evento", systemImage: CalendarDayCommand.newEvent.symbol)
             }
             .help(calendar.eventAccess.isGranted
                 ? "Nuovo evento"

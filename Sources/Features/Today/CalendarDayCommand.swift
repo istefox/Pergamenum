@@ -22,8 +22,9 @@ enum CalendarDayCommand: Equatable {
     /// symbol is chosen for this cluster (ADR-0023 §D1).
     ///
     /// `calendar.badge.plus` is not a choice made here: it is the glyph the day view's
-    /// own «Nuovo evento» toolbar button already draws (`DayToolbar.swift:96`), so R-13's
-    /// "same command, same icon" holds by reading rather than by review. «Nuovo
+    /// own «Nuovo evento» toolbar button draws by reading it from here (`DayToolbar.swift`,
+    /// PG-133), so R-13's "same command, same icon" holds by construction rather than by
+    /// review. «Nuovo
     /// promemoria» has no toolbar button to inherit from - it left that toolbar for the
     /// bell to become a filter (`DayToolbar.swift:9`) - so `bell.badge` is a first choice,
     /// taken from the bell this app already draws for what is coming up

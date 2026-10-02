@@ -48,11 +48,17 @@ enum BoardFormatBarGeometry {
     /// draws in) placement for the pill, and whether it must sit below the selection instead of
     /// above it.
     ///
-    /// **Strategy: flip below, never clamp** (plan Task 6, "pick one and document it, and assert
-    /// it"). A clamp would slide the pill sideways or downward away from the point it is meant
-    /// to indicate - the pill would still be on screen, pointing at the wrong text, which is a
-    /// worse failure than picking the other side of the same selection. Flipping keeps the pill
-    /// anchored to what it labels; only the side changes.
+    /// **Strategy: flip below, never clamp vertically** (plan Task 6, "pick one and document it,
+    /// and assert it"). A vertical clamp would slide the pill downward away from the point it is
+    /// meant to indicate - the pill would still be on screen, pointing at the wrong text, which
+    /// is a worse failure than picking the other side of the same selection. Flipping keeps the
+    /// pill anchored to what it labels; only the side changes.
+    ///
+    /// Horizontally the pill is clamped inside `viewport` (PG-135): a selection near the right
+    /// edge of a narrow window otherwise put most of the pill off screen, where its buttons
+    /// cannot be clicked, and the pill's row stays level with the selection either way, so the
+    /// clamp moves it along the text it labels rather than away from it. A zero-width viewport
+    /// (not yet measured) clamps nothing.
     ///
     /// "No room above" is read against the same container-relative space the transformed point
     /// already lives in, whose top edge is `y = 0` regardless of `viewport`'s own value (the
@@ -92,12 +98,21 @@ enum BoardFormatBarGeometry {
         // with less than that it would be drawn past the container's top edge, so it takes the
         // other side of the same selection instead of sliding away from it.
         //
-        // `viewport` is deliberately not read here: the top edge of the space `origin` already
+        // `viewport` is read for the horizontal clamp only: the top edge of the space `origin`
         // lives in is `y = 0` whatever the viewport measures, exactly as `BoardMarquee` and
-        // `BoardGuides` draw into that space without ever seeing a viewport. The parameter is
-        // threaded for the horizontal clamp the doc comment above names as a future need.
+        // `BoardGuides` draw into that space without ever seeing a viewport.
         let flipsBelow = origin.y - gap - pillSize.height < 0
-        return Placement(origin: origin, flipsBelow: flipsBelow)
+        return Placement(
+            origin: CGPoint(x: clampedX(origin.x, width: pillSize.width, viewport: viewport), y: origin.y),
+            flipsBelow: flipsBelow
+        )
+    }
+
+    /// `x` moved the least distance that keeps a `width`-wide panel inside `viewport`'s width
+    /// (PG-135); unchanged when the viewport is not yet measured or is narrower than the panel.
+    static func clampedX(_ x: CGFloat, width: CGFloat, viewport: CGSize) -> CGFloat {
+        guard viewport.width >= width else { return x }
+        return min(max(x, 0), viewport.width - width)
     }
 
     /// True only while the card named `forNodeID` is the one currently being edited **and** the

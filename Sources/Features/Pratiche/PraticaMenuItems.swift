@@ -15,8 +15,12 @@ enum PraticaMenuItems {
     static func menu(for pratica: PraticaListItem, actions: PraticaCommandActions) -> some View {
         ForEach(actions.commands(for: pratica), id: \.self) { command in
             if command == .delete { Divider() }
-            Button(command.title) { actions.run(command, on: pratica) }
-                .accessibilityIdentifier(command.identifier)
+            // The catalogue's symbol, drawn here as on the top bar (PG-133): a symbol
+            // nothing draws is a symbol the two surfaces cannot be checked against.
+            Button { actions.run(command, on: pratica) } label: {
+                Label(command.title, systemImage: command.symbol)
+            }
+            .accessibilityIdentifier(command.identifier)
         }
     }
 }

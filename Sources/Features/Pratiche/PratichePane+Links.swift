@@ -4,8 +4,8 @@ import SwiftUI
 // docs/plans/pratiche-note-task-workspace-links.md, Task 5 - R-04, R-06, R-08, R-09.
 //
 // The three sections `inspector` (`PratichePane+Inspector.swift`) appends under
-// `pratica.md`'s body. `BoardTray.swift`'s `TraySection` has the same shape and is
-// reproduced here as `linksSection` rather than shared: it is `private` to that file.
+// `pratica.md`'s body, each drawn by `TraySection` (`Sources/DesignSystem/`), the view the
+// board tray's own sections use (PG-376).
 //
 // Resolution happens here, per draw, rather than once and cached in `@State` the way
 // `BoardTray` holds its own dashboard: that tray redraws on every observable change a
@@ -34,25 +34,15 @@ extension PratichePane {
     private func linksSection<Rows: View>(
         title: String, count: Int, identifier: String, emptyText: String, @ViewBuilder rows: () -> Rows
     ) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            HStack(spacing: theme.spacing(.xs)) {
-                Text(title).themedText(.caption, color: .textTertiary)
-                if count > 0 {
-                    Text("\(count)").themedText(.caption, color: .textTertiary)
-                }
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(title): \(count)")
-            .accessibilityIdentifier("\(identifier)-header")
-
-            if count == 0 {
-                Text(emptyText).themedText(.caption, color: .textTertiary)
-            } else {
-                rows()
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(identifier)
+        TraySection(
+            title: title,
+            badge: count > 0 ? "\(count)" : nil,
+            accessibilityLabel: "\(title): \(count)",
+            identifier: identifier,
+            isEmpty: count == 0,
+            emptyText: emptyText,
+            rows: rows
+        )
     }
 
     /// `linkRow`'s static fields, bundled so the function itself stays under
