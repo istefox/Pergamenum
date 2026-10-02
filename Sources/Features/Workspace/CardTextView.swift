@@ -37,13 +37,13 @@ struct CardTextView: NSViewRepresentable {
     /// a test offers no completion rather than crashing.
     var wikilinkNoteTitles: [String] = []
     var wikilinkBoardTitles: [String] = []
-    /// Whether reveal-on-caret narrows from paragraph to span for this card's bold/italic runs
-    /// (ADR-0037 §D8), travelling the same route `hidesMarkup` above already does:
-    /// `WorkspaceView.applyBoardSettings()` → `WorkspaceController.revealsInlineSpans` →
-    /// `StickyTextCard`. A defaulted `var`, not a `let`: the six preview/test construction
-    /// sites that predate this property must keep compiling unmodified. A card's `hiddenKind`
-    /// switch has no `.strikethrough`/`.link` case (ADR-0029 §D17, not widened by this chain),
-    /// so this setting only ever narrows the card's bold/italic reveal.
+    /// Whether reveal-on-caret narrows from paragraph to span for this card's emphasis,
+    /// strikethrough and link runs (ADR-0037 §D8), travelling the same route `hidesMarkup`
+    /// above already does: `WorkspaceView.applyBoardSettings()` →
+    /// `WorkspaceController.revealsInlineSpans` → `StickyTextCard`. A defaulted `var`, not a
+    /// `let`: the six preview/test construction sites that predate this property must keep
+    /// compiling unmodified. Since ADR-0037's §D8 amendment, `Coordinator.hiddenKind(for:)`
+    /// maps `.strikethrough` and `.link` the way the note editor's table does.
     var revealsInlineSpans: Bool = false
     /// Which of this card's headings are folded (ADR-0028 §D8), as ordinals into
     /// `NoteOutline.entries(in:)` over this card's own text - the numbers `NoteTab.foldedEntries`

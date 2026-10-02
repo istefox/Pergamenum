@@ -402,25 +402,14 @@ extension NoteTextView {
             textView.updateTrackingAreas()
         }
 
-        /// One span's hidden marker, its range relative to its own paragraph's start - the
-        /// key space `EditorDecorationDelegate` reads at layout time (ADR-0018 §D1).
-        ///
-        /// A `.list` marker's range starts at the paragraph's own start, indentation
-        /// included, and not at the marker character the way `.heading`/`.emphasis` do
-        /// (ADR-0028 §D4): `listMarkerSpan` deliberately begins its span *after* the indent
-        /// (`absolute(indent.count, marker.length)`), and the indent has to be inside the
-        /// range or the delegate cannot collapse it - nor read the item's nesting level back
-        /// out of it, which it does at layout time because `HiddenMarker.Kind.list` carries
-        /// no level of its own. Only the start moves; the end is the span's own, so the
-        /// range still stops at the marker's trailing space.
         /// Which kind of hidden marker a span becomes, or none for a span that is only
         /// coloured.
         ///
-        /// The note editor's own table and deliberately not the card's: `CardTextView`
-        /// keeps a switch of its own ending in `default: nil`, and that `default` is the
-        /// seam ADR-0029 §D17 relies on to keep this chain's four constructs - a live
-        /// `NSView` grid above all - out of a card whose text view is deallocated on every
-        /// culling-rect crossing. The two are one call apart on purpose.
+        /// The note editor's own table, not the card's: `CardTextView`'s switch ends in
+        /// `default: nil`, the seam ADR-0029 §D17 relies on to keep the live `NSView` grid
+        /// above all, then blockquote, rule and message anchor out of a card whose text
+        /// view is deallocated on every culling-rect crossing; ADR-0037's §D8 amendment
+        /// gave the card strikethrough and links. The two are one call apart on purpose.
         static func hiddenKind(for span: MarkdownStyler.Span) -> HiddenMarker.Kind? {
             switch span {
             case .headingMarker: .heading
@@ -481,6 +470,17 @@ extension NoteTextView {
             ]
         }
 
+        /// One span's hidden marker, its range relative to its own paragraph's start - the
+        /// key space `EditorDecorationDelegate` reads at layout time (ADR-0018 §D1).
+        ///
+        /// A `.list` marker's range starts at the paragraph's own start, indentation
+        /// included, and not at the marker character the way `.heading`/`.emphasis` do
+        /// (ADR-0028 §D4): `listMarkerSpan` deliberately begins its span *after* the indent
+        /// (`absolute(indent.count, marker.length)`), and the indent has to be inside the
+        /// range or the delegate cannot collapse it - nor read the item's nesting level back
+        /// out of it, which it does at layout time because `HiddenMarker.Kind.list` carries
+        /// no level of its own. Only the start moves; the end is the span's own, so the
+        /// range still stops at the marker's trailing space.
         static func hiddenMarker(
             _ kind: HiddenMarker.Kind, at span: NSRange, paragraphStart: Int
         ) -> HiddenMarker {

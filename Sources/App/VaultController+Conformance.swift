@@ -12,10 +12,6 @@ extension VaultController {
 
     /// Validates the open note as the editor has it, unsaved changes included.
     func violations(for note: OpenNote) -> NoteViolations {
-        session?.violations(path: note.relativePath, title: note.title, text: note.text)
-            ?? NoteViolations(
-                name: [], frontmatter: [], tags: [],
-                relatedMissingInSection: [], relatedMissingInFrontmatter: []
-            )
+        session?.violations(path: note.relativePath, title: note.title, text: note.text) ?? NoteViolations()
     }
 }

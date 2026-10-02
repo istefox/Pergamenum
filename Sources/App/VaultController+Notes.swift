@@ -186,7 +186,7 @@ extension VaultController {
     var isOpenNoteVisible: Bool { openNote != nil && !isComposingNote }
 
     /// The breadcrumb `VaultTopBar` draws (2026-08-28, Note-pane parity chain), mirroring
-    /// `WorkspaceController.breadcrumb` (`WorkspaceController.swift:225-237`): `"Note"` as
+    /// `WorkspaceController.breadcrumb` (`WorkspaceController+Navigation.swift`): `"Note"` as
     /// the root instead of `"Workspace"`, the open note instead of the open board.
     ///
     /// It walks `openNote`, not the sidebar's own selection - there is no `WorkspaceSelection`

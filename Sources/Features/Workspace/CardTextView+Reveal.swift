@@ -19,7 +19,8 @@ extension CardTextView.Coordinator {
     /// card because of that is the whole of R-04 lost.
     ///
     /// Only the paragraphs whose state changed are re-read, never the document - this runs on
-    /// every arrow key, the same restraint `NoteTextView+Reveal.swift:66-88` keeps.
+    /// every arrow key, the same restraint `RevealController.apply(to:)` keeps
+    /// (`NoteTextView+Reveal.swift`).
     @discardableResult
     func applyReveal(to textView: NSTextView) -> Set<Int> {
         // `hasMarkedText()` first, rather than trusting `markedRange()` to answer `NSNotFound`

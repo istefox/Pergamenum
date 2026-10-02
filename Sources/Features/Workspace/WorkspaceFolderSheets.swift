@@ -315,10 +315,7 @@ private struct WorkspaceNameProblems: View {
     private var lines: [String] {
         switch state {
         case .invalid(let violations):
-            ConformanceText.lines(NoteViolations(
-                name: violations, frontmatter: [], tags: [],
-                relatedMissingInSection: [], relatedMissingInFrontmatter: []
-            ))
+            ConformanceText.lines(NoteViolations(name: violations))
         case .taken:
             ["Esiste già un elemento con questo nome in \(parent.isEmpty ? "«(radice)»" : "«\(parent.value)»")"]
         case .ok:

@@ -30,12 +30,7 @@ extension DayController {
             return false
         }
         if !outcome.introduced.isEmpty {
-            let reasons = ConformanceText.lines(
-                NoteViolations(
-                    name: [], frontmatter: [], tags: outcome.introduced,
-                    relatedMissingInSection: [], relatedMissingInFrontmatter: []
-                )
-            )
+            let reasons = ConformanceText.lines(NoteViolations(tags: outcome.introduced))
             lastDrop = Drop(
                 summary: "Non spostato: \(reasons.joined(separator: ", "))",
                 journalID: nil,

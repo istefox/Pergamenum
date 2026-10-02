@@ -4,9 +4,8 @@ import SwiftUI
 // docs/plans/pratiche-note-task-workspace-links.md, Task 5 - R-04, R-06, R-08, R-09.
 //
 // The three sections `inspector` (`PratichePane+Inspector.swift`) appends under
-// `pratica.md`'s body. `BoardTray.traySection`'s shape is reproduced rather than
-// shared - that helper is `private` to a different `View` type - as `linksSection`
-// below.
+// `pratica.md`'s body. `BoardTray.swift`'s `TraySection` has the same shape and is
+// reproduced here as `linksSection` rather than shared: it is `private` to that file.
 //
 // Resolution happens here, per draw, rather than once and cached in `@State` the way
 // `BoardTray` holds its own dashboard: that tray redraws on every observable change a

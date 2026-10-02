@@ -30,8 +30,8 @@ import SwiftUI
 ///   `MarkdownAttributedText.clickable(_:url:)`, never underlined) and carry a URL under
 ///   `.editorLink`, never the standard `.link` (issue #191): `.link` is what makes AppKit engage
 ///   its own automatic, unreliable click-navigation gesture under this app's TextKit 2
-///   substitution, which this file's own `FormattingTextView.swift` twin resolves by hand
-///   instead - `.link` bought nothing here but a misfire risk. Unlike
+///   substitution, which `FormattingTextView+Clicks.swift`'s `followLinkIfPresent(at:)` resolves
+///   by hand instead - `.link` bought nothing here but a misfire risk. Unlike
 ///   `MarkdownAttributedText.attributes(for:theme:links:)`, this table takes no `links:` toggle
 ///   at all - there is nothing to switch, because whether a card's links navigate is decided
 ///   entirely by `FormattingTextView`'s own click handling, not by which attribute key is

@@ -301,6 +301,17 @@ Corpo.
     controller.close()
 }
 
+/// With no vault open there is no linter to ask, and the open note is reported clean rather
+/// than refused: the text below has a foreign key an open session would flag.
+@MainActor
+@Test func theOpenNoteHasNoViolationsWithoutAnOpenVault() {
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    let text = "---\ndate: 2026-08-11\ntags:\n  - type-note\ntitle: vietato\n---\n\nCorpo.\n"
+    let note = VaultController.OpenNote(relativePath: "Nota.md", title: "Nota", text: text, savedText: text)
+
+    #expect(controller.violations(for: note).isEmpty)
+}
+
 @MainActor
 @Test func aCaptureUnderAListDoesNotBecomePartOfTheLastBullet() async throws {
     // The shape a daily note is always in by the afternoon: a Timeline section whose

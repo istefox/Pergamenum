@@ -22,8 +22,8 @@ extension NSAttributedString.Key {
     /// drag-to-select everywhere, not just on links. Every click this app cares about is
     /// already resolved by hand (`characterIndexForInsertion(at:)` plus a storage lookup at
     /// `CompletingTextView+Pasteboard.swift`'s `followLinkIfPresent(at:)` and its
-    /// `FormattingTextView.swift` twin), so nothing depended on AppKit's own gesture - this
-    /// key just stops offering it one to misfire on.
+    /// `FormattingTextView+Clicks.swift` twin), so nothing depended on AppKit's own
+    /// gesture - this key just stops offering it one to misfire on.
     static let editorLink = NSAttributedString.Key("editorLink")
 }
 

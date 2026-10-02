@@ -106,10 +106,7 @@ struct RenameNoteSheet: View {
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { if canRename { onConfirm(title) } }
 
-            ForEach(ConformanceText.lines(NoteViolations(
-                name: violations, frontmatter: [], tags: [],
-                relatedMissingInSection: [], relatedMissingInFrontmatter: []
-            )), id: \.self) { line in
+            ForEach(ConformanceText.lines(NoteViolations(name: violations)), id: \.self) { line in
                 Text(line).themedText(.caption, color: .taskOverdue)
             }
 
