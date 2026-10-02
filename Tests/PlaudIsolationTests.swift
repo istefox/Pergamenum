@@ -18,7 +18,11 @@ import Testing
         // The tree is read once per test run, shared with the other source guards (R-19). A tree
         // that could not be walked throws here, as the enumerator's `nil` recorded an issue.
         for file in try SourceTreeSnapshot.files(under: "Sources") {
-            guard let contents = file.contents else { continue }
+            guard let contents = file.contents else {
+                    // PG-128: a file this guard cannot read is a file it cannot vouch for.
+                    Issue.record("unreadable source file: \(file.path)")
+                    continue
+                }
             if contents.contains("URLSession") {
                 filesMentioningURLSession.append(file.path)
             }
