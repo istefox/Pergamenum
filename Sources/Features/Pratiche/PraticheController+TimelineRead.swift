@@ -255,10 +255,10 @@ extension PraticheController {
     /// The timestamp the row's accessibility identifier carries
     /// (`pratiche-entry-<timestamp>`, UX-BLUEPRINT's checklist).
     ///
-    /// GMT like `PraticaEntry.headingFormatter`, which both writes and reads the heading
-    /// back (ADR-0076 §D1), and for the same reason: the id is derived from a heading's own
-    /// digits, so a zone difference would give one entry two identifiers depending on where
-    /// the Mac is standing.
+    /// GMT, and kept GMT on purpose when PG-367 moved the heading's own digits to the writer's
+    /// zone: the id is derived from the heading's instant (`PraticaManualEntry.date`, the digits
+    /// less the heading's offset), so one entry has one identifier wherever the Mac is standing,
+    /// and every entry written before PG-367 keeps the identifier it already had.
     nonisolated static let entryIDFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

@@ -69,7 +69,7 @@ struct PraticaTimelineEntry: Equatable, Sendable, Identifiable {
 }
 
 /// Where a row sits and how it is coloured (SPEC "Timeline model" Lane paragraph,
-/// DESIGN.md "Binding decisions"): `received` left, `sent` right, `entry` full width.
+/// DESIGN.md "Binding decisions"): `received` left, `sent` right, `entry` the whole readable column.
 enum PraticaLane: Equatable, Sendable {
     case received
     case sent
@@ -256,7 +256,7 @@ enum PraticaTimelineModel {
 
     /// Direction is carried by more than colour (R-25: "always redundant"): a glyph,
     /// a label, and the lane's own `ColorToken` (R-39). Never used to draw colour
-    /// alone - `laneColorToken(_:)` is what the coder still reads through a token,
+    /// alone - `surfaceToken(for:)` is what the coder still reads through a token,
     /// this is the accessible-redundancy half.
     ///
     /// The two arrows are the blueprint's own («direction glyph `arrow.down.left` /
@@ -280,13 +280,13 @@ enum PraticaTimelineModel {
         }
     }
 
-    /// The three tokens declared in `Sources/DesignSystem/TokenKeys.swift`
-    /// (`.surfaceReceived`/`.surfaceSent`/`.surfaceEntry`, R-39).
-    static func laneColorToken(_ lane: PraticaLane) -> ColorToken {
-        switch lane {
+    /// The row's surface (R-39): one token per message lane and one per manual-entry kind, so a
+    /// note and a call never read as each other or as mail. Every entry but a call is a note.
+    static func surfaceToken(for entry: PraticaTimelineEntry) -> ColorToken {
+        switch lane(for: entry) {
         case .received: .surfaceReceived
         case .sent: .surfaceSent
-        case .entry: .surfaceEntry
+        case .entry: entry.kind == .call ? .surfaceEntryCall : .surfaceEntryNote
         }
     }
 

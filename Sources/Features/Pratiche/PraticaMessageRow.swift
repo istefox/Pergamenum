@@ -59,7 +59,7 @@ struct PraticaMessageRow: View {
         // dimmed rather than hidden, since the message *is* part of the pratica.
         .opacity(isPending ? 0.6 : 1)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.color(PraticaTimelineModel.laneColorToken(lane)))
+        .background(theme.color(PraticaTimelineModel.surfaceToken(for: entry)))
         .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityText)
@@ -109,7 +109,7 @@ struct PraticaMessageRow: View {
     }
 
     /// R-05: drawn only when this message carries a link at all - `PraticaMessageNoteSlot`
-    /// in the timeline's own aligned column is what shows where it resolves to; this is
+    /// in the note slot beside the lane is what shows where it resolves to; this is
     /// only the fact that one exists, direction's own third and fourth carriers already
     /// spoken for (R-25).
     @ViewBuilder
@@ -224,15 +224,16 @@ struct PraticaMessageRow: View {
         }
     }
 
-    /// «Apri in Mail · Aggiungi nota · Aggiungi telefonata · Collega nota… · Altro ▸»: the
-    /// catalogue's commands (the *same* list the row's context menu iterates, ADR-0023 §D1: a
-    /// command is named once and rendered on every surface, never written out twice), split by
-    /// `MessageCommand.footerSplit` into a few text buttons and an «Altro» menu holding the rest,
-    /// so the footer stays one line at a lane's width instead of breaking inside every word.
+    /// «Apri in Mail · Aggiungi nota · Altro ▸»: the catalogue's commands (the *same* list the
+    /// row's context menu iterates, ADR-0023 §D1: a command is named once and rendered on every
+    /// surface, never written out twice), split by `MessageCommand.footerSplit` into two text
+    /// buttons and an «Altro» menu holding the rest, so the footer stays one line at a lane's
+    /// width (`PraticaLaneRowLayout`).
     ///
     /// `MessageMenuItems.item` draws an argument-carrying command as a submenu wherever it is
     /// drawn, so «Sposta in ▸» inside «Altro» offers the same destinations as the context menu.
-    /// Where even the primary verbs do not fit on one line, they stack rather than wrap.
+    /// Where even the two primary verbs do not fit on one line - a very narrow timeline - they
+    /// stack rather than wrap.
     @ViewBuilder
     private var footer: some View {
         if let actions {

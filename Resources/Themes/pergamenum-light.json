@@ -18,7 +18,9 @@
       "sunken": { "$value": "#F2EFE9" },
       "received": { "$value": "#F1EFEA" },
       "sent": { "$value": "#E7EEF6" },
-      "entry": { "$value": "#FBF2D9" }
+      "entry": { "$value": "#FBF2D9" },
+      "entryNote": { "$value": "#FFF1BF" },
+      "entryCall": { "$value": "#DFF2E3" }
     },
     "border": {
       "subtle": { "$value": "#E5E0D8" },

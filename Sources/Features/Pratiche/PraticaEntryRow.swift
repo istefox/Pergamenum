@@ -2,11 +2,13 @@ import SwiftUI
 
 // ADR-0036 (A pratica is a folder that fills itself from a copy of Mail's index, and
 // never from Mail), plan docs/superpowers/plans/2026-09-09-pratiche.md, Task 6 -
-// R-23, R-24, R-27, R-39; DESIGN.md "Binding decisions" (manual entries full width),
+// R-23, R-24, R-27, R-39; DESIGN.md "Binding decisions" (manual entries full width, the whole
+// readable column for a free entry, `PraticaLaneRowLayout`),
 // UX-BLUEPRINT "Timeline column anatomy" §5.
 //
-// A «Nota» or «Telefonata» written by hand: one `## YYYY-MM-DD HH:MM <Kind> ·
-// <Controparte>` heading of `pratica.md` and everything under it.
+// A «Nota» or «Telefonata» written by hand: one `## YYYY-MM-DD HH:MM [±hh:mm] <Kind> ·
+// <Controparte>` heading of `pratica.md` and everything under it (PG-367: the offset is the
+// zone the digits were written in; a heading without one reads as UTC).
 //
 // **Read-only, deliberately** (ADR §D13): the blueprint's inline text view bound to a
 // range of `pratica.md` is the shape of every text-loss defect this repo has
@@ -54,7 +56,8 @@ struct PraticaEntryRow: View {
         }
         .padding(theme.spacing(.s))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.color(PraticaTimelineModel.laneColorToken(.entry)))
+        // Its own kind's surface, anchored or free: a note's amber, a call's green.
+        .background(theme.color(PraticaTimelineModel.surfaceToken(for: entry)))
         .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityText)

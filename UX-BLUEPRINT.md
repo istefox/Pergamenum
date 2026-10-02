@@ -58,13 +58,19 @@ No new `Window` scene, no floating panel, no `MenuBarExtra`.
      Received rows aligned leading at 70 % width, sent rows aligned trailing at 70 % width, lane
      background from tokens (`surface.received`, `surface.sent` — new tokens), direction glyph
      `arrow.down.left` / `arrow.up.right` beside the time for colour-blind users.
+     *Amended 2026-10-01 (ADR-0076 follow-up):* the rows lay out in a leading column capped at
+     720 pt (`spacing.readable`), the note column beside each card on its free side, and the
+     selected card is outlined in `accentPrimary` instead of the full-row highlight.
    - Message row, expanded: body as `MarkdownBlocksView`, «Testo citato» native disclosure.
    - Message row footer, collapsed and expanded alike (ADR-0076 implementation notes): «Apri in
      Mail» · «Aggiungi nota» · «Aggiungi telefonata» · «Collega nota…» · «Altro ▸» (DESIGN.md).
      Double-click on a row, or Return on the selected row, opens or closes it.
+     *Amended 2026-10-01:* the footer is «Apri in Mail» · «Aggiungi nota» · «Altro ▸»; the call and
+     note-link verbs live in «Altro».
    - Pending row: dimmed, «Corpo non ancora scaricato», «Apri in Mail» button.
    - Not-in-Mail row: subject as plain text + caption «non più in Mail».
-   - Manual entry row (full width, token `surface.entry`): glyph `phone` / `pencil`, time,
+   - Manual entry row (full width, token `surface.entry`; *amended 2026-10-01:* `surface.entryNote`
+     for a note, `surface.entryCall` for a call): glyph `phone` / `pencil`, time,
      title, body editable inline (text view bound to the heading's range in `pratica.md`).
    - Gap affordance: hovering the space between two rows shows a hairline with «Inserisci qui»;
      click inserts an entry at the midpoint timestamp.
@@ -176,7 +182,9 @@ performs blind from the keyboard.
   inspector), not `RecordingsPane` (single column). The pane-owned list column is what keeps the
   app sidebar flat.
 - **Two new surface tokens** (`surface.received`, `surface.sent`, `surface.entry`) join the theme
-  JSON for light and dark; the binding rule (no hardcoded colours) applies to lanes.
+  JSON for light and dark; the binding rule (no hardcoded colours) applies to lanes. *Amended
+  2026-10-01 (ADR-0076 follow-up):* `surface.entryNote` and `surface.entryCall` join them for
+  manual notes and calls.
 - **Sheets, not windows**: wizard, picker, add-to-pratica picker and regenerate diff are `.sheet`.
   The wizard is modal by design because the Mail selection it reads must stay stable.
 - **Exclude is undoable, not confirmed**: registers on the window's `@Environment(\.undoManager)`

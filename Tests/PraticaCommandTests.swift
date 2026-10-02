@@ -160,23 +160,27 @@ import Testing
         }
     }
 
-    @Test func thePrimaryVerbsAreMailNoteCallAndCollegaWithoutALinkedNote() {
-        for hasAttachments in [false, true] {
+    /// The hand check's decision: two primary verbs, so the footer stays one line at a lane's
+    /// width.
+    @Test func thePrimaryVerbsAreOnlyApriInMailAndAggiungiNota() {
+        for (hasAttachments, hasLinkedNote) in Self.combinations {
             let split = MessageCommand.footerSplit(
-                MessageCommand.available(hasAttachments: hasAttachments, hasLinkedNote: false)
+                MessageCommand.available(hasAttachments: hasAttachments, hasLinkedNote: hasLinkedNote)
             )
-            #expect(split.primary == [.openInMail, .addNote, .addCall, .linkNote])
+            #expect(split.primary == [.openInMail, .addNote])
         }
     }
 
-    @Test func aLinkedNoteSwapsCollegaForScollegaAndCollegaMovesToAltro() {
-        for hasAttachments in [false, true] {
-            let split = MessageCommand.footerSplit(
-                MessageCommand.available(hasAttachments: hasAttachments, hasLinkedNote: true)
-            )
-            #expect(split.primary == [.openInMail, .addNote, .addCall, .unlinkNote])
-            #expect(split.overflow.last == .linkNote)
-        }
+    @Test func altroHoldsAggiungiTelefonataAndTheNoteLinkVerbs() {
+        let unlinked = MessageCommand.footerSplit(MessageCommand.available(hasAttachments: false, hasLinkedNote: false))
+        #expect(unlinked.overflow.contains(.addCall))
+        #expect(unlinked.overflow.contains(.linkNote))
+        #expect(!unlinked.overflow.contains(.unlinkNote), "nothing to unlink without a linked note")
+
+        let linked = MessageCommand.footerSplit(MessageCommand.available(hasAttachments: false, hasLinkedNote: true))
+        #expect(linked.overflow.contains(.addCall))
+        #expect(linked.overflow.contains(.unlinkNote))
+        #expect(linked.overflow.contains(.linkNote), "«Collega nota…» stays reachable to change the link")
     }
 
     @Test func argumentCarryingCommandsAreAlwaysInAltro() {

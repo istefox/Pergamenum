@@ -105,12 +105,53 @@ import Testing
         #expect(labels.allSatisfy { !$0.isEmpty })
     }
 
-    @Test func eachLaneReadsThroughItsOwnColorToken() {
-        // R-39: the three tokens declared on `ColorToken`, one per lane, never two
-        // lanes sharing a token (or colour would stop being redundant with anything).
-        #expect(PraticaTimelineModel.laneColorToken(.received) == .surfaceReceived)
-        #expect(PraticaTimelineModel.laneColorToken(.sent) == .surfaceSent)
-        #expect(PraticaTimelineModel.laneColorToken(.entry) == .surfaceEntry)
+    // R-39 and hand check round 5: one surface token per message lane and one per manual-entry
+    // kind, never two of them shared (or colour would stop being redundant with anything).
+
+    @Test func aReceivedMessageReadsTheReceivedSurface() {
+        let message = Self.entry(id: "m1", kind: .message, date: .now, direction: .received)
+        #expect(PraticaTimelineModel.surfaceToken(for: message) == .surfaceReceived)
+    }
+
+    @Test func aSentMessageReadsTheSentSurface() {
+        let message = Self.entry(id: "m1", kind: .message, date: .now, direction: .sent)
+        #expect(PraticaTimelineModel.surfaceToken(for: message) == .surfaceSent)
+    }
+
+    @Test func aNoteReadsTheNoteSurface() {
+        let note = Self.entry(id: "n1", kind: .note, date: .now)
+        #expect(PraticaTimelineModel.surfaceToken(for: note) == .surfaceEntryNote)
+    }
+
+    @Test func aCallReadsTheCallSurface() {
+        let call = Self.entry(id: "c1", kind: .call, date: .now)
+        #expect(PraticaTimelineModel.surfaceToken(for: call) == .surfaceEntryCall)
+    }
+
+    @Test func theFourSurfacesAreFourTokens() {
+        let rows = [
+            Self.entry(id: "m1", kind: .message, date: .now, direction: .received),
+            Self.entry(id: "m2", kind: .message, date: .now, direction: .sent),
+            Self.entry(id: "n1", kind: .note, date: .now),
+            Self.entry(id: "c1", kind: .call, date: .now),
+        ]
+        #expect(Set(rows.map(PraticaTimelineModel.surfaceToken(for:))).count == 4)
+        // `surface.entry` stays the Contenitore inspector's; the timeline no longer reads it.
+        #expect(!rows.map(PraticaTimelineModel.surfaceToken(for:)).contains(.surfaceEntry))
+    }
+
+    @Test(arguments: [MessageDocument.Direction.received, .sent])
+    func anAnchoredEntryKeepsItsKindsSurfaceOnEitherSide(host: MessageDocument.Direction) {
+        // An anchored entry sits on its message's side (ADR-0076 §D3) but is never coloured
+        // like the message: its surface is its own kind's.
+        let cases: [(PraticaTimelineEntry.Kind, ColorToken)] = [(.note, .surfaceEntryNote), (.call, .surfaceEntryCall)]
+        for (kind, token) in cases {
+            var entry = Self.entry(id: "e1", kind: kind, date: .now)
+            entry.anchor = "<m@example.com>"
+            entry.placement = .anchored(messageID: "<m@example.com>")
+            entry.hostDirection = host
+            #expect(PraticaTimelineModel.surfaceToken(for: entry) == token, "\(kind) under a \(host) message")
+        }
     }
 
     // MARK: - R-26: subject link

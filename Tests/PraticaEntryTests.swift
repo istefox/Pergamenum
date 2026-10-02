@@ -12,6 +12,11 @@ import Testing
         return formatter.date(from: iso)!
     }
 
+    /// PG-367: the heading is written in the writer's zone with its offset, so every heading
+    /// test names its zone instead of depending on the Mac's. UTC here, so the digits are the
+    /// instant's; `PraticaEntryHeadingZoneTests` covers the other zones.
+    private static let utc = TimeZone(secondsFromGMT: 0)!
+
     // MARK: - R-28: the heading
 
     @Test func insertAppendsAHeadingWithTheKindsLabelAndCounterpartAtTheEnd() {
@@ -19,19 +24,19 @@ import Testing
         let timestamp = Self.date("2026-06-10T14:06:00Z")
 
         let insertion = PraticaEntry.insert(
-            kind: .call, at: timestamp, counterpart: "Mario Rossi", in: source
+            kind: .call, at: timestamp, counterpart: "Mario Rossi", timeZone: Self.utc, in: source
         )
 
-        #expect(insertion.text.hasSuffix("## 2026-06-10 14:06 Telefonata · Mario Rossi\n\n"))
+        #expect(insertion.text.hasSuffix("## 2026-06-10 14:06 +00:00 Telefonata · Mario Rossi\n\n"))
         #expect(insertion.text.hasPrefix(source))
     }
 
     @Test func insertUsesTheNotaLabelForTheNoteKind() {
         let insertion = PraticaEntry.insert(
             kind: .note, at: Self.date("2026-06-11T09:00:00Z"), counterpart: "Studio Bianchi",
-            in: ""
+            timeZone: Self.utc, in: ""
         )
-        #expect(insertion.text.contains("## 2026-06-11 09:00 Nota · Studio Bianchi"))
+        #expect(insertion.text.contains("## 2026-06-11 09:00 +00:00 Nota · Studio Bianchi"))
     }
 
     /// R-28: the cursor lands in the body, not on the heading line itself - the empty
@@ -39,9 +44,10 @@ import Testing
     @Test func theCursorRangeSitsAfterTheHeadingLine() {
         let source = "corpo esistente\n"
         let insertion = PraticaEntry.insert(
-            kind: .note, at: Self.date("2026-06-10T14:06:00Z"), counterpart: "Mario Rossi", in: source
+            kind: .note, at: Self.date("2026-06-10T14:06:00Z"), counterpart: "Mario Rossi",
+            timeZone: Self.utc, in: source
         )
-        let headingLine = "## 2026-06-10 14:06 Nota · Mario Rossi"
+        let headingLine = "## 2026-06-10 14:06 +00:00 Nota · Mario Rossi"
         guard let headingRange = insertion.text.range(of: headingLine) else {
             Issue.record("the inserted text must contain the heading line")
             return
@@ -78,6 +84,9 @@ import Testing
         // heading this inserts always parses back into a timeline row.
         #expect(PraticaEntry.headingFormatter.dateFormat == "yyyy-MM-dd HH:mm")
         #expect(PraticaEntry.headingFormatter.locale?.identifier == "en_US_POSIX")
+        // GMT: the writer shifts the instant by the offset before formatting, and the reader
+        // shifts the digits back (PG-367), so the formatter's own zone must not add a second one.
+        #expect(PraticaEntry.headingFormatter.timeZone.secondsFromGMT() == 0)
     }
 
     // MARK: - ADR-0076 §D1, R-03: an entry anchored to a message
@@ -85,12 +94,12 @@ import Testing
     @Test(arguments: [LineBreak.lf, .crlf])
     func anAnchoredInsertWritesTheHeadingTheAnchorLineAndAnEmptyBodyLine(_ lineBreak: LineBreak) {
         let source = lineBreak.normalised("---\ndate: 2026-06-10\n---\n\ncorpo esistente\n")
-        let appended = "## 2026-06-10 14:06 Nota · Mario Rossi" + lineBreak.characters
+        let appended = "## 2026-06-10 14:06 +00:00 Nota · Mario Rossi" + lineBreak.characters
             + "<!-- pergamenum-message: <a@rossi.it> -->" + lineBreak.characters + lineBreak.characters
 
         let insertion = PraticaEntry.insert(
             kind: .note, at: Self.date("2026-06-10T14:06:00Z"), counterpart: "Mario Rossi",
-            anchor: "<a@rossi.it>", in: source
+            anchor: "<a@rossi.it>", timeZone: Self.utc, in: source
         )
 
         #expect(insertion.text == source + lineBreak.characters + appended)
@@ -104,19 +113,21 @@ import Testing
     @Test func anInsertWithoutAnAnchorIsByteIdenticalToTodays() {
         let timestamp = Self.date("2026-06-10T14:06:00Z")
         let expected = PraticaEntry.Insertion(
-            text: "corpo esistente\n\n## 2026-06-10 14:06 Nota · Mario Rossi\n\n",
-            cursorRange: NSRange(location: 56, length: 0)
+            text: "corpo esistente\n\n## 2026-06-10 14:06 +00:00 Nota · Mario Rossi\n\n",
+            cursorRange: NSRange(location: 63, length: 0)
         )
 
         #expect(PraticaEntry.insert(
-            kind: .note, at: timestamp, counterpart: "Mario Rossi", in: "corpo esistente\n"
+            kind: .note, at: timestamp, counterpart: "Mario Rossi", timeZone: Self.utc, in: "corpo esistente\n"
         ) == expected)
         #expect(PraticaEntry.insert(
-            kind: .note, at: timestamp, counterpart: "Mario Rossi", anchor: nil, in: "corpo esistente\n"
+            kind: .note, at: timestamp, counterpart: "Mario Rossi", anchor: nil, timeZone: Self.utc,
+            in: "corpo esistente\n"
         ) == expected)
         // An id the anchor line cannot spell writes a free entry rather than a broken line.
         #expect(PraticaEntry.insert(
-            kind: .note, at: timestamp, counterpart: "Mario Rossi", anchor: "", in: "corpo esistente\n"
+            kind: .note, at: timestamp, counterpart: "Mario Rossi", anchor: "", timeZone: Self.utc,
+            in: "corpo esistente\n"
         ) == expected)
     }
 

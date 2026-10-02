@@ -18,7 +18,9 @@
       "sunken": { "$value": "#141311" },
       "received": { "$value": "#2B2A27" },
       "sent": { "$value": "#22303C" },
-      "entry": { "$value": "#3D3524" }
+      "entry": { "$value": "#3D3524" },
+      "entryNote": { "$value": "#453911" },
+      "entryCall": { "$value": "#1D3B2C" }
     },
     "border": {
       "subtle": { "$value": "#34322E" },

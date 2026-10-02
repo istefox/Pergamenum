@@ -20,13 +20,18 @@ enum ColorToken: String, TokenKey {
     case surfaceRaised = "color.surface.raised"
     case surfaceSunken = "color.surface.sunken"
 
-    // ADR-0036 (Pratiche) §D16, DESIGN.md "Binding decisions": the timeline's three
-    // surface tokens - `received` (left lane, neutral grey), `sent` (right lane, cool
-    // tint), `entry` (manual Nota/Telefonata, full width, warm tint). Direction is
-    // always redundant (glyph + alignment + colour), never colour alone (R-25, R-39).
+    // ADR-0036 (Pratiche) §D16, DESIGN.md "Binding decisions": the timeline's surface
+    // tokens - `received` (neutral grey), `sent` (cool tint), and one per manual entry
+    // kind: `entryNote` (amber, a sticky note) and `entryCall` (green, a phone), so a note
+    // and a call never read as each other or as part of the mail around them (hand check
+    // round 5). Direction is always redundant (glyph + alignment + colour), never colour
+    // alone (R-25, R-39). `entry`, the single warm tint the timeline used before, stays for
+    // the Contenitore inspector.
     case surfaceReceived = "color.surface.received"
     case surfaceSent = "color.surface.sent"
     case surfaceEntry = "color.surface.entry"
+    case surfaceEntryNote = "color.surface.entryNote"
+    case surfaceEntryCall = "color.surface.entryCall"
 
     case borderSubtle = "color.border.subtle"
     case borderStrong = "color.border.strong"
