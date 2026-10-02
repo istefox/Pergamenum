@@ -130,12 +130,12 @@ import Testing
             .openInMail: "Apri in Mail",
             .previewAttachment: "Anteprima allegato",
             .exclude: "Escludi dalla pratica",
-            .moveTo: "Sposta in…",
-            .alsoAddTo: "Aggiungi anche a…",
+            .moveTo: "Sposta in",
+            .alsoAddTo: "Aggiungi anche a",
             .regenerate: "Rigenera…",
             .addNote: "Aggiungi nota",
             .addCall: "Aggiungi telefonata",
-            .linkNote: "Collega nota…",
+            .linkNote: "Collega una nota…",
             .unlinkNote: "Scollega nota",
         ]
         for command in MessageCommand.allCases {
@@ -180,7 +180,7 @@ import Testing
         let linked = MessageCommand.footerSplit(MessageCommand.available(hasAttachments: false, hasLinkedNote: true))
         #expect(linked.overflow.contains(.addCall))
         #expect(linked.overflow.contains(.unlinkNote))
-        #expect(linked.overflow.contains(.linkNote), "«Collega nota…» stays reachable to change the link")
+        #expect(linked.overflow.contains(.linkNote), "«Collega una nota…» stays reachable to change the link")
     }
 
     @Test func argumentCarryingCommandsAreAlwaysInAltro() {

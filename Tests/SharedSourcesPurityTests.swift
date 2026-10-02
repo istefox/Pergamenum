@@ -29,7 +29,11 @@ import Testing
         // The tree is read once per test run, shared with the other source guards (R-19).
         for directory in Self.guardedDirectories {
             for file in try SourceTreeSnapshot.files(under: directory) {
-                guard let contents = file.contents else { continue }
+                guard let contents = file.contents else {
+                    // PG-128: a file this guard cannot read is a file it cannot vouch for.
+                    Issue.record("unreadable source file: \(file.path)")
+                    continue
+                }
                 if contents.contains("import Sparkle") {
                     offendingFiles.append(file.path)
                 }
@@ -65,7 +69,11 @@ import Testing
         for directory in ["Sources/Core", "Sources/Connector"] {
             for file in try SourceTreeSnapshot.files(under: directory) {
                 guard !exceptions.contains((file.relativePath as NSString).lastPathComponent) else { continue }
-                guard let contents = file.contents else { continue }
+                guard let contents = file.contents else {
+                    // PG-128: a file this guard cannot read is a file it cannot vouch for.
+                    Issue.record("unreadable source file: \(file.path)")
+                    continue
+                }
                 let importsAppKitOrSwiftUI = contents
                     .components(separatedBy: .newlines)
                     .map { $0.trimmingCharacters(in: .whitespaces) }

@@ -25,7 +25,7 @@ struct TaskSettings: View {
             }
             .accessibilityIdentifier("settings-block-duration")
             Text(
-                "Vale per «Inserisci Blocco Tempo», per un task trascinato su un'ora "
+                "Vale per «Inserisci blocco tempo», per un task trascinato su un'ora "
                     + "e per i blocchi creati da un task con orario."
             )
                 .themedText(.caption, color: .textTertiary)

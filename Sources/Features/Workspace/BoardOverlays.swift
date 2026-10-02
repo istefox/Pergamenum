@@ -76,7 +76,7 @@ struct BoardGuides: View {
 struct BoardFormatBarLayer: View {
     let workspace: WorkspaceController
     /// `WorkspaceView`'s own `viewportSize`, threaded through to `placement` for the horizontal
-    /// clamp `BoardFormatBarGeometry` names as a future need. Nothing drawn today reads it.
+    /// clamp (PG-135).
     let viewport: CGSize
 
     var body: some View {

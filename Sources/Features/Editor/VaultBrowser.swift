@@ -230,7 +230,7 @@ struct VaultBrowser: View {
             HStack(spacing: theme.spacing(.xs)) {
                 Image(systemName: isStarred ? "star.fill" : "star")
                     .themedText(.body, color: isStarred ? .accentPrimary : .textTertiary)
-                Text(isStarred ? "Preferita" : "Aggiungi alle preferite")
+                Text(isStarred ? "Togli dalle preferite" : "Aggiungi alle preferite")
                     .themedText(.caption, color: .textSecondary)
                 Spacer()
             }

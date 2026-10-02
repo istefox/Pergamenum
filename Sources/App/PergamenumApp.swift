@@ -117,6 +117,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let schedaPath { contenitore?.selection = schedaPath }
     }
 
+    /// Which app was in front before this one, so an all-capture batch can give the
+    /// foreground back (PG-132, SPEC §9). Created with the delegate, before any link.
+    private let foreground = ForegroundHandBack()
+
     func application(_ application: NSApplication, open urls: [URL]) {
         let routes = urls.compactMap(PergamenumRoute.init)
         guard !routes.isEmpty else { return }
@@ -126,9 +130,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         //
         // No explicit `NSApp.activate` here: opening the URL already brings the app
         // forward when it should, and calling it from a non-user-triggered path is
-        // exactly the case the AppKit guidance warns about.
-        Task { @MainActor [vault] in
+        // exactly the case the AppKit guidance warns about. The opposite case is the one
+        // handled: a batch made only of captures must not leave the app in front
+        // (`PergamenumRoute.raisesApp`), so once every route has landed the foreground
+        // goes back to the app it was taken from.
+        let handsBack = ForegroundHandBack.handsBackActivation(after: routes)
+        Task { @MainActor [vault, foreground] in
             for route in routes { await vault?.handle(route) }
+            if handsBack { foreground.handBack() }
         }
     }
 }
@@ -490,7 +499,7 @@ struct TaskCommands: Commands {
             .disabled(vault.openNote == nil)
 
             Divider()
-            Button("Completa o riapri") { actions.run(.taskToggle) }
+            Button(ShortcutCommand.taskToggle.title) { actions.run(.taskToggle) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskToggle))
                 .disabled(!actions.canRun(.taskToggle))
             // The menu is the whole point of this entry as much as the key is: the UX
@@ -503,13 +512,13 @@ struct TaskCommands: Commands {
                 .disabled(!actions.canRun(.taskAddSubtask))
 
             Divider()
-            Button("Pianifica oggi") { actions.run(.taskToday) }
+            Button(ShortcutCommand.taskToday.title) { actions.run(.taskToday) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskToday))
-            Button("Domani") { actions.run(.taskTomorrow) }
+            Button(ShortcutCommand.taskTomorrow.title) { actions.run(.taskTomorrow) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskTomorrow))
-            Button("+2 giorni") { actions.run(.taskPlusTwo) }
+            Button(ShortcutCommand.taskPlusTwo.title) { actions.run(.taskPlusTwo) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskPlusTwo))
-            Button("Settimana prossima") { actions.run(.taskNextWeek) }
+            Button(ShortcutCommand.taskNextWeek.title) { actions.run(.taskNextWeek) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskNextWeek))
             Button("Togli la data") {
                 Task { @MainActor in await vault.rescheduleSelectedTask(daysFromToday: nil) }

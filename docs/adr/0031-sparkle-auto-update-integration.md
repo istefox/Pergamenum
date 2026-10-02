@@ -481,7 +481,7 @@ telemetry."* An update check is a network call, so the principle has to either f
 or admit a named exception. It admits one, on these terms:
 
 - **What crosses the wire.** Two `GET` requests, both initiated by the user choosing «Cerca
-  Aggiornamenti…» and never otherwise: one for `appcast.xml`, and one for the release archive if
+  aggiornamenti…» and never otherwise: one for `appcast.xml`, and one for the release archive if
   and only if the user then chooses to install. The request carries the app's own version
   identifiers (`CFBundleVersion`, `CFBundleShortVersionString`) in Sparkle's user-agent, and the
   requester's IP address as an unavoidable artifact of any HTTP request. **No vault content, no

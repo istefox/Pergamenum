@@ -100,9 +100,14 @@ struct ViewCommands: Commands {
                 .keyboardShortcut(shortcuts.shortcut(for: .refreshRecordings))
                 .disabled(!actions.canRun(.refreshRecordings))
             Divider()
-            Button("Preferita") { actions.run(.toggleStar) }
-                .keyboardShortcut(shortcuts.shortcut(for: .toggleStar))
-                .disabled(!actions.canRun(.toggleStar))
+            // The pair every star surface uses (NoteRowMenu, StarredPane, the inspector), and the
+            // state-dependent title is the frontmatter toggle's own shape above.
+            Button(vault.openNote.map { vault.isStarred($0.relativePath) } == true
+                   ? "Togli dalle preferite" : "Aggiungi alle preferite") {
+                actions.run(.toggleStar)
+            }
+            .keyboardShortcut(shortcuts.shortcut(for: .toggleStar))
+            .disabled(!actions.canRun(.toggleStar))
             Button("Applica un template…") { actions.run(.applyTemplate) }
                 .keyboardShortcut(shortcuts.shortcut(for: .applyTemplate))
                 .disabled(!actions.canRun(.applyTemplate))
@@ -110,8 +115,6 @@ struct ViewCommands: Commands {
             Button("Anteprima rapida") { actions.run(.quickLook) }
                 .keyboardShortcut(shortcuts.shortcut(for: .quickLook))
                 .disabled(!actions.canRun(.quickLook))
-            Button("Rigenera indice") { Task { await vault.rescan() } }
-                .disabled(vault.root == nil)
         }
     }
 }
@@ -176,7 +179,7 @@ struct InsertCommands: Commands {
 
     var body: some Commands {
         CommandMenu("Inserisci") {
-            Button("Wikilink") { actions.run(.insertWikilink) }
+            Button(ShortcutCommand.insertWikilink.title) { actions.run(.insertWikilink) }
                 .keyboardShortcut(shortcuts.shortcut(for: .insertWikilink))
             Button("Tag") { navigation.insert("#") }
             Button("Task") { navigation.insert("- [ ] ") }
@@ -185,7 +188,7 @@ struct InsertCommands: Commands {
             Button("Scadenza") { navigation.insert("!\(CalendarDate.today) ") }
             Button("Promemoria") { navigation.insert("@remind(\(CalendarDate.today) 09:00) ") }
             Divider()
-            Button("Nota correlata…") { actions.run(.insertRelated) }
+            Button(ShortcutCommand.insertRelated.title) { actions.run(.insertRelated) }
                 .keyboardShortcut(shortcuts.shortcut(for: .insertRelated))
                 .disabled(!actions.canRun(.insertRelated))
             Button("Tabella") { navigation.insert(EditorCommand.table) }
@@ -251,7 +254,7 @@ struct HelpCommands: Commands {
     }
 }
 
-/// «Cerca Aggiornamenti…» in the Pergamenum menu (ADR-0031, R-02).
+/// «Cerca aggiornamenti…» in the Pergamenum menu (ADR-0031, R-02).
 ///
 /// `after: .appInfo` is Sparkle's own documented placement and the standard macOS one:
 /// straight under «Informazioni su Pergamenum».
@@ -267,7 +270,7 @@ struct UpdateCommands: Commands {
 
     var body: some Commands {
         CommandGroup(after: .appInfo) {
-            Button("Cerca Aggiornamenti…") { updater.checkForUpdates() }
+            Button("Cerca aggiornamenti…") { updater.checkForUpdates() }
                 .disabled(!updater.canCheckForUpdates)
         }
     }

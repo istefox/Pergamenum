@@ -18,7 +18,7 @@ enum ContenitoreCommand: String, CaseIterable, Sendable {
     case trash
 
     /// Where the menu bar carries a command (ADR-0071 §D11, gate G2): the «Documento» menu
-    /// holds what the app did not already have; «Copia link Pergamenum» and «Rivela nel Finder»
+    /// holds what the app did not already have; «Copia link Pergamenum» and «Mostra nel Finder»
     /// are File's existing entries and «Sposta nel Cestino» is Modifica's, each dispatching to
     /// the selected document while the pane is on screen (§D12).
     enum MenuBarMenu: Sendable {
@@ -32,7 +32,7 @@ enum ContenitoreCommand: String, CaseIterable, Sendable {
         case .classify: "Classifica…"
         case .open: "Apri"
         case .openScheda: "Apri scheda"
-        case .revealInFinder: "Rivela nel Finder"
+        case .revealInFinder: "Mostra nel Finder"
         case .copyLink: "Copia link Pergamenum"
         case .rename: "Rinomina…"
         case .moveTo: "Sposta in…"

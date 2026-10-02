@@ -145,7 +145,10 @@ extension TableGridView {
             label: columnLabel, buttons: [addColumnButton, removeColumnButton], startingAt: x, y: y
         )
         invalidateIntrinsicContentSize()
-        setFrameSize(intrinsicContentSize)
+        let size = intrinsicContentSize
+        setFrameSize(size)
+        // PG-102: the one crossing to `TableAttachmentViewProvider.attachmentBounds`.
+        measuredSize.size = size
     }
 
     /// Places one group's label followed by its buttons, left to right, and returns both the

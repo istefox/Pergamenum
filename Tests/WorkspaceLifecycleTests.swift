@@ -654,3 +654,35 @@ private func conflictedBoard(
         #expect(!theme.inheritedTokens.contains("color.sticky.purple"), "\(id) should define color.sticky.purple")
     }
 }
+
+// MARK: - PG-289: a refit asked for just before a board change survives it
+
+@MainActor
+@Test func openingAnotherBoardKeepsARefitRequestedWithinTheDebounce() async throws {
+    // Pre-fix: `load(board:)` called `cancelPendingRefit()`, so a concentrazione
+    // «dimensione reale» asked for within the ~350 ms debounce before the switch was
+    // dropped and the new board opened at whatever framing it had. The request is about
+    // the viewport, not the board (`deferPendingRefit()`), so it is kept and applied to
+    // the board that is on screen once the layout settles.
+    let root = try CanvasTemporaryRoot()
+    try root.makeDirectory("A")
+    try root.makeDirectory("B")
+    let store = CanvasStore(root: root.url)
+    let boardA = try store.createBoard(named: "A", in: "A")
+    let boardB = try store.createBoard(named: "B", in: "B")
+    let controller = WorkspaceController()
+    controller.attach(to: store)
+    controller.open(board: boardA)
+
+    controller.requestRefit(.actualSize)
+    controller.applyPendingRefit(in: CGSize(width: 800, height: 600))
+
+    controller.open(board: boardB)
+
+    #expect(controller.pendingRefit == .actualSize)
+    #expect(controller.refitTask == nil)
+
+    // `detach()` still drops it: there is no board left to frame (#569 point 7).
+    controller.detach()
+    #expect(controller.pendingRefit == nil)
+}

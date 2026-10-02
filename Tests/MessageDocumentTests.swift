@@ -37,6 +37,14 @@ import Testing
             Self.sampleDocument(),
             tags: [Tag("type-note")!, Tag("type-email")!, Tag("topic-pratica")!, Tag("client-rossi")!, Tag("source-email")!]
         )
+        // The four closed keys the name promises (SPEC §4.3), not only the prefixed ones
+        // (PG-128): `date` and `tags` are written, `related` and `aliases` stay absent
+        // when empty.
+        #expect(text.hasPrefix("---\ndate: "))
+        #expect(text.contains("\ntags:\n"))
+        #expect(text.contains("\n  - type-note\n"))
+        #expect(!text.contains("\nrelated:"))
+        #expect(!text.contains("\naliases:"))
         #expect(text.contains("pergamenum-mail: 1"))
         #expect(text.contains("pergamenum-mail-message-id: \"<abc@rossi-spa.it>\""))
         #expect(text.contains("pergamenum-mail-direction: received"))

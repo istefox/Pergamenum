@@ -38,7 +38,7 @@ handoff; the spec wins on any conflict.
    canvas, pdf, eml, svg). If Pergamenum disappeared, the data stays usable.
 2. **Fully offline.** No network call in any feature. No server, no account, no
    telemetry. **One named exception, and only one** (ADR-0031 §D13): the update check,
-   which happens when the person chooses «Cerca Aggiornamenti…» and at no other moment -
+   which happens when the person chooses «Cerca aggiornamenti…» and at no other moment -
    no timer, no launch check, no background task. It carries the app's own version
    identifiers and nothing else: no vault content, no note text, no path, no file name,
    no tag, no task, no calendar data, ever. `SUSendsSystemProfile` stays `false`, so

@@ -49,7 +49,7 @@ private func task(_ line: String, sourcePath: String = "x.md") -> TaskItem {
         .linkBoard: "Collega una board…",
         .goToNote: "Vai alla nota di origine",
         .goToBoard: "Vai alla board collegata",
-        .assignCategory: "Assegna categoria…",
+        .assignCategory: "Assegna una categoria…",
         .removeCategory: "Togli la categoria",
     ]
     for command in TaskCommand.allCases {

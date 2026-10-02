@@ -6,7 +6,7 @@ import Testing
 // ADR-0071 (Contenitore) §D7, §D11 and §D12, plan docs/plans/contenitore.md, Task 7 - R-18, R-19,
 // R-22, R-27. Every action on a document is named once in `ContenitoreCommand` and read by the
 // inspector, the row menu and the menu bar (ADR-0023 §D1); while the pane is on screen, File's
-// «Copia link Pergamenum» and «Rivela nel Finder» act on its selection.
+// «Copia link Pergamenum» and «Mostra nel Finder» act on its selection.
 
 private let folder = "Contenitore/2026"
 private let stem = "20260929 Scansione"

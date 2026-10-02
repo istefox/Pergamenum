@@ -33,7 +33,7 @@ enum TaskCommand: String, CaseIterable, Sendable {
         case .linkBoard: "Collega una board…"
         case .goToNote: "Vai alla nota di origine"
         case .goToBoard: "Vai alla board collegata"
-        case .assignCategory: "Assegna categoria…"
+        case .assignCategory: "Assegna una categoria…"
         case .removeCategory: "Togli la categoria"
         }
     }

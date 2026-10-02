@@ -21,7 +21,12 @@ extension VaultController {
 
     @discardableResult
     func handle(_ route: PergamenumRoute) async -> Bool {
-        Self.routeLog.notice("route ricevuta: \(route.kind, privacy: .public) \(String(describing: route))")
+        // PG-125: the kind is the case name alone and is public; the route itself carries
+        // capture text, search queries and note paths and is private by name, not only by
+        // the interpolation's default.
+        Self.routeLog.notice(
+            "route ricevuta: \(route.kind, privacy: .public) \(String(describing: route), privacy: .private)"
+        )
         let outcome = await perform(route)
         Self.routeLog.notice("route esito: \(outcome, privacy: .public)")
         return outcome
@@ -141,7 +146,7 @@ extension VaultController {
             _ = try await openDailyNote(for: date)
             return true
         } catch {
-            Self.routeLog.error("daily note fallita: \(String(describing: error))")
+            Self.routeLog.error("daily note fallita: \(String(describing: error), privacy: .private)")
             recordProblem("nota giornaliera: \(error)")
             return false
         }

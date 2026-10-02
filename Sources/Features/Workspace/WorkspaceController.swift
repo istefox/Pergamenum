@@ -238,7 +238,7 @@ final class WorkspaceController {
         // moved yet.
         settleBoardEditing()
         flushPendingSave()
-        cancelPendingRefit()
+        deferPendingRefit()
 
         board = newBoard
         replaceDocument(
