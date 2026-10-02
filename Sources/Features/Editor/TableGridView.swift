@@ -128,6 +128,10 @@ final class TableGridView: NSView, NSTextFieldDelegate {
     }
     var controlLabels: [NSTextField] { [rowLabel, columnLabel] }
 
+    /// The size `layoutGrid()` last measured, for the attachment's nonisolated
+    /// `attachmentBounds` (PG-102, `TableSizeBox`); `nonisolated` so that override can read it.
+    nonisolated let measuredSize = TableSizeBox()
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         // R-05's UI test (`DesignAndReadingUITests`) finds the grid by this identifier, never

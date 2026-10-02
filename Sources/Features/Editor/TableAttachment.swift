@@ -1,5 +1,19 @@
 import AppKit
 
+/// The one value that crosses from the grid's main-actor layout into TextKit's nonisolated
+/// `attachmentBounds` (PG-102): the size `TableGridView.layoutGrid()` last measured, behind a
+/// lock, the shape `ViewBlockHeightBox` already gives the view block (ADR-0035 §D2). A class
+/// and not a property read off the view because `NSView` is `@MainActor` and the provider's
+/// `attachmentBounds` override is not.
+final class TableSizeBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: NSSize?
+    var size: NSSize? {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
+    }
+}
+
 /// The one character a GFM table's header line is substituted for (ADR-0029 §D4/§D6; plan
 /// `2026-09-02-editor-wysiwyg-unification`, Task 4) - `\u{FFFC}` carrying this attachment,
 /// whose view provider hands TextKit 2 the real `TableGridView` the Coordinator already
@@ -58,6 +72,11 @@ private final class TableAttachmentViewProvider: NSTextAttachmentViewProvider {
     /// and the paragraph under a three-row table would sit over its last row. The intrinsic
     /// size is computed from the table's own cells, so it is right the first time it is
     /// asked (§D16 probe 3's pass criterion).
+    ///
+    /// Read through `TableGridView.measuredSize` (PG-102): this override is nonisolated and
+    /// `intrinsicContentSize` is main-actor state, so the grid records the size at the end of
+    /// every `layoutGrid()` and this reads the record. A grid that has not laid out yet - none
+    /// reaches an attachment before `update(with:theme:)` - falls through to the default.
     override func attachmentBounds(
         for attributes: [NSAttributedString.Key: Any],
         location: any NSTextLocation,
@@ -65,12 +84,12 @@ private final class TableAttachmentViewProvider: NSTextAttachmentViewProvider {
         proposedLineFragment: CGRect,
         position: CGPoint
     ) -> CGRect {
-        guard let gridView else {
+        guard let size = gridView?.measuredSize.size else {
             return super.attachmentBounds(
                 for: attributes, location: location, textContainer: textContainer,
                 proposedLineFragment: proposedLineFragment, position: position
             )
         }
-        return CGRect(origin: .zero, size: gridView.intrinsicContentSize)
+        return CGRect(origin: .zero, size: size)
     }
 }
