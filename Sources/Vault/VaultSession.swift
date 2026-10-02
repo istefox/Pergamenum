@@ -373,6 +373,11 @@ final class VaultSession {
 
     // MARK: Scanning
 
+    /// Awaited between a rescan's walk and the moment its outcome replaces the index, the shape
+    /// of `ContenitoreController.observationGate`: a test holds the rescan there to land a
+    /// mutation mid-walk (PG-374). The app never sets it.
+    @ObservationIgnored var rescanGate: (@MainActor () async -> Void)?
+
     /// Full rebuild from disk. Cheap by design, and the answer to any doubt about the
     /// index being stale (SPEC §12, "rigenera indice").
     func rescan() async {
@@ -383,6 +388,7 @@ final class VaultSession {
         let cached = cache.load()
         let cachedBoardTasks = cache.loadBoardTasks()
         let root = root
+        let sequencesAtStart = appliedSequence
 
         let outcome = await Task.detached(priority: .userInitiated) {
             var scanner = VaultScanner(root: root)
@@ -390,7 +396,21 @@ final class VaultSession {
             scanner.cachedBoardTasks = cachedBoardTasks
             return scanner.scan()
         }.value
+        await rescanGate?()
+        // PG-374: a mutation `apply` took while the walk was off the main actor is at least as
+        // new as what the walk read for its path, and may be newer - a move that landed after
+        // the walk listed the folder. Replacing the index wholesale moved that row backwards
+        // (the moved note gone, its old path back) with no newer write to repair it, so those
+        // paths keep the record the index already held. The ordinary case is two file verbs in
+        // a row: `VaultController.renameNote` and `moveNote` each start a rescan they do not
+        // await, and the next verb's write lands while it walks.
+        let landedDuringScan = appliedSequence
+            .filter { sequencesAtStart[$0.key] != $0.value }
+            .map { (path: $0.key, record: index.note(at: $0.key)) }
         index.replaceAll(with: outcome, duration: clock.now - start)
+        for landed in landedDuringScan {
+            index.update(landed.record, at: landed.path)
+        }
 
         // Written after the index is in place: the cache is an optimisation, and the
         // app must be usable whether or not it can be saved (SPEC §12).
@@ -531,19 +551,22 @@ final class VaultSession {
     }
 }
 
-// MARK: - ADR-0043 §D1 - the one door onto the index
+// MARK: - ADR-0043 §D1 - the doors onto the index
 //
-// The old single-record index-refresh helper used to be this door and was reachable,
+// The old single-record index-refresh helper used to be the one door and was reachable,
 // unguarded, from five call sites (§D1's own count). Deleted rather than kept as a
 // forwarder, for the reason ADR-0041
 // §D1 already gave about the vault boundary: a guard a caller may route around is a guard
 // the next call site will route around, not out of malice but by omission. `apply` lives
-// here - the same file `index` is declared in - because `index`'s setter is `private`, and
-// this is the one function anywhere in the module allowed to call it.
+// here - the same file `index` is declared in - because `index`'s setter is `private`:
+// `apply` and `rescan` (above) are the only writers of `index`.
 extension VaultSession {
     /// Applies every mutation whose sequence is strictly newer than what this path already
     /// has, dropping the rest rather than letting an out-of-order continuation move a row
     /// backwards (§D11, widened to every writer by §D1). Returns how many were newer.
+    ///
+    /// The door for the verbs' mutations, not the only writer of `index`: a rescan replaces the
+    /// index wholesale, then overlays the paths whose sequence moved during its walk (PG-374).
     @discardableResult
     func apply(_ mutations: [VaultDisk.IndexMutation]) -> Int {
         var applied = 0
