@@ -183,7 +183,7 @@ final class DayController {
     ///
     /// `announcesRefusal` is false only for the hour drop (`drop(_:on:at:)`), so that the
     /// drop is the one place that composes its banner: it says where the task went and
-    /// that the block was not made, in one sentence. The direct «Inserisci Blocco Tempo»
+    /// that the block was not made, in one sentence. The direct «Inserisci blocco tempo»
     /// call (`DayReferences.swift`) keeps the default, since nothing else composes one for
     /// it. The drop-commit crash this chain met lives in the banner's height, not here: see
     /// `TaskDropBanner`.

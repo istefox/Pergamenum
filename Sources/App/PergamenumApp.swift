@@ -491,7 +491,7 @@ struct TaskCommands: Commands {
             .disabled(vault.openNote == nil)
 
             Divider()
-            Button("Completa o riapri") { actions.run(.taskToggle) }
+            Button(ShortcutCommand.taskToggle.title) { actions.run(.taskToggle) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskToggle))
                 .disabled(!actions.canRun(.taskToggle))
             // The menu is the whole point of this entry as much as the key is: the UX
@@ -504,13 +504,13 @@ struct TaskCommands: Commands {
                 .disabled(!actions.canRun(.taskAddSubtask))
 
             Divider()
-            Button("Pianifica oggi") { actions.run(.taskToday) }
+            Button(ShortcutCommand.taskToday.title) { actions.run(.taskToday) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskToday))
-            Button("Domani") { actions.run(.taskTomorrow) }
+            Button(ShortcutCommand.taskTomorrow.title) { actions.run(.taskTomorrow) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskTomorrow))
-            Button("+2 giorni") { actions.run(.taskPlusTwo) }
+            Button(ShortcutCommand.taskPlusTwo.title) { actions.run(.taskPlusTwo) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskPlusTwo))
-            Button("Settimana prossima") { actions.run(.taskNextWeek) }
+            Button(ShortcutCommand.taskNextWeek.title) { actions.run(.taskNextWeek) }
                 .keyboardShortcut(shortcuts.shortcut(for: .taskNextWeek))
             Button("Togli la data") {
                 Task { @MainActor in await vault.rescheduleSelectedTask(daysFromToday: nil) }

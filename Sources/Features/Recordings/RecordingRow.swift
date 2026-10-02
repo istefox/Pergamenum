@@ -28,10 +28,10 @@ struct RecordingRowPresentation: Equatable, Sendable {
         var title: String {
             switch self {
             case .elabora: "Elabora"
-            case .rivedi: "Rivedi"
+            case .rivedi: "Rivedi…"
             case .riprova: "Riprova"
             case .apriNota: "Apri nota"
-            case .elimina: "Elimina"
+            case .elimina: "Elimina…"
             case .rielabora: "Rielabora"
             }
         }

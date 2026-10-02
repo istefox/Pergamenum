@@ -20,7 +20,7 @@ enum MessageCommand: String, CaseIterable, Sendable {
     case regenerate
     /// ADR-0076 §D7 (PG-338), R-02, R-03: a «Nota» anchored to this message, written now under
     /// the message's own counterpart - on every row, the last one included. Placed just before
-    /// ADR-0049's «Collega nota…», the other verb about a note and this message, so the three
+    /// ADR-0049's «Collega una nota…», the other verb about a note and this message, so the three
     /// near labels read as one group (gate G1, decided by the implementation).
     case addNote
     /// R-02, R-03: the same, as a «Telefonata».
@@ -40,12 +40,12 @@ enum MessageCommand: String, CaseIterable, Sendable {
         case .openInMail: "Apri in Mail"
         case .previewAttachment: "Anteprima allegato"
         case .exclude: "Escludi dalla pratica"
-        case .moveTo: "Sposta in…"
-        case .alsoAddTo: "Aggiungi anche a…"
+        case .moveTo: "Sposta in"
+        case .alsoAddTo: "Aggiungi anche a"
         case .regenerate: "Rigenera…"
         case .addNote: "Aggiungi nota"
         case .addCall: "Aggiungi telefonata"
-        case .linkNote: "Collega nota…"
+        case .linkNote: "Collega una nota…"
         case .unlinkNote: "Scollega nota"
         }
     }
@@ -112,7 +112,7 @@ enum MessageCommand: String, CaseIterable, Sendable {
     /// Altro ▸». The hand check measured a footer of four verbs plus «Altro» wider than a message
     /// lane in an 800 pt timeline, so it stacked into a column and every card filled its lane;
     /// with two it stays one line down to narrow timelines, and only there does the row's
-    /// `ViewThatFits` stack it. «Aggiungi telefonata», «Collega nota…» and «Scollega nota» live in
+    /// `ViewThatFits` stack it. «Aggiungi telefonata», «Collega una nota…» and «Scollega nota» live in
     /// «Altro» with the rest, and the context menu and the accessibility actions still list every
     /// command. An argument-carrying command is never primary: it is a submenu of destinations,
     /// which «Altro» can nest. The switch is exhaustive on purpose, so a new command has to be

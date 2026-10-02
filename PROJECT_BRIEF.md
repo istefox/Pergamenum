@@ -378,7 +378,7 @@ Binding order, each yielding a usable app (SPEC §13):
   chiuso lo stesso giorno in cui l'entry sotto lo elencava come aperto. Dettaglio in `TODO.md`
   (`PG-096`, corretta oggi).
 - 2026-09-04: **ADR-0031 (aggiornamento automatico via Sparkle) implementato nel codice e nella
-  pipeline; restano aperti i gate che non sono di un agente.** «Cerca Aggiornamenti…» è nel menu
+  pipeline; restano aperti i gate che non sono di un agente.** «Cerca aggiornamenti…» è nel menu
   dell'app ed è l'unico modo di far partire un controllo: `SUEnableAutomaticChecks` è `false`, non
   c'è timer, non c'è controllo all'avvio. È l'unica eccezione nominata al principio 2 di CLAUDE.md,
   scritta per esteso in ADR-0031 §D13: passano gli identificatori di versione dell'app e nient'altro,
@@ -401,7 +401,7 @@ Binding order, each yielding a usable app (SPEC §13):
   - **Lanciare `scripts/release.sh`.** Lo lancia Stefano: quell'invocazione *è* il gate.
   - **La prova di R-08, a mano, quando esisterà la prima release:** installare la build rilasciata
     sopra `/Applications` (spostando di lato la copia precedente, mai cancellandola), tagliare una
-    seconda release, e dalla copia vecchia ancora in esecuzione scegliere «Cerca Aggiornamenti…» per
+    seconda release, e dalla copia vecchia ancora in esecuzione scegliere «Cerca aggiornamenti…» per
     vedere l'aggiornamento offerto, scaricato, verificato nella firma e installato con il riavvio.
     Poi il caso «nessun aggiornamento» e quello senza rete (Wi-Fi spento → l'avviso di Sparkle, non
     un crash).

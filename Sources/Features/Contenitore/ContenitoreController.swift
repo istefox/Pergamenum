@@ -89,7 +89,7 @@ final class ContenitoreController {
     let isIsolated: Bool
     let vault: VaultController
     @ObservationIgnored let pasteboard: NSPasteboard
-    /// «Apri» and «Rivela nel Finder» leave the app through these two, so a test can run every
+    /// «Apri» and «Mostra nel Finder» leave the app through these two, so a test can run every
     /// command, from every surface, without launching a viewer or the Finder.
     @ObservationIgnored var openFile: (URL) -> Void = { NSWorkspace.shared.open($0) }
     @ObservationIgnored var revealFiles: ([URL]) -> Void = { NSWorkspace.shared.activateFileViewerSelecting($0) }
