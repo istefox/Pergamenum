@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import Pergamenum
@@ -17,4 +18,21 @@ import Testing
 
 @Test func automaticTerminationSupportIsOffInTheRunningApp() {
     #expect(ProcessInfo.processInfo.automaticTerminationSupportEnabled == false)
+}
+
+// PG-363: a Quit AppleEvent (Quit from the Dock) reaching this host ended a unit run with
+// «The test runner exited with code 0 before finishing running tests». The host refuses it.
+// The `false` branch is the quit review itself, pinned through `QuitCoordinator` directly
+// (`QuitCoordinatorTests`), never through a delegate that would act on the live windows here.
+
+/// Pins the environment seed the refusal depends on: with no override, the default
+/// `isTestHost` reads `true` under the runner.
+@Test @MainActor func theDelegateKnowsItIsTheUnitTestHost() {
+    #expect(AppDelegate().isTestHost == true)
+}
+
+@Test @MainActor func theUnitTestHostRefusesTermination() {
+    let delegate = AppDelegate()
+    delegate.isTestHost = true
+    #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateCancel)
 }

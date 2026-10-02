@@ -310,7 +310,10 @@ move the previous copy aside rather than deleting it.
   about app-modally before anything replies, then the diary is awaited. `willTerminateNotification`
   fires after the decision to exit, so a flush started there is a write nothing waits for and a
   question asked there is too late (PG-326: Cmd+Q dropped every dirty note tab without asking). The
-  coordinator owns the one reply; a new phase goes into its order, not beside it.
+  coordinator owns the one reply; a new phase goes into its order, not beside it. One exception sits
+  in the delegate on purpose: the unit-test host refuses every termination before the coordinator
+  is asked (`AppDelegate.isTestHost`, PG-363), so the coordinator, which knows nothing of the
+  process environment, is never consulted there.
 - Verify every change against `docs/20260811_Pergamenum_SpecApp.md`. If the spec and
   an instruction disagree, say so before writing code.
 - SPEC §14 lists decisions already taken with their rationale. Do not reopen them
