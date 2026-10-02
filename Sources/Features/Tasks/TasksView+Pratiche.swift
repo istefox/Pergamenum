@@ -30,13 +30,15 @@ extension TasksView {
         // then «Chiuse». `pratiche.pratiche` itself has no stable order to borrow.
         let grouped = PraticheSidebarGrouping.grouped(pratiche.pratiche)
         let ordered = grouped.open.flatMap(\.pratiche) + grouped.closed
+        // Through the boundary, built once for the whole list (PG-368): a refused path reads
+        // as no links, as a missing `pratica.md` does.
+        let boundary = VaultBoundary(root: root)
         let sources = ordered.map { item in
-            TaskPraticaLookup.Source(
+            let praticaNote = try? boundary.url(for: PraticaNaming.praticaNotePath(of: item.id))
+            return TaskPraticaLookup.Source(
                 praticaID: item.id,
                 praticaTitle: item.title,
-                links: PraticaLinks.parse(praticaFileAt: root.appending(
-                    path: PraticaNaming.praticaNotePath(of: item.id), directoryHint: .notDirectory
-                ))
+                links: praticaNote.map { PraticaLinks.parse(praticaFileAt: $0) } ?? .empty
             )
         }
         let index = vault.index

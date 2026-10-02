@@ -106,10 +106,14 @@ private extension VaultAPI {
     /// index already pointed at is also what R-36 asks for: a connector answers from
     /// what is on disk.
     static func praticaNotes(among notes: [NoteRecord], vaultRoot: URL) -> [PraticaNote] {
-        notes.compactMap { note in
-            guard note.relativePath.hasSuffix("/\(praticaFileName)") else { return nil }
-            let url = vaultRoot.appending(path: note.relativePath, directoryHint: .notDirectory)
-            guard let dossier = Dossier.parse(praticaFileAt: url) else { return nil }
+        // Through the boundary, built once for the whole list (PG-368): a path it refuses
+        // is not a pratica, as an unreadable `pratica.md` is not.
+        let boundary = VaultBoundary(root: vaultRoot)
+        return notes.compactMap { note in
+            guard note.relativePath.hasSuffix("/\(praticaFileName)"),
+                  let url = try? boundary.url(for: note.relativePath),
+                  let dossier = Dossier.parse(praticaFileAt: url)
+            else { return nil }
             return PraticaNote(
                 folder: String(note.relativePath.dropLast(praticaFileName.count + 1)),
                 note: note,

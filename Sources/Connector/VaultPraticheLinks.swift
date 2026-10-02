@@ -40,9 +40,14 @@ extension VaultAPI {
     @MainActor
     static func praticaLinks(_ session: VaultSession, _ reference: String) throws -> PraticaLinksPayload {
         let folder = try pratica(session, reference).path
-        let url = session.root.appending(
-            path: PraticaNaming.praticaNotePath(of: folder), directoryHint: .notDirectory
-        )
+        // Through the boundary (PG-368), a refusal reported by its own sentence, the shape
+        // `createAndLinkPraticaBoard` uses.
+        let url: URL
+        do {
+            url = try session.store.url(for: PraticaNaming.praticaNotePath(of: folder))
+        } catch let error as VaultBoundary.Violation {
+            throw ConnectorError("\(error)")
+        }
         let links = PraticaLinks.parse(praticaFileAt: url)
         let boards = CanvasStore(root: session.root).allBoards()
 
