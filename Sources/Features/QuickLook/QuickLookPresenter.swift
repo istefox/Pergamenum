@@ -48,20 +48,31 @@ final class QuickLookHostView: NSView, @preconcurrency QLPreviewPanelDataSource,
 
     // MARK: Responder-chain contract
 
+    // The three `QLPreviewPanelController` methods are an informal category on `NSObject`
+    // with no actor annotation, so an override is nonisolated by declaration whatever the
+    // class is, and `@preconcurrency` on the two protocols above does not reach them (PG-103).
+    // AppKit sends them on the main thread, from the responder chain, so each body assumes the
+    // main actor once and touches `urls`, the panel and the focus record from there, instead
+    // of reading main-actor state from a nonisolated context.
+
     override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
-        !urls.isEmpty
+        MainActor.assumeIsolated { !urls.isEmpty }
     }
 
     override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
-        panel.dataSource = self
-        panel.delegate = self
+        MainActor.assumeIsolated {
+            panel.dataSource = self
+            panel.delegate = self
+        }
     }
 
     override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
-        panel.dataSource = nil
-        panel.delegate = nil
-        // A no-op unless `claimFocusForPresentation()` recorded something (ADR-0070 §D4).
-        handBackFocus()
+        MainActor.assumeIsolated {
+            panel.dataSource = nil
+            panel.delegate = nil
+            // A no-op unless `claimFocusForPresentation()` recorded something (ADR-0070 §D4).
+            handBackFocus()
+        }
     }
 
     // MARK: PG-298, ADR-0070 §D4: focus claimed only to present (outcome A)
