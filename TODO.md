@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=375 -->
+<!-- project-tasks: prefix=PG lastId=376 -->
 # PROJECT TASKS
 
-Updated: 2026-10-02 · Open: 67 (P1: 0) · In progress: 1
+Updated: 2026-10-02 · Open: 68 (P1: 0) · In progress: 1
 
 ## GitHub Issues
 - [ ] `PG-369` -> #824 **P3** [feat] Pratiche timeline margin, needs `/spec`: an entry anchored to a message barely reads as linked to it, and an excluded message should hide its anchored entries instead of leaving them orphaned in the timeline (Kepler task note f49204ee) — `docs/adr/0076-pratiche-message-anchored-entries.md` §D2/§D3 <!-- src:session kind:roadmap opened:2026-10-01 adr:0076 runs:3 promote:2026-10-02 -->
@@ -259,6 +259,7 @@ re-verified by a real `scripts/uitests.sh` hand-run, and not yet committed.**
   - Done 2026-08-20: **§7.3** (rollover as an off-by-default setting), **§7.4** (the view controls) and **§8** (week and month as scales of the day view, event notes, the drag that writes), all authorised by ADR-0013 and applied before M12 starts.
   - **Closed 2026-09-02.** New **§16 Cattura** (ADR-0008) and **§17 Viste** (ADR-0009), each verified against the live implementation before writing (`Sources/Features/Capture/`, `Sources/Connector/VaultCapture.swift`, `Sources/Core/Query/*.swift`) rather than transcribed from the ADR alone. **§5** amended for ADR-0018/0028's partial WYSIWYG concealment (three constructs only: heading `#`, emphasis `*`/`_`, image/PDF embeds — the boundary is explicit, not a general rule) and for the still-current Modifica/Lettura two-mode split, plus PG-019/PG-093's outline drag-to-move/nest. **§12** amended for M10's completed search operators (ADR-0012 §D8: `-term`, `regex:`, `linked:`, `orphan:`, `modified:`, `is:starred`, deliberately no `created:`) and the extended Quick Open/unlinked-mentions (§D9). ADR-0017 §D5's filed debt cleared in the same pass: §4.1's disk-layout tree, §6.5's PDF thumbnail cache path and §12's index path all corrected from `.pergamenum/cache.db`/`.pergamenum/thumbnails/` to the real post-ADR-0017 location under Application Support.
   - Not touched, out of this entry's stated scope: §14's stale `tag.md 1.4` reference (now 1.5 after `PG-030`) and the missing top-level `## 7.` header (structural, `### 7.1`-`### 7.4` sit directly under `## 6.` with no parent) — both pre-existing, neither newly introduced by this closure.
+- [ ] `PG-376` **P3** [refactor] Share the board tray's section view with the Pratiche links pane: `TraySection` (`Sources/Features/Workspace/BoardTray.swift:255`, `private` to that file since PG-146) and `linksSection` (`Sources/Features/Pratiche/PratichePane+Links.swift:34`) are the same view down to the token (caption header, optional count, `-header` identifier, empty text or rows); widen `TraySection`, move it to `Sources/DesignSystem/` beside `BreadcrumbBar.swift`, have `linksSection` call it (`badge: count > 0 ? "\(count)" : nil`, `accessibilityLabel: "\(title): \(count)"`, `isEmpty: count == 0`), identifiers byte-identical, and drop the "reproduced here rather than shared" comment (`PratichePane+Links.swift:7-8`). Source: `docs/plans/pg-349-note-violations-defaults.md`, "Open for Stefano" <!-- src:session kind:roadmap opened:2026-10-02 -->
 
 ## Roadmap Xcode
 
