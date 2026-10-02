@@ -251,7 +251,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
 
     func apply(renditions: [Int: TranscludedRendition]) {
         self.renditions = renditions
-        Logger.folding.notice("transclusioni: \(renditions.count, privacy: .public) rese")
+        Logger.folding.debug("transclusioni: \(renditions.count, privacy: .public) rese")
     }
 
     /// Registers where every embed has resolved to, so far - called both after an
@@ -260,13 +260,13 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// learn a picture is ready, since it cannot itself watch the actor that renders one.
     func apply(embeds: [Int: EmbedRendition]) {
         embedRenditions = embeds
-        Logger.folding.notice("embed: \(embeds.count, privacy: .public) rese")
+        Logger.folding.debug("embed: \(embeds.count, privacy: .public) rese")
     }
 
     func apply(hiddenLines: Set<Int>, foldedHeadings headings: [Int: Int]) {
         hiddenLineOffsets = hiddenLines
         foldedHeadings = headings
-        Logger.folding.notice(
+        Logger.folding.debug(
             "pieghe: \(headings.count, privacy: .public) sezioni, \(hiddenLines.count, privacy: .public) righe"
         )
     }
@@ -279,7 +279,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// the reverse holds too - `apply(hiddenLines:foldedHeadings:)` never touches this one.
     func apply(tableRows offsets: Set<Int>) {
         tableRowOffsets = offsets
-        Logger.folding.notice("tabelle: \(offsets.count, privacy: .public) righe nascoste")
+        Logger.folding.debug("tabelle: \(offsets.count, privacy: .public) righe nascoste")
     }
 
     /// Registers the grid view already vended for each table, by its header offset - the
@@ -306,7 +306,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     func apply(viewBlockLines offsets: Set<Int>) {
         guard offsets != viewBlockLineOffsets else { return }
         viewBlockLineOffsets = offsets
-        Logger.folding.notice("blocchi vista: \(offsets.count, privacy: .public) righe nascoste")
+        Logger.folding.debug("blocchi vista: \(offsets.count, privacy: .public) righe nascoste")
     }
 
     /// Registers the host view already vended for each view block, by its opening fence's
@@ -328,7 +328,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         hiddenMarkers = markers
         hidesMarkup = hides
         let count = markers.values.reduce(0) { $0 + $1.count }
-        Logger.folding.notice(
+        Logger.folding.debug(
             "marcatori: \(count, privacy: .public), nascondi=\(hides, privacy: .public)"
         )
     }

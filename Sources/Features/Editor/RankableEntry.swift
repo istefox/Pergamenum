@@ -48,7 +48,7 @@ enum EntryRanking {
         for (order, entry) in catalogue.enumerated() {
             // Lowercased and split once per entry per call (PG-139/#239), not once per tier:
             // the title used to be lowercased for the prefix check, lowercased again inside
-            // `aWord`, and a third time inside `FuzzyMatch.score` for whichever entries
+            // the word-start check, and a third time inside `FuzzyMatch.score` for whichever entries
             // reached the fuzzy tier below - every keyword paid the same twice.
             // `wordStartRank` and `fuzzyCloseness` below take these forms in rather than
             // deriving them from the entry themselves.
@@ -136,16 +136,9 @@ enum EntryRanking {
 
     /// Words are runs of letters and digits, so "h2" is one word and "da fare" is two.
     /// Anything else separates, which keeps punctuation in a title from hiding the word
-    /// after it. Takes text already in the caller's own case - `aWord` below lowercases its
-    /// own argument first, `matching` above passes text it already lowercased once itself.
+    /// after it. Takes text already in the caller's own case - `matching` above passes text
+    /// it already lowercased once itself.
     static func words(of text: String) -> [String] {
         text.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
-    }
-
-    /// Kept at its old shape - same name, same signature - and reimplemented over `words(of:)`
-    /// above, the one definition of the splitting rule both this and `matching`'s own
-    /// per-entry precomputation now share.
-    static func aWord(of text: String, startsWith needle: String) -> Bool {
-        words(of: text.lowercased()).contains { $0.hasPrefix(needle) }
     }
 }

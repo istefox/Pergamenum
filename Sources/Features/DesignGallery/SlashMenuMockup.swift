@@ -182,7 +182,6 @@ private struct SlashPanelMock: View {
                 .header("COMANDI"),
                 .command(Item(title: "Nuova nota", symbol: "square.and.pencil", shortcut: "⌘N")),
                 .command(Item(title: "Nota di oggi", symbol: "calendar", shortcut: "⌘T")),
-                .command(Item(title: "Verifica conformità", symbol: "checkmark.seal", shortcut: "⌃⌘L")),
             ]
         case .filtered:
             [

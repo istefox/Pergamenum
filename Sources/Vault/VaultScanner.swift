@@ -20,8 +20,6 @@ struct VaultScanner: Sendable {
         /// here, never an empty record - the same "absent, not empty" rule
         /// `WorkspaceController.toggleFold` follows for `foldedHeadings`.
         var boardTaskRecords: [BoardTaskRecord] = []
-
-        var isEmpty: Bool { records.isEmpty && failures.isEmpty && boardTaskRecords.isEmpty }
     }
 
     /// Records already known, keyed by path, from `.pergamenum/cache.db`.

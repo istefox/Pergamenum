@@ -192,10 +192,10 @@ struct PergamenumApp: App {
     /// the drop folder keeps being watched while another pane is on screen. Nothing in the
     /// constructor touches the disk; `RootView` starts it once a vault is open.
     @State private var contenitore: ContenitoreController
-    /// Global capture (ADR-0008). All three live at app level because the panel has to
-    /// work with no window in front of the user - it is the whole point of the feature -
-    /// and because the hot key is registered with the system once, not per window.
-    @State private var capture = CaptureController()
+    /// Global capture (ADR-0008). The hot key and the panel live at app level because the
+    /// panel has to work with no window in front of the user - it is the whole point of
+    /// the feature - and because the hot key is registered with the system once, not per
+    /// window. The `CaptureController` itself is held by the panel (PG-266).
     @State private var hotkey = GlobalHotkey()
     /// Built in `init` rather than when the window appears, so the File menu can carry
     /// "Cattura rapida" from the first frame. Nothing in the constructor touches AppKit:
@@ -225,7 +225,6 @@ struct PergamenumApp: App {
         _calendar = State(initialValue: calendar)
         _navigation = State(initialValue: navigation)
         _history = State(initialValue: history)
-        _capture = State(initialValue: capture)
         _hotkey = State(initialValue: hotkey)
         _day = State(initialValue: day)
         let diary = DiaryController(vault: vault)

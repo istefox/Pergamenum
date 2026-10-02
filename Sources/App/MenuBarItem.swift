@@ -27,8 +27,6 @@ final class MenuBarItem {
         self.onInbox = onInbox
     }
 
-    var isShown: Bool { item != nil }
-
     /// Adds or removes the icon, for the setting that turns it off.
     func setShown(_ shown: Bool) {
         if shown {

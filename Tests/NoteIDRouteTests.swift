@@ -6,10 +6,9 @@ import Testing
 // Acceptance tests 26-31: the `pergamenum://note?id=` route, through
 // `VaultController.handle(_:)`.
 //
-// RED at Task 1 (tester/coder split, plan `docs/plans/pg-130-stable-note-id.md`):
-// `.noteID` still reads `RouteState.noteIDs`, which nothing ever populates, so every
-// lookup answers "unknown" until Task 5 reads through the session instead. The
-// exception is test 29, the negative control the current code already gets right.
+// Written red at Task 1 (tester/coder split, plan `docs/plans/pg-130-stable-note-id.md`),
+// when `.noteID` still read `RouteState.noteIDs`, which nothing populated; green since
+// Task 5 made the route read through `VaultSession.lookUpNote(id:)` (ADR-0059 §D7).
 //
 // Tests 27-31 obtain their id from a seeded registry file or from
 // `controller.session?.mintNoteID(for:)`, never from `pergamenumLink(toNoteAt:)`

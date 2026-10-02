@@ -17,8 +17,8 @@ import Testing
 // this chain, and length invariance is what Task 3's
 // `theStorageNeverGainsOrLosesACharacterForAnyListCase` pins per construct. What is new is the
 // *combination*: a substitution that is length-correct alone can still be wrong beside its
-// neighbour. The half no assertion here can cover is the manual Obsidian round trip (plan Task
-// 8, step 4), which the SPEC itself marks `no-test`.
+// neighbour. The manual Obsidian round trip the plan once paired with this (Task 8, step 4)
+// is retired as a gate by ADR-0047 §D11; the JSON Canvas format itself is what these pin.
 
 // MARK: - The fixture
 

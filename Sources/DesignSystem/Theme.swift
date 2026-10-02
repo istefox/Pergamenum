@@ -208,7 +208,8 @@ extension Theme {
     /// The hex spelling of a colour token.
     ///
     /// Drawings are stored as SVG, which needs a literal colour: a token reference
-    /// would not survive outside the app, and the file has to render in Obsidian.
+    /// would not survive outside the app, and the file has to render on its own
+    /// (principle 1, file over app).
     func hexValue(_ token: ColorToken) -> String {
         let rgba = colors[token] ?? Theme.emergency.colors[token]!
         return String(

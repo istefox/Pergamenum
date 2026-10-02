@@ -63,9 +63,6 @@ struct VaultSettings: Codable, Equatable, Sendable {
     /// readable. Set to the same value as `dailyFolder` they share one file, which
     /// still works - the diary owns its section and nothing else.
     var diaryFolder: String
-    /// Where the `harness-system` checkout lives, for "Importa convenzioni…".
-    /// Absolute, and absent until the user points at it.
-    var harnessRepositoryPath: String?
     /// Copy a dropped file into the vault, or reference it where it lies.
     var copyDroppedFiles: Bool
     /// Whether the Workspace draws its grid (SPEC §12, "Canvas").
@@ -97,9 +94,9 @@ struct VaultSettings: Codable, Equatable, Sendable {
     var readableWidth: Bool
     /// Whether emphasis, strikethrough and link markers reveal at the word they belong
     /// to, rather than the whole paragraph, while the caret is inside them (ADR-0037 §D7).
-    /// **Off by default**: this narrows a rule ADR-0018 §D2 already shipped and settled,
-    /// and a ruling that has to be reverted in code if the reveal does not convince is a
-    /// ruling nobody tests honestly - the same reasoning `hidesMarkup` was given. It is
+    /// **On by default** since ADR-0037 was amended on 2026-09-23 (see `default` below);
+    /// it shipped off, narrowing a rule ADR-0018 §D2 had already settled, until the
+    /// word-grained reveal proved to be the behaviour actually wanted. It is
     /// also meaningless while `hidesMarkup` itself is off, since nothing is hidden to
     /// narrow the reveal of.
     var revealsInlineSpans: Bool
@@ -150,7 +147,6 @@ struct VaultSettings: Codable, Equatable, Sendable {
     static let `default` = VaultSettings(
         dailyFolder: "Calendar",
         diaryFolder: VaultSettings.defaultDiaryFolder,
-        harnessRepositoryPath: nil,
         copyDroppedFiles: true,
         boardShowsGrid: true,
         boardSnapsToGrid: false,
@@ -193,7 +189,6 @@ struct VaultSettings: Codable, Equatable, Sendable {
             ?? fallback.dailyFolder
         diaryFolder = try container.decodeIfPresent(String.self, forKey: .diaryFolder)
             ?? fallback.diaryFolder
-        harnessRepositoryPath = try container.decodeIfPresent(String.self, forKey: .harnessRepositoryPath)
         copyDroppedFiles = try container.decodeIfPresent(Bool.self, forKey: .copyDroppedFiles)
             ?? fallback.copyDroppedFiles
         boardShowsGrid = try container.decodeIfPresent(Bool.self, forKey: .boardShowsGrid)
@@ -248,7 +243,6 @@ struct VaultSettings: Codable, Equatable, Sendable {
     init(
         dailyFolder: String,
         diaryFolder: String = VaultSettings.defaultDiaryFolder,
-        harnessRepositoryPath: String?,
         copyDroppedFiles: Bool,
         boardShowsGrid: Bool,
         boardSnapsToGrid: Bool,
@@ -268,7 +262,6 @@ struct VaultSettings: Codable, Equatable, Sendable {
     ) {
         self.dailyFolder = dailyFolder
         self.diaryFolder = diaryFolder
-        self.harnessRepositoryPath = harnessRepositoryPath
         self.copyDroppedFiles = copyDroppedFiles
         self.boardShowsGrid = boardShowsGrid
         self.boardSnapsToGrid = boardSnapsToGrid

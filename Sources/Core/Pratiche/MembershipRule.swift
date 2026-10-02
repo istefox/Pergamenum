@@ -26,8 +26,6 @@ struct MembershipStoreSnapshot: Equatable, Sendable {
     /// what `dossier.conversations` names, and nothing here is followed yet.
     var unfollowed: [Int: [MailMessageRow]] = [:]
 
-    static let empty = MembershipStoreSnapshot(conversations: [:], messagesByID: [:])
-
     /// One conversation's messages, followed or not (ADR §D22.1). A one-line union of
     /// two dictionary lookups.
     func messages(inConversation id: Int) -> [MailMessageRow] {

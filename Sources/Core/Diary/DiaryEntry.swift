@@ -34,10 +34,6 @@ struct DiaryEntry: Identifiable, Equatable, Sendable {
         let trimmed = title.trimmingCharacters(in: .whitespaces)
         return trimmed.isEmpty ? "Senza titolo" : trimmed
     }
-
-    func overlaps(_ other: DiaryEntry) -> Bool {
-        startMinutes < other.endMinutes && other.startMinutes < endMinutes
-    }
 }
 
 /// The five colours an entry may carry.
@@ -69,7 +65,6 @@ enum DiaryGrid {
     /// never invisible; downwards there is nowhere to grow, since no entry can end
     /// after the day does.
     static let firstHour = 6
-    static let lastHour = 24
     static let dayMinutes = 24 * 60
 
     /// The durations the composer offers: ten minutes to eight hours, ten at a time.
