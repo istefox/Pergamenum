@@ -11,13 +11,15 @@ extension PraticaFileOperations {
     /// `copyFiles(of:to:)` are in a separate file, and both call this.
     func copyAttachments(of detail: PraticaRowDetail, to destination: String) -> [AttachmentRename] {
         guard !detail.attachments.isEmpty, let root = vault.root else { return [] }
-        let folder = root
-            .appending(path: destination, directoryHint: .isDirectory)
-            .appending(path: PraticheController.attachmentsDirectoryName, directoryHint: .isDirectory)
+        let folder: URL
         do {
+            // Through the boundary (ADR-0041 §D1, PG-360): the copies are raw.
+            folder = try VaultBoundary(root: root).url(for: destination)
+                .appending(path: PraticheController.attachmentsDirectoryName, directoryHint: .isDirectory)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         } catch {
-            pratiche.report("«\(folder.lastPathComponent)» non è stata creata: \(error.localizedDescription)")
+            let reason = (error as? VaultBoundary.Violation)?.description ?? error.localizedDescription
+            pratiche.report("«\(PraticheController.attachmentsDirectoryName)» non è stata creata: \(reason)")
             return []
         }
         let existingOnDisk = Set(

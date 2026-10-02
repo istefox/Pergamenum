@@ -153,10 +153,10 @@ struct NoteTreeRow: View {
         moveMenu
         Divider()
         Button("Rivela nel Finder") {
-            guard let root = vault.root else { return }
-            NSWorkspace.shared.activateFileViewerSelecting([
-                root.appending(path: node.id, directoryHint: .isDirectory),
-            ])
+            // Through the boundary (PG-360): a path outside the vault reveals nothing.
+            guard let root = vault.root,
+                  let url = try? VaultBoundary(root: root).url(for: node.id) else { return }
+            NSWorkspace.shared.activateFileViewerSelecting([url])
         }
     }
 

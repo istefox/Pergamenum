@@ -89,9 +89,17 @@ struct PraticaEntryCarry {
     static func noteMoved(
         in moved: [PraticaFileOperations.MovedFile], of detail: PraticaRowDetail, under root: URL?
     ) -> Bool {
-        guard let root else { return false }
-        let note = root.appending(path: detail.notePath, directoryHint: .notDirectory)
+        // In the boundary's spelling, the one `moveFiles` records `MovedFile.from` in (PG-360).
+        guard let root, let note = try? VaultBoundary(root: root).url(for: detail.notePath) else { return false }
         return moved.contains { $0.from == note }
+    }
+
+    /// The undo's side of `noteMoved`: whether the message note itself is among what
+    /// `moveBack` put back. The entries are carried back only when it is.
+    static func noteRestored(in restored: Set<URL>, of detail: PraticaRowDetail, under root: URL?) -> Bool {
+        // In the boundary's spelling, the one `moveFiles` records `MovedFile.from` in (PG-360).
+        guard let root, let note = try? VaultBoundary(root: root).url(for: detail.notePath) else { return false }
+        return restored.contains(note)
     }
 
     /// Before anything moves: the blocks anchored to `messageID` in the source, read fresh.

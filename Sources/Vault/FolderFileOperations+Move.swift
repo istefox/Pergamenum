@@ -102,18 +102,21 @@ extension FolderFileOperations {
 
         if plan.newPath != oldFolder {
             do {
-                let destination = store.root.appending(
-                    path: plan.newPath, directoryHint: .isDirectory
-                )
+                // Both ends through the boundary, `renameFolder`'s shape (ADR-0063 §D7,
+                // PG-360). Only the source was already guarded, by `movePlan`'s
+                // `isDirectory`. The destination was not: `exists` answers false for a
+                // refused path, so a parent outside the vault passed the plan and the
+                // folder was created and moved there. This resolution is what refuses it.
+                let destination = try store.url(for: plan.newPath)
+                let source = try store.url(for: oldFolder)
                 try FileManager.default.createDirectory(
                     at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
                 )
-                try FileManager.default.moveItem(
-                    at: store.root.appending(path: oldFolder, directoryHint: .isDirectory),
-                    to: destination
-                )
+                try FileManager.default.moveItem(at: source, to: destination)
             } catch {
-                throw FileOperationError.failed("spostamento cartella: \(error.localizedDescription)")
+                // `VaultBoundary.Violation` is not a `LocalizedError`: name it by its own sentence.
+                let reason = (error as? VaultBoundary.Violation)?.description ?? error.localizedDescription
+                throw FileOperationError.failed("spostamento cartella: \(reason)")
             }
         }
 

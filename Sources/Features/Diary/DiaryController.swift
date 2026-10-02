@@ -102,8 +102,23 @@ final class DiaryController {
     /// clean: a pending edit or a conflict is left untouched here and is caught, as today,
     /// by the precondition on its own next write. UX, not correctness.
     func externalChange(at path: String) {
-        guard isSettled, let root = vault.root, origin.file == root.appending(path: path) else { return }
+        guard isSettled, let file = diaryFile(at: path), origin.file == file else { return }
         reload()
+    }
+
+    /// The URL `origin` records a day's file as, spelled the same way on every side of every
+    /// comparison (PG-360). An identity only, and deliberately a plain join with no boundary
+    /// resolution: the bytes go through `VaultSession.readDiary`/`writeDiary`, which resolve
+    /// through `VaultBoundary` themselves and refuse a path it refuses, so the guard on the
+    /// bytes is theirs. Resolving symlinks here would let the spelling change mid-edit (a
+    /// vault opened through a link whose target stops resolving between the read and the
+    /// write, or a diary folder that leaves the vault), which reads as «a different file than
+    /// the one read»: `abandonForeignFile` then reloads and erases what the person typed. With
+    /// one stable spelling the write is refused by the session's door, with its own sentence,
+    /// and the text stays in memory. `nil` only without a vault.
+    private func diaryFile(at path: String) -> URL? {
+        guard let root = vault.root else { return nil }
+        return root.appending(path: path)
     }
 
     /// Shows another day (ADR-0057 §D5). With nothing owed and nothing in flight the day
@@ -136,13 +151,12 @@ final class DiaryController {
         isLoaded = false
         defer { isLoaded = true }
         saveState = .saved
-        guard let root = vault.root else {
+        guard let file = diaryFile(at: vault.diaryNotePath(for: day)) else {
             prose = ""
             entries = []
             origin = .none
             return
         }
-        let file = root.appending(path: vault.diaryNotePath(for: day))
         if let diary = vault.readDiary(on: day) {
             prose = diary.prose
             entries = diary.entries
@@ -224,13 +238,12 @@ extension DiaryController {
     /// text for this day and `origin` already holds what the previous write left on disk.
     private func performWrite() async {
         if case .conflicted = saveState { return }
-        guard let root = vault.root else {
+        guard vault.root != nil else {
             // No vault, no file: nothing written can ever be owed to it.
             saveState = .saved
             return
         }
-        let file = root.appending(path: vault.diaryNotePath(for: day))
-        guard origin.file == file else {
+        guard let file = diaryFile(at: vault.diaryNotePath(for: day)), origin.file == file else {
             abandonForeignFile(reporting: saveState == .pending)
             return
         }
@@ -317,9 +330,8 @@ extension DiaryController {
     /// writer landing between this read and the write is refused again and re-enters the
     /// conflict: one attempt per click, never a loop.
     func keepLocalDiary() {
-        guard case .conflicted = saveState, let root = vault.root else { return }
-        let file = root.appending(path: vault.diaryNotePath(for: day))
-        guard origin.file == file else {
+        guard case .conflicted = saveState, vault.root != nil else { return }
+        guard let file = diaryFile(at: vault.diaryNotePath(for: day)), origin.file == file else {
             abandonForeignFile(reporting: true)
             return
         }

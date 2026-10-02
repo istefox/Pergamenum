@@ -43,9 +43,18 @@ struct PraticaFileOperations {
     /// `confirmRegeneration(_:)` are in a separate file, and both call this.
     func trash(filesOf notePath: String) async -> [TrashedFile] {
         guard let root = vault.root, let session = vault.session else { return [] }
+        let boundary = VaultBoundary(root: root)
         var trashed: [TrashedFile] = []
         for relativePath in Self.messageFilePaths(of: notePath) {
-            let url = root.appending(path: relativePath, directoryHint: .notDirectory)
+            // Through the boundary (ADR-0041 §D1, PG-360): the `.eml` is trashed raw, so
+            // nothing else stands between a path that leaves the vault and the Trash.
+            let url: URL
+            do {
+                url = try boundary.url(for: relativePath)
+            } catch {
+                pratiche.report("«\(relativePath)» non è stato eliminato: \(Self.reason(error))")
+                continue
+            }
             guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { continue }
             var inTrash: URL?
             do {
@@ -166,14 +175,11 @@ struct PraticaFileOperations {
             .replacingOccurrences(of: ".md", with: "")
         var rewrites = ContentRewrites(originalBaseName: originalBaseName, renamedBaseName: nil)
         guard let root = vault.root, let session = vault.session else { return ([], rewrites) }
-        let folder = root
-            .appending(path: destination, directoryHint: .isDirectory)
-            .appending(path: PraticheController.messagesDirectoryName, directoryHint: .isDirectory)
-        guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil
-        else {
-            pratiche.report("«\(folder.lastPathComponent)» non è stata creata.")
-            return ([], rewrites)
-        }
+        // Both ends through the boundary (ADR-0041 §D1, PG-360): the `.eml` moves raw. Every
+        // URL here is in the boundary's resolved spelling, and so are `MovedFile`'s two ends,
+        // which `moveBack` and the undo in `PraticaCommandActions.move` read in that spelling.
+        let boundary = VaultBoundary(root: root)
+        guard let folder = messagesFolder(in: destination, under: boundary) else { return ([], rewrites) }
         // Reserved once, for BOTH the `.md` and its `.eml` sidecar: a collision on
         // either extension alone would otherwise rename just that one file, leaving
         // `pergamenum-mail-original` pointing at a sidecar name that no longer exists.
@@ -181,13 +187,19 @@ struct PraticaFileOperations {
         var moved: [MovedFile] = []
         var movedMD: String?
         for relativePath in Self.messageFilePaths(of: detail.notePath) {
-            let source = root.appending(path: relativePath, directoryHint: .notDirectory)
+            let source: URL
+            do {
+                source = try boundary.url(for: relativePath)
+            } catch {
+                pratiche.report("«\(relativePath)» non è stato spostato: \(Self.reason(error))")
+                continue
+            }
             guard FileManager.default.fileExists(atPath: source.path(percentEncoded: false)) else { continue }
             let ext = (relativePath as NSString).pathExtension
             let target = folder.appending(path: "\(baseName).\(ext)", directoryHint: .notDirectory)
             do {
                 if Self.isNote(relativePath) {
-                    let targetPath = VaultScanner.relativePath(of: target, under: root)
+                    let targetPath = VaultScanner.relativePath(of: target, under: boundary.root)
                     try await session.moveFile(from: relativePath, to: targetPath)
                     movedMD = targetPath
                 } else {
@@ -265,20 +277,21 @@ struct PraticaFileOperations {
     /// separate file, and is this member's only caller.
     func copyFiles(of detail: PraticaRowDetail, to destination: String) async -> [URL] {
         guard let root = vault.root, let session = vault.session else { return [] }
-        let folder = root
-            .appending(path: destination, directoryHint: .isDirectory)
-            .appending(path: PraticheController.messagesDirectoryName, directoryHint: .isDirectory)
-        guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil
-        else {
-            pratiche.report("«\(folder.lastPathComponent)» non è stata creata.")
-            return []
-        }
+        // Both ends through the boundary (ADR-0041 §D1, PG-360): the `.eml` is copied raw.
+        let boundary = VaultBoundary(root: root)
+        guard let folder = messagesFolder(in: destination, under: boundary) else { return [] }
         let baseName = Self.reservedBaseName(for: detail.notePath, in: folder)
         let originalBaseName = (detail.notePath as NSString).lastPathComponent.replacingOccurrences(of: ".md", with: "")
         var copied: [URL] = []
         var noteCopy: (source: String, target: URL)?
         for relativePath in Self.messageFilePaths(of: detail.notePath) {
-            let source = root.appending(path: relativePath, directoryHint: .notDirectory)
+            let source: URL
+            do {
+                source = try boundary.url(for: relativePath)
+            } catch {
+                pratiche.report("«\(relativePath)» non è stato copiato: \(Self.reason(error))")
+                continue
+            }
             guard FileManager.default.fileExists(atPath: source.path(percentEncoded: false)) else { continue }
             let ext = (relativePath as NSString).pathExtension
             let target = folder.appending(path: "\(baseName).\(ext)", directoryHint: .notDirectory)
@@ -302,15 +315,29 @@ struct PraticaFileOperations {
                     text = Self.updatingOriginalReference(in: text, to: "\(baseName).eml")
                 }
                 text = Self.applyingAttachmentRenames(renames, to: text)
-                try await session.write(
-                    text, to: VaultScanner.relativePath(of: noteCopy.target, under: root), expectingAbsent: true
-                )
+                let targetPath = VaultScanner.relativePath(of: noteCopy.target, under: boundary.root)
+                try await session.write(text, to: targetPath, expectingAbsent: true)
                 copied.append(noteCopy.target)
             } catch {
                 pratiche.report("«\(noteCopy.source)» non è stato copiato: \(Self.reason(error))")
             }
         }
         return copied
+    }
+
+    /// The destination's `email/` folder, resolved through the boundary and created, or nil
+    /// with the reason reported - a `VaultBoundary.Violation` by its own sentence, the
+    /// shape `copyAttachments` uses for `allegati/` (PG-360).
+    private func messagesFolder(in destination: String, under boundary: VaultBoundary) -> URL? {
+        do {
+            let folder = try boundary.url(for: destination)
+                .appending(path: PraticheController.messagesDirectoryName, directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            return folder
+        } catch {
+            pratiche.report("«\(PraticheController.messagesDirectoryName)» non è stata creata: \(Self.reason(error))")
+            return nil
+        }
     }
 
     /// One free basename for BOTH extensions, checked together - `ImportNaming
@@ -363,7 +390,9 @@ struct PraticaFileOperations {
     /// separate file, and is this member's only caller.
     @discardableResult
     func moveBack(_ files: [MovedFile]) async -> Set<URL> {
-        guard let root = vault.root, let session = vault.session else { return [] }
+        // The boundary's resolved root: `moveFiles` records both ends in that spelling.
+        guard let root = vault.root.map({ VaultBoundary(root: $0).root }), let session = vault.session
+        else { return [] }
         var restored: Set<URL> = []
         for file in files {
             do {
@@ -404,6 +433,7 @@ struct PraticaFileOperations {
         switch error {
         case let error as FileOperationError: error.description
         case let error as VaultWriteRefusal: error.description
+        case let error as VaultBoundary.Violation: error.description
         default: error.localizedDescription
         }
     }

@@ -99,8 +99,9 @@ extension PratichePane {
             inspectorBody = ""
             return
         }
-        let url = root.appending(path: path, directoryHint: .notDirectory)
-        let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        // Through the boundary (PG-360): a path outside the vault reads as a missing file.
+        let url = try? VaultBoundary(root: root).url(for: path)
+        let text = url.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
         // ADR-0076 §D7 (R-01): an anchor line appears in no rendered body - the reading parser
         // has no rule for an HTML comment, so it would read raw here. Removed from the whole
         // source, where the parser's ranges are addressed, then the body taken.

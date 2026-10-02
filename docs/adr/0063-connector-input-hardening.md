@@ -631,3 +631,90 @@ split into its own ledger entry.
 - **Not closed here:** `rg -n "root\.appending\(path:" Sources` now gives 25 lines in 19 files,
   down from 31. Every site read for this follow-up builds its path from the index, the ledger or a
   constant, not from typed input. The sweep is its own ledger entry.
+
+#### PG-360: the sweep (2026-10-01)
+
+Twenty-one of the 25 lines are converted. Seventeen now resolve through `VaultBoundary`, and the
+four in `DiaryController.swift` become one private helper, `diaryFile(at:)`, a plain join used as
+an identity only, with no boundary resolution, on purpose (see «Diary identity» below).
+Four multi-line joins the one-line `rg` pattern does not see resolve through the boundary too:
+the three `email/` and `allegati/` destination chains in `PraticaFileOperations` and the
+destination in `FolderFileOperations.moveFolder`. That is not every join the pattern misses; the
+ones with a variable path are listed below. Where a site has a channel, a refusal is
+reported through it. Where it is a pure UI read, a refusal does what a missing file does.
+
+- **Moving, copying or trashing bytes.** `PraticaFileOperations.trash(filesOf:)`, `moveFiles` and
+  `copyFiles` resolve each message file and the destination's `email/` folder, and
+  `copyAttachments` resolves its `allegati/` folder. The `.eml` and the attachments move raw, so
+  the boundary is their only guard. A refusal goes to `pratiche.report`, and `reason(_:)` now
+  names a `VaultBoundary.Violation` by its own sentence. `moveFiles` records `MovedFile`'s two
+  ends in the boundary's resolved spelling. The three readers of that spelling follow it:
+  `moveBack` takes relative paths under `boundary.root`, and both `PraticaEntryCarry.noteMoved`
+  and the «Sposta» undo (`PraticaEntryCarry.noteRestored`) compare against `boundary.url(for:)`.
+  A refused `email/` or `allegati/` folder was already reported; both reports now carry the
+  boundary's own sentence. `FolderFileOperations.moveFolder` resolves both ends through
+  `store.url(for:)`, and a refusal names the boundary's sentence too, the same shape as `renameFolder`. Only the source was guarded before: `movePlan`'s `isDirectory`
+  refuses an escaping source, but its `exists(newFolder)` answers false for a refused path, so
+  `moveFolder(at: "A", toParent: "../out")` passed the plan and created and moved the folder
+  outside the vault. The destination was a real hole, closed here.
+- **Listing or naming.** `CanvasStore.contents(ofBoard:)` lists nothing for a folder outside the
+  vault. `RecordingsController.notePath(for:in:)` skips the uniqueness check for a notes folder
+  outside the vault, and the write that follows refuses the path. A notes folder that resolves
+  to the vault root itself is treated as the root, not as outside it. The two existence checks in
+  `PraticaLiveSync+Run.swift` read a refused path as no folder.
+- **UI reads.** The four «Rivela nel Finder» sites (`CommandActions`, `NoteRowMenu`,
+  `NoteTreeRow` and `PraticaCommandActions`) resolve through the boundary. So do the embed
+  preview, the message note slot, the pratica inspector and the dossier read in `listItems`.
+- **Diary identity.** `DiaryController` has one private `diaryFile(at:)`, used on every side of
+  every `origin.file` comparison: the plain `root.appending(path:)` join, `nil` only when no vault
+  is open. It is an identity only, never a path bytes go through, and it does not resolve through
+  the boundary on purpose. The bytes are guarded by `VaultSession.readDiary`/`writeDiary`, which
+  resolve through the boundary themselves and refuse what it refuses. Resolving symlinks in the
+  identity would let the spelling change mid-edit: a vault opened through a symlink whose target
+  stops resolving between the read and the write (volume unmounted, target moved) would yield a
+  different URL, `performWrite` would see `origin.file != file`, and `abandonForeignFile` would
+  reload and erase the typed day, a regression against `main`, where the plain join kept one
+  spelling. With one stable spelling a refused folder (`../Diario`) reads as an absent day, a
+  pending write reaches the session's door, which refuses it (`.failed`, with «diario del …» on
+  `problems`), and the typed text stays in memory. `abandonForeignFile` is reached only when the
+  file really changed (another vault or another `diaryFolder`).
+  `aDiaryFolderOutsideTheVaultKeepsTheTypedTextAndReportsTheRefusal` and
+  `aSymlinkThatStopsResolvingKeepsTheTypedText` pin this.
+- **Left on purpose:** the joins with a compile-time constant. These are
+  `VaultLayout.privateDirectory` in `VaultSession.swift` and `VaultSession+Identity.swift`, and
+  `vaultsDirectoryName` in `VaultState.swift`, whose root is Application Support, not the vault.
+  Also left is `MailStoreReader+Paths.swift`, which joins under Apple Mail's store root.
+  `VaultController+Import.swift:25` and `:59` are multi-line joins of a constant too
+  (`VaultAPI.CaptureDestination.defaultFolder`), and so are the multi-line
+  `VaultLayout.privateDirectory` joins in `CategoryRegistryStore.swift`, `StarredStore.swift`,
+  `NoteIDStore.swift` and `ThemeEngine.swift`. Also left, though its path is not a constant, is
+  `diaryFile(at:)` in `DiaryController.swift`: an identity-only join that no bytes go through
+  (see «Diary identity» above).
+- **Not closed here: residual reads with index-derived paths.** These joins take a variable path
+  but sit outside the one-line pattern, either because they span lines or because the receiver is
+  spelled `vaultRoot`. Each one reads a path that comes from the index, the ledger or the current
+  selection, not from typed input. Converting them spans the connector and two feature modules,
+  so they are their own follow-up:
+  `Sources/Connector/VaultPratiche.swift:111`, `Sources/Connector/VaultPraticheLinks.swift:43`,
+  `Sources/Features/Pratiche/PraticheController+Ledger.swift:249`,
+  `Sources/Features/Tasks/TasksView+Pratiche.swift:37`,
+  `Sources/Features/Pratiche/PraticheController+TimelineRead.swift:113` and
+  `Sources/Features/Pratiche/PraticheController+TimelineRead.swift:250` (`dossier(at:vaultRoot:)`).
+- `rg -n "root\.appending\(path:" Sources` now gives 5 lines in 5 files, all five of them listed
+  under «Left on purpose» above. Nine tests were added. Four of them show a refusal that was
+  missing before:
+  `trashRefusesMessageFilesOutsideTheVaultAndReportsIt`,
+  `moveFilesRefusesADestinationOutsideTheVault`,
+  `contentsOfBoardListsNothingForAFolderOutsideTheVault` and
+  `moveFolderRefusesAParentOutsideTheVaultAndMovesNothing`. The other five guard against
+  regression rather than demonstrate a fix: `moveFilesAndUndoAgreeUnderASymlinkedRoot` (which also
+  pins `PraticaEntryCarry.noteMoved` and `noteRestored`) and
+  `reloadsACleanDayWhenTheVaultIsOpenedThroughASymlink` pin that every side of a comparison keeps
+  one spelling when the vault is opened through a symlink (the boundary's resolved one for the
+  Pratiche paths, the plain join for the diary's identity);
+  `aDiaryFolderOutsideTheVaultKeepsTheTypedTextAndReportsTheRefusal` pins that a refused diary
+  folder keeps the typed text, and `aSymlinkThatStopsResolvingKeepsTheTypedText` pins that a vault
+  symlink that stops resolving mid-edit does too; `aNotesFolderThatSpellsTheVaultRootStillGetsAUniqueName` (over `.`
+  and `a/..`) pins that a notes folder spelling the vault root still gets the uniqueness check. The remaining
+  converted sites sit behind a check that already refuses first, as `moveFolder`'s source does
+  behind `movePlan`'s `isDirectory`, or they are AppKit or UI actions that no unit test reaches.

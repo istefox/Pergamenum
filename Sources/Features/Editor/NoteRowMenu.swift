@@ -55,10 +55,10 @@ struct NoteRowMenu: View {
         rowCommand(.applyTemplate)
         Divider()
         Button("Rivela nel Finder") {
-            guard let root = vault.root else { return }
-            NSWorkspace.shared.activateFileViewerSelecting([
-                root.appending(path: note.relativePath, directoryHint: .notDirectory),
-            ])
+            // Through the boundary (PG-360): a path outside the vault reveals nothing.
+            guard let root = vault.root,
+                  let url = try? VaultBoundary(root: root).url(for: note.relativePath) else { return }
+            NSWorkspace.shared.activateFileViewerSelecting([url])
         }
         Divider()
         Button("Elimina…", role: .destructive) { deleting = note }

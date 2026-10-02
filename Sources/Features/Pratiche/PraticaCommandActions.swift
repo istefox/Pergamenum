@@ -109,10 +109,10 @@ struct PraticaCommandActions {
         case .refresh:
             Task { await pratiche.refreshNow(pratica.id, in: vault) }
         case .revealInFinder:
-            guard let root = vault.root else { return }
-            NSWorkspace.shared.activateFileViewerSelecting([
-                root.appending(path: pratica.id, directoryHint: .isDirectory),
-            ])
+            // Through the boundary (PG-360): a path outside the vault reveals nothing.
+            guard let root = vault.root,
+                  let url = try? VaultBoundary(root: root).url(for: pratica.id) else { return }
+            NSWorkspace.shared.activateFileViewerSelecting([url])
         case .linkNote, .linkTask, .linkBoard:
             requestLink(command, for: pratica)
         case .delete:
@@ -307,9 +307,7 @@ struct PraticaCommandActions {
             // The entries follow the message: carried back only when the message note itself
             // went back, or they would be orphaned in the source while it stays in the
             // destination. `moveBack` has already said why a file did not return.
-            let messageRestored = actions.vault.root.map {
-                restored.contains($0.appending(path: detail.notePath, directoryHint: .notDirectory))
-            } ?? false
+            let messageRestored = PraticaEntryCarry.noteRestored(in: restored, of: detail, under: actions.vault.root)
             if messageRestored {
                 await actions.files.reverseContentRewrites(rewrites, notePath: detail.notePath)
             }

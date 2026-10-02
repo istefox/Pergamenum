@@ -28,10 +28,11 @@ extension PraticheController {
         // the second scan of a vault onward - would answer "not a pratica" and empty
         // this list (`Dossier.parse(praticaFileAt:)`'s own note). Only the handful of
         // paths ending in `pratica.md` are opened, never the whole index.
-        let root = vault.root
+        // Through the boundary, built once for the whole list (PG-360).
+        let boundary = vault.root.map { VaultBoundary(root: $0) }
         let dossierNotes = notes.filter { note in
-            guard note.relativePath.hasSuffix("/\(praticaFileName)"), let root else { return false }
-            let url = root.appending(path: note.relativePath, directoryHint: .notDirectory)
+            guard note.relativePath.hasSuffix("/\(praticaFileName)"),
+                  let url = try? boundary?.url(for: note.relativePath) else { return false }
             return Dossier.parse(praticaFileAt: url) != nil
         }
         let folders = Set(dossierNotes.map { folderPath(ofPraticaNote: $0.relativePath) })

@@ -122,6 +122,61 @@ private func praticaDetail(notePath: String) -> PraticaRowDetail {
         #expect(!exists("msg.md"))
     }
 
+    /// PG-360: a vault opened through a real symlink. `MovedFile`'s ends are in the
+    /// boundary's resolved spelling; the undo and the entry carry must agree with it.
+    @Test func moveFilesAndUndoAgreeUnderASymlinkedRoot() async throws {
+        let vault = try TemporaryVault()
+        try vault.write(noteWithAttachmentTokens, to: "Rossi/email/msg.md")
+        try vault.write("da: a@b.it", to: "Rossi/email/msg.eml")
+        let link = FileManager.default.temporaryDirectory
+            .appending(path: "pergamenum-link-\(UUID().uuidString)", directoryHint: .notDirectory)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: vault.root)
+        defer { try? FileManager.default.removeItem(at: link) }
+        let real = vault.root
+        func exists(_ path: String) -> Bool {
+            FileManager.default.fileExists(atPath: real.appending(path: path).path(percentEncoded: false))
+        }
+
+        let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+        await controller.open(link)
+        let pratiche = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        let ops = PraticaFileOperations(vault: controller, pratiche: pratiche)
+        let detail = praticaDetail(notePath: "Rossi/email/msg.md")
+
+        let (moved, _) = await ops.moveFiles(of: detail, to: "Bianchi")
+
+        #expect(exists("Bianchi/email/msg.md"))
+        #expect(exists("Bianchi/email/msg.eml"))
+        #expect(PraticaEntryCarry.noteMoved(in: moved, of: detail, under: controller.root), "the carry recognises the moved note")
+        let movedSidecarOnly = moved.filter { $0.from.pathExtension == "eml" }
+        #expect(!movedSidecarOnly.isEmpty, "the sidecar moved too, so the next check is not vacuous")
+        #expect(
+            !PraticaEntryCarry.noteMoved(in: movedSidecarOnly, of: detail, under: controller.root),
+            "a moved sidecar alone is not the note: the carry matches the note's own path, not any move"
+        )
+
+        let restored = await ops.moveBack(moved)
+
+        #expect(exists("Rossi/email/msg.md"))
+        #expect(exists("Rossi/email/msg.eml"))
+        #expect(!exists("Bianchi/email/msg.md"))
+        #expect(restored.count == moved.count)
+        #expect(
+            PraticaEntryCarry.noteRestored(in: restored, of: detail, under: controller.root),
+            "the undo recognises the restored note, so the entries are carried back"
+        )
+        #expect(
+            !PraticaEntryCarry.noteRestored(in: [], of: detail, under: controller.root),
+            "nothing restored, nothing carried back"
+        )
+        let restoredSidecarOnly = restored.filter { $0.pathExtension == "eml" }
+        #expect(!restoredSidecarOnly.isEmpty, "the sidecar came back too, so the next check is not vacuous")
+        #expect(
+            !PraticaEntryCarry.noteRestored(in: restoredSidecarOnly, of: detail, under: controller.root),
+            "a restored sidecar alone is not the note: the undo matches the note's own path, not any restore"
+        )
+    }
+
     // MARK: - "Escludi" (R-08): the trash goes through the session and still reaches the watcher
 
     /// ADR-0064 §D6: an in-app trash stays visible to the watcher on purpose - no absence
@@ -278,5 +333,56 @@ private func praticaDetail(notePath: String) -> PraticaRowDetail {
         #expect(try Data(contentsOf: original) == Data("occupied".utf8), "the occupying file must be untouched")
         #expect(FileManager.default.fileExists(atPath: inTrash.path(percentEncoded: false)), "and the original stays recoverable in the Trash")
         #expect(PraticaFileOperations.restoreFailureMessage(for: failures) != nil)
+    }
+
+    // MARK: - The boundary (PG-360): the `.eml` half moves raw, so the boundary is its only guard
+
+    /// Red before PG-360: the `.md` was refused by the session's trash door, but the `.eml`
+    /// sidecar beside it was trashed raw from outside the vault.
+    @Test func trashRefusesMessageFilesOutsideTheVaultAndReportsIt() async throws {
+        let vault = try TemporaryVault()
+        let outsideName = "pergamenum-outside-\(UUID().uuidString)"
+        let outside = vault.root.deletingLastPathComponent().appending(path: outsideName, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: outside) }
+        try Data("nota".utf8).write(to: outside.appending(path: "msg.md"))
+        try Data("da: a@b.it".utf8).write(to: outside.appending(path: "msg.eml"))
+
+        let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+        await controller.open(vault.root)
+        let pratiche = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        let ops = PraticaFileOperations(vault: controller, pratiche: pratiche)
+
+        let trashed = await ops.trash(filesOf: "../\(outsideName)/msg.md")
+
+        #expect(trashed.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: outside.appending(path: "msg.md").path(percentEncoded: false)))
+        #expect(FileManager.default.fileExists(atPath: outside.appending(path: "msg.eml").path(percentEncoded: false)))
+        #expect(pratiche.problem?.contains("outside the vault") == true, "the refusal is reported, never swallowed")
+    }
+
+    /// Red before PG-360: a destination outside the vault had its `email/` folder created
+    /// there and the `.eml` moved into it.
+    @Test func moveFilesRefusesADestinationOutsideTheVault() async throws {
+        let vault = try TemporaryVault()
+        try vault.write(noteWithAttachmentTokens, to: "Rossi/email/msg.md")
+        try vault.write("da: a@b.it", to: "Rossi/email/msg.eml")
+        let outsideName = "pergamenum-outside-\(UUID().uuidString)"
+        let outside = vault.root.deletingLastPathComponent().appending(path: outsideName, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: outside) }
+
+        let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+        await controller.open(vault.root)
+        let pratiche = PraticheController(probe: { .granted }, performSync: { _, _ in })
+        let ops = PraticaFileOperations(vault: controller, pratiche: pratiche)
+
+        let (moved, _) = await ops.moveFiles(of: praticaDetail(notePath: "Rossi/email/msg.md"), to: "../\(outsideName)")
+
+        #expect(moved.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: outside.path(percentEncoded: false)), "nothing is created outside the vault")
+        #expect(FileManager.default.fileExists(atPath: vault.root.appending(path: "Rossi/email/msg.eml").path(percentEncoded: false)))
+        #expect(FileManager.default.fileExists(atPath: vault.root.appending(path: "Rossi/email/msg.md").path(percentEncoded: false)))
+        #expect(pratiche.problem != nil, "the refusal is reported, never swallowed")
+        #expect(pratiche.problem?.contains("is outside the vault") == true, "the report names the boundary's reason")
     }
 }

@@ -88,8 +88,9 @@ struct PraticaMessageNoteSlot: View {
         }
         switch PraticaLinkResolver.note(candidates: vault.index.resolve(title: title)) {
         case .unique(let path):
-            let url = root.appending(path: path, directoryHint: .notDirectory)
-            let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            // Through the boundary (PG-360): a path outside the vault reads as a missing file.
+            let url = try? VaultBoundary(root: root).url(for: path)
+            let text = url.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
             let lines = Self.openingLines(of: NoteDocument.parse(text).body)
             state = .resolved(path: path, title: title, openingLines: lines)
         case .ambiguous, .missing:
