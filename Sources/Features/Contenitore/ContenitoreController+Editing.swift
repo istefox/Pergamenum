@@ -42,7 +42,8 @@ extension ContenitoreController {
     /// the scheda is no longer at its path (PG-341). What the quit review names, so its «Non
     /// salvare» can let the app go instead of every Cmd+Q being cancelled by a write that cannot
     /// land. An edit to a scheda still there is not here: it is written in the quit's diary
-    /// phase, as before, and only a write that then fails cancels the quit.
+    /// phase, as before; a write that then fails cancels that quit, and the next one finds it
+    /// in `failedSchedaEdits`.
     var vanishedSchedaEdits: [String] {
         var paths: [String] = []
         for owed in [editor].compactMap({ $0 }) + retiredEditors
@@ -52,8 +53,21 @@ extension ContenitoreController {
         return paths
     }
 
-    /// The quit's «Non salvare» over the schede it named (PG-341): their edits are dropped and a
-    /// retired editor left with nothing to write is let go.
+    /// The schede, current editor first, still at their path, whose owed edit's last write failed
+    /// and is not being retried (PG-373). The quit review names them beside the vanished ones,
+    /// so a write that keeps failing can be given up with «Non salvare» instead of cancelling
+    /// every Cmd+Q; «Salva» retries it in the diary phase, as before.
+    var failedSchedaEdits: [String] {
+        var paths: [String] = []
+        for owed in [editor].compactMap({ $0 }) + retiredEditors
+        where owed.owesFailedWrite && !owed.isSchedaGone && !paths.contains(owed.schedaPath) {
+            paths.append(owed.schedaPath)
+        }
+        return paths
+    }
+
+    /// The quit's «Non salvare» over the schede it named (PG-341, PG-373): their edits are
+    /// dropped and a retired editor left with nothing to write is let go.
     func discardEdits(at schedaPaths: [String]) {
         for owed in [editor].compactMap({ $0 }) + retiredEditors where schedaPaths.contains(owed.schedaPath) {
             owed.discard()

@@ -23,9 +23,11 @@ enum QuitReply: Equatable, Sendable {
 ///    cancels the quit rather than completing it, because a note buffer lost to a terminate
 ///    cannot be retried. The question also names every Contenitore scheda whose inspector edit
 ///    is owed but whose file is gone (PG-341): no write to it can ever land, so without a
-///    «Non salvare» of its own every Cmd+Q was cancelled by phase 3. «Non salvare» drops those
-///    edits; «Salva» leaves them to phase 3, which cannot write them and cancels, so the next
-///    Cmd+Q asks again.
+///    «Non salvare» of its own every Cmd+Q was cancelled by phase 3. It names, the same way,
+///    every scheda still there whose edit's last write failed and is not being retried
+///    (PG-373): a write that keeps failing cancelled every Cmd+Q just as surely. «Non salvare»
+///    drops those edits; «Salva» leaves them to phase 3, which retries
+///    them and cancels on a write that does not land, so the next Cmd+Q asks again.
 /// 3. **The diary** (ADR-0060 §D2), started after the question: its **fail-open** 2 s cap races
 ///    `settle()` in two independent tasks - a task group would wait out a write that ignores
 ///    cancellation, and the cap would cap nothing. On «Salva tutto» the diary settles **before**
@@ -36,7 +38,7 @@ enum QuitReply: Equatable, Sendable {
 ///    same kind of holder - one small guarded write, owed and not yet on disk - and settles
 ///    in this phase, started with the diary's flush (not before it) and under the same cap.
 ///    A scheda edit still owed at the last check (its write failed) cancels the quit and
-///    reveals the pane.
+///    reveals the pane; the next quit's question names it (PG-373).
 ///
 /// Immediately before letting the app go (`.now` or `reply(true)`), the dirty set is read
 /// again: a dirty tab the answer did not cover turns the reply into a cancel (§D6, §D7).
@@ -135,9 +137,13 @@ final class QuitCoordinator {
         // written before anything here decides whether to wait (#506, ADR-0066).
         vault?.openBoard?.settleForTermination()
 
-        // 2. The notes, and the scheda edits that can never be written (PG-341).
+        // 2. The notes, and the scheda edits whose write cannot land (PG-341) or already failed
+        // (PG-373).
+        let pane = contenitore()
         let review = QuitReview(
-            columns: vault?.columns ?? [], vanishedSchede: contenitore()?.vanishedSchedaEdits ?? []
+            columns: vault?.columns ?? [],
+            vanishedSchede: pane?.vanishedSchedaEdits ?? [],
+            failedSchede: pane?.failedSchedaEdits ?? []
         )
         guard let vault, !review.isEmpty else { return diaryPhase(covering: review) }
 

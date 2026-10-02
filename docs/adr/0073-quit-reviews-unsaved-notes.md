@@ -575,6 +575,37 @@ never merged). Four gaps, each a recorded departure; §D1–§D11's text is unch
     must not find a control by the words on it), which supersedes departure 12's last sentence.
     `QuitReviewAlertTests` pins the identifiers. The GUI test was compiled but not run.
 
+Follow-up of 2026-10-02, PG-373, on `fix/quit-discards-failing-scheda-write`. §D1–§D11's text is unchanged.
+
+19. **A Contenitore scheda whose write keeps failing can be given up.** PG-341 (PR #826) made the
+    question name a scheda whose inspector edit is owed while its file is gone, and «Non salvare»
+    drop that edit (`ContenitoreController.vanishedSchedaEdits`, `discardEdits(at:)`). A scheda still
+    at its path whose write failed (`.failed`) was not named: phase 3 retried it, the retry failed,
+    the last check cancelled the quit, and every following Cmd+Q did the same, with no answer that
+    let the app go. The editor now records that its last write failed
+    (`ContenitoreEditor.lastWriteFailed`), cleared by any write that ends otherwise, by `discard()`,
+    by the draft coming back to the baseline and by `refreshFromDisk()` adopting a moved baseline,
+    so a later edit nothing has tried yet is never named as a failed write. `failedSchedaEdits`
+    lists every scheda still there whose edit is owed, whose last write failed and that no save is
+    queued or running to retry (`owesFailedWrite`). The quit review names those beside the vanished
+    ones (`QuitReview.Scheda.problem`: `.gone`, `.writeFailed`), each with its own sentence; a
+    write failure reads «La modifica alla scheda «…» non si è potuta salvare: «Salva» riprova, «Non
+    salvare» la scarta.» A save refused for its tags (`.invalid`) cannot reach the editor today,
+    since `ContenitoreInspectorModel.save` never returns it (only `classify` does), so the editor's
+    `.invalid` arm keeps its earlier handling and the question has no branch for it.
+    «Non salvare» discards the edit and lets the app go; «Annulla» keeps it and brings the
+    pane back; «Salva» leaves it to phase 3 as before, which writes it if the cause has gone and
+    cancels otherwise. An edit never yet tried is not named: it is written in phase 3 as before, and
+    only once that write has failed (that quit is cancelled) does the next Cmd+Q ask about it. A save
+    still in flight is not named either, for the same reason. Residual, named and not fixed: a retry
+    that starts during the question's modal loop and lands after «Non salvare» puts the edit on disk
+    briefly; phase 3 then writes the discarded draft's baseline back over it. Pinned in
+    `QuitVanishedSchedaTests` (the PG-373 section): the write-failure sentence and how it differs
+    from the vanished one, the review naming it, «Non
+    salvare» replying `.now` with nothing written, «Annulla» keeping the draft, «Salva» retrying to
+    `true`, a failure during one quit being asked about on the next, and the failure cleared by a
+    revert to the baseline and by a baseline that moved with the disk.
+
 ## References
 
 - `TODO.md` PG-326; plan `docs/plans/pg-326-quit-unsaved-notes.md`.
