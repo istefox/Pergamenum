@@ -33,6 +33,11 @@ name: Merge integrity
 # Il lancio manuale guarda il branch rispetto a origin/main, come una PR: una
 # finestra fissa sulla storia di main (era origin/main~200..HEAD) conteneva il
 # caso storico 14d8851 e finiva rossa a ogni lancio (PG-245).
+#
+# Il primo step fa girare `--self-test` (PG-303): i suoi controlli, offline e in
+# repository usa e getta, prima giravano solo a mano, mentre adr-references.yml
+# fa già girare il self-test del proprio checker. Ogni controllo successivo gira
+# anche se il self-test è rosso (!cancelled()), per la stessa ragione di §D7.
 
 on:
   pull_request:
@@ -55,8 +60,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Le asserzioni del checker stesso (ADR-0061 e ADR-0062), su repository temporanei.
+      - name: Self-test
+        run: python3 scripts/check-merge-integrity.py --self-test
+
       - name: Check merge integrity (pull_request)
-        if: github.event_name == 'pull_request'
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -68,7 +77,7 @@ jobs:
             --verbose
 
       - name: Check merge integrity (push to main)
-        if: github.event_name == 'push'
+        if: ${{ !cancelled() && github.event_name == 'push' }}
         env:
           PUSH_BEFORE: ${{ github.event.before }}
           PUSH_AFTER: ${{ github.event.after }}
@@ -128,7 +137,7 @@ jobs:
           python3 scripts/check-merge-integrity.py --landing "$base" "$after"
 
       - name: Check merge integrity (manual dispatch)
-        if: github.event_name == 'workflow_dispatch'
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' }}
         run: |
           set -euo pipefail
           python3 scripts/check-merge-integrity.py --range "origin/main..HEAD" --verbose
