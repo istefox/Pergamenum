@@ -47,6 +47,9 @@ final class VaultController {
     var focusedColumnIndex = 0
     /// Cmd+W's dirty tab until its column raises the dialog; written only by the doors (ADR-0073 §D11).
     var closeRequest: NoteTab.ID?
+    /// Columns whose «Chiudi la colonna» is still asking or saving (PG-335): a second request for
+    /// one of them is ignored. Written only by `closeColumn(_:ask:saveAll:)`.
+    @ObservationIgnored var closingColumns: Set<EditorColumn.ID> = []
 
     /// The tab the person is looking at.
     var focusedTab: NoteTab? {

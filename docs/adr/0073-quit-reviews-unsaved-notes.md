@@ -94,7 +94,13 @@ progress.
   saved after switching to B is written into B at the same relative path. Read, not run. Not a quit
   path; recommended as its own P1 entry.
 - **G-b. «Chiudi la colonna» drops the column's tabs, dirty ones included, without asking**
-  (`MenuCommands.swift:41`, `VaultController+Tabs.swift:189-194`).
+  (`MenuCommands.swift:41`, `VaultController+Tabs.swift:189-194`). *Closed 2026-10-02 as PG-335:*
+  `VaultController.closeColumn(_:ask:saveAll:)` (`VaultController+ColumnClose.swift`) reviews the
+  column's dirty tabs, and only those, with this record's machinery (`QuitReview`, `saveForQuit`,
+  `saveTab`) and one question, «Salva» / «Salva tutto», «Non salvare», «Annulla». The column is found
+  again by id after the saves (§D7's rule) and closes only when the answer covered every dirty tab in
+  it; otherwise it stays open, the problem is recorded and the first unresolved tab is revealed. A
+  second request for a column already closing is ignored.
 - **G-c. A conflicted board and a conflicted diary lose their in-memory edits at quit.**
   `settleForTermination()` skips a conflicted board (ADR-0066 §D5) and the diary's `performWrite`
   returns on `.conflicted`. Both follow earlier decisions (ADR-0054 §D5 for the board: "refusing to
@@ -324,7 +330,8 @@ exists. If G4 says «file separately», §D11 moves to the ledger entry, and thi
 open in the same way it names G-a to G-c.
 
 G-a (vault switch), G-b («Chiudi la colonna») and G-c (conflicted board or diary at quit) are filed
-as their own ledger entries and are not decided here.
+as their own ledger entries and are not decided here. *Closed 2026-10-02 as PG-335:* G-b, see its
+entry under §Context.
 
 ## Alternatives considered
 

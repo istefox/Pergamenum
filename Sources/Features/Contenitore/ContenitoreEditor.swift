@@ -112,6 +112,18 @@ final class ContenitoreEditor {
         commitDate()
     }
 
+    /// The scheda is no longer at its path (deleted or moved outside the app): an owed edit can
+    /// never be written, since every write is guarded by the hash of a file that is gone (PG-341).
+    var isSchedaGone: Bool { !model.session.exists(schedaPath) }
+
+    /// Drops what is owed: the fields go back to the last text read or written, so nothing is
+    /// left to write. The quit's «Non salvare» over a scheda that is gone (PG-341): a save
+    /// queued after this finds nothing changed, and one already running is refused by its
+    /// guard, as it would have been anyway.
+    func discard() {
+        adoptModel()
+    }
+
     /// Reports a sentence the view found before there was anything to save (a tag that is not a
     /// tag).
     func report(_ sentence: String) {

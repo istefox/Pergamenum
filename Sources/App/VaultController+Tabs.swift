@@ -215,18 +215,8 @@ extension VaultController {
         columns.append(EditorColumn())
     }
 
-    /// Closes a column and hands the focus to the one left.
-    ///
-    /// Never the last one: an editor with no columns is a window with nothing in it, and the
-    /// no-tabs state already says "nessuna nota aperta" without needing a second way to reach
-    /// it. The tabs it held are not offered back by Cmd+Shift+T - closing a column is closing
-    /// a place, not a note.
-    func closeColumn(_ index: Int) {
-        guard columns.count > 1, columns.indices.contains(index) else { return }
-        columns.remove(at: index)
-        focusedColumnIndex = 0
-        rememberTabs()
-    }
+    // `closeColumn(_:ask:saveAll:)` lives in `VaultController+ColumnClose.swift`: it asks about the
+    // column's unsaved tabs before closing it (PG-335).
 
     /// Opens a note in a tab of its own, after the focused one, and focuses it.
     func openTab(showing note: OpenNote) {

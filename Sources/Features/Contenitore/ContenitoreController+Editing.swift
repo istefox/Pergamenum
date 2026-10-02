@@ -38,6 +38,29 @@ extension ContenitoreController {
         ([editor].compactMap { $0 } + retiredEditors).first { !$0.isSettled }?.schedaPath
     }
 
+    /// The schede, current editor first, whose edit is owed but can never be written because
+    /// the scheda is no longer at its path (PG-341). What the quit review names, so its «Non
+    /// salvare» can let the app go instead of every Cmd+Q being cancelled by a write that cannot
+    /// land. An edit to a scheda still there is not here: it is written in the quit's diary
+    /// phase, as before, and only a write that then fails cancels the quit.
+    var vanishedSchedaEdits: [String] {
+        var paths: [String] = []
+        for owed in [editor].compactMap({ $0 }) + retiredEditors
+        where !owed.isSettled && owed.isSchedaGone && !paths.contains(owed.schedaPath) {
+            paths.append(owed.schedaPath)
+        }
+        return paths
+    }
+
+    /// The quit's «Non salvare» over the schede it named (PG-341): their edits are dropped and a
+    /// retired editor left with nothing to write is let go.
+    func discardEdits(at schedaPaths: [String]) {
+        for owed in [editor].compactMap({ $0 }) + retiredEditors where schedaPaths.contains(owed.schedaPath) {
+            owed.discard()
+        }
+        retiredEditors.removeAll { $0.isSettled }
+    }
+
     /// Makes the editor the inspector binds to the one for `schedaPath`: a new one reading the
     /// scheda, or the current one taking whatever landed on the disk since. The editor it
     /// replaces is retired, not dropped.
