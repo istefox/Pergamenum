@@ -38,7 +38,8 @@ struct ViewCommands: Commands {
             // settings pane for splitting an editor buys nothing.
             Button("Dividi l'editor") { vault.splitEditor() }
                 .disabled(vault.root == nil || vault.columns.count > 1)
-            Button("Chiudi la colonna") { vault.closeColumn(vault.focusedColumnIndex) }
+            // Asks about the column's unsaved tabs first (PG-335).
+            Button("Chiudi la colonna") { Task { await vault.closeColumn(vault.focusedColumnIndex) } }
                 .disabled(vault.columns.count < 2)
             Divider()
             // «Modalità lettura» was here (ADR-0029 §D13). There is one editor now, always

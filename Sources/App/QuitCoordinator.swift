@@ -21,7 +21,11 @@ enum QuitReply: Equatable, Sendable {
 ///    is open. «Annulla» cancels; «Non salvare» covers the snapshot the question showed;
 ///    «Salva tutto» saves under `.terminateLater` with a **fail-safe** cap (§D6): elapsed, it
 ///    cancels the quit rather than completing it, because a note buffer lost to a terminate
-///    cannot be retried.
+///    cannot be retried. The question also names every Contenitore scheda whose inspector edit
+///    is owed but whose file is gone (PG-341): no write to it can ever land, so without a
+///    «Non salvare» of its own every Cmd+Q was cancelled by phase 3. «Non salvare» drops those
+///    edits; «Salva» leaves them to phase 3, which cannot write them and cancels, so the next
+///    Cmd+Q asks again.
 /// 3. **The diary** (ADR-0060 §D2), started after the question: its **fail-open** 2 s cap races
 ///    `settle()` in two independent tasks - a task group would wait out a write that ignores
 ///    cancellation, and the cap would cap nothing. On «Salva tutto» the diary settles **before**
@@ -131,8 +135,10 @@ final class QuitCoordinator {
         // written before anything here decides whether to wait (#506, ADR-0066).
         vault?.openBoard?.settleForTermination()
 
-        // 2. The notes.
-        let review = QuitReview(columns: vault?.columns ?? [])
+        // 2. The notes, and the scheda edits that can never be written (PG-341).
+        let review = QuitReview(
+            columns: vault?.columns ?? [], vanishedSchede: contenitore()?.vanishedSchedaEdits ?? []
+        )
         guard let vault, !review.isEmpty else { return diaryPhase(covering: review) }
 
         isAsking = true
@@ -140,7 +146,11 @@ final class QuitCoordinator {
         isAsking = false
         switch answer {
         case .cancel:
-            reveal(nil)
+            if review.entries.isEmpty {
+                revealContenitore(review.schede.first?.path)
+            } else {
+                reveal(nil)
+            }
             return .cancel
         case .discard:
             // Re-read after the question: typing that raced the answer is uncovered work.
@@ -148,6 +158,7 @@ final class QuitCoordinator {
                 reveal(first.tabID)
                 return .cancel
             }
+            contenitore()?.discardEdits(at: review.schede.map(\.path))
             return diaryPhase(covering: review)
         case .save:
             owesReply = true

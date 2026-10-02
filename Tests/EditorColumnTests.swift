@@ -161,7 +161,7 @@ private func controller(
     controller.splitEditor()
     controller.openNote(at: "Progetti/Sospensione.md")
 
-    controller.closeColumn(1)
+    await controller.closeColumn(1)
 
     #expect(controller.columns.count == 1)
     #expect(controller.focusedColumnIndex == 0)
@@ -175,7 +175,7 @@ private func controller(
     let controller = try await controller(vault)
     controller.openNote(at: "Nexion.md")
 
-    controller.closeColumn(0)
+    await controller.closeColumn(0)
 
     #expect(controller.columns.count == 1)
     #expect(controller.openNote?.relativePath == "Nexion.md")

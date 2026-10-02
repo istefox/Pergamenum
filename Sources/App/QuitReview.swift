@@ -26,6 +26,17 @@ struct QuitReview: Equatable, Sendable {
         let previousVaultRoot: URL?
     }
 
+    /// A Contenitore scheda whose inspector edit is owed and can never reach disk, because the
+    /// scheda is no longer at its path (PG-341). The question names it like a note, so its
+    /// «Non salvare» lets the app go; «Salva» retries the write, which cannot land, so the quit
+    /// is cancelled and the pane brought back, and the next Cmd+Q offers the choice again.
+    struct Scheda: Equatable, Sendable {
+        let path: String
+
+        /// The scheda's file name without `.md`, as the pane lists it.
+        var name: String { ((path as NSString).lastPathComponent as NSString).deletingPathExtension }
+    }
+
     /// The person's answer to the question.
     enum Answer: Equatable, Sendable {
         case save, discard, cancel
@@ -49,8 +60,12 @@ struct QuitReview: Equatable, Sendable {
 
     /// Every dirty tab, column order then tab order.
     let entries: [Entry]
+    /// Every Contenitore scheda whose owed edit cannot be written (PG-341). Only the quit
+    /// passes any: a vault switch and a column close never reach the Contenitore.
+    let schede: [Scheda]
 
-    init(columns: [EditorColumn]) {
+    init(columns: [EditorColumn], vanishedSchede: [String] = []) {
+        schede = vanishedSchede.map(Scheda.init(path:))
         entries = columns.flatMap { column in
             column.tabs.compactMap { tab -> Entry? in
                 guard tab.note.hasUnsavedChanges else { return nil }
@@ -67,7 +82,7 @@ struct QuitReview: Equatable, Sendable {
         }
     }
 
-    var isEmpty: Bool { entries.isEmpty }
+    var isEmpty: Bool { entries.isEmpty && schede.isEmpty }
 
     /// The entries «Salva tutto» may write: every one that is neither conflicted nor from a
     /// previous vault.
@@ -80,6 +95,30 @@ struct QuitReview: Equatable, Sendable {
         now.entries.filter { entry in
             !entries.contains { $0.tabID == entry.tabID && $0.text == entry.text }
         }
+    }
+
+    /// What closing a column does once the question about its dirty tabs was answered
+    /// (PG-335).
+    enum CloseDecision: Equatable, Sendable {
+        case close
+        /// The column stays open. `unresolved` is what the answer did not cover - a failed
+        /// save, a conflicted tab the save never writes, text typed meanwhile - and is empty for
+        /// «Annulla», which covers nothing and asks for nothing to be shown.
+        case keepOpen(unresolved: [Entry])
+    }
+
+    /// Decides a column close on the column as it is **after** the answer ran (`now`), never
+    /// on this snapshot alone (ADR-0043 §D7). «Salva» covers nothing it did not save: the
+    /// column closes only when `now` has no dirty tab left. «Non salvare» covers what the
+    /// question showed (`uncovered(in:)`), the quit's own rule.
+    func closeDecision(after answer: Answer, now: QuitReview) -> CloseDecision {
+        let unresolved: [Entry]
+        switch answer {
+        case .cancel: return .keepOpen(unresolved: [])
+        case .save: unresolved = now.entries
+        case .discard: unresolved = uncovered(in: now)
+        }
+        return unresolved.isEmpty ? .close : .keepOpen(unresolved: unresolved)
     }
 
     // MARK: The words
@@ -137,10 +176,11 @@ struct QuitReview: Equatable, Sendable {
         return sharesTitle ? note.relativePath : note.title
     }
 
-    /// What the question is asked before: quitting (ADR-0073), or another notes folder
-    /// replacing the open one (PG-334). Same review, same answers, different words.
+    /// What the question is asked before: quitting (ADR-0073), another notes folder replacing
+    /// the open one (PG-334), or «Chiudi la colonna» (PG-335). Same review, same answers,
+    /// different words.
     enum Occasion: Equatable, Sendable {
-        case quit, vaultSwitch
+        case quit, vaultSwitch, columnClose
     }
 
     /// The quit's words.
@@ -148,28 +188,21 @@ struct QuitReview: Equatable, Sendable {
 
     func copy(for occasion: Occasion) -> Copy {
         let notes = notes
-        let names = notes.map { Self.displayName(of: $0, among: notes) }
-        let before: String
-        let losing: String
-        let staying: String
-        switch occasion {
-        case .quit:
-            before = "prima di uscire?"
-            losing = "Uscendo senza salvare, le modifiche vanno perse."
-            staying = "Pergamenum resta aperto"
-        case .vaultSwitch:
-            before = "prima di aprire un'altra cartella note?"
-            losing = "Aprendo un'altra cartella note senza salvare, le modifiche vanno perse."
-            staying = "La cartella note resta aperta"
-        }
+        let noteNames = notes.map { Self.displayName(of: $0, among: notes) }
+        let schedaNames = schede.map(\.name)
+        let names = noteNames + schedaNames
+        let words = Self.words(for: occasion)
+        let before = words.before
+        let losing = words.losing
+        let staying = words.staying
         var paragraphs: [String] = []
         let message: String
         let saveLabel: String
-        if notes.count == 1, let name = names.first {
+        if names.count == 1, let name = names.first {
             message = "Salvare le modifiche a «\(name)» \(before)"
             saveLabel = "Salva"
         } else {
-            message = "Salvare le modifiche a \(notes.count) note \(before)"
+            message = "Salvare le modifiche a \(Self.counted(notes: notes.count, schede: schede.count)) \(before)"
             saveLabel = "Salva tutto"
             var listed = names.prefix(Self.listedTitleLimit).map { "«\($0)»" }
             if names.count > Self.listedTitleLimit {
@@ -178,16 +211,22 @@ struct QuitReview: Equatable, Sendable {
             paragraphs.append(listed.joined(separator: "\n"))
         }
         paragraphs.append(losing)
-        for (note, name) in zip(notes, names) where note.isConflicted {
+        for (note, name) in zip(notes, noteNames) where note.isConflicted {
             paragraphs.append(
                 "«\(name)» è cambiata anche su disco: "
                     + "\(staying) per farti scegliere quale versione tenere."
             )
         }
-        for (note, name) in zip(notes, names) where note.isFromPreviousVault {
+        for (note, name) in zip(notes, noteNames) where note.isFromPreviousVault {
             paragraphs.append(
                 "«\(name)» è di una cartella note aperta prima e non viene salvata in questa: "
                     + "\(staying) se scegli di salvare."
+            )
+        }
+        for name in schedaNames {
+            paragraphs.append(
+                "La scheda «\(name)» non è più al suo posto e la sua modifica non può essere salvata: "
+                    + "«Non salvare» la scarta."
             )
         }
         return Copy(
@@ -197,5 +236,45 @@ struct QuitReview: Equatable, Sendable {
             discardLabel: "Non salvare",
             cancelLabel: "Annulla"
         )
+    }
+
+    /// What changes with the occasion: what the question is asked before, what not saving
+    /// loses, and what stays open while a conflict or a foreign tab waits.
+    private struct Words {
+        let before: String
+        let losing: String
+        let staying: String
+    }
+
+    private static func words(for occasion: Occasion) -> Words {
+        switch occasion {
+        case .quit:
+            Words(
+                before: "prima di uscire?",
+                losing: "Uscendo senza salvare, le modifiche vanno perse.",
+                staying: "Pergamenum resta aperto"
+            )
+        case .vaultSwitch:
+            Words(
+                before: "prima di aprire un'altra cartella note?",
+                losing: "Aprendo un'altra cartella note senza salvare, le modifiche vanno perse.",
+                staying: "La cartella note resta aperta"
+            )
+        case .columnClose:
+            Words(
+                before: "prima di chiudere la colonna?",
+                losing: "Chiudendo la colonna senza salvare, le modifiche vanno perse.",
+                staying: "La colonna resta aperta"
+            )
+        }
+    }
+
+    /// «3 note», «2 schede», «1 nota e 1 scheda»: what the question counts when it names more
+    /// than one thing.
+    private static func counted(notes: Int, schede: Int) -> String {
+        [
+            notes > 0 ? "\(notes) \(notes == 1 ? "nota" : "note")" : nil,
+            schede > 0 ? "\(schede) \(schede == 1 ? "scheda" : "schede")" : nil,
+        ].compactMap { $0 }.joined(separator: " e ")
     }
 }

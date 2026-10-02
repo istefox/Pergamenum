@@ -55,11 +55,18 @@ enum QuitReviewAlert {
         static let vaultSwitchCancel = "vault-switch-prompt-cancel"
         static let vaultSwitchDiscard = "vault-switch-prompt-discard"
 
+        /// «Chiudi la colonna»'s buttons (PG-335).
+        static let columnCloseSave = "column-close-prompt-save"
+        static let columnCloseCancel = "column-close-prompt-cancel"
+        static let columnCloseDiscard = "column-close-prompt-discard"
+
         static func all(for occasion: QuitReview.Occasion) -> ButtonIdentifiers {
             switch occasion {
             case .quit: ButtonIdentifiers(save: save, cancel: cancel, discard: discard)
             case .vaultSwitch:
                 ButtonIdentifiers(save: vaultSwitchSave, cancel: vaultSwitchCancel, discard: vaultSwitchDiscard)
+            case .columnClose:
+                ButtonIdentifiers(save: columnCloseSave, cancel: columnCloseCancel, discard: columnCloseDiscard)
             }
         }
     }
@@ -89,5 +96,11 @@ enum QuitReviewAlert {
     /// `VaultController.switchVault(to:ask:)`'s default `ask`.
     static func askBeforeVaultSwitch(_ review: QuitReview) -> QuitReview.Answer {
         answer(for: make(review.copy(for: .vaultSwitch), for: .vaultSwitch).runModal())
+    }
+
+    /// Asks, synchronously, before «Chiudi la colonna» drops a column with unsaved tabs
+    /// (PG-335). `VaultController.closeColumn(_:ask:saveAll:)`'s default `ask`.
+    static func askBeforeColumnClose(_ review: QuitReview) -> QuitReview.Answer {
+        answer(for: make(review.copy(for: .columnClose), for: .columnClose).runModal())
     }
 }
