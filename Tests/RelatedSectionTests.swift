@@ -160,3 +160,131 @@ func aHeadingInsideAFenceIsNotTheSection(body: String) {
     let body = "## Note correlate\n\n- [[A]] — r\n\n~~~\n## Altro\n~~~\n\n- [[B]] — s\n"
     #expect(RelatedSection.parse(from: body).map(\.target) == ["A", "B"])
 }
+
+// PG-372: «Collega» adds one bullet and leaves every other line of the section as it was
+// written - prose, a fence and its own `-` lines, an indented sub-item, the blank lines.
+
+@Test func collegaKeepsProseAndAFenceInTheSection() throws {
+    let section = "## Note correlate\n\nIntro in prosa.\n\n- [[B]] — b\n\n"
+        + "```yaml\n- voce\n```\n\nChiusura.\n\n## Altro\n"
+    let linked = try RelatedLink.add(
+        target: "C", reason: "c", to: note(related: ["[[B]]"], section), selfTitle: "Nota"
+    )
+    #expect(linked.hasSuffix(
+        "## Note correlate\n\nIntro in prosa.\n\n- [[B]] — b\n- [[C]] — c\n\n"
+            + "```yaml\n- voce\n```\n\nChiusura.\n\n## Altro\n"
+    ))
+}
+
+@Test func collegaInsertsInOrderAndKeepsASubItemWithItsBullet() throws {
+    let text = "---\r\ndate: 2026-09-26\r\ntags:\r\n  - type-note\r\nrelated:\r\n"
+        + "  - \"[[A]]\"\r\n  - \"[[C]]\"\r\n---\r\n"
+        + "## Note correlate\r\n\r\n- [[A]] — a\r\n  - dettaglio\r\n- [[C]] — c\r\n"
+    let linked = try RelatedLink.add(target: "B", reason: "b", to: text, selfTitle: "Nota")
+    #expect(isAllCRLF(linked))
+    #expect(linked.hasSuffix(
+        "## Note correlate\r\n\r\n- [[A]] — a\r\n  - dettaglio\r\n- [[B]] — b\r\n- [[C]] — c\r\n"
+    ))
+}
+
+@Test func collegaInASectionWithOnlyProseKeepsTheProse() throws {
+    let linked = try RelatedLink.add(
+        target: "A", reason: "motivo",
+        to: note("## Note correlate\n\nVedi anche la cartella.\n"), selfTitle: "Nota"
+    )
+    #expect(linked.hasSuffix("## Note correlate\n\n- [[A]] — motivo\n\nVedi anche la cartella.\n"))
+}
+
+@Test func collegaUnderABareHeadingBeforeAnotherSection() throws {
+    let linked = try RelatedLink.add(
+        target: "A", reason: "motivo", to: note("## Note correlate\n## Altro\n"), selfTitle: "Nota"
+    )
+    #expect(linked.hasSuffix("## Note correlate\n\n- [[A]] — motivo\n\n## Altro\n"))
+}
+
+// PG-372, the inverse: removing a link takes out its bullet and leaves every other line of the
+// section as it was written.
+
+@Test func unlinkKeepsTheProseAndTheFenceOfTheSection() {
+    let section = "## Note correlate\n\nIntro in prosa.\n\n- [[A]] — a\n- [[B]] — b\n\n"
+        + "```yaml\n- voce\n```\n\nChiusura.\n\n## Altro\n"
+    let unlinked = RelatedLink.remove(target: "A", from: note(related: ["[[A]]", "[[B]]"], section))
+    #expect(unlinked.hasSuffix(
+        "## Note correlate\n\nIntro in prosa.\n\n- [[B]] — b\n\n```yaml\n- voce\n```\n\nChiusura.\n\n## Altro\n"
+    ))
+}
+
+@Test func unlinkLeavesTheSameLinkInsideAFence() {
+    let section = "## Note correlate\n\n- [[A]] — a\n- [[X]] — x\n\n```\n- [[X]] — x\n```\n"
+    let unlinked = RelatedLink.remove(target: "X", from: note(related: ["[[A]]", "[[X]]"], section))
+    #expect(unlinked.hasSuffix("## Note correlate\n\n- [[A]] — a\n\n```\n- [[X]] — x\n```\n"))
+}
+
+@Test func unlinkOnACRLFSectionWithProseKeepsBoth() {
+    let text = "---\r\ndate: 2026-09-26\r\ntags:\r\n  - type-note\r\nrelated:\r\n"
+        + "  - \"[[A]]\"\r\n  - \"[[B]]\"\r\n---\r\n"
+        + "## Note correlate\r\n\r\nIntro.\r\n\r\n- [[A]] — a\r\n  - dettaglio\r\n- [[B]] — b\r\n"
+    let unlinked = RelatedLink.remove(target: "A", from: text)
+    #expect(isAllCRLF(unlinked))
+    // The sub-item belongs to the removed bullet and goes with it.
+    #expect(unlinked.hasSuffix("## Note correlate\r\n\r\nIntro.\r\n\r\n- [[B]] — b\r\n"))
+}
+
+@Test func linkThenUnlinkLeavesAProseSectionAsItWas() throws {
+    let section = "## Note correlate\n\nVedi anche la cartella.\n"
+    let linked = try RelatedLink.add(target: "A", reason: "motivo", to: note(section), selfTitle: "Nota")
+    #expect(RelatedLink.remove(target: "A", from: linked).hasSuffix("\n\n" + section))
+}
+
+@Test(arguments: [
+    ("## Note correlate\n\n- [[A]] — a\n\n## Altro\n", "\n\n## Note correlate\n\n## Altro\n"),
+    ("## Note correlate\n\n- [[A]] — a\n", "\n\n## Note correlate\n"),
+])
+func unlinkingTheLastLinkKeepsTheBareHeading(section: String, expected: String) {
+    #expect(RelatedLink.remove(target: "A", from: note(related: ["[[A]]"], section)).hasSuffix(expected))
+}
+
+// PG-372 review: a bullet indented by one to three spaces is a link to `RelatedSection.parse`
+// (it trims every line), so «Collega» and «Scollega» treat it as one too.
+
+@Test func unlinkRemovesABulletIndentedByOneToThreeSpaces() {
+    for indent in ["", " ", "  ", "   "] {
+        let section = "## Note correlate\n\n\(indent)- [[A]] — a\n\(indent)- [[B]] — b\n"
+        let unlinked = RelatedLink.remove(target: "B", from: note(related: ["[[A]]", "[[B]]"], section))
+        #expect(RelatedSection.parse(from: NoteDocument.parse(unlinked).body).map(\.target) == ["A"])
+        #expect(unlinked.hasSuffix("## Note correlate\n\n\(indent)- [[A]] — a\n"))
+    }
+}
+
+@Test func collegaSortsAgainstABulletIndentedByOneToThreeSpaces() throws {
+    let linked = try RelatedLink.add(
+        target: "A", reason: "a", to: note(related: ["[[B]]"], "## Note correlate\n\n  - [[B]] — b\n"),
+        selfTitle: "Nota"
+    )
+    #expect(linked.hasSuffix("## Note correlate\n\n- [[A]] — a\n  - [[B]] — b\n"))
+}
+
+@Test func anIndentedBulletKeepsItsContinuationAndSubItems() {
+    let section = "## Note correlate\n\n - [[A]] — a\n    righe a capo\n   - dettaglio\n - [[B]] — b\n"
+    let unlinked = RelatedLink.remove(target: "A", from: note(related: ["[[A]]", "[[B]]"], section))
+    #expect(unlinked.hasSuffix("## Note correlate\n\n - [[B]] — b\n"))
+}
+
+// PG-372 review: only a bullet that links to a note is a sort anchor, so a prose bullet beside
+// the links never pulls a new link above it.
+
+@Test func collegaNeverUsesAProseBulletAsTheSortAnchor() throws {
+    let section = "## Note correlate\n\n- vedi la cartella\n- [[A]] — a\n"
+    let linked = try RelatedLink.add(
+        target: "B", reason: "b", to: note(related: ["[[A]]"], section), selfTitle: "Nota"
+    )
+    #expect(linked.hasSuffix("## Note correlate\n\n- vedi la cartella\n- [[A]] — a\n- [[B]] — b\n"))
+}
+
+@Test func collegaAfterTheLastLinkBulletEvenWhenProseBulletsFollow() throws {
+    let section = "## Note correlate\n\n- [[A]] — a\n- vedi la cartella\n"
+    let linked = try RelatedLink.add(
+        target: "B", reason: "b", to: note(related: ["[[A]]"], section), selfTitle: "Nota"
+    )
+    #expect(linked.hasSuffix("## Note correlate\n\n- [[A]] — a\n- [[B]] — b\n- vedi la cartella\n"))
+}
