@@ -27,7 +27,7 @@ import XCTest
 // renders `pratica.md` read-only; the beep and the board's preview (M8) stay by hand.
 //
 // The fixture builder and the helpers live in `PraticheUITests+Support.swift` (PG-364).
-final class PraticheUITests: XCTestCase {
+final class PraticheUITests: PergamenumUITestCase {
     /// One conformant pratica, seeded on disk before `launch()`, so the list column
     /// has a row and the timeline/inspector/add-note/add-call surfaces - all gated on
     /// `pratiche.selection != nil` (`PratichePane.swift`'s `content`) - have something
@@ -42,46 +42,18 @@ final class PraticheUITests: XCTestCase {
     static let messageWithAttachmentID = "<pg298-attachment@example.com>"
     static let messageWithoutAttachmentID = "<pg298-plain@example.com>"
 
-    /// Not `private`: `PraticheUITests+Support.swift` reads it.
-    var vault: URL!
-    private var stateBase: URL!
-    private var mailStoreRoot: URL!
-    /// Not `private`: `PraticheUITests+Support.swift` reads it.
-    var app: XCUIApplication!
-
     override func setUpWithError() throws {
-        continueAfterFailure = false
-        vault = URL(filePath: NSTemporaryDirectory()).appending(path: "PraticheUITest-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try super.setUpWithError()
+        try makeTemporaryVault(prefix: "PraticheUITest")
         try seedFixturePratica()
 
-        app = XCUIApplication()
-        stateBase = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-        // R-19/ADR §D7: a per-test fixture root, never the real `~/Library/Mail`, left
-        // empty - `FullDiskAccessProbe.state()` reads `ENOENT` on an empty store as
-        // `.granted`, same as it would a real one (`FullDiskAccessProbe.swift`'s own
-        // doc comment).
-        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
-
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES",
-                               "-disableUpdater", "YES", "-disableContenitore", "YES",
-                               "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
-                               "-stateBase", stateBase.path(percentEncoded: false)]
-        app.launch()
+        // R-19/ADR §D7: `launchApp()`'s Mail store is a per-test fixture root, never the real
+        // `~/Library/Mail`, left empty - `FullDiskAccessProbe.state()` reads `ENOENT` on an
+        // empty store as `.granted`, same as it would a real one (`FullDiskAccessProbe.swift`'s
+        // own doc comment).
+        launchApp()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
         showPratiche()
-    }
-
-    override func tearDownWithError() throws {
-        app?.terminate()
-        try? FileManager.default.removeItem(at: vault)
-        try? FileManager.default.removeItem(at: stateBase)
-        try? FileManager.default.removeItem(at: mailStoreRoot)
     }
 
     // MARK: - R-18: the pane itself, the list, and the Full Disk Access banner

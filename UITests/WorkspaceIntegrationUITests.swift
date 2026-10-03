@@ -29,12 +29,7 @@ import XCTest
 ///   misplacing it. Clicking the row again between the two reads the current line
 ///   back before the second command runs. See the report handed to the orchestrator
 ///   alongside this file for the reproduction with nothing worked around.
-final class WorkspaceIntegrationUITests: XCTestCase {
-    private var vault: URL!
-    private var stateBase: URL!
-    private var mailStoreRoot: URL!
-    private var app: XCUIApplication!
-
+final class WorkspaceIntegrationUITests: PergamenumUITestCase {
     // MARK: Fixture identity, named once so every step and every assertion agrees.
 
     private let boardFolder = "Vibrofer"
@@ -61,15 +56,8 @@ final class WorkspaceIntegrationUITests: XCTestCase {
     private let orphanNotePath = "SenzaBoard/NotaOrfana.md"
 
     override func setUpWithError() throws {
-        continueAfterFailure = false
+        try super.setUpWithError()
         try makeVault()
-    }
-
-    override func tearDownWithError() throws {
-        app?.terminate()
-        try? FileManager.default.removeItem(at: vault)
-        try? FileManager.default.removeItem(at: stateBase)
-        try? FileManager.default.removeItem(at: mailStoreRoot)
     }
 
     // MARK: New (review-triage-fix cycle 1, MAJOR finding) - `WorkspaceView.placePendingNote`
@@ -107,14 +95,7 @@ final class WorkspaceIntegrationUITests: XCTestCase {
     // MARK: Launch
 
     private func launch() {
-        app = XCUIApplication()
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES",
-                               "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
-                               "-disablePlaud", "YES",
-                               "-disableUpdater", "YES", "-disableContenitore", "YES",
-                               "-stateBase", stateBase.path(percentEncoded: false)]
-        app.launch()
+        launchApp()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 15), "il vault non si è aperto")
     }
 
@@ -416,19 +397,11 @@ final class WorkspaceIntegrationUITests: XCTestCase {
     /// notes this walk assigns and links are set up before the app ever opens, so R-05
     /// and R-06 both have something real to read from the first step onward.
     private func makeVault() throws {
-        vault = URL(filePath: NSTemporaryDirectory())
-            .appending(path: "WorkspaceIntegrationUITest-\(UUID().uuidString)")
-        stateBase = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
+        try makeTemporaryVault(prefix: "WorkspaceIntegrationUITest")
         try FileManager.default.createDirectory(
             at: vault.appending(path: boardFolder, directoryHint: .isDirectory),
             withIntermediateDirectories: true
         )
-        try FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-
-        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
         try Self.canvasFixture.write(
             to: vault.appending(path: boardFile, directoryHint: .notDirectory),
             atomically: true, encoding: .utf8

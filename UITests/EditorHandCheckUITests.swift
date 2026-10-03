@@ -7,18 +7,12 @@ import XCTest
 /// - H10: typing in the find field never moves the keyboard into the note (the 2026-08-18
 ///   defect was a SwiftUI update cycle while typing, which only real key focus reproduces).
 /// - H16: the Diario and Oggi panes host the same editor, and nothing else tests their wiring.
-final class EditorHandCheckUITests: XCTestCase {
-    private var vault: URL!
-    private var stateBase: URL!
-    private var mailStoreRoot: URL!
-    private var app: XCUIApplication!
-
+final class EditorHandCheckUITests: PergamenumUITestCase {
     private static let noteBody = "alfa beta alfa gamma alfa"
 
     override func setUpWithError() throws {
-        continueAfterFailure = false
-        vault = URL(filePath: NSTemporaryDirectory()).appending(path: "EditorHandCheckUITest-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try super.setUpWithError()
+        try makeTemporaryVault(prefix: "EditorHandCheckUITest")
         try """
         ---
         date: 2026-09-30
@@ -32,28 +26,8 @@ final class EditorHandCheckUITests: XCTestCase {
             atomically: true, encoding: .utf8
         )
 
-        app = XCUIApplication()
-        stateBase = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES",
-                               "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
-                               "-disablePlaud", "YES",
-                               "-disableUpdater", "YES", "-disableContenitore", "YES",
-                               "-stateBase", stateBase.path(percentEncoded: false)]
-        app.launch()
+        launchApp()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
-    }
-
-    override func tearDownWithError() throws {
-        app?.terminate()
-        try? FileManager.default.removeItem(at: vault)
-        try? FileManager.default.removeItem(at: stateBase)
-        try? FileManager.default.removeItem(at: mailStoreRoot)
     }
 
     /// G2 H10. Each character goes to the field, none to the note, and Return steps through the

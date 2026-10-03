@@ -14,38 +14,13 @@ import XCTest
 /// the note row itself carries an `accessibilityIdentifier`, but a `.contextMenu`'s
 /// entries are `NSMenuItem`s outside that row's accessibility hierarchy, so the menu
 /// item and the confirmation dialog's buttons are found by their production title.
-final class SidebarDeleteUITests: XCTestCase {
-    private var vault: URL!
-    private var stateBase: URL!
-    private var mailStoreRoot: URL!
-    private var app: XCUIApplication!
-
+final class SidebarDeleteUITests: PergamenumUITestCase {
     override func setUpWithError() throws {
-        continueAfterFailure = false
+        try super.setUpWithError()
         try makeVault()
 
-        app = XCUIApplication()
-        stateBase = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES",
-                               "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
-                               "-disablePlaud", "YES",
-                               "-disableUpdater", "YES", "-disableContenitore", "YES",
-                               "-stateBase", stateBase.path(percentEncoded: false)]
-        app.launch()
+        launchApp()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10), "il vault non si è aperto")
-    }
-
-    override func tearDownWithError() throws {
-        app?.terminate()
-        try? FileManager.default.removeItem(at: vault)
-        try? FileManager.default.removeItem(at: stateBase)
-        try? FileManager.default.removeItem(at: mailStoreRoot)
     }
 
     func testDeletingANoteFromTheContextMenuRemovesItFromTheTreeAndTheVault() throws {
@@ -93,9 +68,7 @@ final class SidebarDeleteUITests: XCTestCase {
     // MARK: Fixture
 
     private func makeVault() throws {
-        vault = URL(filePath: NSTemporaryDirectory())
-            .appending(path: "SidebarDeleteUITest-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try makeTemporaryVault(prefix: "SidebarDeleteUITest")
         try writeNote("Da Eliminare", at: "DaEliminare.md")
     }
 

@@ -19,51 +19,25 @@ import XCTest
 /// WorkspaceBoardUITests entry; the arrow tool's `a` key and real drag, and the
 /// group frame's real hit-testing, are left with no cover at all, a loss named
 /// rather than hidden.
-final class WorkspaceBoardUITests: XCTestCase {
-    private var vault: URL!
-    private var stateBase: URL!
-    private var mailStoreRoot: URL!
+final class WorkspaceBoardUITests: PergamenumUITestCase {
     private var boardFile: URL!
-    private var app: XCUIApplication!
 
     // Board coordinates of the fixture, mirrored here so a test can say what it
     // expects in the same units the file uses.
     private let cardA = CGRect(x: 0, y: 0, width: 240, height: 140)
 
     override func setUpWithError() throws {
-        continueAfterFailure = false
+        try super.setUpWithError()
         try makeVault()
 
-        // Nothing is snapshotted or restored here. `-recentVaults` below lands in the
+        // Nothing is snapshotted or restored here. `launchApp()`'s `-recentVaults` lands in the
         // argument domain, and `RecentVaults.remember` refuses to persist a list that
         // arrived that way, so this run cannot reach the user's own recents at all.
         // A guard on this side could not have worked: the XCUITest runner is sandboxed
         // and its `UserDefaults(suiteName:)` is a private copy in its own container.
 
-        app = XCUIApplication()
-        // NSUserDefaults reads the argument domain, so the app reopens this vault at
-        // launch without any test-only code inside the app itself.
-        stateBase = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES",
-                               "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
-                               "-disablePlaud", "YES",
-                               "-disableUpdater", "YES", "-disableContenitore", "YES",
-                               "-stateBase", stateBase.path(percentEncoded: false)]
-        app.launch()
+        launchApp()
         try openWorkspace()
-    }
-
-    override func tearDownWithError() throws {
-        app?.terminate()
-        try? FileManager.default.removeItem(at: vault)
-        try? FileManager.default.removeItem(at: stateBase)
-        try? FileManager.default.removeItem(at: mailStoreRoot)
     }
 
     // MARK: 1. A corner grip can be grabbed and resizes the card
@@ -88,9 +62,7 @@ final class WorkspaceBoardUITests: XCTestCase {
     // MARK: Fixture and helpers
 
     private func makeVault() throws {
-        let root = URL(filePath: NSTemporaryDirectory())
-            .appending(path: "BoardUITest-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let root = try makeTemporaryVault(prefix: "BoardUITest")
         // One `.canvas` in the vault root, named after the vault only because this fixture
         // writes it that way: no rule derives a board from a folder's name any more
         // (ADR-0025 §D1 deleted `CanvasStore.boardPath(forFolder:)`), and no board opens at
@@ -98,7 +70,6 @@ final class WorkspaceBoardUITests: XCTestCase {
         // actually done since ADR-0024 made `attach` load-not-select.
         let board = root.appending(path: "\(root.lastPathComponent).canvas")
         try Self.fixture.write(to: board, atomically: true, encoding: .utf8)
-        vault = root
         boardFile = board
     }
 

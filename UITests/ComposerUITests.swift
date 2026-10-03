@@ -6,38 +6,13 @@ import XCTest
 /// Both were floating windows, and the note one was the complaint: a sheet over the
 /// window is not where you write. What a sheet is and is not can only be checked on
 /// the running app, which is what puts these here rather than in the unit suite.
-final class ComposerUITests: XCTestCase {
-    private var vault: URL!
-    private var stateBase: URL!
-    private var mailStoreRoot: URL!
-    private var app: XCUIApplication!
-
+final class ComposerUITests: PergamenumUITestCase {
     override func setUpWithError() throws {
-        continueAfterFailure = false
+        try super.setUpWithError()
         try makeVault()
 
-        app = XCUIApplication()
-        stateBase = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES",
-                               "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
-                               "-disablePlaud", "YES",
-                               "-disableUpdater", "YES", "-disableContenitore", "YES",
-                               "-stateBase", stateBase.path(percentEncoded: false)]
-        app.launch()
+        launchApp()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
-    }
-
-    override func tearDownWithError() throws {
-        app?.terminate()
-        try? FileManager.default.removeItem(at: vault)
-        try? FileManager.default.removeItem(at: stateBase)
-        try? FileManager.default.removeItem(at: mailStoreRoot)
     }
 
     private func toolbarButton(_ label: String, timeout: TimeInterval = 5) -> XCUIElement {
@@ -121,9 +96,7 @@ final class ComposerUITests: XCTestCase {
     // MARK: Fixture
 
     private func makeVault() throws {
-        vault = URL(filePath: NSTemporaryDirectory())
-            .appending(path: "ComposerUITest-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try makeTemporaryVault(prefix: "ComposerUITest")
         try """
         ---
         date: 2026-08-13

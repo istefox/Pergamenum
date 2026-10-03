@@ -6,24 +6,17 @@ import XCTest
 ///
 /// The alert's buttons are found by their accessibility identifiers (`quit-prompt-*`, ADR-0073
 /// departure 18), not by their titles: prose grows (`CLAUDE.md`). The note is found by its
-/// own name. `-disableCalendar`, `-disableUpdater` and `-mailStoreRoot` as every
-/// UI-test file passes them.
+/// own name. The isolation flags are `PergamenumUITestCase`'s, as for every UI-test file.
 ///
 /// Probe P2 (ADR-0073 §D8) is the other reason this file exists: if `app.terminate()` in a
 /// teardown reaches the delegate, a test that leaves a note dirty now meets the alert. This
 /// test leaves nothing dirty - it ends with the app gone.
-final class QuitReviewUITests: XCTestCase {
-    private var vault: URL!
-    private var stateBase: URL!
-    private var mailStoreRoot: URL!
-    private var app: XCUIApplication!
-
+final class QuitReviewUITests: PergamenumUITestCase {
     private let typed = "Riga scritta prima di uscire."
 
     override func setUpWithError() throws {
-        continueAfterFailure = false
-        vault = URL(filePath: NSTemporaryDirectory()).appending(path: "QuitReviewUITest-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try super.setUpWithError()
+        try makeTemporaryVault(prefix: "QuitReviewUITest")
         try """
         ---
         date: 2026-09-29
@@ -34,28 +27,8 @@ final class QuitReviewUITests: XCTestCase {
         Testo iniziale.
         """.write(to: noteURL, atomically: true, encoding: .utf8)
 
-        app = XCUIApplication()
-        stateBase = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES",
-                               "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
-                               "-disablePlaud", "YES",
-                               "-disableUpdater", "YES", "-disableContenitore", "YES",
-                               "-stateBase", stateBase.path(percentEncoded: false)]
-        app.launch()
+        launchApp()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
-    }
-
-    override func tearDownWithError() throws {
-        if app?.state != .notRunning { app?.terminate() }
-        try? FileManager.default.removeItem(at: vault)
-        try? FileManager.default.removeItem(at: stateBase)
-        try? FileManager.default.removeItem(at: mailStoreRoot)
     }
 
     private var noteURL: URL { vault.appending(path: "Uscita.md", directoryHint: .notDirectory) }

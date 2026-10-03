@@ -14,23 +14,10 @@ import XCTest
 /// 3, Task 6): its two initial checks were true with no recorder attached, so it wasn't
 /// exercising the wiring it claimed to. Replaced by CommandActionTests:56 and
 /// NavigationHistoryTests:25.
-final class HistoryNavigationUITests: XCTestCase {
-    private var vault: URL!
-    private var stateBase: URL!
-    private var mailStoreRoot: URL!
-    private var app: XCUIApplication!
-
+final class HistoryNavigationUITests: PergamenumUITestCase {
     override func setUpWithError() throws {
-        continueAfterFailure = false
-        vault = URL(filePath: NSTemporaryDirectory()).appending(path: "HistoryUITest-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
-    }
-
-    override func tearDownWithError() throws {
-        app?.terminate()
-        try? FileManager.default.removeItem(at: vault)
-        try? FileManager.default.removeItem(at: stateBase)
-        try? FileManager.default.removeItem(at: mailStoreRoot)
+        try super.setUpWithError()
+        try makeTemporaryVault(prefix: "HistoryUITest")
     }
 
     /// Three panes forward, three back, three forward again, in the same order.
@@ -53,20 +40,7 @@ final class HistoryNavigationUITests: XCTestCase {
     // MARK: Support
 
     private func launch() {
-        app = XCUIApplication()
-        stateBase = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES",
-                               "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
-                               "-disablePlaud", "YES",
-                               "-disableUpdater", "YES", "-disableContenitore", "YES",
-                               "-stateBase", stateBase.path(percentEncoded: false)]
-        app.launch()
+        launchApp()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
     }
 

@@ -11,16 +11,10 @@ import XCTest
 /// are replaced by the plain-click-refused unit test the injectable Cmd-state closure
 /// (`NoteTextView+Coordinator.swift:411`) makes possible, named in the census's
 /// WorkspaceFocusUITests/WikilinkNavigationUITests entry.
-final class WikilinkNavigationUITests: XCTestCase {
-    private var vault: URL!
-    private var stateBase: URL!
-    private var mailStoreRoot: URL!
-    private var app: XCUIApplication!
-
+final class WikilinkNavigationUITests: PergamenumUITestCase {
     override func setUpWithError() throws {
-        continueAfterFailure = false
-        vault = URL(filePath: NSTemporaryDirectory()).appending(path: "WikilinkNavigationUITest-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try super.setUpWithError()
+        try makeTemporaryVault(prefix: "WikilinkNavigationUITest")
 
         // The wikilink sits alone on the note's first body line so a click anywhere on that
         // line's visible text lands on it - no other text on the line to miss it for.
@@ -49,28 +43,8 @@ final class WikilinkNavigationUITests: XCTestCase {
             atomically: true, encoding: .utf8
         )
 
-        app = XCUIApplication()
-        stateBase = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES",
-                               "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
-                               "-disablePlaud", "YES",
-                               "-disableUpdater", "YES", "-disableContenitore", "YES",
-                               "-stateBase", stateBase.path(percentEncoded: false)]
-        app.launch()
+        launchApp()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
-    }
-
-    override func tearDownWithError() throws {
-        app?.terminate()
-        try? FileManager.default.removeItem(at: vault)
-        try? FileManager.default.removeItem(at: stateBase)
-        try? FileManager.default.removeItem(at: mailStoreRoot)
     }
 
     /// Opens "Origine", returns the editor's text view once its source contains the

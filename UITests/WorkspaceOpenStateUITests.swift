@@ -22,12 +22,7 @@ import XCTest
 /// each with an in-process replacement named in the census's WorkspaceOpenStateUITests
 /// entry. What is left is what stayed genuinely GUI-only: the empty-then-filled pane
 /// (R-14) and selecting a nested board lighting exactly one row (R-02/R-03).
-final class WorkspaceOpenStateUITests: XCTestCase {
-    private var vault: URL!
-    private var stateBase: URL!
-    private var mailStoreRoot: URL!
-    private var app: XCUIApplication!
-
+final class WorkspaceOpenStateUITests: PergamenumUITestCase {
     // MARK: Fixture identity, named once so every step and every assertion agrees.
 
     /// A board nested two levels deep - the R-02/R-03 target: selecting it must light
@@ -35,36 +30,14 @@ final class WorkspaceOpenStateUITests: XCTestCase {
     private let nestedBoardFile = "Vibrofer/Dettaglio/Dettaglio.canvas"
 
     override func setUpWithError() throws {
-        continueAfterFailure = false
-        vault = URL(filePath: NSTemporaryDirectory())
-            .appending(path: "WorkspaceOpenStateUITest-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try super.setUpWithError()
+        try makeTemporaryVault(prefix: "WorkspaceOpenStateUITest")
         try makeFixtureBoards()
 
-        app = XCUIApplication()
-        stateBase = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES",
-                               "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
-                               "-disablePlaud", "YES",
-                               "-disableUpdater", "YES", "-disableContenitore", "YES",
-                               "-stateBase", stateBase.path(percentEncoded: false)]
-        app.launch()
+        launchApp()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
         app.staticTexts["Workspace"].click()
         XCTAssertTrue(app.textFields["workspace-filter"].waitForExistence(timeout: 10))
-    }
-
-    override func tearDownWithError() throws {
-        app?.terminate()
-        try? FileManager.default.removeItem(at: vault)
-        try? FileManager.default.removeItem(at: stateBase)
-        try? FileManager.default.removeItem(at: mailStoreRoot)
     }
 
     // MARK: Row lookup - every one by identifier, never by the words on it (CLAUDE.md).
