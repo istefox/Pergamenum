@@ -9,6 +9,9 @@ extension PraticheController {
         /// ADR-0076 §D3: `NoteStore.hash` over the `pratica.md` bytes the entries were parsed
         /// from; nil when the file could not be read.
         var praticaNoteHash: String?
+        /// ADR-0079 §D2: the pratica's `pergamenum-dossier-excluded`, read from the same bytes
+        /// as the entries and their hash; empty when the file could not be read.
+        var excluded: Set<String> = []
     }
 
     /// Every pratica of the open vault: a folder holding a `pratica.md` whose
@@ -200,6 +203,7 @@ extension PraticheController {
         let url = folder.appending(path: praticaFileName, directoryHint: .notDirectory)
         guard let data = try? Data(contentsOf: url), let text = NoteStore.decodedText(data) else { return }
         read.praticaNoteHash = NoteStore.hash(data)
+        read.excluded = PraticaTimelineOrder.excludedMessageIDs(inPraticaNote: text)
         let notePath = "\(praticaPath)/\(praticaFileName)"
 
         for parsed in PraticaManualEntries.parse(text) {

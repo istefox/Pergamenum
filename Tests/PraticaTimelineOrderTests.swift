@@ -151,4 +151,168 @@ import Testing
         ]
         #expect(Self.order(items).sorted() == Array(items.indices))
     }
+
+    // MARK: - ADR-0079 §D1 (PG-369): the exclusion set, R-01..R-04
+
+    private static func placements(_ items: [Item], excluded: Set<String>) -> [PraticaTimelineOrder.Placed] {
+        PraticaTimelineOrder.arrange(items, excluded: excluded)
+    }
+
+    // R-01
+    @Test func anAnchorNoMessageOwnsAndTheSetHoldsIsExcludedAtItsHeadingDate() throws {
+        let items = [
+            Self.message("<a>", 0),                // 0
+            Self.entry(0, 5, anchor: "<gone>"),    // 1
+            Self.message("<b>", 10),               // 2
+        ]
+        let placed = Self.placements(items, excluded: ["<gone>"])
+        #expect(placed.map(\.index) == [0, 1, 2], "on the spine, where an orphan would sit")
+        let entry = try #require(placed.first { $0.index == 1 })
+        #expect(entry.placement == .excluded(messageID: "<gone>"))
+        #expect(entry.placementDate == Self.at(5), "its own date, not a message's")
+    }
+
+    // R-02
+    @Test func aPresentMessageWinsOverTheSetAndTheEntryIsAnchored() throws {
+        let items = [
+            Self.message("<a>", 0),              // 0
+            Self.entry(0, 5, anchor: "<a>"),     // 1
+            Self.message("<b>", 10),             // 2
+        ]
+        let placed = Self.placements(items, excluded: ["<a>"])
+        #expect(placed.map(\.index) == [0, 1, 2])
+        let entry = try #require(placed.first { $0.index == 1 })
+        #expect(entry.placement == .anchored(messageID: "<a>"))
+        #expect(entry.placementDate == Self.at(0))
+    }
+
+    // R-02
+    @Test func aPresentMessageWinsEvenWhenTwoMessagesCarryTheListedID() throws {
+        let items = [
+            Self.message("<a>", 8, tieKey: "second"),  // 0
+            Self.message("<a>", 2, tieKey: "first"),   // 1
+            Self.entry(0, 20, anchor: "<a>"),          // 2
+        ]
+        let placed = Self.placements(items, excluded: ["<a>"])
+        #expect(placed.map(\.index) == [1, 2, 0], "the first message in spine order owns the entry")
+        #expect(placed.first { $0.index == 2 }?.placement == .anchored(messageID: "<a>"))
+        #expect(placed.first { $0.index == 0 }?.placement == .message)
+    }
+
+    // R-03
+    @Test func anAnchorNeitherOwnedNorListedStaysOrphanedWhateverTheSetHolds() throws {
+        let items = [
+            Self.message("<a>", 0),                // 0
+            Self.entry(0, 5, anchor: "<gone>"),    // 1
+            Self.entry(1, 6, anchor: "<out>"),     // 2
+        ]
+        let placed = Self.placements(items, excluded: ["<out>", "<unrelated>"])
+        #expect(placed.first { $0.index == 1 }?.placement == .orphaned(messageID: "<gone>"))
+        #expect(placed.first { $0.index == 2 }?.placement == .excluded(messageID: "<out>"))
+        #expect(placed.first { $0.index == 1 }?.placementDate == Self.at(5))
+    }
+
+    // R-04: today's output, row for row, on a fixture with every placement
+    @Test func anEmptySetReproducesTheOutputOfTheOneArgumentCallOnAMixedFixture() {
+        var items = [
+            Self.message("<a>", 0),                // 0
+            Self.entry(0, 3, anchor: "<a>"),       // 1 anchored
+            Self.entry(1, 4),                      // 2 free
+            Self.entry(2, 5, anchor: "<gone>"),    // 3 orphaned
+            Self.message("<b>", 10),               // 4
+            Self.entry(3, 1, anchor: "<b>"),       // 5 anchored, dated before its message
+        ]
+        items += (0..<10).map { Self.entry(10 + $0, 20) }  // ten same-minute free entries
+        let today = PraticaTimelineOrder.arrange(items)
+        #expect(Self.placements(items, excluded: []) == today)
+        #expect(today.map(\.placement).contains(.orphaned(messageID: "<gone>")))
+        #expect(!today.map(\.placement).contains { if case .excluded = $0 { true } else { false } })
+        // The ten same-minute entries keep file order past the ninth.
+        #expect(Array(today.suffix(10).map(\.index)) == Array(6...15))
+    }
+
+    // R-04: a set that matches nothing in the fixture changes nothing either
+    @Test func aSetNamingNoAnchorOfTheFixtureChangesNothing() {
+        let items = [
+            Self.message("<a>", 0), Self.entry(0, 3, anchor: "<a>"), Self.entry(1, 5, anchor: "<gone>"),
+            Self.entry(2, 6),
+        ]
+        #expect(Self.placements(items, excluded: ["<never-anchored>"]) == PraticaTimelineOrder.arrange(items))
+    }
+
+    @Test func anExcludedAndAnOrphanedEntryAtOneInstantSortByOrdinalLikeTwoSpineEntries() {
+        let items = [
+            Self.entry(3, 5, anchor: "<gone>"),   // 0, orphaned
+            Self.entry(1, 5, anchor: "<out>"),    // 1, excluded
+            Self.entry(2, 5),                     // 2, free
+        ]
+        let placed = Self.placements(items, excluded: ["<out>"])
+        #expect(placed.map(\.index) == [1, 2, 0])
+        #expect(placed.map(\.placement) == [.excluded(messageID: "<out>"), .free, .orphaned(messageID: "<gone>")])
+    }
+
+    @Test func aMessageStillSortsBeforeAnExcludedEntryAtOneInstant() {
+        let items = [Self.entry(0, 5, anchor: "<out>"), Self.message("<a>", 5)]
+        #expect(Self.placements(items, excluded: ["<out>"]).map(\.index) == [1, 0])
+    }
+}
+
+// MARK: - excludedMessageIDs(inPraticaNote:)
+
+@Suite struct PraticaExcludedMessageIDsTests {
+    private static let twoIDs: Set<String> = ["<uno@rossi-spa.it>", "<due@rossi-spa.it>"]
+
+    private static func note(frontmatter: [String], lineBreak: String = "\n") -> String {
+        (["---"] + frontmatter + ["---", "", "Corpo.", ""]).joined(separator: lineBreak)
+    }
+
+    @Test func excludedIDsAreReadFromTheQuotedListDossierRenderWrites() {
+        let text = Self.note(frontmatter: [
+            "date: 2026-06-10",
+            "pergamenum-dossier: 1",
+            "pergamenum-dossier-excluded:",
+            "  - \"<uno@rossi-spa.it>\"",
+            "  - \"<due@rossi-spa.it>\"",
+        ])
+        #expect(PraticaTimelineOrder.excludedMessageIDs(inPraticaNote: text) == Self.twoIDs)
+    }
+
+    @Test func excludedIDsAreReadFromATextWithCRLFLineBreaks() {
+        let text = Self.note(frontmatter: [
+            "pergamenum-dossier: 1",
+            "pergamenum-dossier-excluded:",
+            "  - \"<uno@rossi-spa.it>\"",
+            "  - \"<due@rossi-spa.it>\"",
+        ], lineBreak: "\r\n")
+        #expect(PraticaTimelineOrder.excludedMessageIDs(inPraticaNote: text) == Self.twoIDs)
+    }
+
+    @Test func excludedIDsAreReadFromAHandWrittenUnquotedList() {
+        let text = Self.note(frontmatter: [
+            "pergamenum-dossier: 1",
+            "pergamenum-dossier-excluded:",
+            "  - <uno@rossi-spa.it>",
+            "  - <due@rossi-spa.it>",
+        ])
+        #expect(PraticaTimelineOrder.excludedMessageIDs(inPraticaNote: text) == Self.twoIDs)
+    }
+
+    @Test func aNoteWithNoDossierOrNoKeyExcludesNothing() {
+        let noDossier = Self.note(frontmatter: [
+            "date: 2026-06-10",
+            "pergamenum-dossier-excluded:",
+            "  - \"<uno@rossi-spa.it>\"",
+        ])
+        #expect(PraticaTimelineOrder.excludedMessageIDs(inPraticaNote: noDossier).isEmpty, "not a pratica")
+        let noKey = Self.note(frontmatter: ["pergamenum-dossier: 1"])
+        #expect(PraticaTimelineOrder.excludedMessageIDs(inPraticaNote: noKey).isEmpty)
+        #expect(PraticaTimelineOrder.excludedMessageIDs(inPraticaNote: "").isEmpty)
+        #expect(PraticaTimelineOrder.excludedMessageIDs(inPraticaNote: "Solo corpo, nessun frontmatter.").isEmpty)
+    }
+
+    @Test func aListedIDInTheBodyIsNotTheDossiersList() {
+        let text = Self.note(frontmatter: ["pergamenum-dossier: 1"])
+            + "pergamenum-dossier-excluded:\n  - \"<nel-corpo@rossi-spa.it>\"\n"
+        #expect(PraticaTimelineOrder.excludedMessageIDs(inPraticaNote: text).isEmpty)
+    }
 }

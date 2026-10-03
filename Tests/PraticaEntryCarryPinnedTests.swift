@@ -14,10 +14,14 @@ import Testing
 
     // MARK: - R-13
 
-    @Test func excludeLeavesTheEntriesByteIdenticalAndOrphanedAndUndoAnchorsThemAgain() async throws {
+    // ADR-0079 §D3 (PG-369): while the message is excluded its entries are hidden, not
+    // orphaned; the shared rule still places them `.excluded`, and nothing but the dossier
+    // keys is written.
+    @Test func excludeHidesTheEntriesLeavesThemByteIdenticalAndUndoAnchorsThemAgain() async throws {
         let vault = try TemporaryVault()
         let harness = try await Rig.open(vault.root)
-        let bodyBefore = Rig.body(try harness.text(Rig.sourceNote))
+        let textBefore = try harness.text(Rig.sourceNote)
+        let bodyBefore = Rig.body(textBefore)
         let (entry, detail) = try harness.row(Rig.messageID)
 
         await harness.actions.exclude(entry, detail: detail)
@@ -25,9 +29,13 @@ import Testing
         #expect(!harness.exists("\(Rig.source)/\(Rig.messageFile)"))
         #expect(try harness.text(Rig.sourceNote).contains("pergamenum-dossier-excluded"))
         #expect(Rig.body(try harness.text(Rig.sourceNote)) == bodyBefore)
-        let excluded = harness.entryPlacements(in: Rig.source)
-        #expect(excluded.filter { $0 == .orphaned(messageID: Rig.messageID) }.count == 2)
-        #expect(!excluded.contains(.anchored(messageID: Rig.messageID)))
+        #expect(Rig.untouchedFrontmatter(try harness.text(Rig.sourceNote)) == Rig.untouchedFrontmatter(textBefore))
+        harness.show(Rig.source)
+        #expect(!harness.pratiche.timeline.contains { $0.anchor == Rig.messageID })
+        let read = PraticheController.readTimeline(praticaPath: Rig.source, vaultRoot: harness.root)
+        let placed = PraticaTimelineModel.ordered(read.entries, excluded: read.excluded).map(\.placement)
+        #expect(placed.filter { $0 == .excluded(messageID: Rig.messageID) }.count == 2)
+        #expect(!placed.contains(.anchored(messageID: Rig.messageID)))
 
         harness.manager.undo()
         try await waitUntil {

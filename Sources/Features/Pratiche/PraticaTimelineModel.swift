@@ -105,46 +105,6 @@ enum PraticaTimelineModel {
         return received
     }
 
-    /// Interleaves messages and manual entries by `date`, ascending (R-23): the
-    /// oldest entry first, so a view scrolls to the *end* of this array to land on
-    /// the newest, matching SPEC "Timeline model"'s "the view scrolls to the bottom
-    /// (newest) on open".
-    ///
-    /// ADR-0076 §D3: the order is `PraticaTimelineOrder.arrange`'s, the one rule the
-    /// connectors share. An anchored entry follows its message (R-04); at an equal instant
-    /// a message sorts before an entry (R-08, the old id tie-break put the entry first,
-    /// ADR-0076 F2); two messages at one instant sort by id, so an Exchange conversation
-    /// sent to several mailboxes at once keeps one stable order across reloads.
-    static func ordered(_ entries: [PraticaTimelineEntry]) -> [PraticaTimelineEntry] {
-        let items = entries.map { entry in
-            PraticaTimelineOrder.Item(
-                kind: entry.kind == .message
-                    ? .message(messageID: entry.messageID ?? "", tieKey: entry.id)
-                    : .entry(anchor: entry.anchor, ordinal: entry.fileOrdinal),
-                date: entry.date
-            )
-        }
-        var hostDirections: [String: MessageDocument.Direction] = [:]
-        return PraticaTimelineOrder.arrange(items).map { placed in
-            var entry = entries[placed.index]
-            entry.placement = placed.placement
-            entry.placementDate = placed.placementDate
-            switch placed.placement {
-            case .message:
-                // The first message carrying an id owns it (ADR-0076 §D2), and it is also
-                // the first one met in this order.
-                if let messageID = entry.messageID, hostDirections[messageID] == nil {
-                    hostDirections[messageID] = entry.direction
-                }
-            case let .anchored(messageID):
-                entry.hostDirection = hostDirections[messageID]
-            case .free, .orphaned:
-                break
-            }
-            return entry
-        }
-    }
-
     // MARK: - R-32: filters
 
     /// Text narrows subject/sender/body of every row, case-insensitively, and is the

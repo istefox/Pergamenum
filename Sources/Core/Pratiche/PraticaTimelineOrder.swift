@@ -18,6 +18,11 @@ enum PraticaTimelineOrder {
         case anchored(messageID: String)
         /// The anchor names no message of this pratica: placed on the spine by its own date.
         case orphaned(messageID: String)
+        /// ADR-0079 §D1 (PG-369): the anchor names no message of this pratica and the
+        /// pratica's own `pergamenum-dossier-excluded` lists it. Placed on the spine by its
+        /// own date, exactly where an orphan would sit; the app hides it, the connectors
+        /// list it.
+        case excluded(messageID: String)
     }
 
     /// One input row.
@@ -52,8 +57,10 @@ enum PraticaTimelineOrder {
     /// - A Message-ID carried by two messages is owned by the first in spine order.
     /// - An entry whose anchor a message owns follows that message, after the message's other
     ///   anchored entries, by heading date and then ordinal (R-04). Nothing else sits between a
-    ///   message and its anchored entries. An anchor no message owns is orphaned (R-05).
-    static func arrange(_ items: [Item]) -> [Placed] {
+    ///   message and its anchored entries. An anchor no message owns is excluded when
+    ///   `excluded` holds it (ADR-0079 §D1), orphaned otherwise (R-05). A present message
+    ///   wins over the set, and an empty set is the rule as it was before the set existed.
+    static func arrange(_ items: [Item], excluded: Set<String> = []) -> [Placed] {
         let spineOrder = items.indices.sorted { precedes($0, $1, in: items) }
 
         // Ownership in spine order: messages only enter the spine, so the first message met
@@ -77,9 +84,9 @@ enum PraticaTimelineOrder {
                 if let anchor, let owner = owners[anchor] {
                     anchoredByOwner[owner, default: []].append(index)
                 } else if let anchor {
-                    spine.append(Placed(
-                        index: index, placement: .orphaned(messageID: anchor), placementDate: item.date
-                    ))
+                    let placement: Placement = excluded.contains(anchor)
+                        ? .excluded(messageID: anchor) : .orphaned(messageID: anchor)
+                    spine.append(Placed(index: index, placement: placement, placementDate: item.date))
                 } else {
                     spine.append(Placed(index: index, placement: .free, placementDate: item.date))
                 }
@@ -101,6 +108,14 @@ enum PraticaTimelineOrder {
             })
         }
         return placed
+    }
+
+    /// The Message-IDs a `pratica.md` lists as excluded (ADR-0079 §D1/§D2), read from the
+    /// same text its entries are parsed from. `Dossier.parse` stays the only reader of the
+    /// key; a text with no dossier, or no key, excludes nothing.
+    static func excludedMessageIDs(inPraticaNote text: String) -> Set<String> {
+        guard let dossier = Dossier.parse(NoteDocument.parse(text).frontmatter.foreignKeys) else { return [] }
+        return Set(dossier.excluded)
     }
 
     /// The spine's order, applied to every item (anchored entries are only ever compared with

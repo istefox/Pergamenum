@@ -64,20 +64,16 @@ struct PraticaTimelineView: View {
     private func list(_ entries: [PraticaTimelineEntry]) -> some View {
         // «Inserisci qui»'s neighbours, found in one pass rather than one search per row menu.
         let next = PraticaTimelineModel.nextRows(in: entries)
+        // ADR-0079 §D5: the rail piece of every drawn row, in the same one pass.
+        let rails = PraticaTimelineModel.railPieces(in: entries)
         return List(selection: selection) {
             ForEach(PraticaTimelineModel.daySections(of: entries, calendar: .current), id: \.day) { section in
                 Section {
                     ForEach(section.entries) { entry in
-                        row(entry, next: next[entry.id])
-                            .listRowSeparator(.hidden)
-                            // The selected state is the card's (`praticaCardSelection`), not the
-                            // row's. Measured on macOS 27 (hand check round 4): the row view draws
-                            // its selection highlight into its own layer, and a row background is a
-                            // subview spanning the whole row above it, so an opaque one in the
-                            // pane's own colour hides the highlight and looks like no background.
-                            // `List(selection:)`, its focus, `.onDeleteCommand`, `primaryAction`
-                            // and every context menu are untouched: only the drawing changes.
-                            .listRowBackground(theme.color(.backgroundPrimary))
+                        row(entry, next: next[entry.id], rail: rails[entry.id] ?? .none)
+                            // Separator hidden, opaque row background: the selected state is the
+                            // card's, and the hosted rail test measures this same chrome.
+                            .praticaTimelineRowChrome()
                     }
                 } header: {
                     Text(PraticaRowFormat.day(section.day))
@@ -129,7 +125,9 @@ struct PraticaTimelineView: View {
     }
 
     @ViewBuilder
-    private func row(_ entry: PraticaTimelineEntry, next: PraticaTimelineEntry?) -> some View {
+    private func row(
+        _ entry: PraticaTimelineEntry, next: PraticaTimelineEntry?, rail: PraticaRailPiece
+    ) -> some View {
         // ADR-0076 §D3/§D7 (R-09): an anchored entry sits on its message's side, indented under
         // it; every other row answers `lane(for:)` as before. Every row lays out in the readable
         // column (`spacing.readable`, leading) and every card takes its lane's whole width
@@ -149,7 +147,9 @@ struct PraticaTimelineView: View {
             lane: lane,
             reservesSlot: entry.kind == .message || isAnchored,
             gutter: theme.spacing(.m),
-            columnMaximum: theme.spacing(.readable)
+            columnMaximum: theme.spacing(.readable),
+            rail: rail,
+            railStep: theme.spacing(.l)
         ) {
             if entry.kind == .message {
                 PraticaMessageRow(
@@ -290,8 +290,9 @@ struct PraticaTimelineView: View {
     }
 
     /// Counted over the whole timeline and not over the filtered one: the bar says
-    /// what the pratica holds, and a filter narrowing the view does not remove a
-    /// message from the folder.
+    /// what the timeline holds, and a filter narrowing the view does not remove a
+    /// message from the folder. An entry anchored to an excluded message is not in
+    /// `timeline` (ADR-0079 §D3), so it is hidden and not counted here.
     private var countsText: String {
         let all = pratiche.timeline
         let messages = all.filter { $0.kind == .message }.count

@@ -335,6 +335,28 @@ enum PraticaRowFormat {
         timeFormatter.string(from: date)
     }
 
+    /// `3 ott 20:22` - an anchored entry's heading when its day is not its message's
+    /// (ADR-0079 §D7, R-12): the short day, a space, the time, composed rather than left to a
+    /// localized template that might put a comma between them. No year: the day header above
+    /// names the message's. With no locale and no zone it reads the person's own through the
+    /// cached formatters, since a row's body calls it; an explicit pair (the tests) builds fresh ones.
+    static func dayAndTime(_ date: Date, locale: Locale? = nil, timeZone: TimeZone? = nil) -> String {
+        guard locale != nil || timeZone != nil else {
+            return "\(shortDayFormatter.string(from: date)) \(timeFormatter.string(from: date))"
+        }
+        let day = templated("dMMM", locale: locale ?? .current, timeZone: timeZone ?? .current)
+        let time = templated("HHmm", locale: locale ?? .current, timeZone: timeZone ?? .current)
+        return "\(day.string(from: date)) \(time.string(from: date))"
+    }
+
+    private static func templated(_ template: String, locale: Locale, timeZone: TimeZone) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        formatter.setLocalizedDateFormatFromTemplate(template)
+        return formatter
+    }
+
     /// `martedì 10 giugno 2026` - the sticky day separator (R-23).
     static func day(_ date: Date) -> String {
         dayFormatter.string(from: date)
@@ -351,6 +373,13 @@ enum PraticaRowFormat {
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.setLocalizedDateFormatFromTemplate("HHmm")
+        return formatter
+    }()
+
+    /// `3 ott`, the day half of `dayAndTime(_:locale:timeZone:)`.
+    private static let shortDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("dMMM")
         return formatter
     }()
 

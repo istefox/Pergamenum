@@ -33,6 +33,12 @@ enum ColorToken: String, TokenKey {
     case surfaceEntryNote = "color.surface.entryNote"
     case surfaceEntryCall = "color.surface.entryCall"
 
+    // ADR-0079 §D6 (PG-369): the rail that ties an anchored entry to its message, one per
+    // message lane, a stronger tone of `surface.received`/`surface.sent`, at least 3:1 on
+    // `background.primary` (WCAG 2 non-text contrast).
+    case railReceived = "color.rail.received"
+    case railSent = "color.rail.sent"
+
     case borderSubtle = "color.border.subtle"
     case borderStrong = "color.border.strong"
 

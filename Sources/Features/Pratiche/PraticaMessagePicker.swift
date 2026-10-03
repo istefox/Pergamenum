@@ -20,7 +20,7 @@ struct PraticaMessagePicker: View {
     /// The anchor the entry carries now, orphaned or not, so the picker can mark it.
     private var currentAnchor: String? {
         switch request.entry.placement {
-        case .anchored(let messageID), .orphaned(let messageID): messageID
+        case .anchored(let messageID), .orphaned(let messageID), .excluded(let messageID): messageID
         default: nil
         }
     }
