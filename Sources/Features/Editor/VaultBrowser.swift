@@ -287,16 +287,19 @@ struct VaultBrowser: View {
         let records = backlinksMemo.value(generation: vault.indexGeneration, input: note.title) {
             vault.index.backlinks(toTitle: note.title)
         }
-        return VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            Text("BACKLINK").themedText(.caption, color: .textTertiary)
-            if records.isEmpty {
-                Text("nessuno").themedText(.caption, color: .textTertiary)
-            } else {
-                ForEach(records, id: \.relativePath) { record in
-                    Button(record.title) { vault.openNote(at: record.relativePath) }
-                        .buttonStyle(.plain)
-                        .themedText(.body, color: .accentPrimary)
-                }
+        let header = InspectorSection.backlinks(count: records.count)
+        return TraySection(
+            title: header.title,
+            badge: nil,
+            accessibilityLabel: header.accessibilityLabel,
+            identifier: header.identifier,
+            isEmpty: header.isEmpty,
+            emptyText: header.emptyText
+        ) {
+            ForEach(records, id: \.relativePath) { record in
+                Button(record.title) { vault.openNote(at: record.relativePath) }
+                    .buttonStyle(.plain)
+                    .themedText(.body, color: .accentPrimary)
             }
         }
     }
@@ -305,17 +308,55 @@ struct VaultBrowser: View {
         let links = unresolvedMemo.value(generation: vault.indexGeneration, input: 10) {
             vault.index.unresolvedLinks(limit: 10)
         }
-        return VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            Text("LINK NON RISOLTI").themedText(.caption, color: .textTertiary)
-            if links.isEmpty {
-                Text("nessuno").themedText(.caption, color: .textTertiary)
-            } else {
-                ForEach(Array(links), id: \.target) { entry in
-                    Text("\(entry.target) · \(entry.sources.count)")
-                        .themedText(.caption, color: .textSecondary)
-                        .help(entry.sources.map(\.title).joined(separator: "\n"))
-                }
+        let header = InspectorSection.unresolved(shown: links.count)
+        return TraySection(
+            title: header.title,
+            badge: nil,
+            accessibilityLabel: header.accessibilityLabel,
+            identifier: header.identifier,
+            isEmpty: header.isEmpty,
+            emptyText: header.emptyText
+        ) {
+            ForEach(Array(links), id: \.target) { entry in
+                Text("\(entry.target) · \(entry.sources.count)")
+                    .themedText(.caption, color: .textSecondary)
+                    .help(entry.sources.map(\.title).joined(separator: "\n"))
             }
+        }
+    }
+}
+
+extension VaultBrowser {
+    /// What the inspector's backlink and unresolved-link sections hand `TraySection`, as one
+    /// pure value per section (PG-380): SwiftUI's accessibility tree is one childless group
+    /// in-process, so a test feeds these the same count the view does rather than hosting it.
+    struct InspectorSection: Equatable {
+        let title: String
+        let accessibilityLabel: String
+        let identifier: String
+        let isEmpty: Bool
+        let emptyText: String
+
+        static func backlinks(count: Int) -> InspectorSection {
+            InspectorSection(
+                title: "BACKLINK",
+                accessibilityLabel: "Backlink a questa nota: \(count)",
+                identifier: "inspector-backlinks",
+                isEmpty: count == 0,
+                emptyText: "nessuno"
+            )
+        }
+
+        /// `shown` is the length of the capped list the section draws, not the vault's total,
+        /// so the spoken label says «mostrati».
+        static func unresolved(shown: Int) -> InspectorSection {
+            InspectorSection(
+                title: "LINK NON RISOLTI",
+                accessibilityLabel: "Link non risolti mostrati: \(shown)",
+                identifier: "inspector-unresolved-links",
+                isEmpty: shown == 0,
+                emptyText: "nessuno"
+            )
         }
     }
 }
