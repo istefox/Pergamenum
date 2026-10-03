@@ -8,16 +8,7 @@ import Testing
 // (`NoteExport`) and «Collega» (`RelatedLink`): the heading is a whole line, a CRLF note is read
 // as lines, and «Collega» writes in the note's own line break.
 
-private func note(related: [String] = [], _ body: String) -> String {
-    let relatedBlock = related.isEmpty ? "" : "related:\n" + related.map { "  - \"\($0)\"\n" }.joined()
-    return "---\ndate: 2026-09-26\ntags:\n  - type-note\n  - topic-vibration-isolation\n\(relatedBlock)---\n\n\(body)"
-}
-
-/// Every line break in `text` is CRLF, and `text` ends in one.
-private func isAllCRLF(_ text: String) -> Bool {
-    let lines = text.components(separatedBy: "\n")
-    return lines.last == "" && lines.dropLast().allSatisfy { $0.hasSuffix("\r") }
-}
+private typealias Fixture = RelatedSectionFixture
 
 @Test func theExactHeadingIsFound() {
     let links = RelatedSection.parse(from: "# T\n\n## Note correlate\n\n- [[A]] — motivo\n")
@@ -47,7 +38,7 @@ private func isAllCRLF(_ text: String) -> Bool {
         root: vault.root, stateBase: vault.stateBase,
         bundledVocabulary: Bundle.pergamenumResources.url(forResource: "vocabolari", withExtension: "json")
     )
-    let text = note(related: ["[[A]]"], "### Note correlate operative\n\n- [[B]] — motivo\n")
+    let text = Fixture.note(related: ["[[A]]"], "### Note correlate operative\n\n- [[B]] — motivo\n")
 
     let violations = session.violations(path: "Nota.md", title: "Nota", text: text)
 
@@ -66,7 +57,7 @@ private func isAllCRLF(_ text: String) -> Bool {
         root: vault.root, stateBase: vault.stateBase,
         bundledVocabulary: Bundle.pergamenumResources.url(forResource: "vocabolari", withExtension: "json")
     )
-    let text = note(related: ["[[A]]"], "## Note correlate\n\n- [[A]] — motivo\n- [[B]] — motivo\n")
+    let text = Fixture.note(related: ["[[A]]"], "## Note correlate\n\n- [[A]] — motivo\n- [[B]] — motivo\n")
 
     let violations = session.violations(path: "Nota.md", title: "Nota", text: text)
 
@@ -85,7 +76,7 @@ private func isAllCRLF(_ text: String) -> Bool {
 
 @Test func collegaWritesUnderTheExactHeadingOnly() throws {
     let subSection = "### Note correlate operative\n\n- [[B]] — interno\n"
-    let text = note("# Nota\n\n" + subSection)
+    let text = Fixture.note("# Nota\n\n" + subSection)
 
     let linked = try RelatedLink.add(target: "A", reason: "motivo", to: text, selfTitle: "Nota")
 
@@ -98,7 +89,7 @@ private func isAllCRLF(_ text: String) -> Bool {
     let linked = try RelatedLink.add(
         target: "A", reason: "motivo", to: FormatEdgeCorpus.crlfWithFrontmatter.text, selfTitle: "Titolo"
     )
-    #expect(isAllCRLF(linked))
+    #expect(Fixture.isAllCRLF(linked))
     #expect(linked.components(separatedBy: "\n").filter { $0 == "---\r" }.count == 2)
     #expect(linked.contains("## Note correlate\r\n\r\n- [[A]] — motivo\r\n"))
     #expect(linked.contains("related:\r\n  - \"[[A]]\"\r\n"))
@@ -109,7 +100,7 @@ private func isAllCRLF(_ text: String) -> Bool {
         target: "A", reason: "motivo", to: FormatEdgeCorpus.crlfWithFrontmatter.text, selfTitle: "Titolo"
     )
     let unlinked = RelatedLink.remove(target: "A", from: linked)
-    #expect(isAllCRLF(unlinked))
+    #expect(Fixture.isAllCRLF(unlinked))
     #expect(unlinked.components(separatedBy: "\n").filter { $0 == "---\r" }.count == 2)
     #expect(!unlinked.contains("[[A]]"))
 }
@@ -142,7 +133,7 @@ func aHeadingInsideAFenceIsNotTheSection(body: String) {
 
 @Test func collegaBesideAFencedHeadingWritesARealSection() throws {
     let fenced = "```\n## Note correlate\n```\n"
-    let text = note("# Nota\n\n" + fenced)
+    let text = Fixture.note("# Nota\n\n" + fenced)
 
     let linked = try RelatedLink.add(target: "A", reason: "motivo", to: text, selfTitle: "Nota")
 
@@ -168,7 +159,7 @@ func aHeadingInsideAFenceIsNotTheSection(body: String) {
     let section = "## Note correlate\n\nIntro in prosa.\n\n- [[B]] — b\n\n"
         + "```yaml\n- voce\n```\n\nChiusura.\n\n## Altro\n"
     let linked = try RelatedLink.add(
-        target: "C", reason: "c", to: note(related: ["[[B]]"], section), selfTitle: "Nota"
+        target: "C", reason: "c", to: Fixture.note(related: ["[[B]]"], section), selfTitle: "Nota"
     )
     #expect(linked.hasSuffix(
         "## Note correlate\n\nIntro in prosa.\n\n- [[B]] — b\n- [[C]] — c\n\n"
@@ -181,7 +172,7 @@ func aHeadingInsideAFenceIsNotTheSection(body: String) {
         + "  - \"[[A]]\"\r\n  - \"[[C]]\"\r\n---\r\n"
         + "## Note correlate\r\n\r\n- [[A]] — a\r\n  - dettaglio\r\n- [[C]] — c\r\n"
     let linked = try RelatedLink.add(target: "B", reason: "b", to: text, selfTitle: "Nota")
-    #expect(isAllCRLF(linked))
+    #expect(Fixture.isAllCRLF(linked))
     #expect(linked.hasSuffix(
         "## Note correlate\r\n\r\n- [[A]] — a\r\n  - dettaglio\r\n- [[B]] — b\r\n- [[C]] — c\r\n"
     ))
@@ -190,14 +181,14 @@ func aHeadingInsideAFenceIsNotTheSection(body: String) {
 @Test func collegaInASectionWithOnlyProseKeepsTheProse() throws {
     let linked = try RelatedLink.add(
         target: "A", reason: "motivo",
-        to: note("## Note correlate\n\nVedi anche la cartella.\n"), selfTitle: "Nota"
+        to: Fixture.note("## Note correlate\n\nVedi anche la cartella.\n"), selfTitle: "Nota"
     )
     #expect(linked.hasSuffix("## Note correlate\n\n- [[A]] — motivo\n\nVedi anche la cartella.\n"))
 }
 
 @Test func collegaUnderABareHeadingBeforeAnotherSection() throws {
     let linked = try RelatedLink.add(
-        target: "A", reason: "motivo", to: note("## Note correlate\n## Altro\n"), selfTitle: "Nota"
+        target: "A", reason: "motivo", to: Fixture.note("## Note correlate\n## Altro\n"), selfTitle: "Nota"
     )
     #expect(linked.hasSuffix("## Note correlate\n\n- [[A]] — motivo\n\n## Altro\n"))
 }
@@ -208,7 +199,7 @@ func aHeadingInsideAFenceIsNotTheSection(body: String) {
 @Test func unlinkKeepsTheProseAndTheFenceOfTheSection() {
     let section = "## Note correlate\n\nIntro in prosa.\n\n- [[A]] — a\n- [[B]] — b\n\n"
         + "```yaml\n- voce\n```\n\nChiusura.\n\n## Altro\n"
-    let unlinked = RelatedLink.remove(target: "A", from: note(related: ["[[A]]", "[[B]]"], section))
+    let unlinked = RelatedLink.remove(target: "A", from: Fixture.note(related: ["[[A]]", "[[B]]"], section))
     #expect(unlinked.hasSuffix(
         "## Note correlate\n\nIntro in prosa.\n\n- [[B]] — b\n\n```yaml\n- voce\n```\n\nChiusura.\n\n## Altro\n"
     ))
@@ -216,7 +207,7 @@ func aHeadingInsideAFenceIsNotTheSection(body: String) {
 
 @Test func unlinkLeavesTheSameLinkInsideAFence() {
     let section = "## Note correlate\n\n- [[A]] — a\n- [[X]] — x\n\n```\n- [[X]] — x\n```\n"
-    let unlinked = RelatedLink.remove(target: "X", from: note(related: ["[[A]]", "[[X]]"], section))
+    let unlinked = RelatedLink.remove(target: "X", from: Fixture.note(related: ["[[A]]", "[[X]]"], section))
     #expect(unlinked.hasSuffix("## Note correlate\n\n- [[A]] — a\n\n```\n- [[X]] — x\n```\n"))
 }
 
@@ -225,14 +216,14 @@ func aHeadingInsideAFenceIsNotTheSection(body: String) {
         + "  - \"[[A]]\"\r\n  - \"[[B]]\"\r\n---\r\n"
         + "## Note correlate\r\n\r\nIntro.\r\n\r\n- [[A]] — a\r\n  - dettaglio\r\n- [[B]] — b\r\n"
     let unlinked = RelatedLink.remove(target: "A", from: text)
-    #expect(isAllCRLF(unlinked))
+    #expect(Fixture.isAllCRLF(unlinked))
     // The sub-item belongs to the removed bullet and goes with it.
     #expect(unlinked.hasSuffix("## Note correlate\r\n\r\nIntro.\r\n\r\n- [[B]] — b\r\n"))
 }
 
 @Test func linkThenUnlinkLeavesAProseSectionAsItWas() throws {
     let section = "## Note correlate\n\nVedi anche la cartella.\n"
-    let linked = try RelatedLink.add(target: "A", reason: "motivo", to: note(section), selfTitle: "Nota")
+    let linked = try RelatedLink.add(target: "A", reason: "motivo", to: Fixture.note(section), selfTitle: "Nota")
     #expect(RelatedLink.remove(target: "A", from: linked).hasSuffix("\n\n" + section))
 }
 
@@ -241,7 +232,7 @@ func aHeadingInsideAFenceIsNotTheSection(body: String) {
     ("## Note correlate\n\n- [[A]] — a\n", "\n\n## Note correlate\n"),
 ])
 func unlinkingTheLastLinkKeepsTheBareHeading(section: String, expected: String) {
-    #expect(RelatedLink.remove(target: "A", from: note(related: ["[[A]]"], section)).hasSuffix(expected))
+    #expect(RelatedLink.remove(target: "A", from: Fixture.note(related: ["[[A]]"], section)).hasSuffix(expected))
 }
 
 // PG-372 review: a bullet indented by one to three spaces is a link to `RelatedSection.parse`
@@ -250,7 +241,7 @@ func unlinkingTheLastLinkKeepsTheBareHeading(section: String, expected: String) 
 @Test func unlinkRemovesABulletIndentedByOneToThreeSpaces() {
     for indent in ["", " ", "  ", "   "] {
         let section = "## Note correlate\n\n\(indent)- [[A]] — a\n\(indent)- [[B]] — b\n"
-        let unlinked = RelatedLink.remove(target: "B", from: note(related: ["[[A]]", "[[B]]"], section))
+        let unlinked = RelatedLink.remove(target: "B", from: Fixture.note(related: ["[[A]]", "[[B]]"], section))
         #expect(RelatedSection.parse(from: NoteDocument.parse(unlinked).body).map(\.target) == ["A"])
         #expect(unlinked.hasSuffix("## Note correlate\n\n\(indent)- [[A]] — a\n"))
     }
@@ -258,7 +249,7 @@ func unlinkingTheLastLinkKeepsTheBareHeading(section: String, expected: String) 
 
 @Test func collegaSortsAgainstABulletIndentedByOneToThreeSpaces() throws {
     let linked = try RelatedLink.add(
-        target: "A", reason: "a", to: note(related: ["[[B]]"], "## Note correlate\n\n  - [[B]] — b\n"),
+        target: "A", reason: "a", to: Fixture.note(related: ["[[B]]"], "## Note correlate\n\n  - [[B]] — b\n"),
         selfTitle: "Nota"
     )
     #expect(linked.hasSuffix("## Note correlate\n\n- [[A]] — a\n  - [[B]] — b\n"))
@@ -266,7 +257,7 @@ func unlinkingTheLastLinkKeepsTheBareHeading(section: String, expected: String) 
 
 @Test func anIndentedBulletKeepsItsContinuationAndSubItems() {
     let section = "## Note correlate\n\n - [[A]] — a\n    righe a capo\n   - dettaglio\n - [[B]] — b\n"
-    let unlinked = RelatedLink.remove(target: "A", from: note(related: ["[[A]]", "[[B]]"], section))
+    let unlinked = RelatedLink.remove(target: "A", from: Fixture.note(related: ["[[A]]", "[[B]]"], section))
     #expect(unlinked.hasSuffix("## Note correlate\n\n - [[B]] — b\n"))
 }
 
@@ -276,7 +267,7 @@ func unlinkingTheLastLinkKeepsTheBareHeading(section: String, expected: String) 
 @Test func collegaNeverUsesAProseBulletAsTheSortAnchor() throws {
     let section = "## Note correlate\n\n- vedi la cartella\n- [[A]] — a\n"
     let linked = try RelatedLink.add(
-        target: "B", reason: "b", to: note(related: ["[[A]]"], section), selfTitle: "Nota"
+        target: "B", reason: "b", to: Fixture.note(related: ["[[A]]"], section), selfTitle: "Nota"
     )
     #expect(linked.hasSuffix("## Note correlate\n\n- vedi la cartella\n- [[A]] — a\n- [[B]] — b\n"))
 }
@@ -284,7 +275,7 @@ func unlinkingTheLastLinkKeepsTheBareHeading(section: String, expected: String) 
 @Test func collegaAfterTheLastLinkBulletEvenWhenProseBulletsFollow() throws {
     let section = "## Note correlate\n\n- [[A]] — a\n- vedi la cartella\n"
     let linked = try RelatedLink.add(
-        target: "B", reason: "b", to: note(related: ["[[A]]"], section), selfTitle: "Nota"
+        target: "B", reason: "b", to: Fixture.note(related: ["[[A]]"], section), selfTitle: "Nota"
     )
     #expect(linked.hasSuffix("## Note correlate\n\n- [[A]] — a\n- [[B]] — b\n- vedi la cartella\n"))
 }
