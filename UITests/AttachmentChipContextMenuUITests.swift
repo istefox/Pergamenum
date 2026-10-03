@@ -67,8 +67,13 @@ final class AttachmentChipContextMenuUITests: PergamenumUITestCase {
         )
         XCTAssertEqual(contextMenuItemCount("Copia"), 1, "manca la voce «Copia» nel menu contestuale")
 
-        // PG-285: the chip's whole menu, and not the message menu in its place.
-        XCTAssertEqual(contextMenuItemCount("Anteprima"), 1, "manca la voce «Anteprima» nel menu del chip")
+        // PG-285: the chip's whole menu, and not the message menu in its place. «Anteprima
+        // allegato» alone cannot tell the two apart, since the row menu carries it too
+        // (`MessageCommand.previewAttachment`): the distinction rests on «Apri» being there
+        // and «Escludi dalla pratica» counting zero.
+        XCTAssertEqual(
+            contextMenuItemCount("Anteprima allegato"), 1, "manca la voce «Anteprima allegato» nel menu del chip"
+        )
         XCTAssertEqual(contextMenuItemCount("Apri"), 1, "manca la voce «Apri» nel menu del chip")
         XCTAssertEqual(
             contextMenuItemCount("Escludi dalla pratica"), 0,

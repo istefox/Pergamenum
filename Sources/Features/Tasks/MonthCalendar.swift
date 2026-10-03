@@ -17,7 +17,6 @@ struct MonthCalendar: View {
 
     @State private var page = CalendarDate.today
 
-    private static let weekdays = ["lu", "ma", "me", "gi", "ve", "sa", "do"]
     private static let columns = Array(repeating: GridItem(.flexible(minimum: 34), spacing: 4), count: 7)
 
     var body: some View {
@@ -41,25 +40,36 @@ struct MonthCalendar: View {
             Text(DateEntry.monthName(month: page.month, year: page.year))
                 .themedText(.heading)
             Spacer()
-            control("chevron.left", identifier: "month-back") { page = DateEntry.adding(months: -1, to: page) }
-            control("smallcircle.filled.circle", identifier: "month-today") { page = today }
-            control("chevron.right", identifier: "month-forward") { page = DateEntry.adding(months: 1, to: page) }
+            control("Mese precedente", symbol: "chevron.left", identifier: "month-back") {
+                page = DateEntry.adding(months: -1, to: page)
+            }
+            control("Mese corrente", symbol: "smallcircle.filled.circle", identifier: "month-today") { page = today }
+            control("Mese successivo", symbol: "chevron.right", identifier: "month-forward") {
+                page = DateEntry.adding(months: 1, to: page)
+            }
         }
     }
 
-    private func control(_ symbol: String, identifier: String, action: @escaping () -> Void) -> some View {
+    /// Icon-only, so the name is given as tooltip and accessibility label (PG-265).
+    private func control(
+        _ name: String, symbol: String, identifier: String, action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .foregroundStyle(theme.color(.textSecondary))
         }
         .buttonStyle(.plain)
+        .help(name)
+        .accessibilityLabel(name)
         .accessibilityIdentifier(identifier)
     }
 
     private var weekdayRow: some View {
         LazyVGrid(columns: Self.columns, spacing: 4) {
-            ForEach(Self.weekdays, id: \.self) { day in
-                Text(day).themedText(.caption, color: .textTertiary)
+            // The mini calendar's own row (`MonthGrid.weekdayHeaders`), so this task-panel grid
+            // and the Today pane's `MiniCalendar` spell the week the same way (PG-263).
+            ForEach(MonthGrid.weekdayHeaders) { header in
+                Text(header.initial).themedText(.caption, color: .textTertiary)
             }
         }
     }

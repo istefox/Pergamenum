@@ -59,6 +59,7 @@ struct ContenitoreNoticeStrip: View {
                         }
                         .buttonStyle(.plain)
                         .help("Chiudi")
+                        .accessibilityLabel("Chiudi")
                     }
                 }
             }

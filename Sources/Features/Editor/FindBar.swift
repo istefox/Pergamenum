@@ -141,9 +141,14 @@ struct FindBar: View {
 
     private var stepper: some View {
         HStack(spacing: theme.spacing(.s)) {
+            // The Modifica menu's own names for the same two steps.
             Button { onStep(-1) } label: { Image(systemName: "chevron.up") }
+                .help(ShortcutCommand.findPrevious.title)
+                .accessibilityLabel(ShortcutCommand.findPrevious.title)
                 .accessibilityIdentifier("find-previous")
             Button { onStep(1) } label: { Image(systemName: "chevron.down") }
+                .help(ShortcutCommand.findNext.title)
+                .accessibilityLabel(ShortcutCommand.findNext.title)
                 .accessibilityIdentifier("find-next")
         }
         .buttonStyle(.plain)

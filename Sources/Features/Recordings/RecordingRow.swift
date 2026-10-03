@@ -195,7 +195,7 @@ enum RecordingFormat {
         let totalMinutes = max(0, milliseconds) / 60_000
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60
-        return hours > 0 ? "\(hours) h \(String(format: "%02d", minutes)) min" : "\(minutes) min"
+        return hours > 0 ? "\(hours) h \(TimeOfDay.twoDigits(minutes)) min" : "\(minutes) min"
     }
 }
 

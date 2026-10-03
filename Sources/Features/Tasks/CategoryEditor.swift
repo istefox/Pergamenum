@@ -170,6 +170,7 @@ struct CategoryEditor: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
+            .accessibilityLabel("Simbolo")
             .accessibilityIdentifier("category-editor-symbol")
         }
     }

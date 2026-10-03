@@ -57,5 +57,5 @@ struct HourWindow: Codable, Equatable, Sendable {
     }
 
     /// `06:00`, and `24:00` for the end of the day.
-    static func label(_ hour: Int) -> String { String(format: "%02d:00", hour) }
+    static func label(_ hour: Int) -> String { TimeOfDay.formatted(hour: hour) }
 }

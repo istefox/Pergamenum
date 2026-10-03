@@ -81,6 +81,7 @@ struct ShortcutSettings: View {
                 .buttonStyle(.borderless)
                 .accessibilityIdentifier("reset-\(command.rawValue)")
                 .help("Torna a \(command.defaultBinding.displayString)")
+                .accessibilityLabel("Torna a \(command.defaultBinding.displayString)")
                 .disabled(!shortcuts.isCustomised(command))
             }
         } label: {

@@ -64,7 +64,7 @@ struct TodayMockup: View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(6..<20) { hour in
                     HStack(alignment: .top, spacing: theme.spacing(.s)) {
-                        Text(String(format: "%02d:00", hour))
+                        Text(TimeOfDay.formatted(hour: hour))
                             .themedText(.caption, color: .textTertiary)
                             .frame(width: 40, alignment: .trailing)
                         ZStack(alignment: .topLeading) {

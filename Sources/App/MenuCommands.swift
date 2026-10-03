@@ -246,6 +246,10 @@ struct HelpCommands: Commands {
     let navigation: Navigation
 
     var body: some Commands {
+        // **Replacing and not adding.** The standard group's one item is «Guida di
+        // Pergamenum», which asks Help Viewer for a help book this app does not ship and
+        // answers with an alert that no help is available: SPEC §10's Aiuto is these three
+        // entries, which take its place.
         CommandGroup(replacing: .help) {
             Button("Guida sintassi task") { navigation.isShowingTaskSyntaxHelp = true }
             Button("Convenzioni harness") { navigation.isShowingConventionsHelp = true }
@@ -302,9 +306,9 @@ struct EditCommands: Commands {
                 .keyboardShortcut(shortcuts.shortcut(for: .findInNote))
             Button("Sostituisci") { actions.run(.replaceInNote) }
                 .keyboardShortcut(shortcuts.shortcut(for: .replaceInNote))
-            Button("Trova successivo") { actions.run(.findNext) }
+            Button(ShortcutCommand.findNext.title) { actions.run(.findNext) }
                 .keyboardShortcut(shortcuts.shortcut(for: .findNext))
-            Button("Trova precedente") { actions.run(.findPrevious) }
+            Button(ShortcutCommand.findPrevious.title) { actions.run(.findPrevious) }
                 .keyboardShortcut(shortcuts.shortcut(for: .findPrevious))
         }
     }

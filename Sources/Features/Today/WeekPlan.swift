@@ -248,6 +248,6 @@ enum WeekPlan {
     }
 
     private static func text(ofMinutes minutes: Int) -> String {
-        String(format: "%02d:%02d", minutes / 60, minutes % 60)
+        TimeOfDay.formatted(minutes: minutes)
     }
 }

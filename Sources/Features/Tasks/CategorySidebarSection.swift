@@ -86,6 +86,9 @@ struct CategorySidebarSection: View {
             }
         )
         .onTapGesture { selection = .category(category.slug) }
+        // `.contain` before the identifier, or naming the row hides the disclosure chevron
+        // inside it from the accessibility tree (PG-265, `TimelineBlockBox`'s own note).
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("category-row-\(category.slug)")
         .contextMenu { contextMenu(category) }
     }
@@ -190,6 +193,8 @@ struct CategorySidebarSection: View {
                 .themedText(.caption, color: .textTertiary)
         }
         .buttonStyle(.plain)
+        .help(expandedParents.contains(slug) ? "Comprimi" : "Espandi")
+        .accessibilityLabel(expandedParents.contains(slug) ? "Comprimi" : "Espandi")
         .accessibilityIdentifier("category-disclosure-\(slug)")
     }
 
@@ -219,6 +224,8 @@ struct CategorySidebarSection: View {
         .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
         .contentShape(Rectangle())
         .onTapGesture { selection = .category(slug) }
+        // `.contain`, as on a registered row: the «Registra» button lives inside this one.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("category-implicit-row-\(slug)")
     }
 
