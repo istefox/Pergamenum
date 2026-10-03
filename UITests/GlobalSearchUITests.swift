@@ -14,7 +14,7 @@ import XCTest
 ///
 /// Controls are found by `accessibilityIdentifier` only (`vault-note-count`, `search-field`,
 /// `search-progress`, `search-results`), and the one label read is text this test wrote.
-final class GlobalSearchUITests: XCTestCase {
+final class GlobalSearchUITests: PergamenumUITestCase {
     /// Filler notes, deterministic prose with no needle in it. Sized so one search over the
     /// vault takes visible time on the development machine; the measured duration is recorded
     /// as an activity of every run. First green run (2026-09-28, Debug build, this Mac):
@@ -24,39 +24,12 @@ final class GlobalSearchUITests: XCTestCase {
     private static let paragraphsPerNote = 100
     private static let needle = "quadrifoglio"
 
-    private var vault: URL!
-    private var stateBase: URL!
-    private var mailStoreRoot: URL!
-    private var app: XCUIApplication!
-
     override func setUpWithError() throws {
-        continueAfterFailure = false
-        vault = URL(filePath: NSTemporaryDirectory())
-            .appending(path: "GlobalSearchUITest-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try super.setUpWithError()
+        try makeTemporaryVault(prefix: "GlobalSearchUITest")
         try writeFixture()
 
-        app = XCUIApplication()
-        stateBase = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES",
-                               "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
-                               "-disablePlaud", "YES",
-                               "-disableUpdater", "YES", "-disableContenitore", "YES",
-                               "-stateBase", stateBase.path(percentEncoded: false)]
-        app.launch()
-    }
-
-    override func tearDownWithError() throws {
-        app?.terminate()
-        try? FileManager.default.removeItem(at: vault)
-        try? FileManager.default.removeItem(at: stateBase)
-        try? FileManager.default.removeItem(at: mailStoreRoot)
+        launchApp()
     }
 
     private func element(_ identifier: String) -> XCUIElement {

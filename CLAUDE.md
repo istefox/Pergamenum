@@ -387,6 +387,14 @@ move the previous copy aside rather than deleting it.
   moves anything. Without it, a run launched while `~/Pergamenum Drop` holds files moves them into
   the test's throwaway vault, and they leave the person's machine with it. Every UI-test file
   passes it, not only the one that opens the Contenitore. A new UI-test file wants the flag too.
+- **A UI-test class gets those flags by subclassing `PergamenumUITestCase`, never by spelling
+  them.** `UITests/PergamenumUITestCase.swift` owns the throwaway vault, `-stateBase`, the empty
+  Mail store, every isolation flag above plus `-disablePlaud YES`, and the teardown; a class
+  creates its vault with `makeTemporaryVault(prefix:)` and launches with
+  `launchApp(extraArguments:)`, extra arguments only. Seventeen hand-kept copies are how
+  `PraticheUITests` lost `-disablePlaud` and `WikilinkNavigationUITests` lost `-mailStoreRoot`
+  (PG-128). `Tests/UITestLaunchHarnessGuardTests.swift` fails if a file under `UITests/` builds
+  its own `XCUIApplication`, sets launch arguments, or declares a class on `XCTestCase` directly.
 - **A UI test must not find a control by the words on it.** Prose grows: the quick
   switcher's placeholder gained «, o a una sezione con #…» when Quick Open learned to jump
   to headings, and two tests spent days looking for a field that no longer answered to

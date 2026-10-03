@@ -31,47 +31,20 @@ import XCTest
 // table for, so any non-empty file reads `.usable`) plus one message with a pending
 // attachment (ADR-0040 §D8's bare-name form) - no real Mail store, no timing-dependent
 // sync.
-final class AttachmentChipContextMenuUITests: XCTestCase {
+final class AttachmentChipContextMenuUITests: PergamenumUITestCase {
     private static let praticaFolder = "01 Progetti/Acme/Offerta 118"
     private static let usableMessageID = "<gui-test@example.com>"
     private static let pendingMessageID = "<gui-test-pending@example.com>"
 
-    private var vault: URL!
-    private var stateBase: URL!
-    private var mailStoreRoot: URL!
-    private var app: XCUIApplication!
-
     override func setUpWithError() throws {
-        continueAfterFailure = false
-        vault = URL(filePath: NSTemporaryDirectory())
-            .appending(path: "AttachmentChipMenuUITest-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try super.setUpWithError()
+        try makeTemporaryVault(prefix: "AttachmentChipMenuUITest")
         try seedFixturePraticaWithAttachment()
 
-        app = XCUIApplication()
-        stateBase = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
-
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES",
-                               "-disableUpdater", "YES", "-disableContenitore", "YES",
-                               "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
-                               "-stateBase", stateBase.path(percentEncoded: false)]
-        app.launch()
+        launchApp()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10), "il vault non si è aperto")
         showPratiche()
         selectFixturePratica()
-    }
-
-    override func tearDownWithError() throws {
-        app?.terminate()
-        try? FileManager.default.removeItem(at: vault)
-        try? FileManager.default.removeItem(at: stateBase)
-        try? FileManager.default.removeItem(at: mailStoreRoot)
     }
 
     func testAttachmentChipContextMenuShowsBothCatalogueEntries() throws {

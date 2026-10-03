@@ -10,22 +10,10 @@ import XCTest
 /// and the settings-pane listing test (ShortcutTests:124,134,177 cover default, override
 /// and reset; :209 covers the catalogue the pane is generated from). The fixture vault
 /// no longer seeds folders or notes, since the kept test needs neither.
-final class NoteTreeAndShortcutsUITests: XCTestCase {
-    private var vault: URL!
-    private var stateBase: URL!
-    private var mailStoreRoot: URL!
-    private var app: XCUIApplication!
-
+final class NoteTreeAndShortcutsUITests: PergamenumUITestCase {
     override func setUpWithError() throws {
-        continueAfterFailure = false
+        try super.setUpWithError()
         try makeVault()
-    }
-
-    override func tearDownWithError() throws {
-        app?.terminate()
-        try? FileManager.default.removeItem(at: vault)
-        try? FileManager.default.removeItem(at: stateBase)
-        try? FileManager.default.removeItem(at: mailStoreRoot)
     }
 
     /// Launches the app on the fixture vault.
@@ -36,24 +24,7 @@ final class NoteTreeAndShortcutsUITests: XCTestCase {
     /// guard on this side could not work: the XCUITest runner is sandboxed and its
     /// `UserDefaults(suiteName:)` is a private copy in its own container.
     private func launch(shortcuts: String? = nil) {
-        app = XCUIApplication()
-        stateBase = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
-        var arguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                         "-disableCalendar", "YES",
-                         "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
-                         "-disablePlaud", "YES",
-                         "-disableUpdater", "YES", "-disableContenitore", "YES",
-                         "-stateBase", stateBase.path(percentEncoded: false)]
-        if let shortcuts {
-            arguments += ["-shortcutOverrides", shortcuts]
-        }
-        app.launchArguments = arguments
-        app.launch()
+        launchApp(extraArguments: shortcuts.map { ["-shortcutOverrides", $0] } ?? [])
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
     }
 
@@ -84,8 +55,6 @@ final class NoteTreeAndShortcutsUITests: XCTestCase {
     // MARK: Fixture
 
     private func makeVault() throws {
-        vault = URL(filePath: NSTemporaryDirectory())
-            .appending(path: "TreeUITest-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try makeTemporaryVault(prefix: "TreeUITest")
     }
 }

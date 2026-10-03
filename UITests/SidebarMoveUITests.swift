@@ -49,38 +49,13 @@ import XCTest
 /// The four synthesized drags were also the most exposed to the machine (PG-180: 13
 /// failures in 20 with the pointer disturbed, 30/30 clean on an untouched Mac); drag and
 /// drop is left with no cover at all after this, a loss named rather than hidden.
-final class SidebarMoveUITests: XCTestCase {
-    private var vault: URL!
-    private var stateBase: URL!
-    private var mailStoreRoot: URL!
-    private var app: XCUIApplication!
-
+final class SidebarMoveUITests: PergamenumUITestCase {
     override func setUpWithError() throws {
-        continueAfterFailure = false
+        try super.setUpWithError()
         try makeVault()
 
-        app = XCUIApplication()
-        stateBase = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-state", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: stateBase, withIntermediateDirectories: true)
-        mailStoreRoot = URL(filePath: NSTemporaryDirectory())
-            .appending(path: vault.lastPathComponent + "-mailstore", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: mailStoreRoot, withIntermediateDirectories: true)
-        app.launchArguments = ["-recentVaults", "(\"\(vault.path(percentEncoded: false))\")",
-                               "-disableCalendar", "YES",
-                               "-mailStoreRoot", mailStoreRoot.path(percentEncoded: false),
-                               "-disablePlaud", "YES",
-                               "-disableUpdater", "YES", "-disableContenitore", "YES",
-                               "-stateBase", stateBase.path(percentEncoded: false)]
-        app.launch()
+        launchApp()
         XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10), "il vault non si è aperto")
-    }
-
-    override func tearDownWithError() throws {
-        app?.terminate()
-        try? FileManager.default.removeItem(at: vault)
-        try? FileManager.default.removeItem(at: stateBase)
-        try? FileManager.default.removeItem(at: mailStoreRoot)
     }
 
     // MARK: R-01 - a board row's «Sposta in ▸ B» moves the file, the tree reflects it with no rescan
@@ -246,9 +221,7 @@ final class SidebarMoveUITests: XCTestCase {
     private static let collideMarker = "ALREADY-HERE"
 
     private func makeVault() throws {
-        vault = URL(filePath: NSTemporaryDirectory())
-            .appending(path: "SidebarMoveUITest-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try makeTemporaryVault(prefix: "SidebarMoveUITest")
 
         for folder in ["Collide", "Target"] {
             try FileManager.default.createDirectory(
