@@ -1,7 +1,9 @@
 # ADR-0079: An excluded message takes its anchored entries out of the app's timeline, and an anchored entry hangs off its message by a rail
 
-- Status: **proposed**. Written before the implementation; flips to `accepted` with the merge's
-  PR, short hash and date in the first docs change after it (`docs/adr/README.md` rule 2).
+- Status: **accepted**. Merged to `main` via PR #864 (`575b7c56`, 2026-10-03), for `PG-369`/#824.
+  Written before the implementation; the R-14 hand check (light and dark, 428 pt and a wide
+  window, Escludi then Cmd+Z, an entry on another day, the rail token values) was not run at the
+  flip, so the landing is recorded, not that check.
 - Date: 2026-10-03. Written against `125582d3` (branch `docs/spec-pg-369`). `origin/main` is at
   `719050fb`, whose diff against `125582d3` touches `TODO.md` only. Every line number below was
   read at `125582d3`.
