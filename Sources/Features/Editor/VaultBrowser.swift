@@ -148,7 +148,7 @@ struct VaultBrowser: View {
             Toggle(isOn: Bindable(navigation).isShowingInspector) {
                 Label("Ispettore", systemImage: "sidebar.right")
             }
-            .help("Backlink, conformità, link non risolti")
+            .help("Backlink e link non risolti")
             .accessibilityIdentifier("notes-inspector-toggle")
 
             // Same reach pattern as Workspace's «Concentrazione»: hides the note list

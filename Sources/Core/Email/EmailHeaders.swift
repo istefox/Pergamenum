@@ -28,10 +28,6 @@ struct EmailHeaders: Equatable, Sendable {
             && lhs.all.map(\.value) == rhs.all.map(\.value)
     }
 
-    func value(for name: String) -> String? {
-        all.first { $0.name.lowercased() == name.lowercased() }?.value
-    }
-
     /// The `message://` URL that opens this message in Mail (SPEC §6.5).
     ///
     /// Mail's scheme wraps the Message-ID in percent-encoded angle brackets, which is

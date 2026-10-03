@@ -231,14 +231,6 @@ extension PraticheController {
         }
     }
 
-    /// `[[20260610_offerta.pdf]]` → `20260610_offerta.pdf`, alias form included.
-    nonisolated static func attachmentFileName(fromWikilink wikilink: String) -> String {
-        var name = wikilink.trimmingCharacters(in: .whitespaces)
-        if name.hasPrefix("[[") { name.removeFirst(2) }
-        if name.hasSuffix("]]") { name.removeLast(2) }
-        return name.components(separatedBy: "|").first ?? name
-    }
-
     nonisolated static func firstLine(of text: String) -> String {
         text
             .components(separatedBy: "\n")

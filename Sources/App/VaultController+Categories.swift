@@ -52,20 +52,12 @@ extension VaultController {
         session?.promoteImplicitCategory(slug, color: color)
     }
 
-    /// Links a note to a category by writing its `pergamenum-category` key (SPEC "UI
-    /// flows: Linked note", ADR-0047 §D10). Follows `apply(_:to:)`'s own shape
-    /// (`VaultController+Tasks.swift`): a write puts an open editor back in step, a
-    /// stale hash asks for a rescan rather than guessing, and the caller only needs a
-    /// `Bool`.
-    @discardableResult
-    func linkCategory(_ slug: String, toNoteAt relativePath: String) async -> Bool {
-        guard let session else { return false }
-        return handle(await session.linkCategory(slug, toNoteAt: relativePath))
-    }
-
     /// Makes a note the category's one home, displacing any previous one (PG-166): the
-    /// entry point every «Collega una nota…» / «Assegna una categoria…» affordance calls,
-    /// where `linkCategory` alone would leave two notes claiming the slug.
+    /// entry point every «Collega una nota…» / «Assegna una categoria…» affordance calls.
+    /// Follows `apply(_:to:)`'s own shape (`VaultController+Tasks.swift`): a write puts an
+    /// open editor back in step, a stale hash asks for a rescan rather than guessing, and
+    /// the caller only needs a `Bool`. The session's plain `linkCategory`, which would
+    /// leave two notes claiming the slug, has no forwarder here on purpose (PG-266).
     @discardableResult
     func setCategoryHome(_ slug: String, toNoteAt relativePath: String) async -> Bool {
         guard let session else { return false }

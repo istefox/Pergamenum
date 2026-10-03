@@ -133,7 +133,7 @@ final class TransclusionController {
         // first version of this, and it drew nothing at all - the space was bought and then
         // wiped by the next update.
         reserveSpace(in: textView, for: renditions, theme: theme)
-        Logger.folding.notice(
+        Logger.folding.debug(
             "transclusioni: \(occurrences.count, privacy: .public) righe, \(renditions.count, privacy: .public) rese"
         )
 

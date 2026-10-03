@@ -3,11 +3,11 @@ import Foundation
 
 /// A `.canvas` file in JSON Canvas 1.0 format (jsoncanvas.org/spec/1.0).
 ///
-/// The acceptance criterion for M2 is that a canvas written here opens in Obsidian
-/// and the reverse, so this codec is deliberately conservative: it understands the
-/// spec's own properties and carries everything else through untouched. An app that
-/// silently dropped another tool's extra keys would satisfy the format and still
-/// break the promise of interoperability (SPEC §3, principle 4).
+/// The format is plain JSON Canvas 1.0 (principle 4 as amended by ADR-0047 §D11: an
+/// ordinary format, not a round-trip obligation), so this codec is deliberately
+/// conservative: it understands the spec's own properties and carries everything else
+/// through untouched. An app that silently dropped another tool's extra keys would
+/// satisfy the format and still lose what another writer put there.
 struct CanvasDocument: Equatable, Sendable {
     var nodes: [CanvasNode]
     var edges: [CanvasEdge]

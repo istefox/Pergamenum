@@ -76,10 +76,6 @@ struct ViewCommands: Commands {
             Toggle("Nascondi albero Note", isOn: Bindable(navigation).isNoteTreeCollapsed)
                 .disabled(navigation.pane != .notes)
             Divider()
-            // Brings the pane forward as well as asking for the check: the view that
-            // runs the linter only exists while that pane is shown, so from anywhere
-            // else the command would do nothing at all.
-            Divider()
 
             Button("Ripiega la sezione") { actions.run(.foldSection) }
                 .keyboardShortcut(shortcuts.shortcut(for: .foldSection))

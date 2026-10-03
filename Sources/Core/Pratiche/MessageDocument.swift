@@ -281,11 +281,9 @@ extension MessageDocument {
         !(entry.hasPrefix("[[") && entry.hasSuffix("]]"))
     }
 
-    /// `[[20260610_offerta.pdf]]` → `20260610_offerta.pdf`, alias form included -
-    /// mirrors `PraticheController.attachmentFileName(fromWikilink:)` exactly (Core
-    /// cannot depend on Features, so the rule is duplicated rather than shared; the two
-    /// must agree, and the one in `PraticheController` is about to stop being used for
-    /// classification).
+    /// `[[20260610_offerta.pdf]]` → `20260610_offerta.pdf`, alias form included. The one
+    /// definition of the rule: `PraticheController` once carried a copy, deleted as dead
+    /// code (PG-266).
     fileprivate static func unwrapWikilink(_ entry: String) -> String {
         var name = entry.trimmingCharacters(in: .whitespaces)
         if name.hasPrefix("[[") { name.removeFirst(2) }

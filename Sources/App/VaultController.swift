@@ -118,14 +118,6 @@ final class VaultController {
     /// than the composer's: that one starts a note, this one writes into one.
     var isChoosingTemplate = false
 
-    /// Hashes the app itself wrote, keyed by path and sequence-tagged (ADR-0043 §D6,
-    /// Task 7). A watcher event whose file hashes to a recorded value is the app's own
-    /// write coming back and is ignored.
-    var selfWrittenHashes: [String: [(sequence: UInt64, hash: String)]] {
-        get { session?.selfWrittenHashes ?? [:] }
-        set { session?.selfWrittenHashes = newValue }
-    }
-
     var watcher: VaultWatcher?
     var store: NoteStore? { session?.store }
 

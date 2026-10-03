@@ -59,10 +59,6 @@ private struct InspectorPlacement: View {
             NotePlaceholder()
             VStack(alignment: .leading, spacing: theme.spacing(.m)) {
                 OutlineList(entries: OutlineEntry.sample, current: 3)
-                section("CONFORMITÀ") {
-                    Label("Conforme", systemImage: "checkmark.seal")
-                        .themedText(.caption, color: .textSecondary)
-                }
                 section("BACKLINK") {
                     Text("Mescole per il forno").themedText(.body, color: .accentPrimary)
                     Text("Fornitori 2026").themedText(.body, color: .accentPrimary)

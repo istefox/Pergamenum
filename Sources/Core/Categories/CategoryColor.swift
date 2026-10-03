@@ -23,7 +23,4 @@ enum CategoryColor: String, CaseIterable, Identifiable, Sendable {
     case giallo, verde, blu, rosa, grigio
 
     var id: String { rawValue }
-
-    /// The label in the picker, in the UI's language.
-    var label: String { rawValue.capitalized }
 }

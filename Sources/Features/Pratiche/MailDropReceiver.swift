@@ -49,12 +49,11 @@ private struct MailDropReceiver: ViewModifier {
     let isEnabled: Bool
     let onReport: (MailDropReport) -> Void
 
-    @State private var isTargeted = false
-
     @ViewBuilder
     func body(content: Content) -> some View {
         if isEnabled {
-            content.onDrop(of: Self.accepted, isTargeted: $isTargeted) { providers in
+            // `isTargeted: nil`: nothing here draws a hover state (PG-266).
+            content.onDrop(of: Self.accepted, isTargeted: nil) { providers in
                 let identifiers = providers.flatMap(\.registeredTypeIdentifiers)
                 onReport(MailDropReport(typeIdentifiers: identifiers, at: Date()))
                 // `false`: nothing was consumed, because nothing is imported here.

@@ -48,10 +48,6 @@ struct UnlinkedMentionsMockup: View {
         MockupScene("Nell'inspector, sotto i backlink: chi punta qui, e chi ne parla senza puntare.") {
             VStack(alignment: .leading, spacing: theme.spacing(.m)) {
                 starRow
-                group("CONFORMITÀ") {
-                    Label("Conforme", systemImage: "checkmark.seal")
-                        .themedText(.caption, color: .textSecondary)
-                }
                 group("BACKLINK") {
                     link("Scelta del supporto antivibrante")
                     link("20260804 Riunione tecnica")
