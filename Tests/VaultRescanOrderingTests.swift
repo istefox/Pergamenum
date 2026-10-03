@@ -5,8 +5,9 @@ import Testing
 // PG-374: `VaultSession.rescan` walks the disk off the main actor and then replaces the index
 // wholesale. Every other index writer goes through `apply`'s per-path sequence guard (ADR-0043
 // §D1); the replacement did not, so a mutation the index took while the walk ran was undone by
-// it. `ContenitoreRouteTests`' pair-move test failed this way once in a full run: the rename's
-// fire-and-forget rescan overlapped the move, and the route then found no scheda at the new path.
+// it. `ContenitoreRouteTests`' pair-move test most likely failed this way once in a full run (the
+// cause was never reproduced): the rename's fire-and-forget rescan overlapped the move, and the
+// route then found no scheda at the new path.
 
 private func note(_ body: String = "Corpo.") -> String {
     "---\ndate: 2026-10-02\ntags:\n  - type-note\n---\n\n\(body)\n"
@@ -79,4 +80,29 @@ private func holdRescan(_ session: VaultSession) -> (reached: Gate, release: Gat
     #expect(session.index.note(at: "Gone.md") == nil)
     #expect(session.index.note(at: "B.md") == moved)
     #expect(session.index.note(at: "A.md") == nil)
+}
+
+/// The guard keys on a sequence that CHANGED during the walk, not on one that merely exists: a
+/// path the app wrote before the rescan began still takes the walk's read, so an edit made to it
+/// outside the app is not rolled back to the stale record the index holds.
+@MainActor
+@Test func aRescanStillTakesTheWalksReadForAPathWrittenBeforeItStarted() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note(), to: "A.md")
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+    await session.rescan()
+    // Written through `apply`, so `appliedSequence["A.md"]` is set before the rescan starts.
+    let written = try NoteStore(root: vault.root).record(from: Data(note().utf8), attributes: [:], at: "A.md")
+    #expect(session.apply([.init(path: "A.md", record: written, sequence: 1)]) == 1)
+    // An edit outside the session: the index record is now stale against the disk.
+    try vault.write(note("Vedi [[Altra]]."), to: "A.md")
+
+    let (reached, release) = holdRescan(session)
+    let scan = Task { await session.rescan() }
+    await reached.wait()
+    // Nothing touches the session while the rescan is held.
+    release.open()
+    await scan.value
+
+    #expect(session.index.note(at: "A.md")?.linkTargets == ["Altra"])
 }
