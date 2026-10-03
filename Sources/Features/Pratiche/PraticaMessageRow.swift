@@ -335,27 +335,61 @@ enum PraticaRowFormat {
         timeFormatter.string(from: date)
     }
 
+    /// `3 ott 20:22` - an anchored entry's heading when its day is not its message's
+    /// (ADR-0079 §D7, R-12): the short day, a space, the time, composed rather than left to a
+    /// localized template that might put a comma between them. No year: the day header above
+    /// names the message's. With no locale and no zone it reads the person's own through the
+    /// cached formatters, since a row's body calls it; an explicit pair (the tests) builds fresh ones.
+    static func dayAndTime(_ date: Date, locale: Locale? = nil, timeZone: TimeZone? = nil) -> String {
+        guard locale != nil || timeZone != nil else {
+            return "\(shortDayFormatter.string(from: date)) \(timeFormatter.string(from: date))"
+        }
+        let day = templated("dMMM", locale: locale ?? .current, timeZone: timeZone ?? .current)
+        let time = templated("HHmm", locale: locale ?? .current, timeZone: timeZone ?? .current)
+        return "\(day.string(from: date)) \(time.string(from: date))"
+    }
+
+    private static func templated(_ template: String, locale: Locale, timeZone: TimeZone) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        formatter.setLocalizedDateFormatFromTemplate(template)
+        return formatter
+    }
+
     /// `martedì 10 giugno 2026` - the sticky day separator (R-23).
     static func day(_ date: Date) -> String {
         dayFormatter.string(from: date)
     }
 
-    /// `10 giugno 14:06` - what VoiceOver reads inside a row's composed label.
+    /// `10 giugno alle ore 14:06` - what VoiceOver reads inside a row's composed label.
     static func spokenDate(_ date: Date) -> String {
         spokenFormatter.string(from: date)
     }
 
-    /// The person's own locale and time zone, unlike the file formats
-    /// (`PraticaEntry.headingFormatter`), which are `en_US_POSIX` because a
-    /// heading is a file format and not a presentation.
+    /// The locale every date on screen in this pane is spelled in: Italian, like the rest of
+    /// the interface (PG-263: the machine's region used to pick the language, so this pane
+    /// alone followed it). The file formats (`PraticaEntry.headingFormatter`) stay
+    /// `en_US_POSIX`, because a heading is a file format and not a presentation.
+    static let uiLocale = Locale(identifier: "it_IT")
+
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = uiLocale
         formatter.setLocalizedDateFormatFromTemplate("HHmm")
+        return formatter
+    }()
+
+    /// `3 ott`, the day half of `dayAndTime(_:locale:timeZone:)`.
+    private static let shortDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("dMMM")
         return formatter
     }()
 
     private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = uiLocale
         formatter.dateStyle = .full
         formatter.timeStyle = .none
         return formatter
@@ -363,6 +397,7 @@ enum PraticaRowFormat {
 
     private static let spokenFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = uiLocale
         formatter.setLocalizedDateFormatFromTemplate("ddMMMM HHmm")
         return formatter
     }()

@@ -32,6 +32,7 @@ struct ContenitoreSidebar: View {
                 }
                 .buttonStyle(.plain)
                 .help("Nuovo sottocontenitore…")
+                .accessibilityLabel("Nuovo sottocontenitore…")
                 .accessibilityIdentifier("contenitore-new-container")
             }
             .padding(.horizontal, theme.spacing(.m))
@@ -130,6 +131,8 @@ struct ContenitoreSidebar: View {
                         .frame(width: 12)
                 }
                 .buttonStyle(.plain)
+                .help(collapsed.contains(node.path) ? "Espandi" : "Comprimi")
+                .accessibilityLabel(collapsed.contains(node.path) ? "Espandi" : "Comprimi")
             }
             Label(node.name, systemImage: "folder")
             Spacer()
@@ -177,6 +180,9 @@ struct ContenitoreSidebar: View {
         if contenitore.isIsolated { return "Disattivato per questa sessione" }
         guard contenitore.isDropFolderReadable else { return "Illeggibile · nessun import" }
         guard let last = contenitore.lastImportAt else { return "In ascolto · nessun import" }
-        return "In ascolto · ultimo import \(last.formatted(date: .omitted, time: .shortened))"
+        let time = last.formatted(
+            Date.FormatStyle(date: .omitted, time: .shortened).locale(Locale(identifier: "it_IT"))
+        )
+        return "In ascolto · ultimo import \(time)"
     }
 }

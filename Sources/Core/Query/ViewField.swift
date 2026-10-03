@@ -145,7 +145,7 @@ extension ViewField {
     /// rather than a field.
     func value(of record: NoteRecord, in graph: ViewGraph = .empty) -> ViewValue {
         guard let derivation = Self.derivations[self] else {
-            assertionFailure("campo senza derivazione: \(rawValue)")
+            assertionFailure("field with no derivation: \(rawValue)")
             return .absent
         }
         return derivation(record, graph)

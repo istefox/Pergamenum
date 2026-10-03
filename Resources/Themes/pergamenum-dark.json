@@ -22,6 +22,10 @@
       "entryNote": { "$value": "#453911" },
       "entryCall": { "$value": "#1D3B2C" }
     },
+    "rail": {
+      "received": { "$value": "#857F73" },
+      "sent": { "$value": "#5F8DB8" }
+    },
     "border": {
       "subtle": { "$value": "#34322E" },
       "strong": { "$value": "#4A473F" }

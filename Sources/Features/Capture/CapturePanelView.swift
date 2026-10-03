@@ -81,6 +81,7 @@ struct CapturePanelView: View {
                 .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
                 .accessibilityIdentifier("capture-destination-\(item.rawValue)")
                 .help("\(item.title) — ⌘\(index + 1)")
+                .accessibilityLabel(item.title)
             }
             Spacer(minLength: 0)
         }

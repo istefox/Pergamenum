@@ -53,11 +53,16 @@ struct MiniCalendar: View {
 
     private var header: some View {
         HStack {
+            // Named as `MonthCalendar` names its own two (PG-265).
             Button { page(by: -1) } label: { Image(systemName: "chevron.left") }
+                .help("Mese precedente")
+                .accessibilityLabel("Mese precedente")
             Spacer()
             Text(monthTitle).themedText(.caption, color: .textSecondary)
             Spacer()
             Button { page(by: 1) } label: { Image(systemName: "chevron.right") }
+                .help("Mese successivo")
+                .accessibilityLabel("Mese successivo")
         }
         .buttonStyle(.plain)
         .foregroundStyle(theme.color(.textTertiary))
@@ -183,7 +188,7 @@ enum MonthGrid {
     /// past the month at either end.
     static func weeks(of month: CalendarDate) -> [[CalendarDate?]] {
         guard let first = CalendarDate(year: month.year, month: month.month, day: 1) else { return [] }
-        let leading = (weekdayIndex(of: first) + 5) % 7   // Monday = 0
+        let leading = (DateEntry.weekday(of: first) + 5) % 7   // Monday = 0
 
         var cells: [CalendarDate?] = Array(repeating: nil, count: leading)
         var cursor = first
@@ -245,15 +250,5 @@ enum MonthGrid {
             day -= 1
         }
         return CalendarDate(year: year, month: month, day: day) ?? date
-    }
-
-    /// 1 for Sunday, as `Calendar` numbers weekdays.
-    private static func weekdayIndex(of date: CalendarDate) -> Int {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
-        guard let converted = DateComponents(
-            calendar: calendar, year: date.year, month: date.month, day: date.day
-        ).date else { return 1 }
-        return calendar.component(.weekday, from: converted)
     }
 }

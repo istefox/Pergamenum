@@ -84,3 +84,25 @@ func everyCellOfTheGridHasItsOwnIdentity(_ iso: String) {
     #expect(Set(headers.map(\.id)).count == 7)
     #expect(headers.map(\.initial) == ["L", "M", "M", "G", "V", "S", "D"])
 }
+
+// MARK: - PG-263: the leading blanks come from `DateEntry.weekday(of:)`
+
+/// `MonthGrid` used to carry its own weekday helper; it now asks `DateEntry`. Checked against a
+/// calendar built independently here, for every month of six years, so a helper that is wrong
+/// on one month in twelve cannot hide (`(coverage)`).
+@Test func theFirstCellOfEveryMonthSitsInTheColumnOfItsWeekdayMondayFirst() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = .gmt
+    for year in 2024...2029 {
+        for month in 1...12 {
+            let first = try #require(CalendarDate(year: year, month: month, day: 1))
+            let noon = try #require(calendar.date(from: DateComponents(year: year, month: month, day: 1, hour: 12)))
+            // `Calendar` numbers Sunday 1; Monday-first column is (weekday + 5) % 7.
+            let column = (calendar.component(.weekday, from: noon) + 5) % 7
+
+            let row = MonthGrid.weeks(of: first)[0]
+            #expect(row.firstIndex { $0 != nil } == column, "\(year)-\(month)")
+            #expect(row[column] == first, "\(year)-\(month)")
+        }
+    }
+}

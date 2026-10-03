@@ -206,8 +206,7 @@ private func romanCalendar() -> Calendar {
     let groups = HistoryGrouping.groups(
         for: [NoteHistory.Snapshot(date: saturday, text: "x\n")],
         now: now,
-        calendar: calendar,
-        locale: Locale(identifier: "it_IT")
+        calendar: calendar
     )
 
     #expect(groups.map(\.title) == ["sabato 15 agosto"])

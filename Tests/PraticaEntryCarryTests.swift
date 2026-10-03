@@ -191,7 +191,7 @@ struct CarryHarness {
 
     // MARK: - R-15
 
-    @Test func aRefusedDestinationWriteMovesTheMessageAndLeavesTheEntriesOrphanedInTheSource() async throws {
+    @Test func aRefusedDestinationWriteMovesTheMessageAndLeavesTheEntriesHiddenInTheSource() async throws {
         let vault = try TemporaryVault()
         let harness = try await Rig.open(vault.root)
         let root = vault.root
@@ -210,7 +210,7 @@ struct CarryHarness {
         let problem = try #require(harness.pratiche.problem)
         #expect(problem.contains(Rig.sourceNote) && problem.contains(Rig.destinationNote), "\(problem)")
         #expect(try harness.carriedBlocks().count == 2, "no block is lost")
-        #expect(harness.entryPlacements(in: Rig.source).filter { $0 == .orphaned(messageID: Rig.messageID) }.count == 2)
+        #expect(harness.entryPlacements(in: Rig.source) == [.orphaned(messageID: "<altro@verdi.it>"), .free])
         harness.controller.close()
     }
 

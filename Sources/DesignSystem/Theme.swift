@@ -260,6 +260,9 @@ extension Theme {
             .surfaceEntry: RGBA(hex: "#FBF0C4")!,
             .surfaceEntryNote: RGBA(hex: "#FFF1BF")!,
             .surfaceEntryCall: RGBA(hex: "#DFF2E3")!,
+            // ADR-0079 §D6 (PG-225's contract). Values mirror `pergamenum-light.json`.
+            .railReceived: RGBA(hex: "#8F897C")!,
+            .railSent: RGBA(hex: "#6189B4")!,
             .borderSubtle: RGBA(hex: "#E0E0E0")!,
             .borderStrong: RGBA(hex: "#C4C4C4")!,
             .textPrimary: RGBA(hex: "#111111")!,

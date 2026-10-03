@@ -25,7 +25,7 @@ final class ViewBlockHostView: NSHostingView<AnyView> {
 
     @available(*, unavailable)
     required dynamic init?(coder: NSCoder) {
-        fatalError("init(coder:) non supportato")
+        fatalError("init(coder:) is not supported")
     }
 }
 

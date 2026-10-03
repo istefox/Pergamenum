@@ -331,7 +331,7 @@ import Testing
             let content = AttachmentChip.Content.file(PraticaAttachmentRef(name: "offerta.pdf", url: url))
 
             let entries = AttachmentChipModel.menuEntries(for: content, state: Self.state)
-            #expect(entries.map(\.title) == ["Anteprima", "Apri"] + AttachmentChipModel.contextMenuTitles)
+            #expect(entries.map(\.title) == ["Anteprima allegato", "Apri"] + AttachmentChipModel.contextMenuTitles)
             #expect(entries.map(\.title) == entries.map(\.command.title), "an entry's title is its command's")
         }
         let identifiers = AttachmentChipModel.Command.allCases.map(\.identifier)

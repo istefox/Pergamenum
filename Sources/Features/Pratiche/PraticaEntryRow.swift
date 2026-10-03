@@ -32,10 +32,6 @@ struct PraticaEntryRow: View {
     /// §D7). Optional, `PraticaMessageRow.actions`' own reason: `nil` draws no action.
     var actions: PraticaCommandActions?
 
-    private var isAnchored: Bool {
-        if case .anchored = entry.placement { true } else { false }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
             header
@@ -60,7 +56,7 @@ struct PraticaEntryRow: View {
         .background(theme.color(PraticaTimelineModel.surfaceToken(for: entry)))
         .clipShape(RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(accessibilityText)
+        .accessibilityLabel(Self.accessibilityText(for: entry, isExpanded: isExpanded))
         .accessibilityIdentifier(Self.identifier(for: entry))
         .accessibilityActions { accessibilityCommands }
     }
@@ -88,21 +84,26 @@ struct PraticaEntryRow: View {
             .accessibilityLabel(isExpanded ? "Comprimi" : "Espandi")
             .accessibilityIdentifier("pratiche-entry-chevron-\(Self.timestamp(of: entry))")
 
-            // ADR-0076 §D3 (R-05): an anchored entry hangs off the message above it.
-            if isAnchored {
-                Image(systemName: "arrow.turn.down.right")
-                    .themedText(.caption, color: .textTertiary)
-                    .accessibilityHidden(true)
+            // ADR-0079 §D7 (R-11): the rail carries the link to the message, so the heading
+            // draws its kind's symbol alone.
+            ForEach(PraticaTimelineModel.entryHeadingSymbols(for: entry), id: \.self) { symbol in
+                Image(systemName: symbol)
+                    .themedText(.caption, color: .textSecondary)
             }
-            Image(systemName: entry.kind == .call ? "phone" : "square.and.pencil")
-                .themedText(.caption, color: .textSecondary)
-            Text(PraticaRowFormat.time(entry.date))
-                .themedText(.caption, color: .textSecondary)
+            // R-12: the day too, when an anchored entry was written on another day than its
+            // message's, the day header above being the message's.
+            Text(
+                PraticaTimelineModel.headingShowsDay(entry, calendar: .current)
+                    ? PraticaRowFormat.dayAndTime(entry.date) : PraticaRowFormat.time(entry.date)
+            )
+            .themedText(.caption, color: .textSecondary)
             Text(entry.subject)
                 .themedText(.body)
                 .lineLimit(1)
             Spacer(minLength: 0)
         }
+        // ADR-0079 §D5: where the rail's hook meets the card.
+        .alignmentGuide(.praticaEntryHeading) { $0[VerticalAlignment.center] }
     }
 
     @ViewBuilder
@@ -129,13 +130,13 @@ struct PraticaEntryRow: View {
     /// «Voce, 10 giugno 14:06, Mario Rossi, compressa» - the blueprint's composed
     /// label, with `PraticaTimelineModel.laneLabel` as its first word so the lane is
     /// carried by words as well as by colour (R-25).
-    private var accessibilityText: String {
+    static func accessibilityText(for entry: PraticaTimelineEntry, isExpanded: Bool) -> String {
         var parts = [
             PraticaTimelineModel.laneLabel(.entry),
             PraticaRowFormat.spokenDate(entry.date),
             entry.subject,
         ]
-        if isAnchored { parts.append("collegata al messaggio") }
+        if case .anchored = entry.placement { parts.append("collegata al messaggio") }
         if let caption = PraticaTimelineModel.orphanCaption(for: entry) { parts.append(caption) }
         parts.append(isExpanded ? "espansa" : "compressa")
         return parts.joined(separator: ", ")

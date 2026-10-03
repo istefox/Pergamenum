@@ -118,7 +118,7 @@ struct DiaryTimeline: View {
     /// halfway down. The closing hour has no half of its own.
     private func hourLine(_ hour: Int, withHalfHour: Bool = false) -> some View {
         HStack(alignment: .top, spacing: theme.spacing(.s)) {
-            Text(String(format: "%02d:00", hour))
+            Text(TimeOfDay.formatted(hour: hour))
                 .themedText(.caption, color: .textTertiary)
                 .frame(width: gutter - theme.spacing(.s), alignment: .trailing)
                 .offset(y: -6)

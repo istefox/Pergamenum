@@ -80,7 +80,7 @@ enum DiaryGrid {
     /// refused - the last hour of the day would lose every block written in it.
     static func timeText(_ minutes: Int) -> String {
         guard minutes != dayMinutes else { return "24:00" }
-        return String(format: "%02d:%02d", (minutes / 60) % 24, minutes % 60)
+        return TimeOfDay.formatted(hour: (minutes / 60) % 24, minute: minutes % 60)
     }
 
     /// Rounds to the nearest ten-minute mark, which is the only granularity the diary

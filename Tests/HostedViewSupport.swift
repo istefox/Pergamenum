@@ -89,6 +89,7 @@ final class HostedView<Content: View> {
 
     private let wasActive: Bool
     private let keyWindowAtStart: NSWindow?
+    private let foreground = ForegroundLog()
 
     enum HostError: Error {
         case eventNotBuilt
@@ -109,6 +110,7 @@ final class HostedView<Content: View> {
     init(_ content: Content, size: CGSize) {
         wasActive = NSApp.isActive
         keyWindowAtStart = NSApp.keyWindow
+        foreground.startListening()
         hosting = NSHostingView(rootView: content)
         hosting.frame = CGRect(origin: .zero, size: size)
         window = NeverKeyWindow(
@@ -122,10 +124,38 @@ final class HostedView<Content: View> {
     /// True while this harness has left the machine as it found it: the window not on screen,
     /// not key, and the app's own active state and key window unchanged (R-15). It says whether,
     /// not which call: a refused `orderFront` or `sendEvent` names itself as a recorded issue.
+    ///
+    /// **The app-level half is asked only when no other app moved the foreground meanwhile**
+    /// (PG-331). Whether this app is active, and so which window is its key window, is
+    /// machine-wide state: another session's `xcodebuild` launching or quitting its own test
+    /// host activates one app and deactivates another, and every hosted test then in flight -
+    /// several at once, since they interleave on the main actor at each `settle()` - read that
+    /// as its own doing and failed, a different set each run and only while such a run was live.
+    /// A test that activates this app itself posts no other app's launch, activation or
+    /// termination, so on a quiet machine the check is exactly what it was; when another app
+    /// did move the foreground, the change is not this harness's to answer for, and the
+    /// window-level half - which no other process can touch - still holds the test to R-15.
+    /// Once skipped, the app-level half stays skipped for the rest of this harness's life, and
+    /// `appLevelCheckSkipped` says so. The decision itself is `NeverShown.holds`, pinned by
+    /// `HostedViewPrototypeTests.neverShownDecisionTable`.
+    ///
+    /// **A residual race, named rather than closed:** nothing orders another app's workspace
+    /// notification before this app's own activation change. `NSApp.isActive` can flip as soon
+    /// as the window server says so, while the workspace notification reaches this process only
+    /// when the main run loop next drains it; a read landing between the two still fails as
+    /// before. The foreground log narrows the flake, it does not remove it.
     var neverShown: Bool {
-        !window.isVisible && !window.isKeyWindow
-            && NSApp.isActive == wasActive && NSApp.keyWindow === keyWindowAtStart
+        NeverShown.holds(
+            windowHidden: !window.isVisible && !window.isKeyWindow,
+            otherApplicationMoved: foreground.otherApplicationMoved,
+            activeUnchanged: NSApp.isActive == wasActive,
+            keyWindowUnchanged: NSApp.keyWindow === keyWindowAtStart
+        )
     }
+
+    /// True when `neverShown` has stopped asking the app-level half, because another app
+    /// launched, activated or quit since this harness was built (PG-331).
+    var appLevelCheckSkipped: Bool { foreground.otherApplicationMoved }
 
     /// Every `NeverKeyWindow` call refused so far, by name (empty on a test that never provokes
     /// one). `Issue.record` inside `refuse(_:)` runs from an AppKit run-loop callback, outside the
@@ -159,6 +189,7 @@ final class HostedView<Content: View> {
     func tearDown() {
         window.orderOut(nil)
         window.contentView = nil
+        foreground.stopListening()
     }
 
     /// A key equivalent (Return, Esc, a bare letter, Cmd+key) offered to the hosting view, the
@@ -198,6 +229,66 @@ final class HostedView<Content: View> {
         }
         guard let png = rep.representation(using: .png, properties: [:]) else { return nil }
         return Snapshot(distinctColors: colors.count, png: png)
+    }
+}
+
+// MARK: - Who moved the foreground
+
+/// `HostedView.neverShown`'s decision, apart from the state it reads so its truth table can be
+/// pinned. The window half always counts; the app-level half counts unless another app moved
+/// the foreground. With `otherApplicationMoved` false it is the original assertion, unrelaxed.
+enum NeverShown {
+    static func holds(
+        windowHidden: Bool, otherApplicationMoved: Bool, activeUnchanged: Bool, keyWindowUnchanged: Bool
+    ) -> Bool {
+        guard windowHidden else { return false }
+        return otherApplicationMoved || (activeUnchanged && keyWindowUnchanged)
+    }
+}
+
+/// Records whether an application other than this one launched, became active or quit, through
+/// the workspace's own notifications: the three ways another process changes this app's
+/// activation without anything in this process asking (PG-331, `HostedView.neverShown`).
+///
+/// A class rather than state on `HostedView` because the observer blocks outlive no test: they
+/// are removed in `stopListening()` (called by `tearDown()`). A harness a test never tears down
+/// leaves three inert observer blocks in the notification center, nothing more: each captures
+/// this log weakly, so neither the log nor the view is kept alive by them.
+@MainActor
+final class ForegroundLog {
+    private(set) var otherApplicationMoved = false
+    /// Every notification this log's observers received, counted before the PID filter, so a
+    /// test can tell "filtered out" from "never delivered".
+    private(set) var delivered = 0
+    private var observers: [any NSObjectProtocol] = []
+    private var center: NotificationCenter?
+
+    private static let events: [Notification.Name] = [
+        NSWorkspace.didLaunchApplicationNotification,
+        NSWorkspace.didActivateApplicationNotification,
+        NSWorkspace.didTerminateApplicationNotification,
+    ]
+
+    func startListening(to center: NotificationCenter = NSWorkspace.shared.notificationCenter) {
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        observers = Self.events.map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
+                let movedPID = (notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                    as? NSRunningApplication)?.processIdentifier
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.delivered += 1
+                    if let movedPID, movedPID != currentPID { self.otherApplicationMoved = true }
+                }
+            }
+        }
+        self.center = center
+    }
+
+    func stopListening() {
+        for observer in observers { center?.removeObserver(observer) }
+        observers = []
+        center = nil
     }
 }
 

@@ -137,13 +137,15 @@ enum AttachmentChipModel {
 
     /// The chip's own menu, one command per entry (ADR-0069 §D3): the one place its four
     /// titles are named. «Mostra nel Finder» and «Copia» are `contextMenuTitles` by
-    /// identity, the `CalendarDayCommand` pattern (ADR-0023 §D10).
+    /// identity, the `CalendarDayCommand` pattern (ADR-0023 §D10); «Anteprima allegato» is
+    /// the message row's own command title, so the verb reads the same on the chip and on
+    /// the row it sits in (PG-263).
     enum Command: String, CaseIterable, Sendable {
         case preview, open, reveal, copy
 
         var title: String {
             switch self {
-            case .preview: "Anteprima"
+            case .preview: MessageCommand.previewAttachment.title
             case .open: "Apri"
             case .reveal: contextMenuTitles[0]
             case .copy: contextMenuTitles[1]
@@ -162,7 +164,7 @@ enum AttachmentChipModel {
     }
 
     /// The chip's menu, in order: every command always present, disabled rather than
-    /// dropped when it has no target. «Anteprima» needs `previewURL`, «Apri» `openURL`,
+    /// dropped when it has no target. «Anteprima allegato» needs `previewURL`, «Apri» `openURL`,
     /// «Mostra nel Finder» `revealURL`; «Copia» is always enabled, since a chip with no
     /// file still copies its name. `.pending` never reaches `state` (ADR-0040 §D8): each
     /// URL function answers `nil` for it without probing.

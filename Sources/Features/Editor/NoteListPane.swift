@@ -253,6 +253,7 @@ struct NoteListPane: View {
             .buttonStyle(.borderless)
             .accessibilityIdentifier("note-list-style")
             .help(showsFolders ? "Mostra tutte le note in un elenco" : "Mostra le cartelle")
+            .accessibilityLabel(showsFolders ? "Mostra tutte le note in un elenco" : "Mostra le cartelle")
         }
         .padding(theme.spacing(.s))
         .accessibilityElement(children: .contain)

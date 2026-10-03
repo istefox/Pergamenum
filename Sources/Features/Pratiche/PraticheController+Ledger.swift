@@ -238,7 +238,11 @@ extension PraticheController {
             // folder on disk can say - a message deleted from Mail keeps its file.
             notInStore: Set(ledger.byPraticaPath[selection]?.notInStore ?? [])
         )
-        timeline = PraticaTimelineModel.ordered(read.entries)
+        // ADR-0079 §D3: an entry anchored to a message this pratica excluded is dropped here,
+        // once, so no consumer of `timeline` or `filteredTimeline` can show it by omission.
+        timeline = PraticaTimelineModel.hidingExcluded(
+            PraticaTimelineModel.ordered(read.entries, excluded: read.excluded)
+        )
         details = read.details
         // ADR-0076 §D3: the hash of the bytes those entries were parsed from, and the only
         // write of it besides the vault reset's clear.

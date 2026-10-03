@@ -56,7 +56,9 @@ enum MessageCommand: String, CaseIterable, Sendable {
         switch self {
         case .openInMail: "envelope"
         case .previewAttachment: "eye"
-        case .exclude: "xmark.circle"
+        // `trash`, not `xmark.circle`: «Escludi» moves the message's files to the Trash
+        // (R-31), and every other verb that does draws this glyph (PG-263).
+        case .exclude: "trash"
         case .moveTo: "folder"
         case .alsoAddTo: "plus.circle"
         case .regenerate: "arrow.triangle.2.circlepath"

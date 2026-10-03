@@ -142,7 +142,7 @@ struct WeekGridMockup: View {
     private var hours: some View {
         VStack(alignment: .leading, spacing: 1) {
             ForEach([9, 11, 14, 16], id: \.self) { hour in
-                Text(String(format: "%02d:00", hour))
+                Text(TimeOfDay.formatted(hour: hour))
                     .themedText(.caption, color: .textTertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 3)

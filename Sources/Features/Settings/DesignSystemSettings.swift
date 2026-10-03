@@ -131,6 +131,7 @@ struct DesignSystemSettings: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Torna al valore del tema di base")
+                    .accessibilityLabel("Torna al valore del tema di base")
                 }
                 Text(engine.customizableColor(token).hexString)
                     .themedText(.mono, color: .textTertiary)

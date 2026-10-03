@@ -149,6 +149,7 @@ struct DiaryEntryCard: View {
         .padding(2)
         .opacity(isHovered ? 1 : 0.25)
         .help("Elimina il blocco")
+        .accessibilityLabel("Elimina il blocco")
         .accessibilityIdentifier("diary-remove-entry")
     }
 
