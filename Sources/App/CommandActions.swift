@@ -197,7 +197,7 @@ final class CommandActions {
         case .copyLink, .revealInFinder, .toggleStar:
             if !runOnContenitoreSelection(command) { runOnOpenNote(command) }
         default:
-            assertionFailure("«\(command.title)» è nella sezione File e non è gestito")
+            assertionFailure("«\(command.title)» is in the File section and is not handled")
         }
     }
 
@@ -217,7 +217,7 @@ final class CommandActions {
             // context menu has always been able to star any *other* note.
             if let path = vault.openNote?.relativePath { vault.toggleStar(path) }
         default:
-            assertionFailure("«\(command.title)» non agisce sulla nota aperta")
+            assertionFailure("«\(command.title)» does not act on the open note")
         }
     }
 
@@ -234,7 +234,7 @@ final class CommandActions {
         case .findPrevious:
             navigation.findStep = (navigation.findStep ?? 0) - 1
         default:
-            assertionFailure("«\(command.title)» è nella sezione Modifica e non è gestito")
+            assertionFailure("«\(command.title)» is in the Modifica section and is not handled")
         }
     }
 
@@ -249,7 +249,7 @@ final class CommandActions {
             // (`RootView.swift`).
             navigation.isShowingAddToPratica = true
         default:
-            assertionFailure("«\(command.title)» è nella sezione Inserisci e non è gestito")
+            assertionFailure("«\(command.title)» is in the Inserisci section and is not handled")
         }
     }
 
@@ -282,7 +282,7 @@ final class CommandActions {
         case .goBack, .goForward:
             walkHistory(command)
         default:
-            assertionFailure("«\(command.title)» è nella sezione Vista e non è gestito")
+            assertionFailure("«\(command.title)» is in the Vista section and is not handled")
         }
     }
 
@@ -321,7 +321,7 @@ final class CommandActions {
         case .taskAddSubtask:
             addSubtaskToSelectedTask()
         default:
-            assertionFailure("«\(command.title)» è nella sezione Task e non è gestito")
+            assertionFailure("«\(command.title)» is in the Task section and is not handled")
         }
     }
 
@@ -341,7 +341,7 @@ final class CommandActions {
             navigation.pane = .today
             day.isCreatingReminder = true
         default:
-            assertionFailure("«\(command.title)» è nella sezione Calendario e non è gestito")
+            assertionFailure("«\(command.title)» is in the Calendario section and is not handled")
         }
     }
 

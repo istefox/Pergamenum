@@ -17,7 +17,7 @@ import Testing
 @MainActor
 @Suite struct AttachmentChipMenuViewTests {
     private static let entries: [AttachmentChipModel.MenuEntry] = [
-        .init(command: .preview, title: "Anteprima", isEnabled: true),
+        .init(command: .preview, title: "Anteprima allegato", isEnabled: true),
         .init(command: .open, title: "Apri", isEnabled: false),
         .init(command: .reveal, title: "Mostra nel Finder", isEnabled: true),
         .init(command: .copy, title: "Copia", isEnabled: true),
@@ -59,7 +59,7 @@ import Testing
     @Test func entriesAreReadWhenTheMenuOpensNotWhenTheViewIsBuilt() throws {
         var isUsable = false
         let view = AttachmentChipMenuView(frame: CGRect(x: 0, y: 0, width: 80, height: 20))
-        view.entries = { [.init(command: .preview, title: "Anteprima", isEnabled: isUsable)] }
+        view.entries = { [.init(command: .preview, title: "Anteprima allegato", isEnabled: isUsable)] }
 
         isUsable = true
         let menu = try #require(view.menu(for: try Self.rightMouseDown()))

@@ -79,6 +79,9 @@ struct TimelineBlockBox: View {
         .padding(2)
         .opacity(isHovered ? 1 : 0.35)
         .help("Elimina il blocco")
+        // `.help` is a tooltip, not a name: without this the button read as unlabelled
+        // (PG-265; `NoteTabBar`'s close button is the shape).
+        .accessibilityLabel("Elimina il blocco")
         .accessibilityIdentifier("timeline-remove-block")
     }
 

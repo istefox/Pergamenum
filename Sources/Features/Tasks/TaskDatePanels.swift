@@ -90,7 +90,9 @@ struct SchedulePanel: View {
                 id: "remind",
                 symbol: "alarm",
                 title: "Ricordami…",
-                hint: reminder.map { String(format: "%@ %02d:%02d", DateEntry.hint(for: $0.date), $0.hour, $0.minute) },
+                hint: reminder.map {
+                    "\(DateEntry.hint(for: $0.date)) \(TimeOfDay.formatted(hour: $0.hour, minute: $0.minute))"
+                },
                 trailing: reminder == nil ? "plus" : nil
             ) { page = .reminder }
 
@@ -115,6 +117,7 @@ struct SchedulePanel: View {
                     Image(systemName: "chevron.left").foregroundStyle(theme.color(.textSecondary))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Indietro")
                 .accessibilityIdentifier("repeat-back")
                 Text("Ripeti").themedText(.heading)
             }
@@ -300,6 +303,7 @@ private struct ReminderPage: View {
                     Image(systemName: "chevron.left").foregroundStyle(theme.color(.textSecondary))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Indietro")
                 .accessibilityIdentifier("reminder-back")
                 Text("Ricordami").themedText(.heading)
             }

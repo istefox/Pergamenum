@@ -142,7 +142,7 @@ struct TaskTime: Equatable, Sendable, Comparable, Hashable {
     /// Minutes from midnight, the unit the timeline works in.
     var minutes: Int { hour * 60 + minute }
 
-    var text: String { String(format: "%02d:%02d", hour, minute) }
+    var text: String { TimeOfDay.formatted(hour: hour, minute: minute) }
 
     static func < (lhs: TaskTime, rhs: TaskTime) -> Bool { lhs.minutes < rhs.minutes }
 }
@@ -153,7 +153,7 @@ struct TaskReminder: Equatable, Sendable {
     var minute: Int
 
     var rendered: String {
-        String(format: "@remind(%@ %02d:%02d)", date.description, hour, minute)
+        "@remind(\(date.description) \(TimeOfDay.formatted(hour: hour, minute: minute)))"
     }
 }
 

@@ -362,16 +362,20 @@ enum PraticaRowFormat {
         dayFormatter.string(from: date)
     }
 
-    /// `10 giugno 14:06` - what VoiceOver reads inside a row's composed label.
+    /// `10 giugno alle ore 14:06` - what VoiceOver reads inside a row's composed label.
     static func spokenDate(_ date: Date) -> String {
         spokenFormatter.string(from: date)
     }
 
-    /// The person's own locale and time zone, unlike the file formats
-    /// (`PraticaEntry.headingFormatter`), which are `en_US_POSIX` because a
-    /// heading is a file format and not a presentation.
+    /// The locale every date on screen in this pane is spelled in: Italian, like the rest of
+    /// the interface (PG-263: the machine's region used to pick the language, so this pane
+    /// alone followed it). The file formats (`PraticaEntry.headingFormatter`) stay
+    /// `en_US_POSIX`, because a heading is a file format and not a presentation.
+    static let uiLocale = Locale(identifier: "it_IT")
+
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = uiLocale
         formatter.setLocalizedDateFormatFromTemplate("HHmm")
         return formatter
     }()
@@ -385,6 +389,7 @@ enum PraticaRowFormat {
 
     private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = uiLocale
         formatter.dateStyle = .full
         formatter.timeStyle = .none
         return formatter
@@ -392,6 +397,7 @@ enum PraticaRowFormat {
 
     private static let spokenFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = uiLocale
         formatter.setLocalizedDateFormatFromTemplate("ddMMMM HHmm")
         return formatter
     }()

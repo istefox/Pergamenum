@@ -33,6 +33,7 @@ struct TaskTimeRow: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("time-row-clear")
                 .help("Togli l'orario")
+                .accessibilityLabel("Togli l'orario")
             } else {
                 Button("Aggiungi") { time = Self.defaultTime }
                     .buttonStyle(.plain)

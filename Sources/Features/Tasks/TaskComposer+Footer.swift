@@ -22,7 +22,7 @@ extension TaskComposer {
             // it shows here only once there is one to show.
             if let reminder = draft.reminder {
                 Label(
-                    String(format: "%02d:%02d", reminder.hour, reminder.minute),
+                    TimeOfDay.formatted(hour: reminder.hour, minute: reminder.minute),
                     systemImage: "alarm"
                 )
                 .themedText(.caption, color: .textSecondary)

@@ -59,6 +59,7 @@ struct DayMonthSection: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("month-disclosure")
             .help(isShowing ? "Nascondi il mese" : "Mostra il mese")
+            .accessibilityLabel(isShowing ? "Nascondi il mese" : "Mostra il mese")
 
             Text("MESE").themedText(.caption, color: .textTertiary)
             Spacer()

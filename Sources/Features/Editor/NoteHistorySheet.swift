@@ -30,15 +30,13 @@ struct HistoryDayGroup: Equatable, Identifiable {
 enum HistoryGrouping {
     /// Groups newest-first snapshots into newest-first days.
     ///
-    /// `now`, `calendar` and `locale` are arguments for the same reason
-    /// `NoteHistory.record` takes a date: "today" and "yesterday" cannot be tested
-    /// without control of the clock, and the day names must be Italian whatever the
-    /// machine running the test is set to.
+    /// `now` and `calendar` are arguments for the same reason `NoteHistory.record` takes a
+    /// date: "today" and "yesterday" cannot be tested without control of the clock. The day
+    /// names come from `DateEntry`, which is Italian whatever the machine is set to.
     static func groups(
         for snapshots: [NoteHistory.Snapshot],
         now: Date,
-        calendar: Calendar = .current,
-        locale: Locale = Locale(identifier: "it_IT")
+        calendar: Calendar = .current
     ) -> [HistoryDayGroup] {
         var groups: [HistoryDayGroup] = []
         var currentDay: Date?
@@ -55,7 +53,7 @@ enum HistoryGrouping {
             } else {
                 currentDay = day
                 groups.append(HistoryDayGroup(
-                    title: title(for: day, now: now, calendar: calendar, locale: locale),
+                    title: title(for: day, now: now, calendar: calendar),
                     entries: [entry]
                 ))
             }
@@ -63,28 +61,22 @@ enum HistoryGrouping {
         return groups
     }
 
-    static func title(
-        for day: Date, now: Date, calendar: Calendar, locale: Locale
-    ) -> String {
-        let today = calendar.startOfDay(for: now)
-        if day == today { return "Oggi" }
-        if day == calendar.date(byAdding: .day, value: -1, to: today) { return "Ieri" }
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "EEEE d MMMM"
-        return formatter.string(from: day)
+    /// `Oggi`, `Ieri`, or `sabato 15 agosto`: the day read in `calendar`'s zone, then named
+    /// through the Core helpers every other date in the interface uses (PG-263).
+    static func title(for day: Date, now: Date, calendar: Calendar) -> String {
+        let date = CalendarDate(day, in: calendar)
+        let today = CalendarDate(now, in: calendar)
+        if date == today { return "Oggi" }
+        if date == today.adding(days: -1) { return "Ieri" }
+        let month = DateEntry.monthName(month: date.month, year: date.year)
+        return "\(DateEntry.weekdayName(of: date)) \(date.day) \(month)"
     }
 
-    /// `18:42`. Fixed rather than locale-derived: the interface is Italian (CLAUDE.md),
-    /// which is 24-hour, and a stable string is one less thing for a test to guess at.
+    /// `18:42`, in `calendar`'s zone, spelled by `TimeOfDay` like every other time the
+    /// interface shows.
     static func time(for date: Date, calendar: Calendar = .current) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
+        return TimeOfDay.formatted(hour: parts.hour ?? 0, minute: parts.minute ?? 0)
     }
 }
 

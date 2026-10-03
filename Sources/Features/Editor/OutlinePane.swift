@@ -159,6 +159,7 @@ struct OutlinePane: View {
             }
             .buttonStyle(.plain)
             .help(vault.foldedEntries.contains(offset) ? "Espandi la sezione" : "Ripiega la sezione")
+            .accessibilityLabel(vault.foldedEntries.contains(offset) ? "Espandi la sezione" : "Ripiega la sezione")
         } else {
             Color.clear.frame(width: 12)
         }

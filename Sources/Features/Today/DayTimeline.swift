@@ -178,7 +178,7 @@ struct DayTimeline: View {
 
     private func hourRow(_ hour: Int) -> some View {
         HStack(alignment: .top, spacing: theme.spacing(.s)) {
-            Text(String(format: "%02d:00", hour))
+            Text(TimeOfDay.formatted(hour: hour))
                 .themedText(.caption, color: .textTertiary)
                 .frame(width: 44, alignment: .trailing)
             Rectangle()

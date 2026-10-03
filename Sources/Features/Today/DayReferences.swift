@@ -174,6 +174,7 @@ struct DayReferences: View {
                         }
                         .buttonStyle(.plain)
                         .help("Vai al giorno della scadenza")
+                        .accessibilityLabel("Vai al giorno della scadenza")
                     }
                 }
             }
@@ -218,6 +219,7 @@ struct DayReferences: View {
                         }
                         .buttonStyle(.plain)
                         .help("Elimina il blocco")
+                        .accessibilityLabel("Elimina il blocco")
                         .accessibilityIdentifier("remove-block")
                     }
                 }

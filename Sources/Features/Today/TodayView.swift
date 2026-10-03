@@ -258,7 +258,7 @@ struct TodayView: View {
                 HStack(spacing: theme.spacing(.m)) {
                     Picker("Ora", selection: $draftStartHour) {
                         ForEach(0..<24, id: \.self) { hour in
-                            Text(String(format: "%02d:00", hour)).tag(hour)
+                            Text(TimeOfDay.formatted(hour: hour)).tag(hour)
                         }
                     }
                     Picker("Durata", selection: $draftDurationMinutes) {

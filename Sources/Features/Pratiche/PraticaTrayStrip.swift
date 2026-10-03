@@ -148,10 +148,11 @@ struct PraticaTrayStrip: View {
         return "\(lower) – \(rangeFormatter.string(from: dates.upperBound))"
     }
 
-    /// The reader's own locale, like every other date this pane draws
-    /// (`PraticaRowFormat`) and unlike the file formats, which are `en_US_POSIX`.
+    /// Italian in the reader's own time zone, like every other date this pane draws
+    /// (`PraticaRowFormat.uiLocale`) and unlike the file formats, which are `en_US_POSIX`.
     private static let rangeFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = PraticaRowFormat.uiLocale
         formatter.setLocalizedDateFormatFromTemplate("ddMMM")
         return formatter
     }()

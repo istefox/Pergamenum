@@ -200,6 +200,7 @@ private struct ContenitoreInspectorContent: View {
                         }
                         .buttonStyle(.plain)
                         .help("Togli \(tag.description)")
+                        .accessibilityLabel("Togli \(tag.description)")
                     }
                 }
             }

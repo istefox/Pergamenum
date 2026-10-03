@@ -200,7 +200,7 @@ extension PratichePane {
             reference: PraticaLinkReference.wikilink(fileName).rendered,
             displayName: (fileName as NSString).deletingPathExtension,
             resolution: resolution,
-            resolvedIcon: "square.grid.2x2",
+            resolvedIcon: "rectangle.3.group",
             missingHelp: "board non trovata nel vault"
         )
         return linkRow(content) { path in

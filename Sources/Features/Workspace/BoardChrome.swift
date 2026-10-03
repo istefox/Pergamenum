@@ -124,6 +124,9 @@ struct BoardToolbar: View {
                     workspace.isToolLocked.toggle()
                 })
                 .help(tool.shortcut.map { "\(tool.title) (\($0.uppercased()))" } ?? tool.title)
+                // Icon-only, so the name a screen reader says has to be given (PG-265).
+                .accessibilityLabel(tool.title)
+                .accessibilityAddTraits(tool == workspace.tool ? .isSelected : [])
                 // Suspended while a card is being written into: a bare-key shortcut with
                 // no modifier reaches `performKeyEquivalent:` ahead of the first
                 // responder, so typing the word "nota" into a `TextEditor` would switch
@@ -152,6 +155,8 @@ struct BoardZoomControls: View {
     var body: some View {
         HStack(spacing: theme.spacing(.xs)) {
             Button { workspace.zoom(by: 1 / 1.25, in: viewportSize) } label: { Image(systemName: "minus") }
+                .help("Riduci")
+                .accessibilityLabel("Riduci")
                 .accessibilityIdentifier("board-zoom-out")
             Button { workspace.resetZoom() } label: {
                 Text("\(Int(workspace.zoom * 100))%").themedText(.caption)
@@ -159,10 +164,16 @@ struct BoardZoomControls: View {
             .accessibilityIdentifier("board-zoom-level")
             .accessibilityValue("\(Int(workspace.zoom * 100))")
             Button { workspace.zoom(by: 1.25, in: viewportSize) } label: { Image(systemName: "plus") }
+                .help("Ingrandisci")
+                .accessibilityLabel("Ingrandisci")
+                .accessibilityIdentifier("board-zoom-in")
             Divider().frame(height: 12)
             Button { workspace.zoomToFit(in: viewportSize) } label: {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
             }
+            .help("Adatta alla finestra")
+            .accessibilityLabel("Adatta alla finestra")
+            .accessibilityIdentifier("board-zoom-fit")
         }
         .buttonStyle(.plain)
         .foregroundStyle(theme.color(.textSecondary))
@@ -182,31 +193,55 @@ struct BoardPenControls: View {
     @Binding var penWidth: CGFloat
     @Binding var isErasing: Bool
 
+    /// The four pen colours, each with the name a screen reader says for it.
+    private static let colors: [(token: ColorToken, name: String)] = [
+        (.textPrimary, "inchiostro"), (.accentPrimary, "accento"), (.taskOverdue, "rosso"), (.stickyYellow, "giallo"),
+    ]
+
+    /// The three stroke widths, likewise named.
+    private static let widths: [(width: CGFloat, name: String)] = [(2, "sottile"), (6, "medio"), (14, "spesso")]
+
+    /// Buttons rather than shapes with a tap gesture (PG-265): a `Circle` with `.onTapGesture`
+    /// has no button trait, no name and no keyboard focus, so a screen reader announced
+    /// nothing and only the pointer could pick a colour. The drawing is unchanged.
     var body: some View {
         HStack(spacing: theme.spacing(.xs)) {
-            ForEach([ColorToken.textPrimary, .accentPrimary, .taskOverdue, .stickyYellow], id: \.self) { token in
-                Circle()
-                    .fill(theme.color(token))
-                    .frame(width: 16, height: 16)
-                    .overlay(
-                        Circle().strokeBorder(
-                            token == penColor ? theme.color(.canvasSelection) : theme.color(.borderSubtle),
-                            lineWidth: token == penColor ? 2 : 1
+            ForEach(Self.colors, id: \.token) { color in
+                control("Colore \(color.name)", identifier: "board-pen-color-\(color.name)",
+                        isSelected: color.token == penColor) {
+                    penColor = color.token
+                    isErasing = false
+                } label: {
+                    Circle()
+                        .fill(theme.color(color.token))
+                        .frame(width: 16, height: 16)
+                        .overlay(
+                            Circle().strokeBorder(
+                                color.token == penColor ? theme.color(.canvasSelection) : theme.color(.borderSubtle),
+                                lineWidth: color.token == penColor ? 2 : 1
+                            )
                         )
-                    )
-                    .onTapGesture { penColor = token; isErasing = false }
+                }
             }
             Divider().frame(height: 14)
-            ForEach([CGFloat(2), 6, 14], id: \.self) { width in
-                Circle()
-                    .fill(theme.color(width == penWidth && !isErasing ? .accentPrimary : .textTertiary))
-                    .frame(width: width + 4, height: width + 4)
-                    .onTapGesture { penWidth = width; isErasing = false }
+            ForEach(Self.widths, id: \.width) { stroke in
+                control("Tratto \(stroke.name)", identifier: "board-pen-width-\(stroke.name)",
+                        isSelected: stroke.width == penWidth && !isErasing) {
+                    penWidth = stroke.width
+                    isErasing = false
+                } label: {
+                    Circle()
+                        .fill(theme.color(stroke.width == penWidth && !isErasing ? .accentPrimary : .textTertiary))
+                        .frame(width: stroke.width + 4, height: stroke.width + 4)
+                }
             }
             Divider().frame(height: 14)
-            Image(systemName: "eraser")
-                .foregroundStyle(theme.color(isErasing ? .accentPrimary : .textSecondary))
-                .onTapGesture { isErasing.toggle() }
+            control("Gomma", identifier: "board-pen-eraser", isSelected: isErasing) {
+                isErasing.toggle()
+            } label: {
+                Image(systemName: "eraser")
+                    .foregroundStyle(theme.color(isErasing ? .accentPrimary : .textSecondary))
+            }
             Divider().frame(height: 14)
             Button("Fatto") {
                 _ = workspace.commitDrawing()
@@ -221,5 +256,22 @@ struct BoardPenControls: View {
         .background(theme.color(.surfaceRaised))
         .clipShape(Capsule())
         .themedShadow(.card)
+    }
+
+    /// One pen control: a plain button named, described as selected when it is, and findable
+    /// by identifier.
+    private func control<Content: View>(
+        _ name: String,
+        identifier: String,
+        isSelected: Bool,
+        action: @escaping () -> Void,
+        @ViewBuilder label: () -> Content
+    ) -> some View {
+        Button(action: action, label: label)
+            .buttonStyle(.plain)
+            .help(name)
+            .accessibilityLabel(name)
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+            .accessibilityIdentifier(identifier)
     }
 }

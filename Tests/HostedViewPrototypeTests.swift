@@ -190,4 +190,74 @@ struct HostedViewPrototypeTests {
             "sendEvent",
         ])
     }
+
+    /// PG-331: what lets `neverShown` tell another app's foreground change from its own. This
+    /// app's own activation is never counted, so a test that activates the app still fails the
+    /// app-level half; another app's launch, activation or termination is. Driven on a private
+    /// notification center, so nothing on the machine is activated to prove it.
+    ///
+    /// Each assertion waits until the log has seen every notification posted so far, so "not
+    /// counted" is read after delivery, never before it. Measured on 2026-10-03, a post to an
+    /// observer on `OperationQueue.main` runs the block before `post` returns, from the main
+    /// thread and from a background one alike, so the wait ends on its first check; it is
+    /// bounded and kept so the test stays correct if that ever changes.
+    @Test func theForegroundLogCountsOtherApplicationsAndNeverThisOne() async throws {
+        let center = NotificationCenter()
+        let log = ForegroundLog()
+        log.startListening(to: center)
+        defer { log.stopListening() }
+        let current = NSRunningApplication.current
+        let other = try #require(NSWorkspace.shared.runningApplications.first {
+            $0.processIdentifier != current.processIdentifier
+        })
+
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didActivateApplicationNotification] {
+            center.post(name: name, object: nil, userInfo: [NSWorkspace.applicationUserInfoKey: current])
+        }
+        let selfEventsSeen = await Self.waitUntil { log.delivered == 2 }
+        try #require(selfEventsSeen)
+        #expect(!log.otherApplicationMoved)
+
+        center.post(
+            name: NSWorkspace.didTerminateApplicationNotification, object: nil,
+            userInfo: [NSWorkspace.applicationUserInfoKey: other]
+        )
+        let otherEventSeen = await Self.waitUntil { log.delivered == 3 }
+        try #require(otherEventSeen)
+        #expect(log.otherApplicationMoved)
+    }
+
+    /// PG-331: `neverShown`'s whole truth table. A shown or key window always fails; with no
+    /// other app moving the foreground the app-level half is the original assertion, unrelaxed;
+    /// only another app's move lets an app-level change through.
+    @Test func neverShownDecisionTable() {
+        // (windowHidden, otherApplicationMoved, activeUnchanged, keyWindowUnchanged)
+        let holding: Set<[Bool]> = [
+            [true, false, true, true],
+            [true, true, true, true],
+            [true, true, true, false],
+            [true, true, false, true],
+            [true, true, false, false],
+        ]
+        for row in 0 ..< 16 {
+            let bits = (0 ..< 4).map { row & (8 >> $0) != 0 }
+            let result = NeverShown.holds(
+                windowHidden: bits[0], otherApplicationMoved: bits[1],
+                activeUnchanged: bits[2], keyWindowUnchanged: bits[3]
+            )
+            #expect(result == holding.contains(bits), "row \(bits)")
+        }
+    }
+
+    /// Polls `condition` on the main actor, yielding a millisecond between reads, for at most
+    /// two seconds; true as soon as it holds.
+    private static func waitUntil(_ condition: () -> Bool) async -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(2)
+        while !condition() {
+            guard clock.now < deadline else { return false }
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+        return true
+    }
 }

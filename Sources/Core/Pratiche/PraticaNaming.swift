@@ -31,7 +31,7 @@ enum PraticaNaming {
         subject: String
     ) -> String {
         let party = ImportNaming.canonicalCounterparty(counterpart)
-        let clock = String(format: "%02d%02d", time.hour, time.minute)
+        let clock = TimeOfDay.twoDigits(time.hour) + TimeOfDay.twoDigits(time.minute)
         let stem = "\(date.compactForm)_\(clock)_\(party)"
         let slug = ImportNaming.truncatedAtWordBoundary(
             ImportNaming.kebabCase(strippingReplyPrefixes(subject)), toFit: slugLimit

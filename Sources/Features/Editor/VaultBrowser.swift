@@ -275,6 +275,7 @@ struct VaultBrowser: View {
                     }
                     .buttonStyle(.plain)
                     .help("Scollega la categoria")
+                    .accessibilityLabel("Scollega la categoria")
                     .accessibilityIdentifier("inspector-unlink-category")
                 }
             }

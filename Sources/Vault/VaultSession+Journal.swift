@@ -44,7 +44,7 @@ extension VaultSession {
     @discardableResult
     func transaction<T>(_ command: String, _ body: () async throws -> T) async rethrows -> T {
         guard JournalGesture.current == nil else {
-            assertionFailure("transazione annidata: «\(command)» dentro «\(journalCommand)»")
+            assertionFailure("nested transaction: «\(command)» inside «\(journalCommand)»")
             return try await body()
         }
         let gesture = JournalGesture(operation: WriteJournal.makeID(at: Date()), command: command)

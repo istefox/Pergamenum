@@ -97,7 +97,7 @@ struct DiaryEntrySheet: View {
                 HStack(spacing: theme.spacing(.xs)) {
                     Picker("Ora", selection: hourBinding) {
                         ForEach(0..<24, id: \.self) { hour in
-                            Text(String(format: "%02d", hour)).tag(hour)
+                            Text(TimeOfDay.twoDigits(hour)).tag(hour)
                         }
                     }
                     .labelsHidden()
@@ -106,7 +106,7 @@ struct DiaryEntrySheet: View {
 
                     Picker("Minuti", selection: minuteBinding) {
                         ForEach(DiaryGrid.minuteMarks, id: \.self) { minute in
-                            Text(String(format: "%02d", minute)).tag(minute)
+                            Text(TimeOfDay.twoDigits(minute)).tag(minute)
                         }
                     }
                     .labelsHidden()

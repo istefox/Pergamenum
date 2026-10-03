@@ -16,6 +16,6 @@ enum RolloverMarker {
     /// meant, and the date without the year, because a rollover window measured in days never
     /// crosses one far enough for it to matter.
     static func text(for day: CalendarDate) -> String {
-        String(format: "%@ %02d/%02d", DateEntry.weekdayName(of: day), day.day, day.month)
+        "\(DateEntry.weekdayName(of: day)) \(TimeOfDay.twoDigits(day.day))/\(TimeOfDay.twoDigits(day.month))"
     }
 }
