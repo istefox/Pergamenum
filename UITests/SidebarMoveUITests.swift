@@ -31,9 +31,9 @@ import XCTest
 /// by hand), so a row nested under a *collapsed* folder cannot be reached by identifier without
 /// first clicking that exact pixel - a fragility this file has no reason to take on when every
 /// requirement below is provable with root-level fixtures instead. Where a row's *destination*
-/// after a move needs to be read back through the UI (R-01) this file reuses
-/// `WorkspaceIntegrationUITests.openBoard()`'s own trick: typing into the filter field switches
-/// the browser to `flatList`, which draws every match flat regardless of expand state.
+/// after a move needs to be read back through the UI (R-01) this file uses one trick: typing
+/// into the filter field switches the browser to `flatList`, which draws every match flat
+/// regardless of expand state.
 ///
 /// Known gap, not tested here on purpose (told to this file rather than discovered by it):
 /// `NoteListPane.performMove` reports a collision through `VaultController.recordProblem`
@@ -72,8 +72,7 @@ final class SidebarMoveUITests: PergamenumUITestCase {
 
         // No relaunch, no explicit rescan: typing into the filter is the only action
         // taken between the move above and this check, and it switches the browser to
-        // `flatList`, which draws every match flat regardless of what is expanded -
-        // `WorkspaceIntegrationUITests.openBoard()`'s own technique.
+        // `flatList`, which draws every match flat regardless of what is expanded.
         let filter = app.textFields["workspace-filter"]
         filter.click()
         filter.typeText("Board")
