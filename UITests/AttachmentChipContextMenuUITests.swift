@@ -61,16 +61,17 @@ final class AttachmentChipContextMenuUITests: PergamenumUITestCase {
         // by its production title). What this exercises that the unit test at
         // `Tests/AttachmentChipTests.swift:174` cannot: the real rendered menu of the
         // real running view, not the model constant compared to itself.
-        let revealItem = app.menuItems["Mostra nel Finder"]
-        XCTAssertTrue(revealItem.waitForExistence(timeout: 5), "manca la voce «Mostra nel Finder» nel menu contestuale")
-        let copyItem = app.menuItems["Copia"]
-        XCTAssertTrue(copyItem.waitForExistence(timeout: 5), "manca la voce «Copia» nel menu contestuale")
+        // Counted in context menus only, `contextMenuItemCount(_:)` says why.
+        XCTAssertTrue(
+            waitForContextMenuItem("Mostra nel Finder"), "manca la voce «Mostra nel Finder» nel menu contestuale"
+        )
+        XCTAssertEqual(contextMenuItemCount("Copia"), 1, "manca la voce «Copia» nel menu contestuale")
 
         // PG-285: the chip's whole menu, and not the message menu in its place.
-        XCTAssertTrue(app.menuItems["Anteprima"].exists, "manca la voce «Anteprima» nel menu del chip")
-        XCTAssertTrue(app.menuItems["Apri"].exists, "manca la voce «Apri» nel menu del chip")
-        XCTAssertFalse(
-            app.menuItems["Escludi dalla pratica"].exists,
+        XCTAssertEqual(contextMenuItemCount("Anteprima"), 1, "manca la voce «Anteprima» nel menu del chip")
+        XCTAssertEqual(contextMenuItemCount("Apri"), 1, "manca la voce «Apri» nel menu del chip")
+        XCTAssertEqual(
+            contextMenuItemCount("Escludi dalla pratica"), 0,
             "si è aperto il menu del messaggio invece di quello del chip"
         )
         app.typeKey(.escape, modifierFlags: [])
@@ -85,11 +86,11 @@ final class AttachmentChipContextMenuUITests: PergamenumUITestCase {
         subject.rightClick()
 
         XCTAssertTrue(
-            app.menuItems["Escludi dalla pratica"].waitForExistence(timeout: 5),
+            waitForContextMenuItem("Escludi dalla pratica"),
             "il clic destro accanto al chip non ha aperto il menu del messaggio"
         )
-        XCTAssertFalse(
-            app.menuItems["Mostra nel Finder"].exists,
+        XCTAssertEqual(
+            contextMenuItemCount("Mostra nel Finder"), 0,
             "il clic destro accanto al chip ha aperto il menu del chip"
         )
         app.typeKey(.escape, modifierFlags: [])
@@ -137,6 +138,31 @@ final class AttachmentChipContextMenuUITests: PergamenumUITestCase {
 
     private func element(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+
+    // MARK: - Context-menu lookup
+
+    /// How many items titled `title` are open in a context menu, the menu bar's left out. The
+    /// menu bar is always in the accessibility tree, and since PG-263 (#849) File has its own
+    /// «Mostra nel Finder» beside Modifica's «Copia»: an app-wide `app.menuItems[title].exists`
+    /// is true for those whether or not the chip's menu opened, so it proves nothing about it,
+    /// and a check that the chip's menu stayed shut fails on the menu bar instead.
+    private func contextMenuItemCount(_ title: String) -> Int {
+        // One predicate per query: `matching(_:)` takes it as `sending`, so it cannot be shared.
+        func titled() -> NSPredicate { NSPredicate(format: "title == %@ OR label == %@", title, title) }
+        let everywhere = app.menuItems.matching(titled()).count
+        let inMenuBar = app.menuBars.descendants(matching: .menuItem).matching(titled()).count
+        return everywhere - inMenuBar
+    }
+
+    /// Waits up to five seconds for `title` to show in an open context menu.
+    private func waitForContextMenuItem(_ title: String) -> Bool {
+        let deadline = Date().addingTimeInterval(5)
+        repeat {
+            if contextMenuItemCount(title) > 0 { return true }
+            Thread.sleep(forTimeInterval: 0.1)
+        } while Date() < deadline
+        return false
     }
 
     /// Mirrors `PraticaMessageRow.hash(of:)` exactly (FNV-1a over the message id
