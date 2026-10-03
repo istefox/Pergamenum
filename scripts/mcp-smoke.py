@@ -434,22 +434,30 @@ def pratiche_links(binary, vault, check):
 def pratiche_anchors(binary, vault, check):
     """ADR-0076 §D10, R-22: an entry anchored to a message follows it in the `pratica`
     payload with `anchorState` "anchored", one naming a Message-ID no message carries sits at
-    its own heading time with "orphaned", and a free entry carries neither key.
+    its own heading time with "orphaned", and a free entry carries neither key. ADR-0079 §D4
+    (R-07): one naming a Message-ID the pratica's `pergamenum-dossier-excluded` lists, and no
+    message carries, is listed with "excluded" at its own heading time.
 
     The message is dated 12:06 UTC, the free call 14:06; the anchored note is written the next
-    day and still comes right after the message, the orphaned one sits at its own 13:00. The
-    ordering rule itself is `Tests/PraticheConnectorAnchorTests.swift`'s job; what only a real
-    server shows is that the two keys survive the JSON crossing over a read-only server.
+    day and still comes right after the message, the orphaned one sits at its own 13:00 and the
+    excluded one at its own 13:30. The ordering rule itself is
+    `Tests/PraticheConnectorAnchorTests.swift`'s job; what only a real server shows is that the
+    two keys survive the JSON crossing over a read-only server.
     """
     print("voci collegate a un messaggio")
     folder = os.path.join(vault, "01 Progetti", "Rossi", "Offerta")
     os.makedirs(os.path.join(folder, "email"))
+    dossier_line = "pergamenum-dossier-conversations: [112409]\n"
     with open(os.path.join(folder, "pratica.md"), "w", encoding="utf-8") as handle:
-        handle.write(PRATICA_NOTE
+        handle.write(PRATICA_NOTE.replace(
+                         dossier_line,
+                         dossier_line + 'pergamenum-dossier-excluded:\n  - "<escluso@rossi-spa.it>"\n')
                      + "\n## 2026-06-11 09:00 Nota · Mario Rossi\n"
                      + "<!-- pergamenum-message: <abc@rossi-spa.it> -->\n\nOfferta da preparare.\n"
                      + "\n## 2026-06-10 13:00 Nota · Mario Rossi\n"
-                     + "<!-- pergamenum-message: <sparito@rossi-spa.it> -->\n\nMessaggio tolto.\n")
+                     + "<!-- pergamenum-message: <sparito@rossi-spa.it> -->\n\nMessaggio tolto.\n"
+                     + "\n## 2026-06-10 13:30 Nota · Mario Rossi\n"
+                     + "<!-- pergamenum-message: <escluso@rossi-spa.it> -->\n\nMessaggio escluso.\n")
     with open(os.path.join(folder, "email", "msg.md"), "w", encoding="utf-8") as handle:
         handle.write(MESSAGE_NOTE)
 
@@ -457,9 +465,9 @@ def pratiche_anchors(binary, vault, check):
     try:
         timeline = server.payload("pratica", {"pratica": "Offerta"})
         entries = timeline.get("entries", [])
-        check([entry["kind"] for entry in entries] == ["message", "note", "note", "call"],
-              "il messaggio, la voce collegata, la voce orfana, poi la telefonata")
-        if len(entries) == 4:
+        check([entry["kind"] for entry in entries] == ["message", "note", "note", "note", "call"],
+              "il messaggio, la voce collegata, la voce orfana, la voce esclusa, poi la telefonata")
+        if len(entries) == 5:
             check("anchorMessageID" not in entries[0] and "anchorState" not in entries[0],
                   "il messaggio non porta le chiavi dell'ancora")
             check(entries[1].get("anchorState") == "anchored"
@@ -469,8 +477,14 @@ def pratiche_anchors(binary, vault, check):
             check(entries[2].get("anchorState") == "orphaned"
                   and entries[2].get("anchorMessageID") == "<sparito@rossi-spa.it>",
                   "la voce senza messaggio resta alla sua ora ed è orphaned")
-            check("anchorMessageID" not in entries[3] and "anchorState" not in entries[3],
+            check(entries[3].get("anchorState") == "excluded"
+                  and entries[3].get("anchorMessageID") == "<escluso@rossi-spa.it>",
+                  "la voce di un messaggio escluso resta alla sua ora ed è excluded")
+            check("anchorMessageID" not in entries[4] and "anchorState" not in entries[4],
                   "una voce libera non porta nessuna delle due chiavi")
+        tools = server.send("tools/list", {})["result"]["tools"]
+        description = next((tool["description"] for tool in tools if tool["name"] == "pratica"), "")
+        check("excluded" in description, "la descrizione dello strumento pratica nomina lo stato excluded")
     finally:
         server.close()
 

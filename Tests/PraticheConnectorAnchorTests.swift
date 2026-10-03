@@ -22,8 +22,11 @@ private func headingDate(_ text: String) throws -> Date {
     try #require(PraticaEntry.headingFormatter.date(from: text))
 }
 
-private func praticaNote(entries: String) -> String {
-    """
+private func praticaNote(entries: String, excluded: [String] = []) -> String {
+    // ADR-0079 (PG-369): the dossier's own exclusion list, in `Dossier.render`'s spelling.
+    let excludedKey = excluded.isEmpty
+        ? "" : "\npergamenum-dossier-excluded:\n" + excluded.map { "  - \"\($0)\"" }.joined(separator: "\n")
+    return """
     ---
     date: 2026-09-01
     tags:
@@ -35,7 +38,7 @@ private func praticaNote(entries: String) -> String {
     pergamenum-dossier: 1
     pergamenum-dossier-counterparts:
       - m.rossi@rossi-spa.it
-    pergamenum-dossier-conversations: [112409]
+    pergamenum-dossier-conversations: [112409]\(excludedKey)
     ---
 
     Appunti pratica.
@@ -237,6 +240,7 @@ private func isoDate(_ text: String) -> Date? {
             switch entry.placement {
             case let .anchored(messageID): "anchored \(messageID)"
             case let .orphaned(messageID): "orphaned \(messageID)"
+            case let .excluded(messageID): "excluded \(messageID)"
             case .message, .free: nil
             }
         }
@@ -244,5 +248,145 @@ private func isoDate(_ text: String) -> Date? {
             entry.anchorState.map { "\($0) \(entry.anchorMessageID ?? "")" }
         }
         #expect(appAnchors == connectorAnchors)
+    }
+}
+
+// MARK: - ADR-0079 §D4 (PG-369): `anchorState: "excluded"` - R-07, R-01, R-02, R-03
+
+private let excludedMessageID = "<escluso@rossi-spa.it>"
+
+/// Two messages (10 June 12:06, 12 June 10:00) and four entries in file order: a note anchored
+/// to `excludedMessageID` (no message carries it, the dossier lists it) at 13:00 on the 10th, a
+/// note anchored to `missingMessageID` (not listed) at 14:00 on the 10th, a free note at 15:00 on
+/// the 10th, and a note anchored to the second message (which the dossier lists, and which is
+/// present) written at 09:00 on the 13th. No entry is anchored to `firstMessageID`.
+@MainActor
+private func openVaultWithAnExcludedEntry(
+    _ vault: borrowing TemporaryVault, excluded: [String] = [excludedMessageID, secondMessageID]
+) async throws -> VaultSession {
+    try vault.write(praticaNote(entries: """
+    ## 2026-06-10 13:00 Nota · Escluso
+    <!-- pergamenum-message: \(excludedMessageID) -->
+
+    Il messaggio è nel Cestino.
+
+    ## 2026-06-10 14:00 Nota · Sparito
+    <!-- pergamenum-message: \(missingMessageID) -->
+
+    Il messaggio non c'è più.
+
+    ## 2026-06-10 15:00 Nota · Libera
+
+    Voce libera.
+
+    ## 2026-06-13 09:00 Nota · Presente
+    <!-- pergamenum-message: \(secondMessageID) -->
+
+    Il messaggio è elencato ma presente.
+    """, excluded: excluded), to: "\(anchorPraticaFolder)/pratica.md")
+    try vault.write(
+        messageText(messageID: firstMessageID, date: headingDate("2026-06-10 12:06"), subject: "Richiesta offerta"),
+        to: "\(anchorPraticaFolder)/email/20260610_richiesta-offerta.md"
+    )
+    try vault.write(
+        messageText(messageID: secondMessageID, date: headingDate("2026-06-12 10:00"), subject: "Conferma ordine"),
+        to: "\(anchorPraticaFolder)/email/20260612_conferma-ordine.md"
+    )
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+    await session.rescan()
+    return session
+}
+
+@MainActor
+@Suite(.serialized) struct PraticheConnectorExcludedTests {
+    private func entries(
+        excluded: [String] = [excludedMessageID, secondMessageID]
+    ) async throws -> [VaultAPI.PraticaTimelinePayload.Entry] {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithAnExcludedEntry(vault, excluded: excluded)
+        return try VaultAPI.pratica(session, anchorPraticaFolder).entries
+    }
+
+    // R-07
+    @Test func anEntryAnchoredToAnExcludedMessageIsListedExcludedOnTheSpineByItsHeadingDate() async throws {
+        let rows = try await entries()
+        // Spine by date: message (10th 12:06), excluded (13:00), orphan (14:00), free (15:00),
+        // then the second message and the entry anchored to it.
+        #expect(rows.map(\.subject) == [
+            "Richiesta offerta", "Nota · Escluso", "Nota · Sparito", "Nota · Libera",
+            "Conferma ordine", "Nota · Presente",
+        ])
+        let excluded = rows[1]
+        #expect(excluded.anchorState == "excluded")
+        #expect(excluded.anchorMessageID == excludedMessageID)
+        #expect(isoDate(excluded.date) == (try headingDate("2026-06-10 13:00")))
+        #expect(excluded.kind == "note")
+        #expect(excluded.body == "Il messaggio è nel Cestino.", "listed with its text, never hidden")
+    }
+
+    // R-02
+    @Test func aListedIDWhoseMessageIsPresentStaysAnchored() async throws {
+        let rows = try await entries()
+        let present = try #require(rows.first { $0.subject == "Nota · Presente" })
+        #expect(present.anchorState == "anchored")
+        #expect(present.anchorMessageID == secondMessageID)
+        let message = try #require(rows.firstIndex { $0.subject == "Conferma ordine" })
+        #expect(rows.firstIndex { $0.subject == "Nota · Presente" } == message + 1)
+    }
+
+    // R-03
+    @Test func aDanglingIDTheDossierDoesNotListStaysOrphaned() async throws {
+        let rows = try await entries()
+        let orphan = try #require(rows.first { $0.subject == "Nota · Sparito" })
+        #expect(orphan.anchorState == "orphaned")
+        #expect(orphan.anchorMessageID == missingMessageID)
+    }
+
+    @Test func removingTheIDFromTheListTurnsTheEntryOrphanedAgain() async throws {
+        let rows = try await entries(excluded: [])
+        let entry = try #require(rows.first { $0.subject == "Nota · Escluso" })
+        #expect(entry.anchorState == "orphaned")
+        #expect(entry.anchorMessageID == excludedMessageID)
+    }
+
+    @Test func theEncodedJSONCarriesTheExcludedStateAndAMessageOrFreeEntryStillCarriesNeither() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithAnExcludedEntry(vault)
+        let data = try JSONEncoder().encode(try VaultAPI.pratica(session, anchorPraticaFolder))
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let rows = try #require(object["entries"] as? [[String: Any]])
+
+        #expect(rows[1]["anchorState"] as? String == "excluded")
+        #expect(rows[1]["anchorMessageID"] as? String == excludedMessageID)
+        #expect(rows[2]["anchorState"] as? String == "orphaned")
+        #expect(rows[5]["anchorState"] as? String == "anchored")
+        for index in [0, 3, 4] {   // a message, the free note, a message
+            #expect(rows[index]["anchorMessageID"] == nil, "row \(index)")
+            #expect(rows[index]["anchorState"] == nil, "row \(index)")
+        }
+    }
+
+    // R-07 + R-21: the app's rule, fed the same set, agrees row for row - "excluded" included.
+    @Test func theAppAndTheConnectorAgreeOnEveryRowIncludingTheExcludedOne() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithAnExcludedEntry(vault)
+
+        let read = PraticheController.readTimeline(praticaPath: anchorPraticaFolder, vaultRoot: vault.root)
+        #expect(read.excluded == [excludedMessageID, secondMessageID])
+        let app = PraticaTimelineModel.ordered(read.entries, excluded: read.excluded)
+        let connector = try VaultAPI.pratica(session, anchorPraticaFolder).entries
+
+        #expect(app.map(\.subject) == connector.map(\.subject))
+        let appStates = app.map { entry -> String? in
+            switch entry.placement {
+            case let .anchored(messageID): "anchored \(messageID)"
+            case let .orphaned(messageID): "orphaned \(messageID)"
+            case let .excluded(messageID): "excluded \(messageID)"
+            case .message, .free: nil
+            }
+        }
+        let connectorStates = connector.map { row in row.anchorState.map { "\($0) \(row.anchorMessageID ?? "")" } }
+        #expect(appStates == connectorStates)
+        #expect(appStates.contains("excluded \(excludedMessageID)"))
     }
 }

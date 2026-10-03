@@ -31,6 +31,11 @@
   message, carried in the entry's own text.
 - No frontmatter key, no message-file change, no `Dossier`/`Dossier.render` change, no
   `IndexCache.schemaVersion` bump. One protected-interface entry is proposed (gate G2, §D12).
+- **Amended 2026-10-03 by ADR-0079 (PG-369).** An entry whose anchor no message of the pratica
+  carries, and which the pratica's `pergamenum-dossier-excluded` lists, is placed `excluded`:
+  hidden in the app's timeline, listed by the connectors with `anchorState: "excluded"`. §D2, §D3,
+  §D6's Outcomes and Escludi bullets and §D10 read with that case; the `↪` glyph of §D3 gives way
+  to a rail (ADR-0079 §D5, §D7).
 
 ## Context
 
@@ -41,7 +46,8 @@ entry's heading, holding the Message-ID with its angle brackets and compared byt
 heading keeps the time of writing, and the daily-note mirror goes to the day of writing. An
 anchored entry is drawn in its message's lane at the lane's width, indented, in the manual-entry
 colour. «Aggiungi nota» and «Aggiungi telefonata» appear on every message row. Escludi leaves the
-entries in place, orphaned. «Sposta in…» carries them (append, then remove) and «Aggiungi anche a…»
+entries in place, orphaned (*amended 2026-10-03, ADR-0079: hidden in the app, not orphaned*).
+«Sposta in…» carries them (append, then remove) and «Aggiungi anche a…»
 does not. The anchor line is concealed in the editor. An anchored entry follows its message
 through the filters. The connectors expose the anchor and share the ordering. Existing entries can
 be anchored, re-anchored and unanchored through a list picker. At an equal instant the message
@@ -202,6 +208,9 @@ both connectors.
 - Placement is recomputed on every read. Nothing is cached, and nothing is written when a message
   leaves or returns: undoing Escludi re-anchors by reading (R-05, R-13).
 
+*Amended 2026-10-03 (ADR-0079 §D1): `arrange(_:excluded:)` places an anchor no message owns as
+`.excluded` when the pratica excludes it, `.orphaned` otherwise; an empty set is this rule.*
+
 ### §D3 — The app's timeline model reads the rule and follows the message
 
 - `PraticaTimelineEntry` gains fields appended after `isInMail`, each defaulted so every existing
@@ -238,6 +247,9 @@ both connectors.
   or the selected pratica is not the one the origin was read for. A selection change was already
   read by `select(_:in:)`, and parsing the pratica folder twice on the main actor buys nothing.
   External edits stay as ADR-0068 §D20 left them.
+
+*Amended 2026-10-03 (ADR-0079 §D3): `reloadTimeline` drops `.excluded` rows before storing
+`timeline`.*
 
 ### §D4 — ADR-0036 §D5 is amended: the timeline's writes widen
 
@@ -308,6 +320,10 @@ register none either.
   the message moved and the entries stay in the source, orphaned), reported as «Il messaggio è
   stato spostato, ma le voci collegate sono rimaste in «…».». Text is never lost; the worst case is
   a declared duplicate (R-15).
+  *Amended 2026-10-03 (ADR-0079 §D3): an entry left in the source by `.notCarried` or
+  `.appendedOnly` is anchored to an id the source now excludes, so it is hidden in the source
+  timeline, not orphaned; the inspector of that `pratica.md` still shows it, and the two sentences
+  are not reworded.*
 - **Undo.** Today's undo runs first, unchanged. Then the carry runs back according to the
   recorded outcome: `.carried` appends to the source and removes from the destination;
   `.appendedOnly` first appends to the source, from a fresh read, every carried block the source
@@ -350,6 +366,8 @@ register none either.
   throughout, they read as orphaned, then anchored again, with no body write (R-13). «Aggiungi
   anche a…» writes the destination's `included` key only (R-16). «Rigenera» never opens
   `pratica.md` (R-17). Tests pin all three.
+  *Amended 2026-10-03 (ADR-0079 §D3): while the message is excluded its entries are hidden, not
+  orphaned, and the undo anchors them again, still with no body write.*
 
 ### §D7 — The commands, the composer and the inspector
 
@@ -408,6 +426,8 @@ surface only, the timeline inside the pane.
 `perg pratica` prints one line under an anchored or orphaned entry. The MCP `pratica` tool
 description names the two fields. The connectors gain no write (ADR-0036 §D20, `PG-115`).
 `scripts/mcp-smoke.py` gains a stage over a fixture with one anchored and one orphaned entry.
+
+*Amended 2026-10-03 (ADR-0079 §D4): `anchorState` may also be `"excluded"`.*
 
 ### §D11 — Relation to ADR-0049: one new relation, carried by the entry's own text
 

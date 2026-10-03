@@ -193,8 +193,11 @@ extension VaultAPI {
         /// ADR-0076 §D10 (R-22): a manual entry whose first line is an anchor carries the
         /// Message-ID it names in `anchorMessageID`, and `anchorState` says whether a message
         /// of this pratica carries it (`"anchored"`, placed under that message) or none does
-        /// (`"orphaned"`, placed at its own heading time). Both stay `nil` for a message and
-        /// for a free entry, and a `nil` optional is left out of the encoded JSON.
+        /// (`"orphaned"`, placed at its own heading time). ADR-0079 §D4 (PG-369): when none
+        /// does and the pratica's `pergamenum-dossier-excluded` lists it, `"excluded"`, placed
+        /// at its own heading time like an orphan; the app hides such an entry, a connector
+        /// lists it. Both stay `nil` for a message and for a free entry, and a `nil` optional
+        /// is left out of the encoded JSON.
         struct Entry: Encodable {
             let kind: String
             let date: String
@@ -215,8 +218,9 @@ extension VaultAPI {
 private extension VaultAPI {
     /// A row before it is ordered: the payload entry plus what the one ordering rule,
     /// `PraticaTimelineOrder.arrange` (ADR-0076 §D2), needs to place it. The app's
-    /// `PraticaTimelineModel.ordered(_:)` hands the same rule the same keys, so the two
-    /// surfaces put every row, and every equal instant, in one order (R-08, R-21).
+    /// `PraticaTimelineModel.ordered(_:excluded:)` hands the same rule the same keys and the
+    /// same exclusion set (ADR-0079 §D1), so the two surfaces put every row, and every equal
+    /// instant, in one order (R-08, R-21).
     struct TimelineRow {
         var item: PraticaTimelineOrder.Item
         var entry: PraticaTimelinePayload.Entry
@@ -230,9 +234,10 @@ private extension VaultAPI {
         guard let directory = try? session.store.url(for: folder) else { return [] }
         // One formatter for every row of the call (ADR-0072 §D9, R-14).
         let formatter = isoFormatter()
-        let rows = messageRows(in: directory, session: session, formatter: formatter)
-            + entryRows(in: directory, formatter: formatter)
-        return PraticaTimelineOrder.arrange(rows.map(\.item)).map { placed in
+        let entries = entryRows(in: directory, formatter: formatter)
+        let rows = messageRows(in: directory, session: session, formatter: formatter) + entries.rows
+        // ADR-0079 §D2/§D4: the exclusion set comes from the same decode as the entries.
+        return PraticaTimelineOrder.arrange(rows.map(\.item), excluded: entries.excluded).map { placed in
             var entry = rows[placed.index].entry
             // ADR-0076 §D10 (R-22): the anchor and whether a message of this pratica
             // carries it. A message and a free entry keep both `nil`.
@@ -243,6 +248,11 @@ private extension VaultAPI {
             case let .orphaned(messageID):
                 entry.anchorMessageID = messageID
                 entry.anchorState = "orphaned"
+            case let .excluded(messageID):
+                // ADR-0079 §D4 (R-07): listed, never hidden - a connector is a read of the
+                // data, not a view.
+                entry.anchorMessageID = messageID
+                entry.anchorState = "excluded"
             case .message, .free:
                 break
             }
@@ -302,11 +312,16 @@ private extension VaultAPI {
     /// counterpart lives in the heading, which is the entry's `subject`. `date` is the
     /// heading's own time even for an anchored entry, and `body` never holds the anchor
     /// line (R-01).
-    static func entryRows(in praticaFolder: URL, formatter: ISO8601DateFormatter) -> [TimelineRow] {
+    ///
+    /// ADR-0079 §D2: `excluded` is the pratica's `pergamenum-dossier-excluded`, read from the
+    /// same decoded text as the rows, never from the index and never by a second read.
+    static func entryRows(
+        in praticaFolder: URL, formatter: ISO8601DateFormatter
+    ) -> (rows: [TimelineRow], excluded: Set<String>) {
         let url = praticaFolder.appending(path: praticaFileName, directoryHint: .notDirectory)
-        guard let data = try? Data(contentsOf: url), let text = NoteStore.decodedText(data) else { return [] }
+        guard let data = try? Data(contentsOf: url), let text = NoteStore.decodedText(data) else { return ([], []) }
 
-        return PraticaManualEntries.parse(text).map { parsed in
+        let rows = PraticaManualEntries.parse(text).map { parsed in
             TimelineRow(
                 item: PraticaTimelineOrder.Item(
                     kind: .entry(anchor: parsed.anchor, ordinal: parsed.ordinal), date: parsed.date
@@ -325,6 +340,7 @@ private extension VaultAPI {
                 )
             )
         }
+        return (rows, PraticaTimelineOrder.excludedMessageIDs(inPraticaNote: text))
     }
 
     /// `[[20260610_offerta.pdf]]` → `20260610_offerta.pdf`, alias form included.
