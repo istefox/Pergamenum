@@ -153,6 +153,9 @@ struct DiaryEntrySheet: View {
                     }
                     .buttonStyle(.plain)
                     .help(colour.label)
+                    // A swatch says nothing to VoiceOver: the name the tooltip shows, and which one is set.
+                    .accessibilityLabel(colour.label)
+                    .accessibilityAddTraits(isChosen(colour) ? [.isSelected] : [])
                     .accessibilityIdentifier("diary-sheet-colour-\(colour.rawValue)")
                 }
             }

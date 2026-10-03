@@ -107,8 +107,11 @@ struct NodeCard: View {
                     .themedText(.caption, color: .textSecondary)
                     .lineLimit(2)
                 if let date = headers?.date {
-                    Text(date.formatted(date: .abbreviated, time: .shortened))
-                        .themedText(.caption, color: .textTertiary)
+                    // Italian whatever the machine's region, as a pratica's message row reads it.
+                    Text(date.formatted(
+                        Date.FormatStyle(date: .abbreviated, time: .shortened).locale(PraticaRowFormat.uiLocale)
+                    ))
+                    .themedText(.caption, color: .textTertiary)
                 }
                 Spacer(minLength: 0)
             }

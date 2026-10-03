@@ -83,6 +83,7 @@ func everyCellOfTheGridHasItsOwnIdentity(_ iso: String) {
 
     #expect(Set(headers.map(\.id)).count == 7)
     #expect(headers.map(\.initial) == ["L", "M", "M", "G", "V", "S", "D"])
+    #expect(headers.map(\.abbreviation) == ["lun", "mar", "mer", "gio", "ven", "sab", "dom"])
 }
 
 // MARK: - PG-263: the leading blanks come from `DateEntry.weekday(of:)`

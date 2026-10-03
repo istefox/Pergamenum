@@ -44,8 +44,8 @@ struct MonthView: View {
 
     private var weekdayRow: some View {
         HStack(spacing: 4) {
-            ForEach(Self.weekdays, id: \.self) { name in
-                Text(name)
+            ForEach(MonthGrid.weekdayHeaders) { header in
+                Text(header.abbreviation)
                     .themedText(.caption, color: .textTertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -135,7 +135,4 @@ struct MonthView: View {
     /// would be a cell that shows two on every other one, and a month whose contents
     /// change with the window is a month nobody can learn to read.
     private static let entryLimit = 2
-
-    /// Monday first, as the Italian week is read.
-    private static let weekdays = ["lun", "mar", "mer", "gio", "ven", "sab", "dom"]
 }
