@@ -288,7 +288,7 @@ struct EditCommands: Commands {
 
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
-            Button("Incolla come testo puro") { actions.run(.pastePlain) }
+            Button(ShortcutCommand.pastePlain.title) { actions.run(.pastePlain) }
                 .keyboardShortcut(shortcuts.shortcut(for: .pastePlain))
             // ADR-0071 §D12: the Contenitore's trash lives here, acting on the pane's selection.
             Divider()
@@ -302,9 +302,9 @@ struct EditCommands: Commands {
         // Seen on screen on 2026-08-18, and the reason the find slice has its own Cmd+G -
         // taking this submenu away takes those two keys with it.
         CommandGroup(replacing: .textEditing) {
-            Button("Trova nella nota") { actions.run(.findInNote) }
+            Button(ShortcutCommand.findInNote.title) { actions.run(.findInNote) }
                 .keyboardShortcut(shortcuts.shortcut(for: .findInNote))
-            Button("Sostituisci") { actions.run(.replaceInNote) }
+            Button(ShortcutCommand.replaceInNote.title) { actions.run(.replaceInNote) }
                 .keyboardShortcut(shortcuts.shortcut(for: .replaceInNote))
             Button(ShortcutCommand.findNext.title) { actions.run(.findNext) }
                 .keyboardShortcut(shortcuts.shortcut(for: .findNext))

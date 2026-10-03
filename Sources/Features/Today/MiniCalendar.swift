@@ -217,16 +217,23 @@ enum MonthGrid {
         }
     }
 
-    /// One weekday initial, identified by its column: Tuesday and Wednesday are both «M».
+    /// One weekday, identified by its column: Tuesday and Wednesday are both «M».
+    ///
+    /// The initial is for a grid too narrow for more (the mini calendar, the task panel's
+    /// month); the abbreviation for one with room (the month view, a view block's calendar).
     struct WeekdayHeader: Identifiable, Sendable {
         let id: Int
         let initial: String
+        let abbreviation: String
     }
 
-    /// Monday first, as the Italian week is read.
-    static let weekdayHeaders: [WeekdayHeader] = ["L", "M", "M", "G", "V", "S", "D"]
+    /// Monday first, as the Italian week is read. Every weekday row in the app reads this one
+    /// list (PG-263).
+    static let weekdayHeaders: [WeekdayHeader] = ["lun", "mar", "mer", "gio", "ven", "sab", "dom"]
         .enumerated()
-        .map { WeekdayHeader(id: $0.offset, initial: $0.element) }
+        .map { column, name in
+            WeekdayHeader(id: column, initial: name.prefix(1).uppercased(), abbreviation: name)
+        }
 
     /// The same day some months away, clamped to the last day of the target month.
     ///

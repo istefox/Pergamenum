@@ -175,6 +175,9 @@ private struct ContenitoreInspectorContent: View {
                 }
                 .buttonStyle(.plain)
                 .help(colour.displayName)
+                // A dot says nothing to VoiceOver: the name the tooltip shows, and which one is set.
+                .accessibilityLabel(colour.displayName)
+                .accessibilityAddTraits(editor?.draft.colour == colour ? [.isSelected] : [])
                 .accessibilityIdentifier("contenitore-inspector-colour-\(colour.rawValue)")
             }
             Button("nessuno") {

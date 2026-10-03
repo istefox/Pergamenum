@@ -156,7 +156,6 @@ struct ViewCalendarRenderer: View {
     /// no entry is clickable - today's rendering.
     var onOpenNote: ((String) -> Void)?
 
-    private static let weekdays = ["lu", "ma", "me", "gi", "ve", "sa", "do"]
     private static let columns = Array(repeating: GridItem(.flexible(minimum: 60), spacing: 4), count: 7)
 
     /// The field the rows are placed by. The rule is `ViewBlock.calendarField`, in `Core`
@@ -215,8 +214,9 @@ struct ViewCalendarRenderer: View {
             Text(DateEntry.monthName(month: monday.month, year: monday.year))
                 .themedText(.caption, color: .textTertiary)
             LazyVGrid(columns: Self.columns, spacing: 4) {
-                ForEach(Array(Self.weekdays.enumerated()), id: \.offset) { _, name in
-                    Text(name).themedText(.caption, color: .textTertiary)
+                // The app's one weekday row (`MonthGrid.weekdayHeaders`), as the month view draws it.
+                ForEach(MonthGrid.weekdayHeaders) { header in
+                    Text(header.abbreviation).themedText(.caption, color: .textTertiary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 ForEach(dates, id: \.self) { date in

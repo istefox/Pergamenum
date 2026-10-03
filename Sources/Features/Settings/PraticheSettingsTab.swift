@@ -312,6 +312,9 @@ struct PraticheSettingsTab: View {
         guard let last = pratiche.ledger.byPraticaPath.values.compactMap(\.lastSyncAt).max() else {
             return "mai"
         }
-        return last.formatted(date: .abbreviated, time: .shortened)
+        // Italian whatever the machine's region, like every date the Pratiche pane draws.
+        return last.formatted(
+            Date.FormatStyle(date: .abbreviated, time: .shortened).locale(PraticaRowFormat.uiLocale)
+        )
     }
 }
