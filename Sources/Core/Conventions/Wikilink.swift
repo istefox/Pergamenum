@@ -235,8 +235,13 @@ enum RelatedSection {
     /// span opens at column 0, but such a line begins with a backtick and is never the heading or
     /// a `#` line, so only the fences change the answer here.
     static func sectionRange(in body: String) -> Range<String.Index>? {
+        sectionRange(in: body, code: WikilinkParser.codeRanges(in: body))
+    }
+
+    /// `sectionRange(in:)` over fence ranges the caller already computed, so `parse` walks the
+    /// body's fences once.
+    private static func sectionRange(in body: String, code: [Range<String.Index>]) -> Range<String.Index>? {
         let scalars = body.unicodeScalars
-        let code = WikilinkParser.codeRanges(in: body)
         var start: String.Index?
         var lineStart = scalars.startIndex
         while lineStart < scalars.endIndex {
@@ -270,33 +275,43 @@ enum RelatedSection {
 
     /// Reads the bullets under `## Note correlate`.
     ///
-    /// The expected line shape is `- [[Titolo]] — motivo`. Both the em dash and a
-    /// plain hyphen are accepted as the separator, because a note typed by hand will
-    /// have whichever the keyboard produced, and rejecting one would report a
-    /// conformant note as broken.
+    /// A bullet is what `roles(of:code:)` calls one, the rule «Collega» and «Scollega» apply
+    /// too (PG-378): a `-` line in a fence, indented four columns or more, or nested under
+    /// another bullet is not a structural link, so the linter, search and «Collega» never
+    /// disagree about which links the note has.
     static func parse(from body: String) -> [StructuralLink] {
-        guard let section = sectionRange(in: body),
+        let code = WikilinkParser.codeRanges(in: body)
+        guard let section = sectionRange(in: body, code: code),
               let start = bulletsStart(in: body, section: section)
         else { return [] }
 
-        var links: [StructuralLink] = []
-        // The section already ends at the next heading. A CRLF line keeps its `\r` through the
-        // split, so it is trimmed with the newlines.
-        for line in body[start..<section.upperBound].components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard trimmed.hasPrefix("-") else { continue }
+        // The section already ends at the next heading.
+        let lines = lines(of: body, in: start..<section.upperBound)
+        let roles = roles(of: lines, code: code)
+        return lines.indices.compactMap { roles[$0] == .bullet ? link(onBullet: lines[$0].text) : nil }
+    }
 
-            let content = String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
-            guard let link = WikilinkParser.links(in: content).first, !link.isEmbed else { continue }
+    /// The structural link a bullet line carries: its first wikilink after the `-`, unless that
+    /// one is an embed, and the text after it as the reason.
+    ///
+    /// The expected line shape is `- [[Titolo]] — motivo`. Both the em dash and a
+    /// plain hyphen are accepted as the separator, because a note typed by hand will
+    /// have whichever the keyboard produced, and rejecting one would report a
+    /// conformant note as broken. A CRLF line keeps its `\r`, so it is trimmed with the
+    /// newlines.
+    static func link(onBullet line: String) -> StructuralLink? {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("-") else { return nil }
 
-            let afterLink = String(content[link.range.upperBound...])
-            let reason = afterLink
-                .trimmingCharacters(in: .whitespaces)
-                .trimmingPrefix(anyOf: ["—", "–", "-", ":"])
-                .trimmingCharacters(in: .whitespaces)
-            links.append(StructuralLink(target: link.target, reason: reason))
-        }
-        return links
+        let content = String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
+        guard let link = WikilinkParser.links(in: content).first, !link.isEmbed else { return nil }
+
+        let afterLink = String(content[link.range.upperBound...])
+        let reason = afterLink
+            .trimmingCharacters(in: .whitespaces)
+            .trimmingPrefix(anyOf: ["—", "–", "-", ":"])
+            .trimmingCharacters(in: .whitespaces)
+        return StructuralLink(target: link.target, reason: reason)
     }
 
     /// Compares `related:` against the section (W-06). The two must name the same

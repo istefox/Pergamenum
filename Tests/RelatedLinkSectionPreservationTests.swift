@@ -67,7 +67,7 @@ private let fencedSection = "## Note correlate\n\n- [[A]] — a\n\n"
     #expect(try session.read("Destinazione.md").text.contains("- [[Origine]] — fornisce"))
 }
 
-// PG-372 review: the line roles of `RelatedLink.roles(of:code:)` and the edge shapes of the two
+// PG-372 review: the line roles of `RelatedSection.roles(of:code:)` and the edge shapes of the two
 // writers, each pinned on its own.
 
 /// `doc(_:)` in the given line break, frontmatter included, so the note's own break is detected.
