@@ -209,7 +209,7 @@ struct NewWorkspaceSheet: View {
         .frame(width: 460)
         .background(theme.color(.surfaceCard))
         // `children: .contain` alongside the identifier, the pairing the browser's header
-        // uses and `UITests/WorkspaceIntegrationUITests.swift` proves keeps a child's own
+        // uses and `UITests/WorkspaceOpenStateUITests.swift` proves keeps a child's own
         // identifier reachable (`workspace-filter` inside `workspace-browser-header`).
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("workspace-new-sheet")

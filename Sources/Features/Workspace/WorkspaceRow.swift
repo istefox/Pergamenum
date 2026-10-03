@@ -160,10 +160,10 @@ struct WorkspaceRow: View {
         // assertion on the ", aperta"/", selezionata" suffix could ever match. Read out
         // of a failing run's exported UI hierarchy rather than guessed - `StaticText,
         // identifier: 'workspace-board-…', value: Workspace Dettagli…, Selected` - and
-        // it is the same trap `UITests/WorkspaceIntegrationUITests.swift:176-181` already
-        // wrote down for a plain `Text`. `.contain` makes the row a `Group`, which is the
-        // shape that puts the words in `label`: `TaskPanelRow` (`LinkedTasksPanel.swift`)
-        // and this pane's own `workspace-browser-header` are both already that.
+        // it is the same trap a plain `Text` falls into. `.contain` makes the row a
+        // `Group`, which is the shape that puts the words in `label`: `TaskPanelRow`
+        // (`LinkedTasksPanel.swift`) and this pane's own `workspace-browser-header` are
+        // both already that.
         //
         // The second half costs more than the label and is the reason this is not a
         // cosmetic choice: `.combine` swallowed the chevron's own `.onTapGesture` into

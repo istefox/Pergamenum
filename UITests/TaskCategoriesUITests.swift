@@ -25,10 +25,9 @@ final class TaskCategoriesUITests: PergamenumUITestCase {
     }
 
     /// A task row carries no per-task identifier of its own (`TasksView.row` sets the same
-    /// `"task-row"` on every one of them, folded into one combined accessibility element) -
-    /// same trap and same fix as `WorkspaceIntegrationUITests.taskRow(containing:)`. Matched
-    /// on its combined accessibility label instead, which carries `task.text` verbatim: this
-    /// is content this test itself wrote, not prose the app could reword.
+    /// `"task-row"` on every one of them, folded into one combined accessibility element).
+    /// Matched on its combined accessibility label instead, which carries `task.text`
+    /// verbatim: this is content this test itself wrote, not prose the app could reword.
     private func taskRow(containing text: String) -> XCUIElement {
         app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier == %@ AND label CONTAINS[c] %@", "task-row", text))
