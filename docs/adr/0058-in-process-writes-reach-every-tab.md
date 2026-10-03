@@ -5,6 +5,9 @@
   §D7 is closed; every landed change now reaches the tabs through one session door. Body untouched.
 - **Amended (2026-09-30, ADR-0073 departure 15):** §D1's rule adopts, instead of asking, an incoming
   text identical to a dirty buffer's own (a split copy saved from the other column). Body untouched.
+- **Amended (2026-10-03, Stefano's decision on PG-233 / #517):** Alternative 5 is rejected for good:
+  `addStructuralLink` keeps raising the conflict prompt on a dirty source note. Body otherwise
+  untouched.
 - Date: 2026-09-24. Written **before** the implementation, against `2e529c14` (clean tree). Every
   line number below was read from that tree. None is recalled from the ticket.
 - **Numbering note:** `0056` is the highest file under `docs/adr/` on this branch, but
@@ -313,8 +316,8 @@ files it.
    prompt.** This is a real UX option: the link would be built on top of the person's edits, with
    no banner. Rejected as the default, because it is an implicit save under an explicit-save model
    (ADR-0012 D3). `restoreVersion` justified its own implicit save by the history it protects, and
-   the link has no such reason. The choice is Stefano's to make and is reported to him. §D5 is the
-   conservative option until he decides.
+   the link has no such reason. Stefano decided on 2026-10-03 (PG-233, #517) to keep the prompt, so
+   §D5 stands as written.
 6. **The controller finds the target path itself (`index.resolve(title:)`) instead of the session
    returning its writes.** Rejected. It would duplicate the session's own resolution at `:173` in a
    second place that could drift from it. ADR-0043's composer rule is to use the write's own result
@@ -345,7 +348,8 @@ files it.
   external changes this already happens (ADR-0056's first negative). Only the kind of trigger is
   new.
 - A person who links a note with unsaved edits now sees a banner straight away (§D5). This is
-  arguably clumsier than saving first. Alternative 5 remains open for Stefano to decide.
+  arguably clumsier than saving first. Stefano considered Alternative 5 and kept the prompt
+  (2026-10-03).
 - §D7's writers are still unfixed. This chain makes the problem narrower but does not close it.
 
 ### Neutral
