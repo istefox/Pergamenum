@@ -190,7 +190,7 @@ private struct SlashPanelMock: View {
                 .command(Item(title: "Task", symbol: "checklist")),
                 .command(Item(title: "Tag", symbol: "number")),
                 .header("COMANDI"),
-                .command(Item(title: "Nuovo task rapido", symbol: "checklist", shortcut: "⇧⌘N")),
+                .command(Item(title: "Nuovo task rapido…", symbol: "checklist", shortcut: "⇧⌘N")),
                 .command(Item(title: "Vai ad Attività", symbol: "checklist", shortcut: "⌃⌘4")),
             ]
         case .empty:
