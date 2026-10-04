@@ -111,6 +111,14 @@ enum FontToken: String, TokenKey {
     case prose = "font.prose"
     case proseTitle = "font.proseTitle"
 
+    // Glyph sizes for SF Symbols inside controls, not text faces: a chevron, a
+    // calendar mark, a badge dot. Never customizable (`ThemeCustomization
+    // .customizableFonts` stays the two page faces). `iconSmall` is what
+    // `.caption2` resolves to on macOS (10 pt, medium); `iconBadge` replaces
+    // `.system(size: 7)`.
+    case iconSmall = "font.icon.small"
+    case iconBadge = "font.icon.badge"
+
     var path: String { rawValue }
 }
 

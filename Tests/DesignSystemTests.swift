@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import Pergamenum
@@ -104,6 +105,9 @@ func rejectsMalformedHex(_ input: String) {
         #expect(!theme.inheritedTokens.contains("font.proseTitle"), "\(id) should define font.proseTitle")
         #expect(!theme.inheritedTokens.contains("spacing.readable"), "\(id) should define spacing.readable")
         #expect(theme.spacing(.readable) == 720, "\(id): spacing.readable should resolve to 720")
+        // PG-263: the two SF Symbol glyph sizes, named here for the same reason.
+        #expect(!theme.inheritedTokens.contains("font.icon.small"), "\(id) should define font.icon.small")
+        #expect(!theme.inheritedTokens.contains("font.icon.badge"), "\(id) should define font.icon.badge")
 
         // ADR-0036 (Pratiche) §D16, plan Task 6 - R-39: the timeline's three surface
         // tokens must be defined by both bundled themes, not inherited from
@@ -150,6 +154,33 @@ func rejectsMalformedHex(_ input: String) {
         let rgba = try #require(RGBA(hex: hex))
         #expect(Theme.emergency.rawColor(token) == rgba, "\(token.rawValue) should resolve to \(hex)")
     }
+}
+
+/// PG-263: the glyph-size tokens replace `.font(.caption2)` and `.font(.system(size: 7))`
+/// at the call sites, so every theme - both bundled ones and the emergency fallback -
+/// must resolve them to exactly those sizes, or the chevrons and badges change size.
+@Test func iconTokensResolveToTheSizesTheyReplace() throws {
+    var themes: [(String, Theme)] = [("emergency", .emergency)]
+    for id in ["pergamenum-light", "pergamenum-dark"] {
+        let url = try #require(Bundle.pergamenumResources.tokenFileURL(named: id))
+        let document = try DesignTokenDocument(data: try Data(contentsOf: url), fallbackName: id)
+        themes.append((id, Theme(document: document, id: id, inheriting: .emergency)))
+    }
+    // Measured on macOS 27: `.caption2` is 10 pt medium (`.SFNS-Medium`), not regular.
+    let caption2 = NSFont.preferredFont(forTextStyle: .caption2)
+    for (id, theme) in themes {
+        #expect(theme.nsFont(.iconSmall).pointSize == 10, "\(id): font.icon.small should be 10 pt")
+        #expect(theme.nsFont(.iconSmall).pointSize == caption2.pointSize, "\(id): font.icon.small should match caption2's size")
+        #expect(
+            theme.nsFont(.iconSmall).displayName == caption2.displayName,
+            "\(id): font.icon.small should match caption2's face, \(String(describing: caption2.displayName))"
+        )
+        #expect(theme.nsFont(.iconBadge).pointSize == 7, "\(id): font.icon.badge should be 7 pt")
+        #expect(theme.lineSpacing(.iconSmall) == 0, "\(id): font.icon.small has no extra leading")
+        #expect(theme.lineSpacing(.iconBadge) == 0, "\(id): font.icon.badge has no extra leading")
+    }
+    #expect(!ThemeCustomization.customizableFonts.contains(.iconSmall))
+    #expect(!ThemeCustomization.customizableFonts.contains(.iconBadge))
 }
 
 @MainActor

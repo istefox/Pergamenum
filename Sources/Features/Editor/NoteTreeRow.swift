@@ -88,7 +88,7 @@ struct NoteTreeRow: View {
             // became selectable for Rinomina/Elimina to have something to aim at.
             Image(systemName: "chevron.right")
                 .rotationEffect(.degrees(isOpen ? 90 : 0))
-                .font(.caption2)
+                .font(theme.font(.iconSmall))
                 .foregroundStyle(theme.color(.textTertiary))
                 .contentShape(Rectangle())
                 .onTapGesture { toggle() }

@@ -104,6 +104,14 @@
     },
     "proseTitle": {
       "$value": { "fontFamily": "Avenir Next", "fontSize": 24, "fontWeight": 700, "lineHeight": 1.2 }
+    },
+    "icon": {
+      "small": {
+        "$value": { "fontFamily": "system", "fontSize": 10, "fontWeight": 500, "lineHeight": 1.0 }
+      },
+      "badge": {
+        "$value": { "fontFamily": "system", "fontSize": 7, "fontWeight": 400, "lineHeight": 1.0 }
+      }
     }
   },
   "spacing": {

@@ -77,7 +77,7 @@ struct TaskComposer: View {
                 HStack(spacing: theme.spacing(.xs)) {
                     Image(systemName: destinationSymbol)
                     Text(destinationTitle).themedText(.body)
-                    Image(systemName: "chevron.down").font(.caption2)
+                    Image(systemName: "chevron.down").font(theme.font(.iconSmall))
                 }
                 .foregroundStyle(theme.color(.textPrimary))
             }

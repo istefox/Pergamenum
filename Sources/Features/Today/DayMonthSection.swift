@@ -53,7 +53,7 @@ struct DayMonthSection: View {
         HStack(spacing: theme.spacing(.xs)) {
             Button { isShowing.toggle() } label: {
                 Image(systemName: isShowing ? "chevron.down" : "chevron.right")
-                    .font(.caption2)
+                    .font(theme.font(.iconSmall))
                     .foregroundStyle(theme.color(.textTertiary))
             }
             .buttonStyle(.plain)

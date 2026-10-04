@@ -102,7 +102,7 @@ extension TaskComposer {
                 Button {
                     clear(popover)
                 } label: {
-                    Image(systemName: "xmark").font(.caption2)
+                    Image(systemName: "xmark").font(theme.font(.iconSmall))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Togli \(title.lowercased())")

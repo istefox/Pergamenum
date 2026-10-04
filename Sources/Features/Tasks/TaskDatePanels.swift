@@ -170,7 +170,7 @@ struct SchedulePanel: View {
                 Text(hint).themedText(.caption, color: .textTertiary).lineLimit(1)
             }
             if let trailing {
-                Image(systemName: trailing).font(.caption2).foregroundStyle(theme.color(.textTertiary))
+                Image(systemName: trailing).font(theme.font(.iconSmall)).foregroundStyle(theme.color(.textTertiary))
             }
         }
         .padding(.horizontal, theme.spacing(.s))

@@ -28,7 +28,7 @@ struct TaskTimeRow: View {
                 Button {
                     self.time = nil
                 } label: {
-                    Image(systemName: "xmark").font(.caption2)
+                    Image(systemName: "xmark").font(theme.font(.iconSmall))
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("time-row-clear")
