@@ -61,7 +61,7 @@ final class DayViewUITests: PergamenumUITestCase {
     /// thing the sheet is for.
     func testVaiADataMovesTheDay() throws {
         let target = isoToday(plus: 2)
-        app.toolbars.buttons["Vai a data"].click()
+        app.toolbars.buttons["day-go-to-date"].click()
         XCTAssertTrue(app.textFields["go-to-date-field"].waitForExistence(timeout: 5))
 
         let day = app.descendants(matching: .any).matching(identifier: "day-\(target)").firstMatch

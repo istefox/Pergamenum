@@ -51,6 +51,7 @@ struct DayToolbar: ToolbarContent {
                 Label("Vai a data", systemImage: "calendar")
             }
             .help("Vai a una data")
+            .accessibilityIdentifier("day-go-to-date")
 
             // Three scales of one thing, not three views: whichever is chosen, the day
             // underneath does not move (ADR-0013 §D4).
