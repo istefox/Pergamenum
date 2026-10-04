@@ -8,9 +8,10 @@ import SwiftUI
 /// is a view of it.
 ///
 /// One view used by both the editor inspector and the Workspace, because §7.2 asks
-/// for the same panel in both and two implementations would drift.
+/// for the same panel in both and two implementations would drift. The section's own shape
+/// (caption header, count, empty text, identifiers) is `TraySection`'s, the one the board tray's
+/// other sections and the Pratiche links pane draw with (PG-379).
 struct LinkedTasksPanel: View {
-    @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
 
     /// The exact title a task must link to. For a board this is the `.canvas` file
@@ -25,25 +26,18 @@ struct LinkedTasksPanel: View {
 
     var body: some View {
         let tasks = memo.value(generation: vault.indexGeneration, input: title) { vault.index.tasks(linkingTo: title) }
-        VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
-            HStack(spacing: theme.spacing(.xs)) {
-                Text("TASK COLLEGATI").themedText(.caption, color: .textTertiary)
-                if !tasks.isEmpty {
-                    Text("\(tasks.filter { $0.state != .done }.count)/\(tasks.count)")
-                        .themedText(.caption, color: .textTertiary)
-                }
-            }
-
-            if tasks.isEmpty {
-                Text(emptyText).themedText(.caption, color: .textTertiary)
-            } else {
-                ForEach(tasks) { task in
-                    TaskPanelRow(task: task, identifierPrefix: "linked-task")
-                }
+        TraySection(
+            title: "TASK COLLEGATI",
+            badge: tasks.isEmpty ? nil : "\(tasks.filter { $0.state != .done }.count)/\(tasks.count)",
+            accessibilityLabel: "Task collegati a \(title): \(tasks.count)",
+            identifier: "linked-tasks",
+            isEmpty: tasks.isEmpty,
+            emptyText: emptyText
+        ) {
+            ForEach(tasks) { task in
+                TaskPanelRow(task: task, identifierPrefix: "linked-task")
             }
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Task collegati a \(title)")
     }
 }
 
