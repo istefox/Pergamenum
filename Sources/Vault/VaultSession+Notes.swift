@@ -28,11 +28,14 @@ extension VaultSession {
     /// The generated block is the closed four-key schema in fixed order, with the tag
     /// set the note's category requires (SPEC §4.3, tag.md 5.1): a daily note gets
     /// `type-note` alone, an inbox capture adds `status-inbox`, and an ordinary note
-    /// gets `type-note` plus whatever topic the caller supplies.
+    /// gets `type-note` plus whatever topic the caller supplies. An ordinary note given
+    /// no `topic-*` is born a capture, with `status-inbox` too (ADR-0080 §D1), so every
+    /// creation path writes a note its own linter accepts.
     ///
     /// Refuses rather than sanitising silently: a title the rules reject is a decision
     /// for the user, and quietly renaming their note is how a vault fills with titles
-    /// nobody chose.
+    /// nobody chose. Capture derives a legal title before it calls here
+    /// (`CaptureTitle.derive`); this door still refuses an invalid one.
     @discardableResult
     func createNote(
         title: String,
@@ -116,7 +119,8 @@ extension VaultSession {
         return settings.dailyFolder.isEmpty ? fileName : "\(settings.dailyFolder)/\(fileName)"
     }
 
-    /// The path of a day's note, created from the template when it is not there yet
+    /// The path of a day's note, created when it is not there yet with the daily
+    /// frontmatter (`type-note` alone) and an empty body; there is no daily template
     /// (SPEC §8.1).
     @discardableResult
     func dailyNote(for date: CalendarDate) async throws -> String {

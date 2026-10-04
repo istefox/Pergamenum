@@ -90,7 +90,7 @@ Labs/                           ← vault Obsidian esistente (o altro vault scel
 │   ├── settings.json
 │   ├── themes/                 ← temi DTCG, §12
 │   └── vocabolari.json         ← replica dichiarata delle tabelle chiuse di tag.md (§4.6)
-├── 00 Inbox/                   ← capture in triage
+├── 00 Inbox/                   ← capture in triage (cartella configurabile)
 ├── 01 Progetti/
 ├── 02 Aree/
 ├── 03 Risorse/
@@ -98,6 +98,8 @@ Labs/                           ← vault Obsidian esistente (o altro vault scel
 │   └── 20260811.md
 └── qualsiasi altra cartella e nota
 ```
+
+*Emendato 2026-10-04 (ADR-0080).* La cartella dove finiscono le catture, la nota `Capture.md` dei task e i file importati è configurabile (Impostazioni › Convenzioni › Cartella inbox, default `00 Inbox`); un valore vuoto, assoluto, con un componente `..` o fuori dal vault vale il default.
 
 L'app non impone la struttura 00-03: la rispetta se esiste. Le uniche cartelle proprie sono `.pergamenum/` e la cartella daily configurabile. Cache indice, thumbnail e cronologia sono derivati e non stanno più qui: vivono fuori dal vault, in `~/Library/Application Support/it.stefer.pergamenum/vaults/<vaultID>/` (ADR-0017), cancellabili senza perdere nulla e senza toccare il vault, che resta sincronizzabile via iCloud Drive senza portarsi dietro stato macchina-specifico.
 
@@ -133,7 +135,7 @@ Regole vincolanti per l'app:
 - VIETATE le chiavi `title`, `status`, `type`, `draft`, `version`, `author`, chiavi di lingua o di data aggiuntive (F-02, F-05). La spec v1 le prevedeva: sono rimosse.
 - Ordine dei tag nella lista: per namespace nell'ordine di T-01 (`client`, `competitor`, `project`, `type`, `topic`, `status`, `area`, `source`), poi alfabetico dentro il namespace (F-04).
 - Chiavi facoltative senza valore: si omettono, mai vuote o `[]` (F-08).
-- Daily note: `date` + `tags` con il solo `- type-note` (tag.md 5.1). Capture inbox senza argomento: `- type-note` + `- status-inbox`. L'app genera questi blocchi automaticamente.
+- Daily note: `date` + `tags` con il solo `- type-note` (tag.md 5.1). *Emendato 2026-10-04 (ADR-0080).* Ogni nota che nasce senza un `topic-*`, da qualunque superficie (Cmd+N, Apri rapido, «Documento», cattura, `perg`, MCP), è una cattura: `- type-note` + `- status-inbox`. La daily note resta col solo `- type-note`. L'app genera questi blocchi automaticamente.
 - L'app crea ogni nuova nota con blocco conforme e segnala (linter, §4.7) le note non conformi senza correggerle in massa: l'adeguamento avviene solo quando la nota viene toccata (non retroattività, frontmatter.md 6.2).
 
 ### 4.4 Tag (tag.md)
@@ -376,7 +378,7 @@ Comportamento identico al Finder, implementato con `QLPreviewPanel` (framework Q
 ### 8.1 Daily note
 
 - Nome file `YYYYMMDD.md` (naming.md 4.6), cartella configurabile (default `Calendar/`). Frontmatter auto-generato conforme (§4.3).
-- `Cmd+T` apre oggi; frecce giorno precedente/successivo; mini-calendario mensile come date picker. Template configurabile.
+- `Cmd+Shift+D` apre la nota di oggi; `Cmd+T` apre una nuova tab (ADR-0012 §D5) (*emendato 2026-10-04, ADR-0080*); frecce giorno precedente/successivo; mini-calendario mensile come date picker. Template configurabile.
 - Struttura vista giorno: (1) area riferimenti: task `>data` e backlink alla data; (2) corpo della nota; (3) timeline oraria laterale.
 - *Emendato 2026-08-20 (ADR-0013 §D4 e §D2, M12).* **Giorno, settimana e mese sono tre scale della stessa vista**, scelte dalla barra strumenti e ancorate allo stesso giorno: muoversi nella settimana e tornare al giorno porta sul giorno che la settimana teneva evidenziato. La griglia della settimana disegna quattro sorgenti e non una quinta - eventi EventKit, task pianificati, scadenze, time block - e la daily note è l'intestazione della colonna, non una sorgente: un giorno non è una nota che ha una settimana, è un giorno che ha una nota.
 - *Emendato 2026-08-20 (ADR-0013 §D2 e §D3, M12).* **Note evento**: da un evento della timeline si crea `YYYYMMDD-<slug>.md` **nella stessa cartella delle daily note**, accanto a `YYYYMMDD.md`. Non è una cartella riservata nuova. La nota nasce nella forma di una cattura, `type-note` + `status-inbox`, con l'ora e i partecipanti stampati nel corpo e un wikilink dalla daily note del giorno; il backlink risponde già alla domanda «di che giorno era questa riunione» senza indicizzare niente di nuovo.
@@ -492,7 +494,7 @@ Valutazione richiesta (CSS/HTML): un sistema di stili CSS/HTML non è applicabil
   Sempre ricostruibile da una scansione del vault, mai la fonte di verità (principio 3).
   Watcher FSEvents sul vault: modifiche esterne (anche da Obsidian) recepite in tempo reale.
   Le viste (§17) interrogano lo stesso indice, mai una loro copia.
-- Impostazioni: Generali (vault, lingua, tema) · Editor · Canvas (griglia, snap, import copia/riferimento) · Task (orario default promemoria) · Calendario (calendari visibili, calendario di scrittura, fascia timeline) · Convenzioni (cartella daily, percorso repo harness per import vocabolari) · Avanzate (rigenera indice, svuota cache, log).
+- Impostazioni: Generali (vault, lingua, tema) · Editor · Canvas (griglia, snap, import copia/riferimento) · Task (orario default promemoria) · Calendario (calendari visibili, calendario di scrittura, fascia timeline) · Convenzioni (cartella daily, cartella inbox, percorso repo harness per import vocabolari) · Avanzate (rigenera indice, svuota cache, log).
 
 ---
 
@@ -564,9 +566,15 @@ chiamava "globale" una cattura in realtà legata alla finestra (Cmd+Shift+N).*
   secondi dopo la chiusura del pannello.
 - **Quattro destinazioni**, ricordata l'ultima usata: nuova nota · task nell'Inbox · in coda
   alla daily note di oggi (creata se assente) · in coda a una nota esistente scelta. L'Inbox
-  è un file reale, `00 Inbox/Capture.md` — distinto dalla vista task Inbox di §7.4, che
+  è un file reale, `<cartella inbox>/Capture.md` (default `00 Inbox/Capture.md`, *emendato
+  2026-10-04, ADR-0080*) — distinto dalla vista task Inbox di §7.4, che
   resta "task senza data né progetto": la cattura dà a un task acquisito un posto su disco
   dal primo secondo, non sostituisce quella vista.
+- *Emendato 2026-10-04 (ADR-0080).* Una prima riga che non è un nome di nota valido produce
+  un titolo proposto (caratteri vietati sostituiti da spazi, spazi compattati, suffisso di versione tolto,
+  taglio a 60 caratteri a una parola); se diverso dalla riga, tutto il testo va nel corpo;
+  se non resta nulla, il titolo è `YYYYMMDD HHmm Cattura`. Il pannello mostra «Titolo: …»
+  prima dell'invio. Solo una cattura vuota è rifiutata.
 - **Un'unica scrittura condivisa**: il pannello, la route `pergamenum://capture` (§9),
   `perg capture` e il tool MCP passano tutti per lo stesso punto in `Sources/Connector/`
   (ADR-0007 §D2/§D4) — stessa cartella di destinazione, stesso frontmatter, giornalata e

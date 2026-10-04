@@ -25,6 +25,13 @@ struct CapturePanelView: View {
         VStack(alignment: .leading, spacing: theme.spacing(.s)) {
             targetRow
             field
+            // The title a «Nota nuova» will carry when its first line is not a legal name,
+            // asked of the same function the capture writes through (ADR-0080 §D3).
+            if let caption = controller.titleCaption() {
+                Text(caption)
+                    .themedText(.caption, color: .textSecondary)
+                    .accessibilityIdentifier("capture-title-caption")
+            }
             if controller.destination.takesDates { dateChips }
             if let outcome = controller.outcome { outcomeRow(outcome) }
             Divider().overlay(theme.color(.borderSubtle))
@@ -99,7 +106,7 @@ struct CapturePanelView: View {
         Button { isChoosingFolder = true } label: {
             HStack(spacing: theme.spacing(.xs)) {
                 Image(systemName: "folder")
-                Text(controller.folder ?? VaultAPI.CaptureDestination.defaultFolder)
+                Text(controller.folder ?? inboxFolder)
                     .themedText(.caption, color: .textTertiary)
                 Image(systemName: "chevron.down").font(theme.font(.iconSmall))
             }
@@ -107,7 +114,7 @@ struct CapturePanelView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            "Cartella della nota nuova: \(controller.folder ?? VaultAPI.CaptureDestination.defaultFolder)"
+            "Cartella della nota nuova: \(controller.folder ?? inboxFolder)"
         )
         .accessibilityIdentifier("capture-folder")
         .popover(isPresented: $isChoosingFolder) {
@@ -116,6 +123,11 @@ struct CapturePanelView: View {
                 isChoosingFolder = false
             }
         }
+    }
+
+    /// The vault's inbox folder, where a «Nota nuova» with no folder chosen lands.
+    private var inboxFolder: String {
+        session?.inboxFolder ?? VaultSettings.defaultInboxFolder
     }
 
     // MARK: Text
@@ -278,7 +290,7 @@ private struct CaptureFolderPicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button { onChoose(nil) } label: {
-                Text(VaultAPI.CaptureDestination.defaultFolder)
+                Text(session?.inboxFolder ?? VaultSettings.defaultInboxFolder)
                     .themedText(.caption)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }

@@ -139,11 +139,14 @@ private func appended(_ text: String, toNote note: String) async throws -> Strin
     #expect(LineBreak.lf.normalised("\r\r\n") == "\r\n")
 }
 
-/// PG-327: a capture as a new note splits its title off at the first line break, a CRLF one
-/// included, so the `"\r"` of that pair reaches neither the title nor the file name. The body
-/// is what followed the break, as given: the new note is LF, so `append` writes it verbatim
-/// (PG-322).
+// MARK: - PG-327: capture as a new note
+//
+// A capture as a new note splits its title off at the first line break, a CRLF one included,
+// so the `"\r"` of that pair reaches neither the title nor the file name. The body is what
+// followed the break, as given: the new note is LF, so `append` writes it verbatim (PG-322).
 
+/// Captures `text` as a new note in a fresh vault and returns the path it wrote and the bytes
+/// on disk.
 @MainActor
 private func capturedAsNote(_ text: String) async throws -> (path: String, onDisk: String) {
     let vault = try TemporaryVault()
