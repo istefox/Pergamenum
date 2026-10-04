@@ -317,6 +317,9 @@ extension Theme {
             // as chrome would hide exactly that.
             .prose: TypographyValue(family: .named("Avenir Next"), size: 16, weight: 400, lineHeight: 1.4),
             .proseTitle: TypographyValue(family: .named("Avenir Next"), size: 24, weight: 700, lineHeight: 1.2),
+            // SF Symbol glyph sizes in controls, not text faces.
+            .iconSmall: TypographyValue(family: .system, size: 10, weight: 500, lineHeight: 1.0),
+            .iconBadge: TypographyValue(family: .system, size: 7, weight: 400, lineHeight: 1.0),
         ],
         spacings: [
             .xs: 4, .s: 8, .m: 16, .l: 24, .xl: 40,

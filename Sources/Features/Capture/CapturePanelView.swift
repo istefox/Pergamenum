@@ -101,7 +101,7 @@ struct CapturePanelView: View {
                 Image(systemName: "folder")
                 Text(controller.folder ?? VaultAPI.CaptureDestination.defaultFolder)
                     .themedText(.caption, color: .textTertiary)
-                Image(systemName: "chevron.down").font(.caption2)
+                Image(systemName: "chevron.down").font(theme.font(.iconSmall))
             }
             .foregroundStyle(theme.color(.textTertiary))
         }
@@ -186,7 +186,7 @@ struct CapturePanelView: View {
             HStack(spacing: theme.spacing(.xs)) {
                 Image(systemName: "doc.text")
                 Text(chosenNoteTitle).themedText(.caption, color: .textTertiary)
-                Image(systemName: "chevron.down").font(.caption2)
+                Image(systemName: "chevron.down").font(theme.font(.iconSmall))
             }
             .foregroundStyle(theme.color(.textTertiary))
         }

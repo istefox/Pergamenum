@@ -30,7 +30,7 @@ struct WeekEntryRow: View {
     private var row: some View {
         HStack(alignment: .firstTextBaseline, spacing: 3) {
             Image(systemName: entry.kind.symbol)
-                .font(.system(size: 7))
+                .font(theme.font(.iconBadge))
                 .foregroundStyle(theme.color(entry.token))
             VStack(alignment: .leading, spacing: 0) {
                 if let timeText = entry.timeText {

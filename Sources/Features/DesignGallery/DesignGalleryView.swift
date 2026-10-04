@@ -12,7 +12,8 @@ struct DesignGalleryView: View {
     private var tokenSummary: String {
         [
             "\(ColorToken.allCases.count) colori",
-            "\(FontToken.allCases.count) stili di testo",
+            // The two `font.icon.*` tokens size glyphs, they are not text styles.
+            "\(FontToken.allCases.filter { $0 != .iconSmall && $0 != .iconBadge }.count) stili di testo",
             "\(SpacingToken.allCases.count) spaziature",
             "\(RadiusToken.allCases.count) raggi",
             "\(ShadowToken.allCases.count) ombre",

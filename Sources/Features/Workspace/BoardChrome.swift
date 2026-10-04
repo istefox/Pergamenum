@@ -112,7 +112,7 @@ struct BoardToolbar: View {
                     // cards and the user cannot see why.
                     if tool == workspace.tool, workspace.isToolLocked {
                         Image(systemName: "pin.fill")
-                            .font(.system(size: 7))
+                            .font(theme.font(.iconBadge))
                             .foregroundStyle(theme.color(.onAccent))
                             .padding(2)
                     }
