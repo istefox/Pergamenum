@@ -62,12 +62,6 @@ struct VaultCommands: Commands {
             // reachable, and because a command with no menu entry cannot be discovered.
             Button(ShortcutCommand.globalCapture.title) { actions.run(.globalCapture) }
                 .disabled(!actions.canRun(.globalCapture))
-            Button("Ricerca globale…") { actions.run(.globalSearch) }
-                .keyboardShortcut(shortcuts.shortcut(for: .globalSearch))
-                .disabled(!actions.canRun(.globalSearch))
-            Button("Vai alla nota…") { actions.run(.quickSwitcher) }
-                .keyboardShortcut(shortcuts.shortcut(for: .quickSwitcher))
-                .disabled(!actions.canRun(.quickSwitcher))
             Button("Salva") { actions.run(.save) }
                 .keyboardShortcut(shortcuts.shortcut(for: .save))
                 .disabled(!actions.canRun(.save))
@@ -121,9 +115,6 @@ struct VaultCommands: Commands {
             Button("Rigenera indice") { Task { await vault.rescan() } }
                 .disabled(vault.root == nil)
             Divider()
-            Button("Copia link Pergamenum") { actions.run(.copyLink) }
-                .keyboardShortcut(shortcuts.shortcut(for: .copyLink))
-                .disabled(!actions.canRun(.copyLink))
             Button(ShortcutCommand.revealInFinder.title) { actions.run(.revealInFinder) }
                 .keyboardShortcut(shortcuts.shortcut(for: .revealInFinder))
                 .disabled(!actions.canRun(.revealInFinder))
