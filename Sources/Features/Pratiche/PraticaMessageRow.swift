@@ -338,8 +338,9 @@ enum PraticaRowFormat {
     /// `3 ott 20:22` - an anchored entry's heading when its day is not its message's
     /// (ADR-0079 §D7, R-12): the short day, a space, the time, composed rather than left to a
     /// localized template that might put a comma between them. No year: the day header above
-    /// names the message's. With no locale and no zone it reads the person's own through the
-    /// cached formatters, since a row's body calls it; an explicit pair (the tests) builds fresh ones.
+    /// names the message's. With no locale and no zone it spells the date in Italian
+    /// (`uiLocale`) in the person's own zone, through the cached formatters, since a row's body
+    /// calls it; an explicit pair (the tests) builds fresh ones.
     static func dayAndTime(_ date: Date, locale: Locale? = nil, timeZone: TimeZone? = nil) -> String {
         guard locale != nil || timeZone != nil else {
             return "\(shortDayFormatter.string(from: date)) \(timeFormatter.string(from: date))"
@@ -383,6 +384,7 @@ enum PraticaRowFormat {
     /// `3 ott`, the day half of `dayAndTime(_:locale:timeZone:)`.
     private static let shortDayFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = uiLocale
         formatter.setLocalizedDateFormatFromTemplate("dMMM")
         return formatter
     }()

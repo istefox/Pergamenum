@@ -106,6 +106,9 @@ struct CapturePanelView: View {
             .foregroundStyle(theme.color(.textTertiary))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(
+            "Cartella della nota nuova: \(controller.folder ?? VaultAPI.CaptureDestination.defaultFolder)"
+        )
         .accessibilityIdentifier("capture-folder")
         .popover(isPresented: $isChoosingFolder) {
             CaptureFolderPicker(session: session) { folder in
@@ -188,6 +191,7 @@ struct CapturePanelView: View {
             .foregroundStyle(theme.color(.textTertiary))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Nota a cui aggiungere: \(chosenNoteTitle)")
         .accessibilityIdentifier("capture-note")
         .popover(isPresented: $isChoosingNote) {
             CaptureNotePicker(session: session) { path in

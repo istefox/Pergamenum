@@ -91,8 +91,7 @@ final class WorkspaceBoardUITests: PergamenumUITestCase {
         let board = app.staticTexts["CARD A"]
         if board.waitForExistence(timeout: 5) { return }
 
-        let paneRow = sidebarRow("pane-workspace")
-        if paneRow.exists { paneRow.click() }
+        openSidebarRow("pane-workspace")
 
         let rootBoardID = "workspace-board-\(vault.lastPathComponent).canvas"
         let row = app.descendants(matching: .any).matching(identifier: rootBoardID).firstMatch

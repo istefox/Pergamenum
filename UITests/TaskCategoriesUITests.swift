@@ -14,12 +14,6 @@ final class TaskCategoriesUITests: PergamenumUITestCase {
         waitForMainWindow()
     }
 
-    private func show(_ itemID: String) {
-        let row = sidebarRow(itemID)
-        XCTAssertTrue(row.waitForExistence(timeout: 5), "manca la riga «sidebar-\(itemID)» nella barra laterale")
-        row.click()
-    }
-
     private func element(_ identifier: String, timeout: TimeInterval = 5) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
@@ -89,7 +83,7 @@ final class TaskCategoriesUITests: PergamenumUITestCase {
     /// R-04, R-05: a registered category and an implicit one both show in the sidebar,
     /// and clicking the registered one opens its category view.
     func testTheCategoriesSectionShowsARegisteredAndAnImplicitRowAndOpensTheCategoryView() throws {
-        show("pane-tasks")
+        openSidebarRow("pane-tasks")
 
         let registeredRow = element("category-row-collaudi")
         XCTAssertTrue(registeredRow.waitForExistence(timeout: 10), "manca la riga della categoria registrata")
@@ -120,7 +114,7 @@ final class TaskCategoriesUITests: PergamenumUITestCase {
     /// PG-166: a category with no home note offers «Collega una nota…», the picker writes
     /// the note's `pergamenum-category` key, and the view then offers «Vai alla nota».
     func testLinkingANoteFromTheCategoryViewMakesItTheHome() throws {
-        show("pane-tasks")
+        openSidebarRow("pane-tasks")
         element("category-row-collaudi").click()
 
         XCTAssertFalse(

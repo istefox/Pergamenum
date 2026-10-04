@@ -24,9 +24,9 @@ final class HistoryNavigationUITests: PergamenumUITestCase {
     func testTheArrowsWalkThePanesInOrder() throws {
         launch()
 
-        show("pane-tags")
+        openSidebarRow("pane-tags")
         XCTAssertTrue(tagList.waitForExistence(timeout: 5), "la pane Tag non è comparsa")
-        show("pane-views")
+        openSidebarRow("pane-views")
         XCTAssertTrue(viewsPane.waitForExistence(timeout: 5), "la pane Viste non è comparsa")
 
         back.click()
@@ -42,12 +42,6 @@ final class HistoryNavigationUITests: PergamenumUITestCase {
     private func launch() {
         launchApp()
         waitForMainWindow()
-    }
-
-    private func show(_ itemID: String) {
-        let row = sidebarRow(itemID)
-        XCTAssertTrue(row.waitForExistence(timeout: 5), "manca la riga «sidebar-\(itemID)»")
-        row.click()
     }
 
     private var back: XCUIElement { app.buttons["history-back"].firstMatch }
