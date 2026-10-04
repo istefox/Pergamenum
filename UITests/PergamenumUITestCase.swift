@@ -88,13 +88,24 @@ class PergamenumUITestCase: XCTestCase {
         app.descendants(matching: .any).matching(identifier: "sidebar-\(itemID)").firstMatch
     }
 
+    /// Waits for one sidebar row, by `sidebarRow(_:)`, then clicks it. Four classes kept their
+    /// own copy of these three lines until PG-265, each with its own failure message.
+    func openSidebarRow(
+        _ itemID: String, timeout: TimeInterval = 5, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let row = sidebarRow(itemID)
+        XCTAssertTrue(
+            row.waitForExistence(timeout: timeout),
+            "manca la riga «sidebar-\(itemID)» nella barra laterale", file: file, line: line
+        )
+        row.click()
+    }
+
     /// Opens the Pratiche pane from its sidebar row and waits for the pane itself. Here rather
     /// than in each class because `PraticheUITests` and `AttachmentChipContextMenuUITests` both
     /// need it, and kept two copies verbatim until PG-265.
     func showPratiche() {
-        let row = sidebarRow("pane-pratiche")
-        XCTAssertTrue(row.waitForExistence(timeout: 5), "la sezione Pratiche non è nella barra laterale")
-        row.click()
+        openSidebarRow("pane-pratiche")
         XCTAssertTrue(
             app.descendants(matching: .any).matching(identifier: "pratiche-pane").firstMatch
                 .waitForExistence(timeout: 5),

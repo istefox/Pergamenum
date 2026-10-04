@@ -187,12 +187,12 @@ import Testing
     }
 
     /// The default branch is the only one production calls (a row's body, through the cached
-    /// formatters); the explicit-pair tests above never reach it. No locale is pinned: the
-    /// branches must agree on whatever the machine's own is.
-    @Test func theCachedDefaultBranchAgreesWithAFreshFormatterOnTheCurrentLocaleAndZone() throws {
+    /// formatters); the explicit-pair tests above never reach it. Its locale is pinned to
+    /// `uiLocale` (PG-263), its zone is the machine's: the branches must agree on that pair.
+    @Test func theCachedDefaultBranchAgreesWithAFreshFormatterOnTheUILocaleAndTheCurrentZone() throws {
         let date = try Self.utc(2026, 10, 3, 18, 22)
         let cached = PraticaRowFormat.dayAndTime(date)
-        #expect(cached == PraticaRowFormat.dayAndTime(date, locale: .current, timeZone: .current))
+        #expect(cached == PraticaRowFormat.dayAndTime(date, locale: PraticaRowFormat.uiLocale, timeZone: .current))
         #expect(cached.hasSuffix(PraticaRowFormat.time(date)))
         #expect(!cached.contains(","))
         #expect(!cached.contains("2026"))

@@ -40,6 +40,13 @@ import Testing
         #expect(spoken.hasSuffix("14:06"), "\(spoken)")
     }
 
+    @Test func theAnchoredEntryDayAndTimeIsInItalian() throws {
+        // The row's own call, with no locale and no zone: the cached short-day formatter, which
+        // the test host's own locale spelled «3 Oct» without the pin.
+        let date = try Self.instant(day: 3, month: 10, hour: 20, minute: 22)
+        #expect(PraticaRowFormat.dayAndTime(date) == "3 ott 20:22")
+    }
+
     @Test func theTrayRangeIsInItalianAndCollapsesASingleDay() throws {
         let morning = try Self.instant(hour: 8, minute: 0)
         let evening = try Self.instant(hour: 18, minute: 30)
