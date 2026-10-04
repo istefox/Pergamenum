@@ -423,13 +423,13 @@ Ogni nota, canvas e card espone "Copia link Pergamenum" nel menu contestuale, pe
 
 **Pergamenum**: Informazioni · Impostazioni… (Cmd+,) · Servizi · Nascondi · Esci
 
-**File**: Nuova nota (Cmd+N) · Nuova board (Cmd+Shift+C) · Nuovo task rapido (Cmd+Shift+N) · Apri vault… · Vault recenti · Importa file… (con rinomina assistita §4.2) · Importa convenzioni… (§4.6) · Esporta nota (PDF/HTML/MD, con rimozione frontmatter e "Note correlate" per consegna a terzi, frontmatter.md 6.3 e wikilink.md 6.3) · Mostra nel Finder (Cmd+Shift+R) · Chiudi (Cmd+W)
+**File**: Nuova nota (Cmd+N) · Nuova board (Cmd+Shift+C) · Nuovo task rapido (Cmd+Shift+N) · Apri vault… · Vault recenti · Importa file… (con rinomina assistita §4.2) · Importa convenzioni… (§4.6) · Esporta nota (PDF/HTML/MD, con rimozione frontmatter e "Note correlate" per consegna a terzi, frontmatter.md 6.3 e wikilink.md 6.3) · Mostra nel Finder (Cmd+Shift+R) · Chiudi (Cmd+W) · aggiunte da ADR successivi: Nuova pratica… (ADR-0036) · Nota del giorno · Nuova tab / Chiudi tab / Riapri l'ultima tab chiusa / Vai alla tab 1-9 (ADR-0012) · Cattura globale (ADR-0008) · Salva · Cronologia… · Rigenera indice
 
 **Modifica**: Annulla/Ripeti · Taglia/Copia/Incolla · Incolla come testo puro · Copia link Pergamenum (Cmd+Shift+L) · Trova nella nota (Cmd+F) · Sostituisci · Ricerca globale (Cmd+Shift+F)
 
 **Inserisci**: Wikilink [[ · Tag # (autocompletamento vincolato) · Task (- [ ]) · Data pianificata > · Scadenza ! · Promemoria @remind · Nota correlata… (flusso W-04/W-05) · Tabella · Immagine/file… · Link email da Mail (legge la selezione corrente di Mail via AppleScript e inserisce `message://`)
 
-**Vista**: Editor · Workspace · Oggi (Cmd+T) · Calendario · Attività · Anteprima rapida (Spazio, §6.6) · Mostra/nascondi sidebar (Cmd+0) · Backlink · Task collegati · Timeline · Link non risolti · Solo sorgente/Stile applicato (Cmd+Shift+E) · Zoom board · Tema (chiaro/scuro/sistema, temi installati §11)
+**Vista**: Editor · Workspace · Oggi (Cmd+T) · Calendario · Attività · Vai alla nota… · Anteprima rapida (Spazio, §6.6) · Mostra/nascondi sidebar (Cmd+0) · Backlink · Task collegati · Timeline · Link non risolti · Solo sorgente/Stile applicato (Cmd+Shift+E) · Zoom board · Tema (chiaro/scuro/sistema, temi installati §11)
 
 **Task**: Completa/riapri (Cmd+Invio) · Pianifica oggi (Cmd+0) · domani (Cmd+1) · +2 giorni (Cmd+2) · settimana prossima (Cmd+3) · Scegli data… · Aggiungi scadenza · Aggiungi promemoria · Collega una board… (§7.2, ADR-0039) · Annulla task · Vai alla nota di origine · Vai alla board collegata
 
