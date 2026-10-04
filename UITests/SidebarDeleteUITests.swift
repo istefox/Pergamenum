@@ -13,7 +13,8 @@ import XCTest
 /// Row lookup and menu-item lookup follow `SidebarMoveUITests`'s documented convention:
 /// the note row itself carries an `accessibilityIdentifier`, but a `.contextMenu`'s
 /// entries are `NSMenuItem`s outside that row's accessibility hierarchy, so the menu
-/// item and the confirmation dialog's buttons are found by their production title.
+/// item is found by its production title. The confirmation dialog's destructive button
+/// carries its own identifier (`sidebar-trash-confirm`, PG-265).
 final class SidebarDeleteUITests: PergamenumUITestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -24,7 +25,7 @@ final class SidebarDeleteUITests: PergamenumUITestCase {
     }
 
     func testDeletingANoteFromTheContextMenuRemovesItFromTheTreeAndTheVault() throws {
-        let row = noteRow("note-row-DaEliminare.md")
+        let row = noteRow("DaEliminare.md")
         XCTAssertTrue(row.waitForExistence(timeout: 5), "la riga della nota non è comparsa")
         row.rightClick()
 
@@ -34,22 +35,15 @@ final class SidebarDeleteUITests: PergamenumUITestCase {
 
         let sheet = app.sheets.firstMatch
         XCTAssertTrue(sheet.waitForExistence(timeout: 5), "il dialogo di conferma non è comparso")
-        // Scoped to the sheet, not `app.buttons[...]`: the destructive button's title also
-        // matches other, unrelated controls in the wider accessibility tree.
-        let confirm = sheet.buttons["Sposta nel Cestino"]
+        // Scoped to the sheet, like the dialog it belongs to.
+        let confirm = sheet.buttons["sidebar-trash-confirm"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5), "manca il bottone «Sposta nel Cestino»")
         confirm.click()
 
         XCTAssertTrue(waitForFile(vault.appending(path: "DaEliminare.md"), toExist: false),
                      "il file è ancora nel vault dopo la conferma di eliminazione")
-        XCTAssertFalse(noteRow("note-row-DaEliminare.md").waitForExistence(timeout: 5),
+        XCTAssertFalse(noteRow("DaEliminare.md").waitForExistence(timeout: 5),
                        "la riga è ancora nell'albero dopo l'eliminazione")
-    }
-
-    // MARK: Navigation
-
-    private func noteRow(_ identifier: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
     // MARK: Reading the result off disk

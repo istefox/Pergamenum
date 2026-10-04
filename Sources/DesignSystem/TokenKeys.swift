@@ -119,6 +119,11 @@ enum FontToken: String, TokenKey {
     case iconSmall = "font.icon.small"
     case iconBadge = "font.icon.badge"
 
+    // The small caption an AppKit control group carries beside its buttons (the
+    // table grid's «Riga»/«Colonna»): system 9 pt semibold, the value
+    // `TableGridView` used to name by hand. Never customizable either.
+    case controlLabel = "font.control.label"
+
     var path: String { rawValue }
 }
 

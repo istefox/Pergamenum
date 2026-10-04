@@ -50,7 +50,7 @@ final class WikilinkNavigationUITests: PergamenumUITestCase {
     /// Opens "Origine", returns the editor's text view once its source contains the
     /// wikilink - never asserting on rendered/concealed on-screen text (CLAUDE.md).
     private func openOriginAndReturnEditor() -> XCUIElement {
-        let note = app.staticTexts["Origine"]
+        let note = noteRow("Origine.md")
         XCTAssertTrue(note.waitForExistence(timeout: 10), "la nota 'Origine' non è nell'elenco")
         note.click()
 
@@ -69,10 +69,10 @@ final class WikilinkNavigationUITests: PergamenumUITestCase {
     /// paragraph position, unlike the hardcoded-pixel-offset approach this replaced, which
     /// missed the link's actual left edge by a couple of points regardless of window width
     /// (confirmed by widening the window well past the 720pt readable-width cap and seeing the
-    /// same 3 failures). The link's title is the note's own name, the same identifier
-    /// `openOriginAndReturnEditor()` already uses for `app.staticTexts["Origine"]` - not prose
-    /// that can grow and break the lookup (CLAUDE.md's "must not find a control by the words on
-    /// it" is about UI copy, not a note's own stable title).
+    /// same 3 failures). The link's title is the note's own name: a link drawn inside the
+    /// note's text has no view of its own to carry an `accessibilityIdentifier`, so this is the
+    /// one lookup here that still reads the fixture's words (`openOriginAndReturnEditor()` finds
+    /// the note's row by `note-row-Origine.md`, PG-265).
     /// The link's own `AXTitle` carries the raw markdown target text, bold markers and all -
     /// confirmed via the same attachment export: `[[**Destinazione**]]` surfaces as a link
     /// titled `**Destinazione**`, not the concealed "Destinazione" the plain case uses.

@@ -62,7 +62,7 @@ final class WorkspaceOpenStateUITests: PergamenumUITestCase {
     }
 
     private var tree: XCUIElement {
-        app.descendants(matching: .any).matching(identifier: "workspace-tree").firstMatch
+        element("workspace-tree")
     }
 
     /// The rows in `workspace-tree` currently reporting the selected state, counted by
@@ -101,13 +101,14 @@ final class WorkspaceOpenStateUITests: PergamenumUITestCase {
     // MARK: Ported (R-14) - same assertions as before, row lookup substituted for the row's new element type.
 
     func testThePaneOpensEmptyAndFillsInOnlyAfterAClick() throws {
-        XCTAssertTrue(app.staticTexts["Nessuna board aperta"].waitForExistence(timeout: 5),
+        let emptyState = app.staticTexts["workspace-empty-state"]
+        XCTAssertTrue(emptyState.waitForExistence(timeout: 5),
                       "il pane dovrebbe aprirsi senza nessuna board scelta")
         XCTAssertTrue(rootBoardRow.waitForExistence(timeout: 5))
 
         rootBoardRow.click()
 
-        XCTAssertFalse(app.staticTexts["Nessuna board aperta"].exists,
+        XCTAssertFalse(emptyState.exists,
                         "lo stato vuoto dovrebbe sparire una volta aperta una board")
     }
 

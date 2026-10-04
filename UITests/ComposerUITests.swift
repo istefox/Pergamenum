@@ -15,9 +15,10 @@ final class ComposerUITests: PergamenumUITestCase {
         waitForMainWindow()
     }
 
-    private func toolbarButton(_ label: String, timeout: TimeInterval = 5) -> XCUIElement {
-        let element = app.toolbars.buttons[label]
-        XCTAssertTrue(element.waitForExistence(timeout: timeout), "manca il pulsante «\(label)»")
+    /// A toolbar button by its `accessibilityIdentifier`, never by its title (PG-265).
+    private func toolbarButton(_ identifier: String, timeout: TimeInterval = 5) -> XCUIElement {
+        let element = app.toolbars.buttons[identifier]
+        XCTAssertTrue(element.waitForExistence(timeout: timeout), "manca il pulsante «\(identifier)»")
         return element
     }
 
@@ -26,7 +27,7 @@ final class ComposerUITests: PergamenumUITestCase {
     func testANewNoteIsNamedInTheEditorAndNotInAFloatingWindow() throws {
         // The first test of the run meets a window that has just finished opening the
         // vault, so this one waits longer than the rest.
-        toolbarButton("Nuova nota", timeout: 15).click()
+        toolbarButton("note-new", timeout: 15).click()
 
         let title = app.textFields["new-note-title"]
         XCTAssertTrue(title.waitForExistence(timeout: 5), "il composer non è nella pagina di edit")
@@ -38,15 +39,14 @@ final class ComposerUITests: PergamenumUITestCase {
         title.typeText("Nota composta")
         app.typeKey(.enter, modifierFlags: [])
 
-        // The composer gives way to the editor showing the note it just created.
+        // The composer gives way to the editor showing the note it just created: its tab, by
+        // the `note-tab-<path>` identifier `NoteTabBar` draws, not by the title typed above.
         XCTAssertFalse(
             app.textFields["new-note-title"].waitForExistence(timeout: 2),
             "il composer è rimasto aperto dopo la creazione"
         )
-        XCTAssertTrue(
-            app.staticTexts["Nota composta"].waitForExistence(timeout: 5),
-            "la nota creata non è aperta nell'editor"
-        )
+        let tab = element("note-tab-Nota composta.md")
+        XCTAssertTrue(tab.waitForExistence(timeout: 5), "la nota creata non è aperta nell'editor")
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: vault.appending(path: "Nota composta.md").path(percentEncoded: false)
         ))
@@ -59,7 +59,7 @@ final class ComposerUITests: PergamenumUITestCase {
     /// continuing it. Typing after a date is the only way to see that.
     func testTypingAfterChoosingADateContinuesTheTextInsteadOfReplacingIt() throws {
         openSidebarRow("pane-tasks")
-        toolbarButton("Cattura rapida").click()
+        toolbarButton("tasks-capture").click()
 
         let text = app.textFields["task-composer-text"]
         XCTAssertTrue(text.waitForExistence(timeout: 5))
@@ -67,7 +67,7 @@ final class ComposerUITests: PergamenumUITestCase {
         text.typeText("Primo pezzo")
 
         app.buttons["task-composer-scheduled"].click()
-        let today = app.descendants(matching: .any).matching(identifier: "date-option-today").firstMatch
+        let today = element("date-option-today")
         XCTAssertTrue(today.waitForExistence(timeout: 5))
         today.click()
 

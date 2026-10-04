@@ -14,10 +14,6 @@ final class TaskCategoriesUITests: PergamenumUITestCase {
         waitForMainWindow()
     }
 
-    private func element(_ identifier: String, timeout: TimeInterval = 5) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
-    }
-
     /// A task row carries no per-task identifier of its own (`TasksView.row` sets the same
     /// `"task-row"` on every one of them, folded into one combined accessibility element).
     /// Matched on its combined accessibility label instead, which carries `task.text`

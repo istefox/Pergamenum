@@ -193,6 +193,7 @@ struct PraticaMessageRow: View {
                 vaultRoot: vaultRoot,
                 expandsTransclusions: false
             )
+            .accessibilityIdentifier("pratiche-message-body-\(Self.hash(of: entry))")
         }
         quotedHistory
         if let signature = detail?.signature, !signature.isEmpty {
@@ -304,26 +305,6 @@ struct PraticaMessageRow: View {
         if isPending { parts.append("corpo non ancora scaricato") }
         parts.append(isExpanded ? "espansa" : "compressa")
         return parts.joined(separator: ", ")
-    }
-
-    // MARK: - Identifiers
-
-    /// `pratiche-message-<messageIDHash>` (UX-BLUEPRINT's checklist).
-    static func identifier(for entry: PraticaTimelineEntry) -> String {
-        "pratiche-message-\(hash(of: entry))"
-    }
-
-    /// A `Message-ID` is an arbitrary string with `<`, `@` and `.` in it - unusable as
-    /// an identifier and unstable to read. This is FNV-1a written out rather than
-    /// `hashValue`, which is seeded per process and would give a UI test a different
-    /// answer on every launch.
-    static func hash(of entry: PraticaTimelineEntry) -> String {
-        var value: UInt64 = 0xcbf2_9ce4_8422_2325
-        for byte in Array((entry.messageID ?? entry.id).utf8) {
-            value ^= UInt64(byte)
-            value &*= 0x0000_0100_0000_01b3
-        }
-        return String(value, radix: 16)
     }
 }
 

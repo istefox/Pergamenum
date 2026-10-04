@@ -85,7 +85,22 @@ class PergamenumUITestCase: XCTestCase {
     /// Never by its title (PG-265): a pane's name is prose, and its own breadcrumb bar draws
     /// the same word when nothing is open in it.
     func sidebarRow(_ itemID: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: "sidebar-\(itemID)").firstMatch
+        element("sidebar-\(itemID)")
+    }
+
+    /// One note's row in the Note pane, tree or flat list alike, by the `note-row-<path>`
+    /// identifier both draw from the note's vault-relative path (`"Origine.md"`,
+    /// `"Ambiguo/NotaAmbigua.md"`). Never by its title (PG-265): the title is the fixture's
+    /// prose, and the same words also show on the open tab and in the editor.
+    func noteRow(_ relativePath: String) -> XCUIElement {
+        element("note-row-\(relativePath)")
+    }
+
+    /// Any element in the app, of any kind, by its `accessibilityIdentifier`. Four classes kept
+    /// their own copy of this lookup until PG-265. A class whose walk must stay inside one
+    /// subtree (`GlobalSearchUITests.sheetElement(_:)`) scopes its own query instead.
+    func element(_ identifier: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
     /// Waits for one sidebar row, by `sidebarRow(_:)`, then clicks it. Four classes kept their
@@ -107,10 +122,22 @@ class PergamenumUITestCase: XCTestCase {
     func showPratiche() {
         openSidebarRow("pane-pratiche")
         XCTAssertTrue(
-            app.descendants(matching: .any).matching(identifier: "pratiche-pane").firstMatch
-                .waitForExistence(timeout: 5),
+            element("pratiche-pane").waitForExistence(timeout: 5),
             "la sezione Pratiche non si è aperta"
         )
+    }
+
+    /// Mirrors `PraticaMessageRow.hash(of:)` exactly (FNV-1a over the message id string), so a
+    /// class computes the same `pratiche-message-…`/`pratiche-attachment-…` identifiers
+    /// production draws without a `@testable import`. `PraticheUITests` and
+    /// `AttachmentChipContextMenuUITests` each kept a copy until PG-120's sweep.
+    static func hash(_ messageID: String) -> String {
+        var value: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in Array(messageID.utf8) {
+            value ^= UInt64(byte)
+            value &*= 0x0000_0100_0000_01b3
+        }
+        return String(value, radix: 16)
     }
 
     /// The launch-ready check: the window is up once the sidebar's Note row is. Fifteen classes

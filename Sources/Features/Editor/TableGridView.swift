@@ -104,6 +104,11 @@ final class TableGridView: NSView, NSTextFieldDelegate {
     /// to the upright face of the *right* family rather than to a bold of a different one, so a
     /// header never diverges from its own body cells.
     var proseBoldFont: NSFont = .systemFont(ofSize: 13, weight: .semibold)
+    /// The "Riga"/"Colonna" caption face, pushed in from `font.control.label` by
+    /// `update(with:theme:)` like the colours above. The default is the emergency theme's own
+    /// value, so a grid built and never updated still reads the token rather than a size of
+    /// its own.
+    var controlLabelFont: NSFont = Theme.emergency.nsFont(.controlLabel)
 
     lazy var rowLabel = makeGroupLabel(text: "Riga", identifier: "editor-table-row-label")
     lazy var columnLabel = makeGroupLabel(text: "Colonna", identifier: "editor-table-column-label")

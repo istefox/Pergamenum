@@ -28,8 +28,7 @@ final class DiaryUITests: PergamenumUITestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5), "la sezione Diario non è nella barra laterale")
         row.click()
         XCTAssertTrue(
-            app.descendants(matching: .any).matching(identifier: "diary-header").firstMatch
-                .waitForExistence(timeout: 5),
+            element("diary-header").waitForExistence(timeout: 5),
             "la sezione Diario non si è aperta"
         )
     }
@@ -37,7 +36,7 @@ final class DiaryUITests: PergamenumUITestCase {
     /// The whole point of the pane: block out a couple of hours, give them a name, and
     /// find both on the timeline and in the file.
     func testABlockIsComposedAndWrittenToTheFile() throws {
-        app.toolbars.buttons["Nuovo blocco"].click()
+        app.toolbars.buttons["diary-new-entry"].click()
 
         let title = app.textFields["diary-sheet-title"].firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 5), "la scheda del blocco non si è aperta")
@@ -55,7 +54,7 @@ final class DiaryUITests: PergamenumUITestCase {
     // MARK: Support
 
     private var entry: XCUIElement {
-        app.descendants(matching: .any).matching(identifier: "diary-entry").firstMatch
+        element("diary-entry")
     }
 
     /// Polls the diary file, because the write happens on the app's side of the process

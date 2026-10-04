@@ -66,10 +66,12 @@ struct BoardContentLayer: View {
             .frame(width: frame.width, height: frame.height)
             // After `.frame`, not before: `.accessibilityElement` can freeze the
             // container's frame at its unsized content rather than the card's laid-out
-            // rectangle, and four board tests aim corner drags by normalized offset
-            // against this element (PG-108). `.contain`, not `.combine` - `.combine`
-            // would flatten NodeCard's own `Text` out of the tree and
-            // `element(labelled: "CARD A")` would stop resolving.
+            // rectangle, and the board tests aim corner drags by normalized offset
+            // against this element, found by `canvas-node-<id>` below (PG-108, PG-265).
+            // `.contain`, not `.combine` - `.combine` would flatten NodeCard's own `Text`
+            // out of the tree. No test reads that `Text` any more (the board tests find
+            // the card by its identifier); it stays a child so VoiceOver can still read
+            // the card's own text beneath `NodeAccessibility`'s summary label.
             //
             // Skipped entirely for a group: wrapping the whole card as one
             // `.accessibilityElement` reparents `groupCard(_:)`'s own small header

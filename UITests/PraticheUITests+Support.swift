@@ -5,11 +5,6 @@ import XCTest
 // themselves stay in `PraticheUITests.swift`, unchanged. A member below that the tests call is
 // `internal` rather than `private`, since `private` does not reach across files; each says so.
 extension PraticheUITests {
-    /// Not `private`: `PraticheUITests.swift`'s tests call it.
-    func element(_ identifier: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
-    }
-
     /// Writes `pratica.md` with a valid `pergamenum-dossier` and the tag set
     /// `Dossier`/`PraticheController.listItems` require (`type-note`, `topic-pratica`,
     /// `client-acme`, `status-active`, `source-email` - matched against
@@ -82,9 +77,10 @@ extension PraticheUITests {
             atomically: true, encoding: .utf8
         )
 
-        // The second paragraph is drawn only when the row is expanded: the collapsed preview is
-        // the body's first line (`PraticheController.firstLine(of:)`), so it never matches
-        // (`testDoubleClickTogglesMessageRow`).
+        // Two paragraphs, so the expanded body is more than the collapsed preview's first line
+        // (`PraticheController.firstLine(of:)`); `testDoubleClickTogglesMessageRow` tells the two
+        // apart by the body's `pratiche-message-body-<hash>` identifier, which only the expanded
+        // body carries.
         let withoutAttachment = """
         ---
         date: 2026-09-02
@@ -244,18 +240,5 @@ extension PraticheUITests {
             Thread.sleep(forTimeInterval: 0.2)
         } while Date() < deadline
         return try? String(contentsOf: url, encoding: .utf8)
-    }
-
-    /// Mirrors `PraticaMessageRow.hash(of:)` exactly (FNV-1a over the message id string),
-    /// as `AttachmentChipContextMenuUITests.hash(_:)` already does - this file computes the
-    /// same identifiers production draws without a `@testable import`.
-    /// Not `private`: `PraticheUITests.swift`'s tests call it.
-    static func hash(_ messageID: String) -> String {
-        var value: UInt64 = 0xcbf2_9ce4_8422_2325
-        for byte in Array(messageID.utf8) {
-            value ^= UInt64(byte)
-            value &*= 0x0000_0100_0000_01b3
-        }
-        return String(value, radix: 16)
     }
 }

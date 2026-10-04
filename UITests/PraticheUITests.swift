@@ -95,10 +95,9 @@ final class PraticheUITests: PergamenumUITestCase {
         XCTAssertTrue(chevron.waitForExistence(timeout: 5), "lo chevron del messaggio non è comparso")
         chevron.click()
 
-        // M6: a word selected in the expanded body is text, not a message to exclude.
-        let body = app.staticTexts.matching(
-            NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "con un allegato", "con un allegato")
-        ).firstMatch
+        // M6: a word selected in the expanded body is text, not a message to exclude. The body is
+        // found by its `pratiche-message-body-<hash>` identifier, not by its words (PG-265).
+        let body = element("pratiche-message-body-\(Self.hash(Self.messageWithAttachmentID))")
         XCTAssertTrue(body.waitForExistence(timeout: 5), "il corpo del messaggio espanso non è comparso")
         body.doubleClick()
         app.typeKey(.delete, modifierFlags: [])
@@ -161,19 +160,18 @@ final class PraticheUITests: PergamenumUITestCase {
     func testDoubleClickTogglesMessageRow() throws {
         selectFirstPratica()
         let messageID = Self.messageWithoutAttachmentID
-        let secondParagraph = app.staticTexts.matching(
-            NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "Seconda riga", "Seconda riga")
-        ).firstMatch
+        // The expanded body only: the collapsed row's one-line preview carries no identifier.
+        let body = element("pratiche-message-body-\(Self.hash(messageID))")
         XCTAssertTrue(waitForChevron(ofMessage: messageID, label: "Espandi"), "la riga non parte compressa")
-        XCTAssertFalse(secondParagraph.exists, "il corpo è visibile con la riga compressa")
+        XCTAssertFalse(body.exists, "il corpo è visibile con la riga compressa")
 
         doubleClickTrailingHeaderArea(ofMessage: messageID)
-        XCTAssertTrue(secondParagraph.waitForExistence(timeout: 5), "il doppio clic non ha espanso la riga")
+        XCTAssertTrue(body.waitForExistence(timeout: 5), "il doppio clic non ha espanso la riga")
         XCTAssertTrue(waitForChevron(ofMessage: messageID, label: "Comprimi"), "lo chevron non dice «Comprimi»")
 
         doubleClickTrailingHeaderArea(ofMessage: messageID)
         XCTAssertTrue(
-            secondParagraph.waitForNonExistence(timeout: 5), "il secondo doppio clic non ha compresso la riga"
+            body.waitForNonExistence(timeout: 5), "il secondo doppio clic non ha compresso la riga"
         )
         XCTAssertTrue(waitForChevron(ofMessage: messageID, label: "Espandi"), "lo chevron non dice «Espandi»")
     }

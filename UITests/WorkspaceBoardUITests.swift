@@ -25,6 +25,8 @@ final class WorkspaceBoardUITests: PergamenumUITestCase {
     // Board coordinates of the fixture, mirrored here so a test can say what it
     // expects in the same units the file uses.
     private let cardA = CGRect(x: 0, y: 0, width: 240, height: 140)
+    /// The fixture card's node id: what the file records and what `canvas-node-<id>` names.
+    private static let cardAID = "aaaa000000000001"
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -43,7 +45,7 @@ final class WorkspaceBoardUITests: PergamenumUITestCase {
     // MARK: 1. A corner grip can be grabbed and resizes the card
 
     func testACornerGripResizesTheCard() throws {
-        let card = try element(labelled: "CARD A")
+        let card = try boardCard(Self.cardAID)
         card.click()
 
         // The grip is centred on the corner, so half of it lies outside the card:
@@ -51,7 +53,7 @@ final class WorkspaceBoardUITests: PergamenumUITestCase {
         let corner = card.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
         corner.dragTo(corner.withOffset(CGVector(dx: 160, dy: 90)))
 
-        let node = try waitForNode("aaaa000000000001") { $0.width > self.cardA.width + 100 }
+        let node = try waitForNode(Self.cardAID) { $0.width > self.cardA.width + 100 }
         XCTAssertGreaterThan(node.width, cardA.width + 100, "la card non è stata allargata")
         XCTAssertGreaterThan(node.height, cardA.height + 50, "la card non è stata allungata")
         // The grip moves the far edges only: the origin stays put.
@@ -86,15 +88,15 @@ final class WorkspaceBoardUITests: PergamenumUITestCase {
     /// Brings the Workspace pane up, whichever pane the app happened to open on,
     /// then explicitly selects the vault's root board. Since ADR-0024 (and 5041d5c
     /// before it) no board opens on its own - the pane lands on the browser/tree and
-    /// a row must be clicked, so this can no longer assume `CARD A` appears for free.
+    /// a row must be clicked, so this can no longer assume the card appears for free.
     private func openWorkspace() throws {
-        let board = app.staticTexts["CARD A"]
+        let board = cardElement(Self.cardAID)
         if board.waitForExistence(timeout: 5) { return }
 
         openSidebarRow("pane-workspace")
 
         let rootBoardID = "workspace-board-\(vault.lastPathComponent).canvas"
-        let row = app.descendants(matching: .any).matching(identifier: rootBoardID).firstMatch
+        let row = element(rootBoardID)
         if row.waitForExistence(timeout: 10) {
             row.click()
         }
@@ -103,11 +105,17 @@ final class WorkspaceBoardUITests: PergamenumUITestCase {
     }
 
     /// Every card draws an accessibility element the size of the card itself, which
-    /// is what lets a test aim at a corner without knowing the pan and the zoom.
-    private func element(labelled label: String) throws -> XCUIElement {
-        let element = app.staticTexts[label]
-        XCTAssertTrue(element.waitForExistence(timeout: 10), "elemento «\(label)» assente")
+    /// is what lets a test aim at a corner without knowing the pan and the zoom. Found by the
+    /// `canvas-node-<id>` identifier `BoardContentLayer` puts on that element, never by the
+    /// card's text (PG-265).
+    private func boardCard(_ nodeID: String) throws -> XCUIElement {
+        let element = cardElement(nodeID)
+        XCTAssertTrue(element.waitForExistence(timeout: 10), "card «\(nodeID)» assente")
         return element
+    }
+
+    private func cardElement(_ nodeID: String) -> XCUIElement {
+        element("canvas-node-\(nodeID)")
     }
 
     // Coordinates are always taken from an element, never from the application:

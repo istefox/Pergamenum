@@ -112,8 +112,7 @@ final class AttachmentChipContextMenuUITests: PergamenumUITestCase {
         chip.click()
 
         XCTAssertTrue(
-            app.staticTexts["L'allegato non è ancora disponibile in Mail. "
-                + "Verrà riprovato alla prossima sincronizzazione."].waitForExistence(timeout: 5),
+            element("attachment-pending-explanation").waitForExistence(timeout: 5),
             "il popover dell'allegato in attesa non è comparso dopo il clic sinistro"
         )
         app.typeKey(.escape, modifierFlags: [])
@@ -129,10 +128,6 @@ final class AttachmentChipContextMenuUITests: PergamenumUITestCase {
             element("pratiche-timeline").waitForExistence(timeout: 5),
             "la timeline non si è aperta dopo la selezione della pratica"
         )
-    }
-
-    private func element(_ identifier: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
     // MARK: - Context-menu lookup
@@ -158,19 +153,6 @@ final class AttachmentChipContextMenuUITests: PergamenumUITestCase {
             Thread.sleep(forTimeInterval: 0.1)
         } while Date() < deadline
         return false
-    }
-
-    /// Mirrors `PraticaMessageRow.hash(of:)` exactly (FNV-1a over the message id
-    /// string), so this file computes the same identifiers production draws without a
-    /// `@testable import` - every UI test in this suite follows this convention rather
-    /// than reaching into the production module.
-    private static func hash(_ messageID: String) -> String {
-        var value: UInt64 = 0xcbf2_9ce4_8422_2325
-        for byte in Array(messageID.utf8) {
-            value ^= UInt64(byte)
-            value &*= 0x0000_0100_0000_01b3
-        }
-        return String(value, radix: 16)
     }
 
     // MARK: - Fixture

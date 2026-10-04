@@ -6,7 +6,8 @@ import XCTest
 ///
 /// The alert's buttons are found by their accessibility identifiers (`quit-prompt-*`, ADR-0073
 /// departure 18), not by their titles: prose grows (`CLAUDE.md`). The note is found by its
-/// own name. The isolation flags are `PergamenumUITestCase`'s, as for every UI-test file.
+/// row's identifier, `note-row-Uscita.md` (PG-265). The isolation flags are
+/// `PergamenumUITestCase`'s, as for every UI-test file.
 ///
 /// Probe P2 (ADR-0073 §D8) is the other reason this file exists: if `app.terminate()` in a
 /// teardown reaches the delegate, a test that leaves a note dirty now meets the alert. This
@@ -34,7 +35,7 @@ final class QuitReviewUITests: PergamenumUITestCase {
     private var noteURL: URL { vault.appending(path: "Uscita.md", directoryHint: .notDirectory) }
 
     func testQuittingWithAnUnsavedNoteAsksAndSalvaWritesIt() throws {
-        let note = app.staticTexts["Uscita"]
+        let note = noteRow("Uscita.md")
         XCTAssertTrue(note.waitForExistence(timeout: 10), "la nota 'Uscita' non è nell'elenco")
         note.click()
         let editor = app.textViews.firstMatch

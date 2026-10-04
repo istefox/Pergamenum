@@ -83,6 +83,7 @@ struct GlobalSearchView: View {
                     vault.openNote(at: hit.path)
                     dismiss()
                 }
+                .accessibilityIdentifier("search-result-\(hit.path)")
             }
             .scrollContentBackground(.hidden)
             .accessibilityIdentifier("search-results")
