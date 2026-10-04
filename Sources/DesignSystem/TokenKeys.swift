@@ -115,11 +115,16 @@ enum FontToken: String, TokenKey {
     // calendar mark, a badge dot. Never customizable (`ThemeCustomization
     // .customizableFonts` stays the two page faces). `iconSmall` is what
     // `.caption2` resolves to on macOS (10 pt, medium); `iconBadge` replaces
-    // `.system(size: 7)`.
+    // `.system(size: 7)`; `iconDisplay` is the one size of the large glyph
+    // above an empty state (it replaced 26, 32 and 40 pt).
     case iconSmall = "font.icon.small"
     case iconBadge = "font.icon.badge"
+    case iconDisplay = "font.icon.display"
 
     var path: String { rawValue }
+
+    /// Whether this token sizes an SF Symbol rather than setting a text face.
+    var isGlyphSize: Bool { path.hasPrefix("font.icon.") }
 }
 
 enum SpacingToken: String, TokenKey {

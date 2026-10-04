@@ -323,7 +323,7 @@ struct RootView: View {
         if vault.root == nil {
             VStack(spacing: theme.spacing(.m)) {
                 Image(systemName: "folder")
-                    .font(.system(size: 40))
+                    .font(theme.font(.iconDisplay))
                     .foregroundStyle(theme.color(.textTertiary))
                 Text("Nessuna cartella note aperta").themedText(.title)
                 Text(explanation)

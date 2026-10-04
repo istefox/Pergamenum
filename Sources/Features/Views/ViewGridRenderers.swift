@@ -109,7 +109,7 @@ struct ViewThumbnail: View {
                 .fill(theme.color(target == nil ? .surfaceSunken : .surfaceRaised))
                 .overlay {
                     Image(systemName: symbol)
-                        .font(.system(size: 26))
+                        .font(theme.font(.iconDisplay))
                         .foregroundStyle(theme.color(target == nil ? .textTertiary : .textSecondary))
                 }
         }

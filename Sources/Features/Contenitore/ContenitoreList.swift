@@ -92,7 +92,7 @@ struct ContenitoreDocuments: View {
     private var empty: some View {
         VStack(spacing: theme.spacing(.m)) {
             Image(systemName: "archivebox")
-                .font(.system(size: 40))
+                .font(theme.font(.iconDisplay))
                 .foregroundStyle(theme.color(.textTertiary))
             if contenitore.filter.isActive || !contenitore.filter.query.isEmpty || contenitore.scope != .all {
                 Text("Nessun documento qui").themedText(.title)

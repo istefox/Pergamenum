@@ -862,6 +862,12 @@ system) and ADR-0030.
 7. **SF Symbols**: `MessageCommand.exclude` uses `xmark.circle` for a trash operation; two glyphs
    for "board" in `PratichePane+Links.swift:214` vs `PraticaLinkPicker.swift:209`; «attività» vs
    «task» oscillates across picker, inspector and errors.
+   *Update (PG-263):* the wording half is closed. Rule, now stated in SPEC §10: «Attività»
+   (capitalised) names only the pane/section (Vista ▸ Attività, the sidebar header, the
+   Impostazioni tab); an item and every verb on it say «task» (masculine). Applied to
+   `PraticaLinkPicker`, `PraticaCommand.linkTask`, `ReviewSheet` and `PlaudError`; «Ultima
+   attività» of a pratica is a different meaning and stays. This update does not touch the two
+   SF Symbols points above.
 8. **`CommandGroup(replacing: .help)` (`MenuCommands.swift:243`)** removes the built-in Help search
    field, the only `replacing:` in the file without a comment.
 9. **File menu**: 25 items in one group, and holds commands SPEC §10 puts in Modifica/Vista (Vai

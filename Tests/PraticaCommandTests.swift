@@ -65,7 +65,7 @@ import Testing
             .refresh: "Aggiorna ora",
             .revealInFinder: "Mostra nel Finder",
             .linkNote: "Collega una nota…",
-            .linkTask: "Collega un'attività…",
+            .linkTask: "Collega un task…",
             .linkBoard: "Collega una board…",
             .delete: "Elimina…",
         ]
