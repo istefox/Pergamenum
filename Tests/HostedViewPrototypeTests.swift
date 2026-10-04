@@ -203,7 +203,10 @@ struct HostedViewPrototypeTests {
     /// bounded and kept so the test stays correct if that ever changes.
     @Test func theForegroundLogCountsOtherApplicationsAndNeverThisOne() async throws {
         let center = NotificationCenter()
-        let log = ForegroundLog()
+        // A still foreground, so nothing in this test reads the machine's own applications:
+        // only the notifications posted below reach the log.
+        let still = ForegroundLog.Snapshot(frontmostPID: nil, runningPIDs: [])
+        let log = ForegroundLog(source: ForegroundLog.Source { still })
         log.startListening(to: center)
         defer { log.stopListening() }
         let current = NSRunningApplication.current
@@ -225,6 +228,117 @@ struct HostedViewPrototypeTests {
         let otherEventSeen = await Self.waitUntil { log.delivered == 3 }
         try #require(otherEventSeen)
         #expect(log.otherApplicationMoved)
+    }
+
+    /// A `ForegroundLog.Source` a test moves by hand.
+    @MainActor
+    private final class ForegroundScript {
+        var snapshot: ForegroundLog.Snapshot
+        init(_ snapshot: ForegroundLog.Snapshot) { self.snapshot = snapshot }
+        var source: ForegroundLog.Source { ForegroundLog.Source { self.snapshot } }
+    }
+
+    /// One poll case: the snapshot at `startListening`, the one at the diagnosis, and what the
+    /// report's poll must answer. This process is pid 100 throughout.
+    struct PollCase: Sendable, CustomTestStringConvertible {
+        let name: String
+        let start: ForegroundLog.Snapshot
+        let now: ForegroundLog.Snapshot
+        let moved: Bool
+        var testDescription: String { name }
+    }
+
+    nonisolated static let pollCases: [PollCase] = [
+        PollCase(
+            name: "frontmost changes to another pid",
+            start: .init(frontmostPID: 200, runningPIDs: [100, 200, 300]),
+            now: .init(frontmostPID: 300, runningPIDs: [100, 200, 300]), moved: true
+        ),
+        PollCase(
+            name: "a foreign pid joins the running set",
+            start: .init(frontmostPID: 200, runningPIDs: [100, 200]),
+            now: .init(frontmostPID: 200, runningPIDs: [100, 200, 400]), moved: true
+        ),
+        PollCase(
+            name: "a foreign pid leaves the running set",
+            start: .init(frontmostPID: 200, runningPIDs: [100, 200, 400]),
+            now: .init(frontmostPID: 200, runningPIDs: [100, 200]), moved: true
+        ),
+        PollCase(
+            name: "frontmost changes to this process",
+            start: .init(frontmostPID: 200, runningPIDs: [100, 200]),
+            now: .init(frontmostPID: 100, runningPIDs: [100, 200]), moved: false
+        ),
+        PollCase(
+            name: "nothing changes",
+            start: .init(frontmostPID: 200, runningPIDs: [100, 200]),
+            now: .init(frontmostPID: 200, runningPIDs: [100, 200]), moved: false
+        ),
+        PollCase(
+            name: "this process joins the running set",
+            start: .init(frontmostPID: 200, runningPIDs: [200]),
+            now: .init(frontmostPID: 200, runningPIDs: [100, 200]), moved: false
+        ),
+        PollCase(
+            name: "this process leaves the running set",
+            start: .init(frontmostPID: 200, runningPIDs: [100, 200]),
+            now: .init(frontmostPID: 200, runningPIDs: [200]), moved: false
+        ),
+    ]
+
+    /// PG-331: the report's poll. Another application becoming frontmost, or a foreign pid
+    /// joining or leaving the running set, reads as a move; this process becoming frontmost, or
+    /// its own pid coming and going, does not.
+    @Test(arguments: pollCases)
+    func theReportPollTellsAnotherApplicationFromThisOne(_ poll: PollCase) {
+        #expect(ForegroundLog.wouldMove(from: poll.start, to: poll.now, currentPID: 100) == poll.moved)
+    }
+
+    /// PG-331: the poll is the report's, never the decision's. With the foreground moved and no
+    /// notification delivered, `otherApplicationMoved` stays false and the diagnosis shows both.
+    @Test func theReportPollNeverSkipsTheAppLevelHalf() {
+        let start = ForegroundLog.Snapshot(frontmostPID: 200, runningPIDs: [100, 200])
+        let script = ForegroundScript(start)
+        let log = ForegroundLog(source: script.source, currentPID: 100)
+        log.startListening(to: NotificationCenter())
+        defer { log.stopListening() }
+
+        script.snapshot = .init(frontmostPID: 500, runningPIDs: [100, 200, 500])
+        let diagnosis = log.diagnose()
+        #expect(diagnosis.pollWouldMove)
+        #expect(!diagnosis.moved)
+        #expect(diagnosis.start == start && diagnosis.now == script.snapshot)
+        #expect(!log.otherApplicationMoved)
+        #expect(log.delivered == 0)
+    }
+
+    /// PG-331: the issue `neverShown` records when it answers false names every input: both
+    /// halves at the start and now, the notification-driven decision, what the report's poll
+    /// would have said, the foreground's start and now, and the notifications delivered.
+    @Test func theNeverShownReportNamesEveryInput() {
+        let start = ForegroundLog.Snapshot(
+            frontmostPID: 200, runningPIDs: [100, 200, 300], names: [100: "Me", 200: "Xcode", 300: "Old"]
+        )
+        let now = ForegroundLog.Snapshot(
+            frontmostPID: 400, runningPIDs: [100, 200, 400], names: [100: "Me", 200: "Xcode", 400: "Host"]
+        )
+        let state = NeverShown.State(
+            windowVisible: false, windowKey: false, activeAtStart: true, activeNow: false,
+            keyWindowAtStart: "NSWindow #7 \"Pergamenum\"", keyWindowNow: "none", keyWindowUnchanged: false,
+            foreground: ForegroundLog.Diagnosis(
+                moved: false, pollWouldMove: true, start: start, now: now,
+                notifications: ["launch 400 Host +0.120s"]
+            )
+        )
+        #expect(NeverShown.report(state) == """
+            neverShown is false (PG-331 diagnosis)
+            window: visible=false key=false
+            app: isActive start=true now=false; keyWindow start=NSWindow #7 "Pergamenum" now=none changed=true
+            foreground: moved=false (from notifications); foreground poll would say moved=true (report only, not counted)
+            frontmost: start=200 Xcode now=400 Host
+            running: appeared [400 Host] vanished [300 Old]
+            notifications: [launch 400 Host +0.120s]
+            """)
     }
 
     /// PG-331: `neverShown`'s whole truth table. A shown or key window always fails; with no
