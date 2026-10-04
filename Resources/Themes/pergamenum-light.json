@@ -111,6 +111,9 @@
       },
       "badge": {
         "$value": { "fontFamily": "system", "fontSize": 7, "fontWeight": 400, "lineHeight": 1.0 }
+      },
+      "display": {
+        "$value": { "fontFamily": "system", "fontSize": 32, "fontWeight": 400, "lineHeight": 1.0 }
       }
     }
   },

@@ -48,7 +48,7 @@ enum PraticaCommand: String, CaseIterable, Sendable {
         case .refresh: "Aggiorna ora"
         case .revealInFinder: "Mostra nel Finder"
         case .linkNote: "Collega una nota…"
-        case .linkTask: "Collega un'attività…"
+        case .linkTask: "Collega un task…"
         case .linkBoard: "Collega una board…"
         case .delete: "Elimina…"
         }

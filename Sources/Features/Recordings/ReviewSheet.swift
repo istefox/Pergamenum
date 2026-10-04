@@ -228,7 +228,7 @@ struct ReviewSheet: View {
             if state.showsNoActionItemsBanner {
                 Section {
                     Text(
-                        "Nessuna attività proposta per questa registrazione. "
+                        "Nessun task proposto per questa registrazione. "
                             + "Importare solo la trascrizione è comunque valido."
                     )
                         .themedText(.caption, color: .textSecondary)
@@ -317,7 +317,7 @@ struct ReviewSheet: View {
 
     private var acceptedSummary: String {
         let accepted = acceptedTaskIDs.count
-        return accepted == 1 ? "1 attività accettata" : "\(accepted) attività accettate"
+        return accepted == 1 ? "1 task accettato" : "\(accepted) task accettati"
     }
 
     // MARK: Decisions, written through as they are taken (R-10)

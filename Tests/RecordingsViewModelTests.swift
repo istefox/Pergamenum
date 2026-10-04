@@ -67,7 +67,7 @@ private func sampleRecording(
 @Test func aFailedRowShowsItsReadableErrorVerbatimAndOffersOnlyRiprova() {
     // R-07: the row must show the message the controller already mapped through
     // `PlaudError.readableLastError`, never re-derive or truncate it.
-    let readable = "Il servizio non è riuscito a estrarre le attività dalla trascrizione. Riprova l'elaborazione."
+    let readable = "Il servizio non è riuscito a estrarre i task dalla trascrizione. Riprova l'elaborazione."
     let row = RecordingRowPresentation.make(state: .failed, rowError: readable)
     #expect(row.badgeText == "fallita")
     #expect(row.actions == [.riprova])

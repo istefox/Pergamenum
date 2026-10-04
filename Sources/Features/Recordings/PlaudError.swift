@@ -42,13 +42,13 @@ enum PlaudError: Error, Equatable, Sendable {
         case .proposalNotFound:
             return "Nessuna proposta disponibile: elabora la registrazione prima di rivederla."
         case .payloadTooLarge:
-            return "Richiesta troppo grande: il servizio ha rifiutato l'elenco delle attività."
+            return "Richiesta troppo grande: il servizio ha rifiutato l'elenco dei task."
         case .serviceDisconnected:
             return "Plaud non è collegato: collega il registratore e riprova."
         case .invalidImportBody:
-            return "Richiesta di conferma non valida: riprova la revisione delle attività."
+            return "Richiesta di conferma non valida: riprova la revisione dei task."
         case .invalidTaskIDs:
-            return "Alcune attività selezionate non appartengono più a questa proposta: aggiorna e riprova."
+            return "Alcuni task selezionati non appartengono più a questa proposta: aggiorna e riprova."
         case let .transportFailure(detail):
             return "Servizio Plaud non raggiungibile su 127.0.0.1:3777. Dettaglio: \(detail)"
         case let .decodeFailure(detail):
@@ -95,7 +95,7 @@ enum PlaudError: Error, Equatable, Sendable {
     /// through to the fallback on the next chunk number.
     static func readableLastError(_ raw: String) -> String {
         if raw.hasPrefix("extraction_invalid") {
-            return "Il servizio non è riuscito a estrarre le attività dalla trascrizione. Riprova l'elaborazione."
+            return "Il servizio non è riuscito a estrarre i task dalla trascrizione. Riprova l'elaborazione."
         }
         if raw.hasPrefix("cleanup returned no text") {
             return "La pulizia della trascrizione non ha prodotto testo per una parte della registrazione. Riprova l'elaborazione."

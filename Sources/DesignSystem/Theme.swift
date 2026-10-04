@@ -320,6 +320,7 @@ extension Theme {
             // SF Symbol glyph sizes in controls, not text faces.
             .iconSmall: TypographyValue(family: .system, size: 10, weight: 500, lineHeight: 1.0),
             .iconBadge: TypographyValue(family: .system, size: 7, weight: 400, lineHeight: 1.0),
+            .iconDisplay: TypographyValue(family: .system, size: 32, weight: 400, lineHeight: 1.0),
         ],
         spacings: [
             .xs: 4, .s: 8, .m: 16, .l: 24, .xl: 40,

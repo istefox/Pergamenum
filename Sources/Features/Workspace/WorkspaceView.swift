@@ -249,7 +249,7 @@ struct WorkspaceView: View {
     private var emptyState: some View {
         VStack(spacing: theme.spacing(.s)) {
             Image(systemName: "square.grid.2x2")
-                .font(.system(size: 32))
+                .font(theme.font(.iconDisplay))
                 .foregroundStyle(theme.color(.textTertiary))
             Text("Nessuna board aperta").themedText(.body, color: .textSecondary)
             Text("Seleziona una board dall'elenco a sinistra").themedText(.caption, color: .textTertiary)

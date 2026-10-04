@@ -95,7 +95,7 @@ struct PraticaLinkPicker: View {
     private var title: String {
         switch request.kind {
         case .note: "Collega una nota"
-        case .task: "Collega un'attività"
+        case .task: "Collega un task"
         case .board: "Collega una board"
         }
     }
@@ -191,7 +191,7 @@ struct PraticaLinkPicker: View {
             }
         }
         if filteredTasks.isEmpty {
-            emptyRow(tasks.isEmpty ? "Nessuna attività nel vault" : "Nessuna attività trovata")
+            emptyRow(tasks.isEmpty ? "Nessun task nel vault" : "Nessun task trovato")
         }
     }
 
@@ -273,7 +273,7 @@ struct PraticaLinkPicker: View {
             boardCreationSheet
         case .note, .task:
             PraticaLinkCreationSheet(
-                title: request.kind == .note ? "Nuova nota" : "Nuova attività",
+                title: request.kind == .note ? "Nuova nota" : "Nuovo task",
                 placeholder: request.kind == .note ? "Titolo della nota" : "Che cosa c'è da fare",
                 text: $creationText,
                 onConfirm: {
