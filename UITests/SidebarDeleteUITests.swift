@@ -35,7 +35,9 @@ final class SidebarDeleteUITests: PergamenumUITestCase {
         let sheet = app.sheets.firstMatch
         XCTAssertTrue(sheet.waitForExistence(timeout: 5), "il dialogo di conferma non è comparso")
         // Scoped to the sheet, not `app.buttons[...]`: the destructive button's title also
-        // matches other, unrelated controls in the wider accessibility tree.
+        // matches other, unrelated controls in the wider accessibility tree. Found by title
+        // on purpose (PG-265): whether a `confirmationDialog` button carries its identifier
+        // on macOS has not been measured on screen yet.
         let confirm = sheet.buttons["Sposta nel Cestino"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5), "manca il bottone «Sposta nel Cestino»")
         confirm.click()

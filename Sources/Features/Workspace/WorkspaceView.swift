@@ -252,6 +252,7 @@ struct WorkspaceView: View {
                 .font(theme.font(.iconDisplay))
                 .foregroundStyle(theme.color(.textTertiary))
             Text("Nessuna board aperta").themedText(.body, color: .textSecondary)
+                .accessibilityIdentifier("workspace-empty")
             Text("Seleziona una board dall'elenco a sinistra").themedText(.caption, color: .textTertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
