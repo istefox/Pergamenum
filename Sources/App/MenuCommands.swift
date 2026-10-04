@@ -25,15 +25,14 @@ struct ViewCommands: Commands {
                 Button(pane.title) { actions.run(pane.shortcut) }
                     .keyboardShortcut(shortcuts.shortcut(for: pane.shortcut))
             }
-            // Navigation, so it sits with the panes; SPEC §10 does not name it (PG-263).
+            // Navigation, so they sit with the panes rather than in File (PG-263).
             Button("Vai alla nota…") { actions.run(.quickSwitcher) }
                 .keyboardShortcut(shortcuts.shortcut(for: .quickSwitcher))
                 .disabled(!actions.canRun(.quickSwitcher))
+            Button("Cronologia…") { actions.run(.noteHistory) }
+                .keyboardShortcut(shortcuts.shortcut(for: .noteHistory))
+                .disabled(!actions.canRun(.noteHistory))
             Divider()
-            // Not Cmd+Shift+E, which SPEC §10 assigns to the source/style toggle:
-            // the Calendario menu already binds that key to "Nuovo promemoria", and a
-            // second command on the same key simply never fires. The collision with
-            // the spec predates this menu entry and is left as it is.
             // Left as a `Toggle` rather than routed through `actions.run`: the checkmark
             // beside it is the state, and a button would lose it. The binding is the
             // action here, so there is no second copy to drift.
@@ -152,11 +151,11 @@ struct CalendarCommands: Commands {
             }
 
             Divider()
-            Button("Nuovo evento") { actions.run(.newEvent) }
+            Button(ShortcutCommand.newEvent.title) { actions.run(.newEvent) }
                 .keyboardShortcut(shortcuts.shortcut(for: .newEvent))
                 .disabled(!actions.canRun(.newEvent))
 
-            Button("Nuovo promemoria") { actions.run(.newReminder) }
+            Button(ShortcutCommand.newReminder.title) { actions.run(.newReminder) }
                 .keyboardShortcut(shortcuts.shortcut(for: .newReminder))
                 .disabled(!actions.canRun(.newReminder))
 

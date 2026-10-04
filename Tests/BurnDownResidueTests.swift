@@ -90,3 +90,84 @@ import Testing
     #expect(Set(names).count == DiaryColour.allCases.count)
     #expect(names == ["Blu", "Verde", "Giallo", "Rosa", "Grigio"])
 }
+
+// MARK: - The four sheet commands take an ellipsis (PG-263, ROADMAP Chain 10 item 4)
+
+/// Each of these opens a sheet that asks for something (a board name, a task, an event, a
+/// reminder), and the repo's rule is «ellipsis where a dialog follows». Catalogue pin: the menu,
+/// the day cells and the settings list all read these strings.
+@Test func theFourSheetCommandsEndWithAnEllipsis() {
+    #expect(ShortcutCommand.newBoard.title == "Nuova board…")
+    #expect(ShortcutCommand.quickTask.title == "Nuovo task rapido…")
+    #expect(ShortcutCommand.newEvent.title == "Nuovo evento…")
+    #expect(ShortcutCommand.newReminder.title == "Nuovo promemoria…")
+    for command in [ShortcutCommand.newBoard, .quickTask, .newEvent, .newReminder] {
+        #expect(command.title.hasSuffix("…"), "«\(command.title)» opens a sheet and has no ellipsis")
+    }
+}
+
+/// The menu bar shows the catalogue title for these four rather than a second hand-typed string,
+/// so the menu and the settings list cannot drift apart again. Text scan of the two menu files,
+/// the shape of the Edit-menu guard above.
+@Test func theFourSheetCommandsAreSpelledOnlyByTheCatalogueInTheMenuBar() throws {
+    let root = try resolvedRepoRoot()
+    let file = try menuSource("VaultCommands.swift", under: root)
+    let menus = try menuSource("MenuCommands.swift", under: root)
+    let source = file + menus
+
+    for literal in ["Nuova board", "Nuovo task rapido", "Nuovo evento", "Nuovo promemoria"] {
+        #expect(!source.contains("Button(\"\(literal)"), "a menu spells «\(literal)» by hand again")
+    }
+    for command in ["newBoard", "quickTask"] {
+        #expect(file.contains("Button(ShortcutCommand.\(command).title)"), "File does not read .\(command).title")
+    }
+    for command in ["newEvent", "newReminder"] {
+        #expect(menus.contains("Button(ShortcutCommand.\(command).title)"), "Calendario misses .\(command).title")
+    }
+}
+
+// MARK: - File holds only what SPEC §10 puts there (PG-263, ROADMAP Chain 10 item 9)
+
+private func menuSource(_ name: String, under root: URL) throws -> String {
+    try String(contentsOf: root.appendingPathComponent("Sources/App/\(name)"), encoding: .utf8)
+}
+
+/// The source text between `struct <name>` and the next top-level `struct`, so a command found
+/// there is in that menu and not merely in the same file.
+private func commandsBody(named name: String, in source: String) throws -> Substring {
+    let start = try #require(source.range(of: "struct \(name): Commands"), "no struct \(name) in the scanned file")
+    let rest = source[start.upperBound...]
+    let end = rest.range(of: "\nstruct ")?.lowerBound ?? rest.endIndex
+    return rest[..<end]
+}
+
+/// Search and the copy link are Modifica's, navigation and history are Vista's: none of them is
+/// in File any more, and each is in the menu SPEC §10 names. Every shortcut stays on its command,
+/// since the buttons still read `shortcuts.shortcut(for:)` for the same case.
+@Test func theFileMenuNoLongerHoldsSearchNavigationOrHistory() throws {
+    let root = try resolvedRepoRoot()
+    let file = try menuSource("VaultCommands.swift", under: root)
+    let menus = try menuSource("MenuCommands.swift", under: root)
+    let fileMenu = try commandsBody(named: "VaultCommands", in: file)
+    let editMenu = try commandsBody(named: "EditCommands", in: menus)
+    let viewMenu = try commandsBody(named: "ViewCommands", in: menus)
+
+    let moved: [String: [String]] = [
+        "Modifica": ["globalSearch", "copyLink"],
+        "Vista": ["quickSwitcher", "noteHistory", "quickLook"],
+    ]
+    let bodies: [String: Substring] = ["Modifica": editMenu, "Vista": viewMenu]
+    for (name, commands) in moved {
+        let menu = try #require(bodies[name])
+        for command in commands {
+            let run = "actions.run(.\(command))"
+            #expect(!fileMenu.contains(run), "File still runs .\(command)")
+            #expect(menu.contains(run), "\(name) does not run .\(command)")
+            #expect(menu.contains("shortcuts.shortcut(for: .\(command))"), "\(name) lost .\(command)'s shortcut")
+        }
+    }
+    // What stays in File, so a scan of the wrong struct cannot pass on an empty body.
+    for command in ["newNote", "newBoard", "quickTask", "save", "revealInFinder", "closeTab"] {
+        #expect(fileMenu.contains("actions.run(.\(command))"), "File no longer runs .\(command)")
+    }
+}
