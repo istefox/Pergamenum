@@ -28,7 +28,7 @@ final class QuitReviewUITests: PergamenumUITestCase {
         """.write(to: noteURL, atomically: true, encoding: .utf8)
 
         launchApp()
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
+        waitForMainWindow()
     }
 
     private var noteURL: URL { vault.appending(path: "Uscita.md", directoryHint: .notDirectory) }

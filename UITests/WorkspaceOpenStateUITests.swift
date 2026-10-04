@@ -35,8 +35,8 @@ final class WorkspaceOpenStateUITests: PergamenumUITestCase {
         try makeFixtureBoards()
 
         launchApp()
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
-        app.staticTexts["Workspace"].click()
+        waitForMainWindow()
+        sidebarRow("pane-workspace").click()
         XCTAssertTrue(app.textFields["workspace-filter"].waitForExistence(timeout: 10))
     }
 

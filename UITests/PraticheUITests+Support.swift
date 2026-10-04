@@ -5,17 +5,6 @@ import XCTest
 // themselves stay in `PraticheUITests.swift`, unchanged. A member below that the tests call is
 // `internal` rather than `private`, since `private` does not reach across files; each says so.
 extension PraticheUITests {
-    /// Not `private`: `PraticheUITests.swift`'s `setUpWithError` calls it.
-    func showPratiche() {
-        let row = app.staticTexts["Pratiche"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5), "la sezione Pratiche non è nella barra laterale")
-        row.click()
-        XCTAssertTrue(
-            element("pratiche-pane").waitForExistence(timeout: 5),
-            "la sezione Pratiche non si è aperta"
-        )
-    }
-
     /// Not `private`: `PraticheUITests.swift`'s tests call it.
     func element(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch

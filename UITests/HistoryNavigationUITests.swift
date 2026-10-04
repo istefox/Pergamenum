@@ -6,9 +6,9 @@ import XCTest
 /// unit test in a SwiftUI project can reach: whether the two buttons are in the window at all,
 /// and whether the observer that fills the history is attached.
 ///
-/// Every control is found by `accessibilityIdentifier`. The sidebar rows are the exception the
-/// whole suite already makes - their titles are the pane names, which are a contract of their
-/// own - and `-disableCalendar YES` keeps `EventKitStore` away from somebody's real diary.
+/// Every control is found by `accessibilityIdentifier`, the sidebar rows included
+/// (`sidebarRow(_:)`), and `-disableCalendar YES` keeps `EventKitStore` away from somebody's
+/// real diary.
 ///
 /// The off-until-somewhere-to-go test retired here per the UI-suite-replacement census (stage
 /// 3, Task 6): its two initial checks were true with no recorder attached, so it wasn't
@@ -24,9 +24,9 @@ final class HistoryNavigationUITests: PergamenumUITestCase {
     func testTheArrowsWalkThePanesInOrder() throws {
         launch()
 
-        show("Tag")
+        show("pane-tags")
         XCTAssertTrue(tagList.waitForExistence(timeout: 5), "la pane Tag non è comparsa")
-        show("Viste")
+        show("pane-views")
         XCTAssertTrue(viewsPane.waitForExistence(timeout: 5), "la pane Viste non è comparsa")
 
         back.click()
@@ -41,12 +41,12 @@ final class HistoryNavigationUITests: PergamenumUITestCase {
 
     private func launch() {
         launchApp()
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
+        waitForMainWindow()
     }
 
-    private func show(_ pane: String) {
-        let row = app.staticTexts[pane].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5), "manca la sezione \(pane)")
+    private func show(_ itemID: String) {
+        let row = sidebarRow(itemID)
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "manca la riga «sidebar-\(itemID)»")
         row.click()
     }
 

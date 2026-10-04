@@ -20,9 +20,9 @@ struct VaultTopBar: View {
         //
         // An explicit identifier on every segment, distinct from the visible label
         // (2026-08-28, recovery checkpoint): the bare root crumb reads "Note", byte-identical
-        // to the pane switcher's own `staticTexts["Note"]` row
-        // (`WorkspaceIntegrationUITests.openPane`), and with no identifier of its own a
-        // `Text` answers a lookup by its label - that ambiguity is what broke
+        // to the pane switcher's own row (which UI tests now find by its `sidebar-pane-notes`
+        // identifier, `PergamenumUITestCase.sidebarRow(_:)`), and with no identifier of its
+        // own a `Text` answers a lookup by its label - that ambiguity is what broke
         // `testSendingANoteFromAFolderWithNoBoardsToTheWorkspace…` the first time the full UI
         // suite ran after this bar shipped.
         BreadcrumbBar(

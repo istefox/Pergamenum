@@ -42,8 +42,8 @@ final class DayViewUITests: PergamenumUITestCase {
         )
 
         launchApp()
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
-        app.staticTexts["Oggi"].firstMatch.click()
+        waitForMainWindow()
+        sidebarRow("pane-today").click()
     }
 
     /// In the machine's own zone, because `CalendarDate.today` is: formatted in GMT
@@ -71,9 +71,11 @@ final class DayViewUITests: PergamenumUITestCase {
 
         let parts = target.split(separator: "-")
         let shown = "\(parts[2])/\(parts[1])/\(parts[0])"
-        XCTAssertTrue(
-            app.staticTexts[shown].waitForExistence(timeout: 5),
-            "la vista non si è spostata su \(shown)"
-        )
+        // `TodayView.header`'s date, by identifier and then by `value` - the string a plain
+        // `Text` carries on macOS - so no other text reading the same date can answer.
+        let header = app.staticTexts
+            .matching(NSPredicate(format: "identifier == %@ AND value == %@", "today-header-date", shown))
+            .firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 5), "la vista non si è spostata su \(shown)")
     }
 }

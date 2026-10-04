@@ -55,7 +55,7 @@ final class SidebarMoveUITests: PergamenumUITestCase {
         try makeVault()
 
         launchApp()
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10), "il vault non si è aperto")
+        waitForMainWindow()
     }
 
     // MARK: R-01 - a board row's «Sposta in ▸ B» moves the file, the tree reflects it with no rescan
@@ -162,7 +162,7 @@ final class SidebarMoveUITests: PergamenumUITestCase {
     // MARK: Navigation
 
     private func openWorkspace() {
-        app.staticTexts["Workspace"].click()
+        sidebarRow("pane-workspace").click()
         XCTAssertTrue(app.textFields["workspace-filter"].waitForExistence(timeout: 10),
                      "il browser del Workspace non si è aperto")
     }

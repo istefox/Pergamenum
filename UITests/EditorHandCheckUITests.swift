@@ -27,7 +27,7 @@ final class EditorHandCheckUITests: PergamenumUITestCase {
         )
 
         launchApp()
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
+        waitForMainWindow()
     }
 
     /// G2 H10. Each character goes to the field, none to the note, and Return steps through the
@@ -63,7 +63,7 @@ final class EditorHandCheckUITests: PergamenumUITestCase {
 
     /// G2 H16, Diario. A list item continues on Return in the diary's editor.
     func testTheDiaryEditorContinuesAList() {
-        let row = app.staticTexts["Diario"].firstMatch
+        let row = sidebarRow("pane-diary")
         XCTAssertTrue(row.waitForExistence(timeout: 10), "la voce Diario non c'è")
         row.click()
         assertListContinues(in: editor(identifiedBy: "diary-editor"), loadedWhen: { $0.contains("date:") })
@@ -71,7 +71,7 @@ final class EditorHandCheckUITests: PergamenumUITestCase {
 
     /// G2 H16, Oggi. The same check in the day's own note.
     func testTheTodayEditorContinuesAList() {
-        let row = app.staticTexts["Oggi"].firstMatch
+        let row = sidebarRow("pane-today")
         XCTAssertTrue(row.waitForExistence(timeout: 10), "la voce Oggi non c'è")
         row.click()
         let open = app.descendants(matching: .any).matching(identifier: "today-open-daily-note").firstMatch

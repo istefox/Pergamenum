@@ -43,9 +43,9 @@ final class WorkspaceIntegrationUITests: PergamenumUITestCase {
 
     func testSendingANoteFromAnAmbiguousFolderToTheWorkspaceSelectsTheFolderAndRecordsAProblem() throws {
         launch()
-        openPane("Note")
+        openPane("pane-notes")
         openNoteInEditor(titled: ambiguousNoteTitle)
-        openPane("Workspace")
+        openPane("pane-workspace")
 
         app.menuBars.menuItems["Apri nel Workspace"].click()
 
@@ -58,21 +58,18 @@ final class WorkspaceIntegrationUITests: PergamenumUITestCase {
 
     private func launch() {
         launchApp()
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 15), "il vault non si è aperto")
+        waitForMainWindow(timeout: 15)
     }
 
     // MARK: Panes
 
-    private func openPane(_ title: String) {
-        // Scoped to the sidebar (`RootView`'s `"root-sidebar"`, 2026-08-28 recovery
-        // checkpoint), not to the whole app: a pane's own breadcrumb bar draws the same
-        // bare pane name as its root segment when nothing is open in it
-        // (`VaultTopBar`/`BoardChrome`), and an app-wide lookup by words collides with
-        // it the moment that pane is also the one active at launch.
-        let row = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier == %@", "root-sidebar"))
-            .staticTexts[title]
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "manca la sezione «\(title)»")
+    private func openPane(_ itemID: String) {
+        // By the row's own `sidebar-<id>` identifier (`RootView.row(_:)`, PG-265), not by
+        // its words: a pane's own breadcrumb bar draws the same bare pane name as its root
+        // segment when nothing is open in it (`VaultTopBar`/`BoardChrome`), and a lookup by
+        // words collides with it the moment that pane is also the one active at launch.
+        let row = sidebarRow(itemID)
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "manca la riga «sidebar-\(itemID)»")
         row.click()
     }
 
