@@ -125,7 +125,8 @@ final class VaultController {
     /// view's own state, which is why it is `@ObservationIgnored`. A folder relocation
     /// (move or rename, forward and inverse alike, since both go through `follow(_:)`)
     /// hands its old/new paths here so path-keyed feature state - Pratiche's ledger
-    /// today (ADR-0026 §D7) - can follow rather than silently orphan. `nil` in every
+    /// (ADR-0026 §D7) and the Contenitore's scope and selection (PG-344) - can follow
+    /// rather than silently orphan. `nil` in every
     /// test that builds a bare `VaultController`, and the moves just go unfollowed.
     @ObservationIgnored var didRelocateFolders: (([MovedNote]) -> Void)?
 
