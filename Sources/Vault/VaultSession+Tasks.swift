@@ -31,13 +31,28 @@ extension VaultSession {
         case inbox
         case note(String)
 
+        /// The inbox note of a vault with no inbox folder set, which is what
+        /// `VaultSession.inboxNotePath` resolves to by default. Not where the inbox *is*:
+        /// ask the session for that (ADR-0080 §D5).
         static let inboxPath = "00 Inbox/Capture.md"
+    }
 
-        var relativePath: String {
-            switch self {
-            case .inbox: Self.inboxPath
-            case .note(let path): path
-            }
+    /// The vault's inbox folder, `settings.inboxFolder` resolved on every read (ADR-0080
+    /// §D5). Nothing caches the value, so a change takes effect at the next capture
+    /// without a relaunch; a refused stored value reads as `00 Inbox`. Only the boundary
+    /// is reused, the session's own, built once at open.
+    var inboxFolder: String { VaultSettings.resolveInboxFolder(settings.inboxFolder, boundary: boundary) }
+
+    /// The inbox note inside `inboxFolder`, created from `inboxTemplate` on first use.
+    var inboxNotePath: String { "\(inboxFolder)/Capture.md" }
+
+    /// The vault-relative path a task destination writes to. The one answer to "where is
+    /// the inbox", so no call site can reach a literal by accident (ADR-0041 §D1's rule
+    /// applied to a path).
+    func relativePath(of destination: TaskDestination) -> String {
+        switch destination {
+        case .inbox: inboxNotePath
+        case .note(let path): path
         }
     }
 
@@ -190,7 +205,9 @@ extension VaultSession {
     /// to compare against `CanvasStore.save`'s own guard. This branch reads the board
     /// again immediately before writing (ADR-0054 §D6), which is what stops the
     /// read-modify-write from straddling an autosave the open board makes in between.
-    private func writeTaskSource(_ updated: String, for task: TaskItem, expecting: String? = nil) async throws -> WriteResult {
+    private func writeTaskSource(
+        _ updated: String, for task: TaskItem, expecting: String? = nil
+    ) async throws -> WriteResult {
         guard task.sourcePath.hasSuffix(".\(CanvasStore.fileExtension)") else {
             return try await write(updated, to: task.sourcePath, expecting: expecting)
         }
@@ -223,7 +240,7 @@ extension VaultSession {
     func captureTask(_ draft: TaskDraft) async -> WriteResult? {
         guard !draft.isEmpty else { return nil }
         if let parent = draft.parent { return await captureSubtask(draft, below: parent) }
-        let relativePath = draft.destination.relativePath
+        let relativePath = self.relativePath(of: draft.destination)
 
         do {
             let existing = try? read(relativePath)

@@ -14,21 +14,18 @@ import Foundation
 extension VaultAPI {
     /// Where a captured line goes.
     enum CaptureDestination: Equatable, Sendable {
-        /// A new note, titled by the first line. `nil` folder means the inbox folder.
+        /// A new note, titled by the first line. `nil` folder means the vault's inbox
+        /// folder (`VaultSession.inboxFolder`), the same folder the inbox note lives in, so
+        /// a vault does not grow a second idea of where unsorted things go.
         case newNote(folder: String?)
-        /// A task line. `nil` note means the fixed inbox note (`TaskDestination.inboxPath`);
-        /// an existing note's path means the task is written there instead.
+        /// A task line. `nil` note means the vault's inbox note (`VaultSession.inboxNotePath`,
+        /// `TaskDestination.inboxPath` when nothing is set); an existing note's path means the
+        /// task is written there instead.
         case task(note: String?)
         /// The end of today's daily note, created if today has none yet.
         case today
         /// The end of a note that already exists.
         case note(String)
-
-        /// The folder a captured note lands in when the caller names none.
-        ///
-        /// The same folder the inbox note lives in (`TaskDestination.inboxPath`), so a
-        /// vault does not grow a second idea of where unsorted things go.
-        static let defaultFolder = "00 Inbox"
 
         /// Reads what a caller wrote, in either language: a shell and a model both type
         /// the word they saw somewhere else.
@@ -102,8 +99,9 @@ extension VaultAPI {
 
     // MARK: Today
 
-    /// Today's daily note, created from the template when the day has none, then the
-    /// text on the end of it.
+    /// Today's daily note, created when the day has none (the daily frontmatter,
+    /// `type-note` alone, and an empty body: there is no daily template), then the text on
+    /// the end of it.
     ///
     /// Two writes for one capture, and the summary describes the second: the first is
     /// the note coming into existence, which `dailyNote(for:)` has always done on
@@ -137,28 +135,33 @@ extension VaultAPI {
 
     /// The first line titles the note, the rest becomes its body.
     ///
-    /// One field captures both because the panel has one field. The title still goes
-    /// through `NoteName` like any other: capture is a faster way to write a note, not
-    /// a way around the conventions, and a refused title comes back with its reason
-    /// rather than being quietly corrected (SPEC §4.2).
+    /// One field captures both because the panel has one field. A first line
+    /// `NoteName` refuses is not refused here: `CaptureTitle.derive` makes a legal title
+    /// from it, and the whole text, first line included, becomes the body, so nothing
+    /// typed is lost (ADR-0080 §D3). `createNote` still refuses an invalid title; it is
+    /// never handed one. A derived title already taken is refused like a typed one.
     @MainActor
     private static func captureAsNote(
         _ session: VaultSession, text: String, folder: String?
     ) async throws -> WriteSummary {
-        // Split at the first line break read as `LineBreak` reads one: `"\r\n"` is one
-        // `Character`, so a split on `"\n"` left its `"\r"` on the title and in the file name
-        // (PG-327). The body is the bytes after that break, as given: `append` decides its
-        // breaks from the note's own (PG-322).
-        let firstBreak = text.firstIndex(where: LineBreak.isTerminator)
-        let title = text[..<(firstBreak ?? text.endIndex)].trimmingCharacters(in: .whitespaces)
-        let rest = firstBreak
-            .map { String(text[text.index(after: $0)...]) }?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // Split at the first line break as the typed line reads one (`CaptureTitle.endsTypedLine`):
+        // `"\r\n"` is one `Character`, so a split on `"\n"` left its `"\r"` on the title and in
+        // the file name (PG-327). The body is the bytes after that break, as given: `append`
+        // decides its breaks from the note's own (PG-322).
+        let firstBreak = text.firstIndex(where: CaptureTitle.endsTypedLine)
+        let derived = CaptureTitle.derive(
+            fromTypedLine: CaptureTitle.typedLine(of: text), now: Date(), calendar: .current
+        )
+        let rest = derived.differsFromTyped
+            ? text.trimmingCharacters(in: .whitespacesAndNewlines)
+            : firstBreak
+                .map { String(text[text.index(after: $0)...]) }?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
         let created = try await createNote(
             session,
-            title: title,
-            folder: folder ?? CaptureDestination.defaultFolder,
+            title: derived.title,
+            folder: folder ?? session.inboxFolder,
             topic: nil,
             date: nil
         )

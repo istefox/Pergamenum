@@ -31,6 +31,10 @@ final class VaultSession {
     /// and the watcher and the recents list both want the spelling the user gave.
     let root: URL
     let store: NoteStore
+    /// The vault boundary over `root`, built once at `init` (ADR-0080 §D5). A reader a view
+    /// evaluates per keystroke, `inboxFolder`, resolves through it, so the root's symlinks are
+    /// not resolved again on every read (ADR-0063's reason for `EmbedTable`).
+    @ObservationIgnored let boundary: VaultBoundary
     /// Every note write's own history, always on (ADR-0011 D2) - unlike `journal`
     /// below, which a connector opts into for its own reason.
     @ObservationIgnored let history: NoteHistory
@@ -228,6 +232,7 @@ final class VaultSession {
     init(root: URL, stateBase: URL, bundledVocabulary: URL? = nil) {
         self.root = root
         self.store = NoteStore(root: root)
+        self.boundary = VaultBoundary(root: root)
         self.bundledVocabulary = bundledVocabulary
 
         // Settings first, because the vault id lives in them and `state` needs it

@@ -182,6 +182,23 @@ enum ImportNaming {
         return kept.joined(separator: "-")
     }
 
+    /// Cuts space-separated prose to `limit` characters at the last space that keeps it
+    /// within the limit, or at `limit` itself when the first word is longer (ADR-0080 §D4).
+    ///
+    /// Beside `truncatedAtWordBoundary` rather than a generalisation of it: that one cuts
+    /// a hyphen-joined slug and feeds two protected names, and a capture title is prose.
+    static func truncatedAtSpace(_ text: String, toFit limit: Int) -> String {
+        guard limit > 0 else { return "" }
+        guard text.count > limit else { return text }
+        // One character past the limit, so a space right at the limit still counts.
+        let window = text.prefix(limit + 1)
+        if let space = window.lastIndex(of: " ") {
+            let kept = window[..<space].trimmingCharacters(in: .whitespaces)
+            if !kept.isEmpty { return kept }
+        }
+        return String(text.prefix(limit))
+    }
+
     /// `NoteName.sanitized`'s missing caller (PG-134/#234): a file dropped or chosen
     /// from outside the vault keeps its own name verbatim except for `.eml`, which gets
     /// the assisted rename above - so a name carrying a wikilink-reserved character

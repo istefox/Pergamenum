@@ -60,10 +60,15 @@ extension VaultController {
 
     /// Quick capture (SPEC §7.4): appends the composed task to its destination note,
     /// creating the inbox note if it is not there yet.
+    ///
+    /// Returns the vault-relative path of the note the line was written to, nil when
+    /// nothing was written. The path comes from the write itself, so a caller that opens
+    /// it opens the file that was written, not a second resolution of the destination
+    /// that a suspension could let disagree (ADR-0043 §D7, ADR-0080 §D5).
     @discardableResult
-    func captureTask(_ draft: TaskDraft) async -> Bool {
+    func captureTask(_ draft: TaskDraft) async -> String? {
         // The write catches the destination note's open tabs up itself (ADR-0067 §D1).
-        guard let session, await session.captureTask(draft) != nil else { return false }
+        guard let session, let written = await session.captureTask(draft) else { return nil }
 
         // The block comes after the task line is safely written: a block for a task
         // that failed to be captured is a plan for work nobody recorded.
@@ -74,7 +79,7 @@ extension VaultController {
         lastCapture = draft
         recordTaskWrite()
         refreshSelectedTask(afterRewriting: draft.parent)
-        return true
+        return written.path
     }
 
     /// Re-resolves `selectedTask` after a capture that rewrote the selected task's own
@@ -101,7 +106,7 @@ extension VaultController {
     /// Quick capture of a bare line, with no date and no destination but the inbox.
     @discardableResult
     func captureTask(_ text: String) async -> Bool {
-        await captureTask(TaskDraft(text: text))
+        await captureTask(TaskDraft(text: text)) != nil
     }
 
     /// Reads the last capture once, so the Attività pane can show the view the new

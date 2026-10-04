@@ -78,9 +78,11 @@ struct VaultCommands: Commands {
                 .disabled(vault.root == nil)
             Divider()
             Button("Importa file…") {
+                // The vault's inbox folder, where `commitImport` copies (ADR-0080 §D5).
+                let folder = vault.session?.inboxFolder ?? VaultSettings.defaultInboxFolder
                 if let urls = VaultOpenPanel.chooseFiles(
                     title: "Importa file",
-                    message: "I file vengono copiati in 00 Inbox, con proposta di nome."
+                    message: "I file vengono copiati in \(folder), con proposta di nome."
                 ) {
                     vault.fileImportProposals = vault.proposeImport(urls)
                 }

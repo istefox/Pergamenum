@@ -22,9 +22,7 @@ extension VaultController {
     /// uniquified against the Inbox.
     func proposeImport(_ urls: [URL]) -> [FileImportProposal] {
         guard let root else { return [] }
-        let directory = root.appending(
-            path: VaultAPI.CaptureDestination.defaultFolder, directoryHint: .isDirectory
-        )
+        let directory = root.appending(path: importFolder, directoryHint: .isDirectory)
         // Names already promised to earlier files of this same batch, none of which is on
         // disk yet: without them two `scan.pdf` from different folders both proposed
         // `scan.pdf` (ADR-0066 §D6, the twin of `WorkspaceController.importFiles`).
@@ -56,9 +54,9 @@ extension VaultController {
     @discardableResult
     func commitImport(_ proposal: FileImportProposal) -> String? {
         guard let root else { return nil }
-        let directory = root.appending(
-            path: VaultAPI.CaptureDestination.defaultFolder, directoryHint: .isDirectory
-        )
+        // Read once, so the folder copied into and the path returned cannot differ.
+        let folder = importFolder
+        let directory = root.appending(path: folder, directoryHint: .isDirectory)
         let destination = directory.appending(
             path: proposal.proposedName, directoryHint: .notDirectory
         )
@@ -69,6 +67,12 @@ extension VaultController {
             recordProblem("import di \(proposal.originalName): \(error.localizedDescription)")
             return nil
         }
-        return "\(VaultAPI.CaptureDestination.defaultFolder)/\(proposal.proposedName)"
+        return "\(folder)/\(proposal.proposedName)"
+    }
+
+    /// The vault's inbox folder, read through the session's resolver at every import so a
+    /// changed setting needs no relaunch (ADR-0080 §D5).
+    private var importFolder: String {
+        session?.inboxFolder ?? VaultSettings.defaultInboxFolder
     }
 }

@@ -169,12 +169,12 @@ struct TaskComposer: View {
         // (ADR-0043 §D2): opening the note or clearing the field before the line is
         // written would show the composer's result before there is one.
         Task { @MainActor in
-            guard canCreate, await vault.captureTask(draft) else { return }
+            guard canCreate, let path = await vault.captureTask(draft) else { return }
             if opening {
                 // The pane too, or the note opens behind whatever section is showing and
                 // "apri la nota" appears to have done nothing.
                 navigation.pane = .notes
-                vault.openNote(at: draft.destination.relativePath)
+                vault.openNote(at: path)
             }
 
             if keepingOpen {
@@ -209,7 +209,11 @@ private struct DestinationPicker: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    row(title: "Inbox", subtitle: VaultController.TaskDestination.inboxPath, symbol: "tray") {
+                    row(
+                        title: "Inbox",
+                        subtitle: vault.session?.inboxNotePath ?? VaultController.TaskDestination.inboxPath,
+                        symbol: "tray"
+                    ) {
                         destination = .inbox
                     }
                     ForEach(results, id: \.relativePath) { note in

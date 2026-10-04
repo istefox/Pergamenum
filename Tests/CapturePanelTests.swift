@@ -288,3 +288,105 @@ import Testing
     )
     #expect(onDisk.contains("- [ ] Richiamare Rossi >2026-08-20 !2026-08-25"))
 }
+
+// MARK: - The derived title's caption (PG-384, ADR-0080 §D3)
+
+private let captionUTC: Calendar = {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "UTC")!
+    return calendar
+}()
+
+/// 2026-10-04 14:30 UTC.
+private let captionNow = Date(timeIntervalSince1970: 1_791_124_200)
+
+// (n1-seams R-05)
+@MainActor
+@Test func theCaptionIsNilForALegalFirstLine() {
+    let controller = CaptureController()
+    controller.destination = .note
+    controller.text = "Mescola per il distretto\nCorpo."
+
+    #expect(controller.titleCaption(now: captionNow, calendar: captionUTC) == nil)
+}
+
+// (n1-seams R-05)
+@MainActor
+@Test func theCaptionIsNilForAnEmptyText() {
+    let controller = CaptureController()
+    controller.destination = .note
+
+    for text in ["", "   ", "\n \n"] {
+        controller.text = text
+        #expect(controller.titleCaption(now: captionNow, calendar: captionUTC) == nil, "«\(text)»")
+    }
+}
+
+// (n1-seams R-05)
+@MainActor
+@Test func theCaptionIsNilOnEveryDestinationThatDoesNotMakeANote() {
+    let controller = CaptureController()
+    // A line the conventions refuse, so a caption would be shown on «Nota nuova».
+    controller.text = "Idea: usare i token anche per i font?"
+
+    for destination in [CaptureController.Destination.task, .today, .existing] {
+        controller.destination = destination
+        #expect(
+            controller.titleCaption(now: captionNow, calendar: captionUTC) == nil,
+            "«\(destination.title)» non crea una nota, non ha un titolo da mostrare"
+        )
+    }
+}
+
+// (n1-seams R-05, R-22)
+@MainActor
+@Test func theCaptionNamesTheDerivedTitleOfTheR22Line() {
+    let controller = CaptureController()
+    controller.destination = .note
+    controller.text = "Idea: usare i token anche per i font?"
+
+    #expect(
+        controller.titleCaption(now: captionNow, calendar: captionUTC)
+            == "Titolo: Idea usare i token anche per i font"
+    )
+}
+
+// (n1-seams R-05)
+@MainActor
+@Test func theCaptionReadsTheFirstLineOnlyAndTheBodyDoesNotChangeIt() {
+    let controller = CaptureController()
+    controller.destination = .note
+    controller.text = "questo/non va\ncorpo: con due punti?"
+
+    #expect(controller.titleCaption(now: captionNow, calendar: captionUTC) == "Titolo: questo non va")
+}
+
+// (n1-seams R-05)
+@MainActor
+@Test func theCaptionShowsTheTimestampedFallbackWhenNothingSurvives() {
+    let controller = CaptureController()
+    controller.destination = .note
+    controller.text = "???"
+
+    #expect(
+        controller.titleCaption(now: captionNow, calendar: captionUTC) == "Titolo: 20261004 1430 Cattura"
+    )
+}
+
+// (coverage) A lone "\r" or a CRLF ends the typed line for the caption as it does for the
+// capture, so the caption never carries a carriage return and never reads past the break.
+@MainActor
+@Test func theCaptionStopsAtALoneCarriageReturnAndAtACRLF() {
+    let controller = CaptureController()
+    controller.destination = .note
+
+    controller.text = "Idea: usare i token\rcorpo: con due punti?"
+    #expect(controller.titleCaption(now: captionNow, calendar: captionUTC) == "Titolo: Idea usare i token")
+
+    controller.text = "questo/non va\r\ncorpo"
+    #expect(controller.titleCaption(now: captionNow, calendar: captionUTC) == "Titolo: questo non va")
+
+    // A legal first line followed by a refused-looking body shows no caption.
+    controller.text = "Mescola per il distretto\rcorpo: con due punti?"
+    #expect(controller.titleCaption(now: captionNow, calendar: captionUTC) == nil)
+}

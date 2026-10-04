@@ -8,6 +8,7 @@ import SwiftUI
 /// when it is needed.
 struct HelpSheet: View {
     @Environment(\.theme) private var theme
+    @Environment(VaultController.self) private var vault
     let topic: Topic
     let onClose: () -> Void
 
@@ -68,14 +69,16 @@ struct HelpSheet: View {
 
     private var sections: [Section] {
         switch topic {
-        case .taskSyntax: Self.taskSyntax
+        case .taskSyntax: Self.taskSyntax(
+            inboxNotePath: vault.session?.inboxNotePath ?? VaultSession.TaskDestination.inboxPath
+        )
         case .conventions: Self.conventions
         case .diary: Self.diary
         }
     }
 
-    /// SPEC §7.1, ASCII only.
-    private static let taskSyntax: [Section] = [
+    /// SPEC §7.1, ASCII only. The inbox note named is the vault's own (ADR-0080 §D5).
+    private static func taskSyntax(inboxNotePath: String) -> [Section] { [
         Section(heading: "Stato", rows: [
             ("- [ ] testo", "task aperto"),
             ("- [x] testo", "completato"),
@@ -95,9 +98,9 @@ struct HelpSheet: View {
         Section(heading: "Scorciatoie", rows: [
             ("Cmd+Invio", "completa o riapri"),
             ("Cmd+0 / 1 / 2 / 3", "oggi, domani, +2 giorni, settimana prossima"),
-            ("Cmd+Maiusc+N", "cattura rapida in 00 Inbox/Capture.md"),
+            ("Cmd+Maiusc+N", "cattura rapida in \(inboxNotePath)"),
         ]),
-    ]
+    ] }
 
     /// What the Diario pane does and what it writes, since the file is meant to be
     /// read and edited outside this app as well.

@@ -155,8 +155,8 @@ final class DayController {
         }
     }
 
-    /// Opens the daily note for the day shown, creating it from the template when it
-    /// does not exist yet.
+    /// Opens the daily note for the day shown, creating it when it does not exist yet
+    /// (the daily frontmatter and an empty body; there is no daily template).
     func openDailyNote() {
         Task { @MainActor in
             do {
