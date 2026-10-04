@@ -8,7 +8,7 @@ the milestone that depends on it, never silently (the rule Roadmap v2 §6 set).
 Item identifiers (`R-n`, `I-n`, `L-n`) are the report's. Every milestone is one chain
 through `/spec → /workplan → /build → /ship`, with `/workplan` and `/build` in separate
 sessions. Mockups are approved before any view is written (SPEC §11.1). ADR numbers below
-are the next free ones at the time of writing (`0080` is the last on `main`); they are
+are the next free ones at the time of writing (`0079` is the last on `main`); they are
 indicative, the chain that lands first takes the number.
 
 ---
@@ -74,7 +74,7 @@ hover handling); N4 and N5 can also overlap. Nothing else should.
 
 *Two silent defects, four one-liners, one token, one P2 already filed.*
 
-**ADR-0080 — A note born without a topic is a capture, and capture proposes a title.**
+**ADR 0080 — A note born without a topic is a capture, and capture proposes a title.**
 Records I-1 and I-3 as one decision about the capture shape; amends ADR-0008 §D6 (which
 promised `status-inbox` and never got it) and SPEC §4.2 on the capture surface only.
 
@@ -104,9 +104,9 @@ link.
 
 *The line never shifts under the caret; the cost of a keystroke is a number; one parser.*
 
-**ADR-0081 — Block markers reveal in the gutter.** Amends ADR-0028 §D4's accepted
+**ADR 0081 — Block markers reveal in the gutter.** Amends ADR-0028 §D4's accepted
 horizontal shift and ADR-0018 §D2's reveal rule for list, heading and quote paragraphs.
-**ADR-0082 — The styler classifies through the shared parsers.** Extends ADR-0077 §D1 to
+**ADR 0082 — The styler classifies through the shared parsers.** Extends ADR-0077 §D1 to
 the editor; closes PG-347; records the keystroke budget and the two scoping changes.
 
 | # | Task | Files | Tests | Notes |
@@ -114,7 +114,7 @@ the editor; closes PG-347; records the keystroke budget and the two scoping chan
 | 1 | Mockup: revealed list item, heading and quote with the marker hanging left of a fixed content column; dim permanent `H2` badge option | `Sources/Features/DesignGallery/EditorMockup.swift` | — | Human gate before task 2 |
 | 2 | Gutter reveal for lists | `Sources/Features/Editor/ListMarkerRendering.swift` (`paragraphStyle(level:font:basedOn:revealed:)`: concealed and revealed states share `headIndent`; revealed sets `firstLineHeadIndent = headIndent − width("- ")` measured in `font`), `EditorDecorationDelegate+ListRendering.swift` (revealed paragraph keeps the style instead of dropping it), `NoteTextView+Reveal.swift` | `Tests/MarkupHidingListTests.swift`, `Tests/ListIndentFontInvariantTests.swift` (new invariant: content x-origin equal in both states), `Tests/MarkupRevealTests.swift` | Ordered markers: the digits are already in the file, only the indent changes; `1. ` hangs the same way |
 | 3 | Gutter reveal for headings and quotes | `EditorDecorationDelegate.swift:471-591` (heading branch sets a paragraph style with the same two indents), `EditorDecorationDelegate+QuoteRendering.swift` | `Tests/EditorDecorationSubstitutionTests.swift`, `Tests/QuoteRenderingTests.swift` | Readable-width inset already leaves a gutter; verify at the narrow width where `textContainerInset` is 24 |
-| 4 | Keystroke budget, measured | new `Tests/EditorRestyleBudgetTests.swift` (synthetic notes of 50 KB, 200 KB, 1 MB, with and without fences and view blocks; asserts a generous ceiling and prints the numbers), new `scripts/editor-restyle-bench.sh` (runs that test alone and prints a table) | itself | The numbers go into ADR-0082 §Context; the ceiling is the decision |
+| 4 | Keystroke budget, measured | new `Tests/EditorRestyleBudgetTests.swift` (synthetic notes of 50 KB, 200 KB, 1 MB, with and without fences and view blocks; asserts a generous ceiling and prints the numbers), new `scripts/editor-restyle-bench.sh` (runs that test alone and prints a table) | itself | The numbers go into ADR 0082 §Context; the ceiling is the decision |
 | 5 | Scope `renumberLists` to the edited ordered run | `Sources/Features/Editor/NoteTextView+ListEditing.swift:61-69`, `Sources/Core/Editor/ListContinuation.swift` | `Tests/ListContinuationTests.swift`, `Tests/ListNestingForwardPassTests.swift` | One undo step stays one undo step |
 | 6 | `growToFitTheText` ensures layout to the caret's fragment plus the viewport, not the document | `NoteTextView+Coordinator.swift:541-552` | hosted test with a long note: caret stays visible, no full-document `ensureLayout` | Folding and the outline already handle their own jumps through `RequestLedger` |
 | 7 | Styler over the shared parsers | `Sources/Features/Editor/MarkdownStyler.swift` (`spans(in:)` built from `MarkdownBlockParser.blocks(in:)` + `MarkdownInlineParser.spans(in:)`; the `Span` enum and every consumer unchanged), `Sources/Core/Markdown/MarkdownInline.swift`/`MarkdownBlocks.swift` (gain whatever the editor needs they lack: list level by content column, task state, embed run, view-block run, message anchor) | `Tests/MarkdownStylerTests.swift`, `Tests/MarkdownStylerBlockTests.swift`, `Tests/MarkdownStylerFixture.swift` extended into a golden corpus (the `NoteExportGoldenCorpus` shape, each case classed A/B/C/unchanged) captured **before** the change | PG-347 closes here. `_` emphasis stays unconcealed (ADR-0030's reason holds); the parser's flanking rule decides what is emphasis |
@@ -131,9 +131,9 @@ renders in the Oggi pane.
 
 *A link you can peek at, follow from the keyboard, create from, and read the reasons for.*
 
-**ADR-0083 — Links answer to the pointer and the keyboard.** Hover preview, follow command,
+**ADR 0083 — Links answer to the pointer and the keyboard.** Hover preview, follow command,
 open-in-tab/column variants, disambiguation, create-from-dangling. Extends ADR-0012 §D4 and
-ADR-0015. **ADR-0084 — Backlinks with context, unresolved per note, mentions that link.**
+ADR-0015. **ADR 0084 — Backlinks with context, unresolved per note, mentions that link.**
 Amends the ADR-0012 §D9 mockup decision that refused «Collega»; decides PG-233.
 
 | # | Task | Files | Tests | Notes |
@@ -163,9 +163,9 @@ mention becomes a link from the inspector after a diff confirmation. The inspect
 
 *Captures get filed, templates reach every birth, one composer, extract, undo.*
 
-**ADR-0085 — An Inbox pane for notes and one composer.** Amends SPEC §7.4 (the task Inbox
+**ADR 0085 — An Inbox pane for notes and one composer.** Amends SPEC §7.4 (the task Inbox
 is untouched; a note Inbox is added beside it) and §12 (settings); records the composer as
-the one naming surface (extends ADR-0003 §D1). **ADR-0086 — Templates where notes are
+the one naming surface (extends ADR-0003 §D1). **ADR 0086 — Templates where notes are
 born.** Extends ADR-0011 §D5–§D7: daily template setting, `{{cursor}}`, `{{time}}`,
 template choice in capture, Quick Open and Workspace, connector `--template`.
 
@@ -192,7 +192,7 @@ source holds `[[Titolo]]`.
 
 *Inline code, fences, callouts, highlights, quotes, embeds, tables.*
 
-**ADR-0087 — The editor draws the remaining constructs.** Extends ADR-0029 §D1 (the
+**ADR 0087 — The editor draws the remaining constructs.** Extends ADR-0029 §D1 (the
 "everything the reading view drew" scope) to constructs no surface drew: callouts and
 highlights are new to `Sources/Core/Markdown` first (N2's rule), then to every surface.
 Amends SPEC §5's construct list.
