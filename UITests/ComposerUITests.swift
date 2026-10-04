@@ -12,7 +12,7 @@ final class ComposerUITests: PergamenumUITestCase {
         try makeVault()
 
         launchApp()
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
+        waitForMainWindow()
     }
 
     private func toolbarButton(_ label: String, timeout: TimeInterval = 5) -> XCUIElement {
@@ -21,9 +21,9 @@ final class ComposerUITests: PergamenumUITestCase {
         return element
     }
 
-    private func show(_ pane: String) {
-        let row = app.staticTexts[pane]
-        XCTAssertTrue(row.waitForExistence(timeout: 5), "la sezione \(pane) non è nella barra laterale")
+    private func show(_ itemID: String) {
+        let row = sidebarRow(itemID)
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "manca la riga «sidebar-\(itemID)» nella barra laterale")
         row.click()
     }
 
@@ -64,7 +64,7 @@ final class ComposerUITests: PergamenumUITestCase {
     /// selecting all of it, so the next keystroke replaced the task instead of
     /// continuing it. Typing after a date is the only way to see that.
     func testTypingAfterChoosingADateContinuesTheTextInsteadOfReplacingIt() throws {
-        show("Attività")
+        show("pane-tasks")
         toolbarButton("Cattura rapida").click()
 
         let text = app.textFields["task-composer-text"]

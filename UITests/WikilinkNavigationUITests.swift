@@ -44,7 +44,7 @@ final class WikilinkNavigationUITests: PergamenumUITestCase {
         )
 
         launchApp()
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
+        waitForMainWindow()
     }
 
     /// Opens "Origine", returns the editor's text view once its source contains the

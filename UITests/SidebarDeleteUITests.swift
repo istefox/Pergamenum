@@ -20,7 +20,7 @@ final class SidebarDeleteUITests: PergamenumUITestCase {
         try makeVault()
 
         launchApp()
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10), "il vault non si è aperto")
+        waitForMainWindow()
     }
 
     func testDeletingANoteFromTheContextMenuRemovesItFromTheTreeAndTheVault() throws {

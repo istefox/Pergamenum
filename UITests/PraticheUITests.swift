@@ -52,7 +52,7 @@ final class PraticheUITests: PergamenumUITestCase {
         // empty store as `.granted`, same as it would a real one (`FullDiskAccessProbe.swift`'s
         // own doc comment).
         launchApp()
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
+        waitForMainWindow()
         showPratiche()
     }
 

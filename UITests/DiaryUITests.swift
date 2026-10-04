@@ -19,12 +19,12 @@ final class DiaryUITests: PergamenumUITestCase {
         try makeTemporaryVault(prefix: "DiaryUITest")
 
         launchApp()
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
+        waitForMainWindow()
         showDiary()
     }
 
     private func showDiary() {
-        let row = app.staticTexts["Diario"].firstMatch
+        let row = sidebarRow("pane-diary")
         XCTAssertTrue(row.waitForExistence(timeout: 5), "la sezione Diario non è nella barra laterale")
         row.click()
         XCTAssertTrue(

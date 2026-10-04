@@ -25,7 +25,7 @@ final class NoteTreeAndShortcutsUITests: PergamenumUITestCase {
     /// `UserDefaults(suiteName:)` is a private copy in its own container.
     private func launch(shortcuts: String? = nil) {
         launchApp(extraArguments: shortcuts.map { ["-shortcutOverrides", $0] } ?? [])
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10))
+        waitForMainWindow()
     }
 
     // MARK: A shortcut the user moved

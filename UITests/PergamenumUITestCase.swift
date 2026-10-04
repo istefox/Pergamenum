@@ -79,4 +79,37 @@ class PergamenumUITestCase: XCTestCase {
         ) + extraArguments
         app.launch()
     }
+
+    /// One sidebar row, by the `sidebar-<id>` identifier `RootView.row(_:)` derives from the
+    /// `SidebarItem`'s `id` (`"pane-notes"`, `"pane-pratiche"`, `"scale-week"`, `"daily-note"`).
+    /// Never by its title (PG-265): a pane's name is prose, and its own breadcrumb bar draws
+    /// the same word when nothing is open in it.
+    func sidebarRow(_ itemID: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "sidebar-\(itemID)").firstMatch
+    }
+
+    /// Opens the Pratiche pane from its sidebar row and waits for the pane itself. Here rather
+    /// than in each class because `PraticheUITests` and `AttachmentChipContextMenuUITests` both
+    /// need it, and kept two copies verbatim until PG-265.
+    func showPratiche() {
+        let row = sidebarRow("pane-pratiche")
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "la sezione Pratiche non è nella barra laterale")
+        row.click()
+        XCTAssertTrue(
+            app.descendants(matching: .any).matching(identifier: "pratiche-pane").firstMatch
+                .waitForExistence(timeout: 5),
+            "la sezione Pratiche non si è aperta"
+        )
+    }
+
+    /// The launch-ready check: the window is up once the sidebar's Note row is. Fifteen classes
+    /// spelled it as `app.staticTexts["Note"]`, which also matched the Note pane's breadcrumb;
+    /// like that check, it witnesses the window, not the vault - the sidebar is drawn with or
+    /// without one, so a class that needs the vault still waits for its own landmark.
+    func waitForMainWindow(timeout: TimeInterval = 10, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(
+            sidebarRow("pane-notes").waitForExistence(timeout: timeout),
+            "la barra laterale non è comparsa", file: file, line: line
+        )
+    }
 }

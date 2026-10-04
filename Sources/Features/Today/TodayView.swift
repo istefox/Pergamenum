@@ -186,6 +186,7 @@ struct TodayView: View {
             // The date as it is written in Italian. The compact `20260813` is the file
             // name (naming.md 4.6) and belongs where the file is named, not here.
             Text(day.italianForm).themedText(.title)
+                .accessibilityIdentifier("today-header-date")
             Text(weekday).themedText(.body, color: dayKind.token ?? .textSecondary)
             // The name of the holiday, where the two grids only have room for a colour.
             if let holiday = ItalianHolidays.name(of: day, patron: vault.settings.patronSaint) {

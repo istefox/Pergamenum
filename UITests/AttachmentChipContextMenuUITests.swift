@@ -42,7 +42,7 @@ final class AttachmentChipContextMenuUITests: PergamenumUITestCase {
         try seedFixturePraticaWithAttachment()
 
         launchApp()
-        XCTAssertTrue(app.staticTexts["Note"].waitForExistence(timeout: 10), "il vault non si è aperto")
+        waitForMainWindow()
         showPratiche()
         selectFixturePratica()
     }
@@ -120,16 +120,6 @@ final class AttachmentChipContextMenuUITests: PergamenumUITestCase {
     }
 
     // MARK: - Navigation
-
-    private func showPratiche() {
-        let row = app.staticTexts["Pratiche"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5), "la sezione Pratiche non è nella barra laterale")
-        row.click()
-        XCTAssertTrue(
-            element("pratiche-pane").waitForExistence(timeout: 5),
-            "la sezione Pratiche non si è aperta"
-        )
-    }
 
     private func selectFixturePratica() {
         let row = element("pratiche-row-\(Self.praticaFolder)")

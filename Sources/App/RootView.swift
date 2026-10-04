@@ -242,7 +242,8 @@ struct RootView: View {
         // name, both are on screen together whenever that pane is the default at
         // launch, and neither carried an identifier to tell them apart. Scoping the
         // sidebar itself lets a lookup say "the switcher row", not "any text reading
-        // the pane's name" - see `WorkspaceIntegrationUITests.openPane`.
+        // the pane's name"; each row now carries its own `sidebar-<id>` too (`row(_:)`,
+        // PG-265), which is what `PergamenumUITestCase.sidebarRow(_:)` finds.
         .accessibilityIdentifier("root-sidebar")
     }
 
@@ -251,8 +252,14 @@ struct RootView: View {
     /// a `String` - and no row can ever equal a `SidebarItem` selection. The sidebar
     /// then lights nothing and swallows every click, which is how it shipped for the
     /// twenty minutes the starred count sat on the wrong side of the tag.
+    ///
+    /// `sidebar-<id>` (`sidebar-pane-notes`, `sidebar-scale-week`, `sidebar-daily-note`) is
+    /// what a UI test finds a row by, never its title (PG-265): the title is prose, and a
+    /// pane's name is also drawn by its own breadcrumb bar. Before `.badge` and `.tag`, so it
+    /// cannot sit between them.
     private func row(_ item: SidebarItem) -> some View {
         Label(item.title, systemImage: item.symbol)
+            .accessibilityIdentifier("sidebar-\(item.id)")
             .badge(item == .pane(.starred) ? vault.starredNotes.count : 0)
             .tag(item)
     }
