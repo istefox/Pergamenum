@@ -1059,7 +1059,8 @@ INFO: scope is session 2 of the plan (Tasks 4 to 8); Tasks 1 to 3 merged with #8
 INFO: review escalated, size: 50 changed files, threshold 20
 INFO: opus BLOCKER TODO.md:4 discarded as a verified false positive: local main advanced to 05fa8bb2 (#902) after the branch, TODO.md is unchanged against HEAD
 INFO: the second sweep round (RootView.swift noteTreeSelection clear, CardTextAttributes header, one test line wrap) was not re-reviewed; suite green after it
-INFO: Task 8 hand check R-22 and the TODO.md ledger sync (chore(tasks)) are not done; uitests.sh --status has no verdict for this tree, --affected runs at merge
+INFO: Task 8 hand check R-22 done by Stefano on 2026-10-05, Debug build, dark theme for the spacing and H5/H6 checks, light theme pending: capture, [[ completion, Cmd+Shift+D, Cmd+click on a tag and a date, inbox folder change, event note, Documento, Cmd+N seed, taken title in Documento all as specified. The check found one defect, fixed in CompletionPanelView.swift: the alias caption was cut off by a long title in the 340 pt panel, and now the title gives way. A taken title cannot be reached by hand from Quick Open (the index matches case-insensitively); the unit test covers it
+INFO: the TODO.md ledger sync (chore(tasks)) is not done; uitests.sh --status has no verdict for this tree, --affected runs at merge
 
 ```text
 DROP	nit	**NIT** Sources/Features/Editor/CompletingTextView+Context.swift:166 — substring(from:) copies the whole remainder of the note to inspect two characters (same shape in FormattingTextView.swift:272); use substring(with:) of length min(2, remaining). (reviewer: opus)
