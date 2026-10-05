@@ -71,7 +71,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Built on first use rather than as a `lazy var`: a lazy initializer is not a main-actor
     /// context, and the compiler refuses the async `sleep` closure there.
     private var quitCoordinator: QuitCoordinator?
-    private let quitFocus = QuitFocus()
+    // Internal, not private: read by `AppDelegate+QuitReveal.swift` (ADR-0045 §D3).
+    let quitFocus = QuitFocus()
 
     private var quit: QuitCoordinator {
         if let quitCoordinator { return quitCoordinator }
@@ -91,30 +92,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             reply: { NSApp.reply(toApplicationShouldTerminate: $0) },
             reveal: { [weak self] in self?.revealAfterCancelledQuit($0) },
             revealContenitore: { [weak self] in self?.revealContenitoreAfterCancelledQuit($0) },
+            revealBoard: { [weak self] in self?.revealBoardAfterCancelledQuit() },
+            revealDiary: { [weak self] in self?.revealDiaryAfterCancelledQuit() },
             sleep: { try? await Task.sleep(for: $0) }
         )
         quitCoordinator = made
         return made
-    }
-
-    /// What a cancelled quit shows (ADR-0073 §D7): the main window, reopened if the red
-    /// button had closed it, the Note pane, and the first unresolved tab in front of its
-    /// column.
-    private func revealAfterCancelledQuit(_ id: NoteTab.ID?) {
-        vault?.reopenMainWindow?()
-        navigation?.pane = .notes
-        // The keyboard goes back where `commitEditing` took it from (departure 14), and only
-        // then is the tab revealed: the other order lets the restore pull the focus back to
-        // the column the reveal had just left (`QuitFocus.restore(thenReveal:in:)`).
-        quitFocus.restore(thenReveal: id, in: vault)
-    }
-
-    /// A quit cancelled by a scheda edit that could not be written brings the Contenitore back
-    /// on that scheda (ADR-0073 §D7's twin for the pane).
-    private func revealContenitoreAfterCancelledQuit(_ schedaPath: String?) {
-        vault?.reopenMainWindow?()
-        navigation?.pane = .contenitore
-        if let schedaPath { contenitore?.selection = schedaPath }
     }
 
     /// Which app was in front before this one, so an all-capture batch can give the

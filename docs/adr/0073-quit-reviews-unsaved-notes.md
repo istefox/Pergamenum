@@ -105,7 +105,13 @@ progress.
   `settleForTermination()` skips a conflicted board (ADR-0066 §D5) and the diary's `performWrite`
   returns on `.conflicted`. Both follow earlier decisions (ADR-0054 §D5 for the board: "refusing to
   close a window over an autosave conflict is worse than the loss it prevents"). Reviewing them at
-  quit would reopen those decisions, so this record leaves them alone.
+  quit would reopen those decisions, so this record leaves them alone. *Closed 2026-10-05 as
+  PG-336 (ADR-0089):* the quit review carries the open board and the diary day when either is
+  conflicted. Both are named in the one question; «Salva» and «Salva tutto» never write them and
+  cancel, revealing the board first, then the notes, then the diary; only «Non salvare» lets them
+  go, writing nothing. Neither decision above is reversed: the settle still never flushes over a
+  conflict and a window close is still not refused over one. A board whose pane left the screen
+  before the quit is still lost; its ledger entry is to be filed (ADR-0089 §D7).
 - **G-d.** Cmd+S over a banner that is still waiting writes the buffer over the other writer's
   bytes, because `saveOpenNote()` has no precondition (a blind write in ADR-0043 §D8's sense). That
   is existing behaviour and stays as it is here. §D5 only keeps the quit's own bulk answer from
