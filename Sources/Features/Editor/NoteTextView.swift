@@ -16,6 +16,9 @@ struct NoteTextView: NSViewRepresentable {
     /// behind it behaves exactly as before (the `spellCheck`/`hidesMarkup` contrast above
     /// documents the same convention).
     var boardTitles: [String] = []
+    /// The aliases each note answers to, by title, offered through `[[` completion (n1-seams
+    /// R-08). Defaulted empty for the same reason `boardTitles` is. Built with `aliasesByTitle`.
+    var noteAliases: [String: [String]] = [:]
     /// Tags offered when completing after `#`, most used first.
     let tagSuggestions: [String]
     /// Whether misspellings are underlined, and in which language (M8, SPEC §12). Off by
@@ -71,6 +74,16 @@ struct NoteTextView: NSViewRepresentable {
     var onTakeFocus: (() -> Void)?
 
     enum FindRequest { case find, replace }
+
+    /// `noteAliases` from the index's notes: a title with no alias has no entry, and two notes
+    /// sharing a title pool theirs, as the title pool itself does not tell them apart.
+    static func aliasesByTitle(_ notes: [NoteRecord]) -> [String: [String]] {
+        var result: [String: [String]] = [:]
+        for note in notes where !note.frontmatter.aliases.isEmpty {
+            result[note.title, default: []] += note.frontmatter.aliases
+        }
+        return result
+    }
 
     func makeNSView(context: Context) -> NSScrollView {
         let textView = CompletingTextView(usingTextLayoutManager: true)

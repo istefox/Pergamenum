@@ -106,7 +106,11 @@ struct StickyTextCard: View {
             // Cmd+click / "Apri collegamento" on a wikilink or CommonMark link (issue #188,
             // R-06) - unguarded on `isEditing` like `onToggleTask` above, for the same reason:
             // the click can only arrive from this card's own text view.
-            onFollowLink: { title in commandActions.open(link: title) }
+            onFollowLink: { title in commandActions.open(link: title) },
+            // A Cmd+clicked tag or date leaves for its pane (n1-seams R-12, R-13), the same
+            // doors the note editor uses.
+            onOpenTag: { commandActions.open(tag: $0) },
+            onOpenDay: { commandActions.open(day: $0) }
         )
         .focused($isFocused)
         // The placeholder is the one thing the text view does not draw: it is not the card's

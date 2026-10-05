@@ -11,6 +11,10 @@ import SwiftUI
 enum CompletionItem: Identifiable, Equatable {
     case command(EditorCommand)
     case text(String, symbol: String)
+    /// A `[[` candidate: a note (maybe found through an alias) or a board. A case of its own
+    /// rather than `.text`, because the row reads the candidate's `label` and the choice closes
+    /// the link with `]]` (n1-seams R-07, R-08), neither of which a bare string can carry.
+    case wikilink(WikilinkCandidate)
     /// The one row that draws a glyph instead of an SF Symbol, because what it is offering
     /// *is* the glyph. SPEC §11.2's single stated exception.
     case emoji(glyph: String, name: String)
@@ -19,6 +23,7 @@ enum CompletionItem: Identifiable, Equatable {
         switch self {
         case .command(let command): "cmd:\(command.id)"
         case .text(let value, _): "txt:\(value)"
+        case .wikilink(let candidate): "lnk:\(candidate.id)"
         case .emoji(let glyph, _): "emo:\(glyph)"
         }
     }
@@ -27,6 +32,7 @@ enum CompletionItem: Identifiable, Equatable {
         switch self {
         case .command(let command): command.title
         case .text(let value, _): value
+        case .wikilink(let candidate): candidate.label
         case .emoji(_, let name): name
         }
     }
@@ -35,6 +41,7 @@ enum CompletionItem: Identifiable, Equatable {
         switch self {
         case .command(let command): command.symbol
         case .text(_, let symbol): symbol
+        case .wikilink(let candidate): candidate.kind == .board ? "square.grid.2x2" : "doc.text"
         // Never drawn - `CompletionPanelView` reaches for the glyph on this case - and
         // answered rather than trapped, so a future row that asks is not a crash.
         case .emoji: "face.smiling"
@@ -45,7 +52,7 @@ enum CompletionItem: Identifiable, Equatable {
     var shortcutCaption: String? {
         switch self {
         case .command(let command): command.shortcutCaption
-        case .text, .emoji: nil
+        case .text, .wikilink, .emoji: nil
         }
     }
 

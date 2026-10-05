@@ -223,3 +223,85 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     #expect(controller.isComposingNote)
     controller.close()
 }
+
+// MARK: Cmd+N seeds the folder from the tree (n1-seams R-11)
+
+@MainActor
+@Test func aSeedPointsTheComposerAtThatFolderWhenNothingIsParked() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+
+    controller.beginNewNote(seed: "Progetti")
+
+    #expect(controller.isComposingNote)
+    #expect(controller.noteDraft?.folder == "Progetti") // (n1-seams R-11)
+    controller.close()
+}
+
+@MainActor
+@Test func aParkedTitledDraftKeepsItsOwnFolderWhateverTheSeed() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    controller.beginNewNote()
+    controller.parkNewNote(.init(folder: "Archivio", title: "Curva di trasmissibilità"))
+
+    controller.beginNewNote(seed: "Progetti")
+
+    #expect(controller.noteDraft?.title == "Curva di trasmissibilità")
+    #expect(controller.noteDraft?.folder == "Archivio") // (n1-seams R-11)
+    controller.close()
+}
+
+@MainActor
+@Test func nuovaNotaQuiStillOverridesTheSeedAndTheParkedFolder() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+
+    controller.beginNewNote(in: "X", seed: "Progetti")
+
+    #expect(controller.noteDraft?.folder == "X") // (n1-seams R-11)
+    controller.close()
+}
+
+@MainActor
+@Test func noSeedAndNothingParkedComposesAtTheRoot() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+
+    controller.beginNewNote()
+
+    #expect(controller.noteDraft?.folder == "")
+    controller.close()
+}
+
+@MainActor
+@Test func theNewNoteCommandReadsTheTreeSelectionFromAnyPaneAndLeavesForTheNotePane() async throws {
+    let vault = try TemporaryVault()
+    try vault.write(note, to: "Progetti/Alfa/Nota.md")
+    let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+    await controller.open(vault.root)
+    let calendarStore = EventKitStore()
+    let actions = CommandActions(
+        navigation: Navigation(),
+        vault: controller,
+        day: DayController(store: calendarStore, vault: controller),
+        calendar: calendarStore,
+        capturePanel: CapturePanel(
+            controller: CaptureController(),
+            session: { controller.session },
+            theme: { ThemeEngine().current },
+            shortcutCaption: { nil }
+        ),
+        history: NavigationHistory(),
+        pasteboard: .volatile()
+    )
+    actions.navigation.pane = .tasks
+    actions.navigation.noteTreeSelection = ["Progetti/Alfa/Nota.md"]
+
+    actions.run(.newNote)
+
+    #expect(actions.navigation.pane == .notes) // (n1-seams R-11)
+    #expect(controller.isComposingNote) // (n1-seams R-11)
+    #expect(controller.noteDraft?.folder == "Progetti/Alfa") // (n1-seams R-11)
+    controller.close()
+}

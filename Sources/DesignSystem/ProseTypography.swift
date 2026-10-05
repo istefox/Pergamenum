@@ -45,11 +45,17 @@ enum ProseTypography {
     /// The *face* is `font.proseTitle`'s, resized: a heading is the title token scaled down
     /// towards the body, not the body face enlarged, so a theme that gives `proseTitle` its own
     /// family or weight is followed at every level rather than only at level 1.
+    ///
+    /// H6 is the one exception (n1-seams R-15): `font.prose`'s own face at H6's size, so it reads
+    /// as a quiet label rather than a sixth bold step. The face is the prose token's, never the
+    /// title face with a weight trait taken off (ADR-0030 §D2), and the size is unchanged.
     static func heading(level: Int, _ theme: Theme) -> NSFont {
         let clamped = min(max(level, 1), 6)
         let title = theme.nsFont(.proseTitle)
-        let size = max(prose(theme).pointSize + 1, title.pointSize - CGFloat(clamped - 1) * 2)
-        return NSFont(descriptor: title.fontDescriptor, size: size) ?? title
+        let body = prose(theme)
+        let size = max(body.pointSize + 1, title.pointSize - CGFloat(clamped - 1) * 2)
+        let face = clamped == 6 ? body : title
+        return NSFont(descriptor: face.fontDescriptor, size: size) ?? face
     }
 
     /// The chrome/code face: `theme.nsFont(.mono)`, optionally at a size other than the token's
@@ -111,6 +117,20 @@ enum ProseTypography {
         // No `paragraphSpacing` is set: a fresh style already carries 0, and one that came in
         // through `basedOn` keeps whatever its own author asked for (ADR-0030 §D6).
         return style
+    }
+
+    /// The gap after a prose or heading paragraph in the note editor (n1-seams R-14):
+    /// `spacing.paragraph`. Merged into a line's existing style by the editor's styling pass,
+    /// never set by `paragraphStyle(_:font:basedOn:)` above, which every other surface shares.
+    static func paragraphSpacing(_ theme: Theme) -> CGFloat {
+        theme.spacing(.paragraph)
+    }
+
+    /// The colour a heading level is drawn in (n1-seams R-15): `textSecondary` for H6, which
+    /// goes with its regular face above, and `textPrimary` for every other level. Read by the
+    /// editor's heading arm and the Workspace card's alike.
+    static func headingColor(level: Int) -> ColorToken {
+        level == 6 ? .textSecondary : .textPrimary
     }
 
     // MARK: - Resolution

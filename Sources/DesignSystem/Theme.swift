@@ -328,6 +328,10 @@ extension Theme {
             // it is a measure, which is why `DesignGalleryView` draws the five steps by
             // name instead of iterating `allCases` and rendering a 720x720 swatch.
             .readable: 720,
+            // The gap after a prose paragraph (n1-seams R-14). In the same edit as the
+            // `SpacingToken.paragraph` case: a case without this entry traps at
+            // `theme.spacing(_:)` and takes the whole test process with it (PG-225).
+            .paragraph: 8,
         ],
         radii: [.card: 10, .control: 6, .sticky: 4],
         shadows: [

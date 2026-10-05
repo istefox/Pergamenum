@@ -1,4 +1,4 @@
-**Requirement set:** `SPEC.md`
+**Requirement set:** `docs/archive/specs/pg-384-n1-seams.SPEC.md` (root `SPEC.md` while this was built)
 
 # PG-384 — N1 seams of the note workflow: implementation plan
 
@@ -1040,38 +1040,37 @@ and a whole-repo `swiftlint lint` exits non-zero on the existing debt, so as a s
 fail every turn for reasons this chain did not introduce. Per-file SwiftLint on the touched files
 stays a review step (Standing rule 8), not the gate.
 
-## Build result (2026-10-04)
+## Build result (2026-10-05)
 
 BUILD · DONE WITH WARNINGS
 
-Files: 37 changed files (ADR-0080, SPEC amendments, Core/Connector/Vault/App/Features/CLI/MCP sources, 5 new test files, 6 modified test files)
-Tests: 5270 passed in 300 suites, 5 known issues, 7 (coverage)
+Files: 54 changed files (editor and navigation seams in App/Features/DesignSystem, theme tokens, 7 new test files plus edits to existing ones)
+Tests: 5374 passed in 312 suites, 5 known issues, 0 (coverage)
 Review: sonnet, safe; opus, safe
 Coverage: STALE-WAIVER	R-22
-Deferred: 1 (out-of-diff 1)
-Dropped: 8 (fix-hunk 4, post-sweep 1, nit 3)
-Dispatch: Round 0 (red): tester — Task 1
-Dispatch: Round 1: coder — CaptureTitle.swift:32 and VaultSettings.swift:168, debugger — SettingsView.swift:341
-Dispatch: Round 2: debugger — VaultSettings.swift:172
-Dispatch: Round 1 (sweep): coder — ADR-0080 D5 note, InboxFolderSettingsTests refusal pins and rename, SettingsView field order, CaptureTitleTests long lines, TaskComposer comment, tool-help wording, dailyNoteBody tags, stale comments, VaultSession+Tasks line wrap
-Dispatch: Round 2 (sweep): debugger — Tag.swift:168 duplicate status-inbox, coder — SPEC §16 wording, ADR-0080 Amends line, TaskComposer.swift:176
+Dropped: 1 (nit 1)
+Dispatch: Round 0 (red): tester — Task 4, tester — Task 6
+Dispatch: Round 1: debugger — CommandActions.swift:168, debugger — BoardSheets.swift:47, coder — Navigation.swift:407, coder — ProseParagraphSpacing.swift:33
+Dispatch: Round 2: debugger — NewNoteSeed.swift:15, coder — CommandActions.swift:171
+Dispatch: Round 1 (sweep): coder — 5 NITs and 4 follow-ups
+Dispatch: Round 2 (sweep): coder — CardTextAttributes.swift:12, DesignSystemTests.swift:188, Navigation.swift:289
 WARN: STALE-WAIVER R-22, the (no-test: …) exemption is mentioned in a test file the plan names; delete the clause from the SPEC (not auto-repaired)
-INFO: scope is session 1 of the plan (Tasks 1 to 3); Tasks 4 to 8 are session 2 and not built
-INFO: review escalated, size: 37 changed files, threshold 20
-INFO: baseline PergamenumTests green on dcca8026 after merging origin/main
+INFO: scope is session 2 of the plan (Tasks 4 to 8); Tasks 1 to 3 merged with #897
+INFO: review escalated, size: 50 changed files, threshold 20
+INFO: opus BLOCKER TODO.md:4 discarded as a verified false positive: local main advanced to 05fa8bb2 (#902) after the branch, TODO.md is unchanged against HEAD
+INFO: the second sweep round (RootView.swift noteTreeSelection clear, CardTextAttributes header, one test line wrap) was not re-reviewed; suite green after it
+INFO: Task 8 hand check R-22 and the TODO.md ledger sync (chore(tasks)) are not done; uitests.sh --status has no verdict for this tree, --affected runs at merge
 
 ```text
-DROP	fix-hunk	**MINOR** [wrong-behaviour] VaultSettings.swift:172 — resolveInboxFolder splits on grapheme clusters, a combining mark after a dot bypasses the `..` guard
-DROP	fix-hunk	**MINOR** [wrong-behaviour] VaultSettings.swift:176 — a dot-prefixed component such as `.triage` is accepted, captures land where the vault walk does not look
-DROP	fix-hunk	**MINOR** [other] Tests/TaskComposerTests.swift:371 — captureTask(_ draft:) returns the written path but every test asserts only != nil (reviewer: sonnet)
-DROP	fix-hunk	**MINOR** [wrong-behaviour] Sources/Core/Conventions/Tag.swift:171 — a status-* tag passed through topics is not of namespace topic, so status-inbox is added beside it and the note carries two status tags (multipleStatus, T-05) (reviewer: opus)
-DROP	post-sweep	**MINOR** [style] Tests/CaptureTests.swift:1 — 459 lines, over the 400 file_length warning, introduced by this build
-DEFER	out-of-diff	**MINOR** [style] Tests/TaskComposerTests.swift:380 and :422 — pre-existing lint, not introduced by this build
-FIX	swept	ADR-0080 D5 canonicalisation note and Amends line (§4.1, §4.3, §12, §16, R-19's §8.1)
-FIX	swept	InboxFolderSettingsTests refusal pins and test rename
-FIX	swept	SettingsView field order, CaptureTitleTests long lines, VaultSession+Tasks line wrap
-FIX	swept	TaskComposer comment, tool-help wording, dailyNoteBody tags, stale comments in CaptureTests and CRLFCaptureTests
-FIX	swept	SPEC §16 wording «sostituiti da spazi»
-FIX	swept	MAJOR wrong-behaviour Tag.swift:168 initialTags duplicated status-inbox when topics already held it
-FIX	swept	TaskComposer.swift:176 path resolved before the await, captureTask now returns the written path
+DROP	nit	**NIT** Sources/Features/Editor/CompletingTextView+Context.swift:166 — substring(from:) copies the whole remainder of the note to inspect two characters (same shape in FormattingTextView.swift:272); use substring(with:) of length min(2, remaining). (reviewer: opus)
+FIX	swept	Tests/DesignSystemTests.swift:110 and Tests/CommandActionNavigationTests.swift:77 long lines wrapped
+FIX	swept	Tests/WorkspaceDocumentCreationTests.swift stale red-phase assertion now asserts .created
+FIX	swept	clickURL switch made exhaustive (MarkdownAttributedText+Clicks.swift)
+FIX	swept	NoteTextView.swift aliasesByTitle moved below the stored properties
+FIX	swept	CardTextAttributes.swift doc comment and header corrected (#188)
+FIX	swept	NoteTextView+Coordinator.swift applyStyling spacing block moved to ProseParagraphSpacing.apply
+FIX	swept	NewNoteSeed.swift header comment corrected
+FIX	swept	CommandActions.swift runFile complexity 11 to 10
+FIX	swept	DesignSystemTests.swift:188 long line wrapped
+FIX	swept	RootView.swift noteTreeSelection cleared when the vault root changes
 ```

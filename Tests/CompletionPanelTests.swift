@@ -33,10 +33,12 @@ private func panelled(
 // MARK: - What each trigger fills the panel with
 
 @MainActor
-@Test func aWikilinkOffersNoteTitlesAsCandidates() {
+@Test func aWikilinkOffersNoteTitlesAsCandidates() { // (n1-seams R-07)
     let view = panelled("Vedi [[Cur", cursor: 10, titles: ["Curva di trasmissibilità", "Altro"])
     #expect(view.completionPanel.isVisible)
-    #expect(view.completionPanel.items == [.text("Curva di trasmissibilità", symbol: "doc.text")])
+    #expect(view.completionPanel.items == [.wikilink(WikilinkCandidate(
+        displayTitle: "Curva di trasmissibilità", insertText: "Curva di trasmissibilità", kind: .note
+    ))])
 }
 
 @MainActor
@@ -180,13 +182,13 @@ func anOpenEndedListStillGoesWhenNothingMatches(_ text: String, _ cursor: Int) {
 // MARK: - Choosing
 
 @MainActor
-@Test func returnWritesTheCandidateOverExactlyWhatWasTyped() {
+@Test func returnWritesTheCandidateOverExactlyWhatWasTyped() { // (n1-seams R-07)
     let view = panelled("Vedi [[Cur", cursor: 10, titles: ["Curva di trasmissibilità"])
     view.doCommand(by: #selector(NSTextView.insertNewline(_:)))
 
-    // The bare title, as AppKit's list inserted it: the `]]` is left for the person to
-    // close, so nothing about what reaches the file changes.
-    #expect(view.string == "Vedi [[Curva di trasmissibilità")
+    // The title and the closing `]]` (n1-seams R-07): the link is whole once chosen. This
+    // pinned the bare title before, with the `]]` left for the person to close.
+    #expect(view.string == "Vedi [[Curva di trasmissibilità]]")
     #expect(!view.completionPanel.isVisible)
 }
 
@@ -256,13 +258,15 @@ func anOpenEndedListStillGoesWhenNothingMatches(_ text: String, _ cursor: Int) {
 }
 
 @MainActor
-@Test func clickingARowLandsWhereReturnLands() {
+@Test func clickingARowLandsWhereReturnLands() { // (n1-seams R-07)
     // The panel never acts on a choice itself; it hands it back. That is what makes a
     // click and a Return the same edit rather than two implementations of one.
     let view = panelled("Vedi [[Cur", cursor: 10, titles: ["Curva di trasmissibilità"])
-    view.completionPanel.onChoose?(.text("Curva di trasmissibilità", symbol: "doc.text"))
+    view.completionPanel.onChoose?(.wikilink(WikilinkCandidate(
+        displayTitle: "Curva di trasmissibilità", insertText: "Curva di trasmissibilità", kind: .note
+    )))
 
-    #expect(view.string == "Vedi [[Curva di trasmissibilità")
+    #expect(view.string == "Vedi [[Curva di trasmissibilità]]")
     #expect(!view.completionPanel.isVisible)
 }
 
@@ -288,4 +292,42 @@ func anOpenEndedListStillGoesWhenNothingMatches(_ text: String, _ cursor: Int) {
         noMatch: "Nessun comando", selectedIndex: 0, maxHeight: 400, onChoose: { _ in }
     )
     #expect(filled.showsRowKeys)
+}
+
+// MARK: - Aliases and sections (n1-seams R-07, R-08)
+
+@MainActor
+@Test func anAliasRowShowsTheTitleAndTheAliasAndInsertsTheTitleClosed() { // (n1-seams R-08)
+    let view = CompletingTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
+    view.string = "Vedi [[isol"
+    view.setSelectedRange(NSRange(location: 11, length: 0))
+    view.noteTitles = ["Curva di trasmissibilità", "Altro"]
+    view.noteAliases = ["Curva di trasmissibilità": ["Isolamento vibrazioni"]]
+    view.refreshCompletion(theme: .emergency)
+
+    #expect(view.completionPanel.isVisible)
+    #expect(view.completionPanel.items.count == 1)
+    guard case let .wikilink(candidate) = view.completionPanel.items.first else {
+        Issue.record("the alias row is not a .wikilink item: \(view.completionPanel.items)")
+        return
+    }
+    #expect(candidate.label == "Curva di trasmissibilità · alias: Isolamento vibrazioni")
+    #expect(candidate.matchedAlias == "Isolamento vibrazioni")
+    #expect(candidate.insertText == "Curva di trasmissibilità")
+
+    view.doCommand(by: #selector(NSTextView.insertNewline(_:)))
+    #expect(view.string == "Vedi [[Curva di trasmissibilità]]")
+}
+
+@MainActor
+@Test func aSectionStaysOpenAfterTheChoiceWithNoClosingBrackets() { // (n1-seams R-07)
+    let view = CompletingTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
+    view.string = "[[Prove#Cam"
+    view.setSelectedRange(NSRange(location: 11, length: 0))
+    view.noteSections = { _ in ["Campioni", "Strumenti"] }
+    view.refreshCompletion(theme: .emergency)
+    view.doCommand(by: #selector(NSTextView.insertNewline(_:)))
+
+    #expect(view.string == "[[Prove#Campioni")
+    #expect(!view.string.hasSuffix("]]"))
 }

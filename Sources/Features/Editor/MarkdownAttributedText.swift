@@ -55,7 +55,7 @@ enum MarkdownAttributedText {
         for styled in MarkdownStyler.spans(in: text) {
             let range = NSRange(styled.range, in: text)
             guard range.location != NSNotFound, NSMaxRange(range) <= length else { continue }
-            result.addAttributes(context.attributes(for: styled.span), range: range)
+            result.addAttributes(context.attributes(for: styled, in: text), range: range)
         }
         return result
     }
@@ -122,6 +122,20 @@ enum MarkdownAttributedText {
             self.base = MarkdownAttributedText.base(theme: theme)
         }
 
+        /// One styled range's attributes, read against the source it covers: the span's own
+        /// attributes below plus, when `links` is on, the click a tag or a date carries
+        /// (n1-seams R-12, R-13). A `.scheduled`/`.due` span holds no payload, so its day can
+        /// only be read off the source, which is why the styling passes call this and not the
+        /// span-only overload.
+        mutating func attributes(
+            for styled: MarkdownStyler.StyledRange, in text: String
+        ) -> [NSAttributedString.Key: Any] {
+            let attributes = attributes(for: styled.span)
+            guard links else { return attributes }
+            let click = MarkdownAttributedText.clickAttributes(for: styled.span, source: text[styled.range])
+            return click.isEmpty ? attributes : attributes.merging(click) { _, new in new }
+        }
+
         /// Today's `attributes(for:theme:links:)` switch, with every rebuild memoised.
         mutating func attributes(for span: MarkdownStyler.Span) -> [NSAttributedString.Key: Any] {
             switch span {
@@ -139,7 +153,7 @@ enum MarkdownAttributedText {
                 let font = ProseTypography.heading(level: level, theme)
                 let attributes: [NSAttributedString.Key: Any] = [
                     .font: font,
-                    .foregroundColor: NSColor(theme.color(.textPrimary)),
+                    .foregroundColor: NSColor(theme.color(ProseTypography.headingColor(level: level))),
                     .paragraphStyle: ProseTypography.paragraphStyle(
                         theme, font: font, basedOn: base[.paragraphStyle] as? NSParagraphStyle
                     ),
@@ -309,6 +323,10 @@ enum MarkdownAttributedText {
         case embed(name: String)
         /// A CommonMark link whose href is a real `http`/`https` URL.
         case external(URL)
+        /// A `#client-acme` tag (n1-seams R-12): opens the Tags pane narrowed to it.
+        case tag(Tag)
+        /// A valid `>2026-10-12` / `!2026-10-12` (n1-seams R-13): opens the Oggi pane on that day.
+        case day(CalendarDate)
     }
 
     static func clickTarget(for url: URL) -> LinkClickTarget? {
@@ -320,13 +338,23 @@ enum MarkdownAttributedText {
            let name = components.queryItems?.first(where: { $0.name == "name" })?.value {
             return .embed(name: name)
         }
+        if components.host == tagHost,
+           let tag = components.queryItems?.first(where: { $0.name == "name" })?.value.flatMap(Tag.init) {
+            return .tag(tag)
+        }
+        if components.host == dayHost,
+           let day = components.queryItems?.first(where: { $0.name == "date" })?.value
+               .flatMap({ CalendarDate(iso: $0) }) {
+            return .day(day)
+        }
         guard components.host == "note",
               let title = components.queryItems?.first(where: { $0.name == "title" })?.value
         else { return nil }
         return .note(title: title)
     }
 
-    private static func url(host: String, item: URLQueryItem) -> URL {
+    /// Internal, not private: `MarkdownAttributedText+Clicks.swift` builds the tag and day URLs with it.
+    static func url(host: String, item: URLQueryItem) -> URL {
         var components = URLComponents()
         components.scheme = AppInfo.urlScheme
         components.host = host

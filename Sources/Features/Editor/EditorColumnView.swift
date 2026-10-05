@@ -65,6 +65,8 @@ struct EditorColumnView: View {
     /// a note created in the app rescans (`VaultController+Notes.swift`), so the pool is
     /// as fresh as the sidebar beside it.
     @State var noteTitles: [String] = []
+    /// Every note's aliases by title, the third pool, on the same schedule (n1-seams R-08).
+    @State var noteAliases: [String: [String]] = [:]
     @State var boardTitles: [String] = []
 
     var body: some View {
@@ -91,6 +93,7 @@ struct EditorColumnView: View {
         // scan, never per keystroke, which is the whole point of caching the two pools.
         .task(id: vault.scanGeneration) {
             noteTitles = vault.index.allNotes.map(\.title)
+            noteAliases = NoteTextView.aliasesByTitle(vault.index.allNotes)
             boardTitles = vault.root.map { CanvasStore(root: $0).allBoards() } ?? []
         }
         // Anywhere in the column, not only on the tab bar: clicking into a note is how a person

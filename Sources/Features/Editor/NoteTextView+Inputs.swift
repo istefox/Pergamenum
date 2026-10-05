@@ -107,6 +107,11 @@ extension NoteTextView {
         /// (`selectEmbed(at:in:)`) and never reaches this callback; unlike a heading or
         /// emphasis marker, the caret alone never brings the raw text back (D5).
         var onOpenEmbed: ((String) -> Void)?
+        /// Called with the tag of a `#client-acme` that was Cmd+clicked, and with the day of a
+        /// valid `>2026-10-12` / `!2026-10-12` (n1-seams R-12, R-13). Nil where there is no vault
+        /// behind the editor, and a Cmd+click on one then opens nothing.
+        var onOpenTag: ((Tag) -> Void)?
+        var onOpenDay: ((CalendarDate) -> Void)?
         /// Where a dropped file should be copied to, returning its file name for the
         /// embed (SPEC §5). Nil disables dropping.
         var onDropFile: ((URL) -> String?)?

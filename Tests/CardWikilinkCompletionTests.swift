@@ -90,3 +90,52 @@ import Testing
     let results = CardWikilinkCompletion.candidates(matching: "zzz", notes: ["Prova"], boards: ["Calendar/testo.canvas"])
     #expect(results.isEmpty)
 }
+
+// MARK: - Aliases (n1-seams R-08)
+
+@Test func aNoteMatchedOnlyThroughAnAliasIsOfferedWithItsTitleAsTheInsertion() { // (n1-seams R-08)
+    let notes = [
+        WikilinkNote(title: "Curva di trasmissibilità", aliases: ["Vibration isolation"]),
+        WikilinkNote(title: "Altro", aliases: [])
+    ]
+    let results = CardWikilinkCompletion.candidates(matching: "vibration", notes: notes, boards: [])
+
+    #expect(results.count == 1)
+    #expect(results.first?.displayTitle == "Curva di trasmissibilità")
+    #expect(results.first?.insertText == "Curva di trasmissibilità")
+    #expect(results.first?.matchedAlias == "Vibration isolation")
+    #expect(results.first?.kind == .note)
+}
+
+@Test func aNoteMatchedByTitleHasNoMatchedAliasEvenWhenAnAliasAlsoMatches() { // (n1-seams R-08)
+    let notes = [WikilinkNote(title: "Gomma naturale", aliases: ["Gomma grezza"])]
+    let results = CardWikilinkCompletion.candidates(matching: "gomma", notes: notes, boards: [])
+
+    #expect(results.count == 1)
+    #expect(results.first?.matchedAlias == nil)
+    #expect(results.first?.label == "Gomma naturale")
+}
+
+@Test func theLabelNamesTheAliasThatMatchedAndOtherwiseIsTheBareTitle() { // (n1-seams R-08)
+    let viaAlias = WikilinkCandidate(
+        displayTitle: "Curva", insertText: "Curva", kind: .note, matchedAlias: "Isolamento"
+    )
+    #expect(viaAlias.label == "Curva · alias: Isolamento")
+
+    let viaTitle = WikilinkCandidate(displayTitle: "Curva", insertText: "Curva", kind: .note)
+    #expect(viaTitle.label == "Curva")
+}
+
+@Test func aBoardKeepsItsPathAsLabelAndNeverCarriesAnAlias() { // (n1-seams R-08)
+    let notes: [WikilinkNote] = []
+    let results = CardWikilinkCompletion.candidates(
+        matching: "testo", notes: notes, boards: ["Calendar/testo.canvas"]
+    )
+    #expect(results.first?.label == "Calendar/testo.canvas")
+    #expect(results.first?.matchedAlias == nil)
+}
+
+@Test func noAliasAndNoTitleMatchYieldsNothing() { // (n1-seams R-08)
+    let notes = [WikilinkNote(title: "Prova", aliases: ["Esperimento"])]
+    #expect(CardWikilinkCompletion.candidates(matching: "zzz", notes: notes, boards: []).isEmpty)
+}

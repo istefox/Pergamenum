@@ -10,6 +10,9 @@ import AppKit
 /// the keys in exchange, in `doCommand(by:)`, and the panel places itself.
 final class CompletingTextView: NSTextView {
     var noteTitles: [String] = []
+    /// The aliases each note answers to, by title, so a `[[` completion can offer a note through
+    /// one (n1-seams R-08). Keyed by `noteTitles`' entries; a title missing here has none.
+    var noteAliases: [String: [String]] = [:]
     /// Workspace boards offered alongside notes after `[[` (`CardWikilinkCompletion`'s own
     /// candidate ranking, shared with the Workspace `.text` card's `[[` popup rather than
     /// forked - a board's file, never a folder, is what a wikilink can ever target).
@@ -242,13 +245,9 @@ final class CompletingTextView: NSTextView {
             items = EmojiCatalogue.matching(query).map { .emoji(glyph: $0.glyph, name: $0.name) }
         case .wikilink(let prefix):
             query = prefix
-            // A board's `insertText` (`CardWikilinkCompletion`) is always a bare `.canvas`
-            // filename and a note title never carries an extension, so the two are
-            // distinguishable per-row for free - no change needed to `CompletionItem` or
-            // `WikilinkCandidate` to carry a per-row icon.
-            items = (completions(
-                forPartialWordRange: rangeForUserCompletion, indexOfSelectedItem: nil
-            ) ?? []).map { .text($0, symbol: $0.hasSuffix(".canvas") ? "square.grid.2x2" : "doc.text") }
+            // The candidate itself, not its string: the row reads its `label` (a note found
+            // through an alias names it) and `apply` closes the link (n1-seams R-07, R-08).
+            items = wikilinkCandidates(matching: prefix).map(CompletionItem.wikilink)
         case .section(_, let prefix), .tag(let prefix):
             query = prefix
             let symbol = context.symbol
@@ -314,10 +313,14 @@ final class CompletingTextView: NSTextView {
         completionPanel.hide()
 
         switch item {
-        // The bare string, which is what AppKit's list inserted: `[[Nota` is left open for
-        // the person to close, and a heading replaces only what follows the `#`.
+        // The bare string, which is what AppKit's list inserted: a heading replaces only what
+        // follows the `#` and leaves `[[Nota#Sezione` open, a tag only what follows its `#`.
         case .text(let value, _):
             insertText(value, replacementRange: range)
+        // The title and the closing `]]`, caret after it (n1-seams R-07): a `]]` already right
+        // after the caret is reused, never doubled. The card's popup applies the same rule.
+        case .wikilink(let candidate):
+            insertWikilink(candidate, replacing: range)
         // The glyph alone. The `:` and the name were how it was reached, not what was meant,
         // and nothing shortcode-shaped is left in the file for Obsidian to read differently.
         case .emoji(let glyph, _):
@@ -373,12 +376,7 @@ final class CompletingTextView: NSTextView {
 
         switch context {
         case .wikilink(let prefix):
-            // The same ranking the Workspace `.text` card's own `[[` popup uses
-            // (`CardWikilinkCompletion.swift`) - notes and boards fuzzy-scored together, a
-            // board's bare filename as the insertable text.
-            let matches = CardWikilinkCompletion.candidates(
-                matching: prefix, notes: noteTitles, boards: boardTitles, limit: 12
-            ).map(\.insertText)
+            let matches = wikilinkCandidates(matching: prefix).map(\.insertText)
             return matches.isEmpty ? nil : matches
         case .section(let note, let prefix):
             return sections(of: note, matching: prefix)
