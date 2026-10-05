@@ -27,6 +27,8 @@ private final class GapProbe {
             reply: { [unowned self] in replies.append($0) },
             reveal: { [unowned self] in revealed.append($0) },
             revealContenitore: { [unowned self] in revealedContenitore.append($0) },
+            revealBoard: {},
+            revealDiary: {},
             // Every timer waits: the caps must not decide these tests.
             sleep: { [unowned self] _ in await hold.wait() },
             saveAll: saveAll

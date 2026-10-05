@@ -1,4 +1,4 @@
-**Requirement set:** `SPEC.md`
+**Requirement set:** `docs/archive/specs/pg-384-n1-seams.SPEC.md` (root `SPEC.md` while this was built)
 
 # PG-384 — N1 seams of the note workflow: implementation plan
 

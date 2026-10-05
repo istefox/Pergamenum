@@ -217,6 +217,8 @@ private func symlink(to target: URL) throws -> URL {
         reply: { replies.append($0) },
         reveal: { revealed.append($0) },
         revealContenitore: { _ in },
+        revealBoard: {},
+        revealDiary: {},
         sleep: { _ in try? await Task.sleep(for: .seconds(60)) }
     )
 

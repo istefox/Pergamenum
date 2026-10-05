@@ -212,7 +212,10 @@ L'architettura harness vigente (ADR 20/07/2026, emendata 30/07/2026) assegna i t
   altrimenti. **Uscire dall'app con note non salvate chiede prima**, con un solo avviso che le
   elenca tutte, di entrambe le colonne e anche delle tab in secondo piano: «Salva tutto / Non
   salvare / Annulla» («Salva» con una nota sola). Una nota cambiata anche su disco non viene mai
-  scritta da «Salva tutto»: l'app resta aperta e mostra il suo avviso di conflitto. Il
+  scritta da «Salva tutto»: l'app resta aperta e mostra il suo avviso di conflitto.
+  *Emendato 2026-10-05 (ADR-0089).* Lo stesso avviso nomina anche la board del Workspace aperta
+  e il giorno del Diario quando sono in conflitto con il disco: «Salva» non li scrive mai, l'app
+  resta aperta e mostra il loro avviso; «Non salvare» esce lasciando i file su disco come sono. Il
   salvataggio automatico continuo di §6.1 (~1 s) vale per le board del Workspace, non per le
   note.
 - Requisiti minimi:
