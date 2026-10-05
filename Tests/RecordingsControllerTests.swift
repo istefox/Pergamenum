@@ -345,12 +345,15 @@ private func sampleProposal(recordingID: String, themes: [PlaudTheme]) -> PlaudP
 
     let sut = RecordingsController(
         service: fake, vault: controllerVault, defaults: isolatedDefaults(), isTestHost: false,
-        pollInterval: .milliseconds(5), pollTimeout: .milliseconds(25)
+        pollInterval: .milliseconds(5), pollTimeout: .milliseconds(250)
     )
 
     await sut.process("rec-1")
-    try await waitUntil(timeout: .seconds(2)) { sut.pollExpired.contains("rec-1") }
+    try await waitUntil(timeout: .seconds(5)) { sut.pollExpired.contains("rec-1") }
 
+    // The timeout is 250 ms, not the 25 ms it was: on a loaded machine the first poll can land
+    // after a 25 ms deadline, leaving a single job call and a red test that says nothing about
+    // the controller. Ten times the interval still leaves room for more than one call.
     #expect(sut.pollExpired.contains("rec-1"))
     #expect(!sut.pollingRecordingIDs.contains("rec-1"))
     #expect(await fake.jobCalls.count > 1)

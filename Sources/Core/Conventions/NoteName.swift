@@ -60,7 +60,9 @@ enum NoteName {
 
     /// Detects the `v2` / `_v10` suffixes naming.md forbids on notes. Version numbers
     /// belong on exported deliverables, not on the note that produced them.
-    private static func versionSuffix(in title: String) -> String? {
+    ///
+    /// Internal, not private: `CaptureTitle.swift` reads it to remove the suffix it detects.
+    static func versionSuffix(in title: String) -> String? {
         let separators: Set<Character> = [" ", "_", "-"]
         guard let last = title.split(whereSeparator: { separators.contains($0) }).last else { return nil }
         guard last.count >= 2, last.first == "v" || last.first == "V" else { return nil }

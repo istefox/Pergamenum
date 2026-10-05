@@ -90,23 +90,131 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     #expect(!onDisk.contains("\nMescola per il distretto"))
 }
 
+// PG-384 (N1 seams), ADR-0080 §D3: capture derives a title instead of refusing the first line.
+//
+// Before ADR-0080, a capture whose first line the conventions refused (`questo/non va`,
+// `Relazione v2`) threw. ADR-0080 §D3 reverses that for capture only; `VaultSession.createNote`
+// still refuses (`VaultSessionTests.aSessionRefusesANonConformantTitleRatherThanFixingIt`).
+// The two tests below pin the file each of those lines now writes.
+
+private func bodyOf(_ text: String) -> String {
+    NoteDocument.parse(text).body.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+// (n1-seams R-03, R-04)
 @MainActor
-@Test func aTitleTheConventionsRefuseStopsTheCaptureInsteadOfBeingCorrected() async throws {
+@Test func aFirstLineWithAForbiddenCharacterBecomesADerivedTitleAndKeepsEveryWordInTheBody() async throws {
     let vault = try TemporaryVault()
     let session = try await openVault(vault)
     VaultAPI.arm(session, command: "capture", dryRun: false)
 
-    // Capture is a faster way to write a note, not a way around SPEC §4.2: the first
-    // line goes through `NoteName.validate` like any other title.
-    await #expect(throws: ConnectorError.self) {
+    let summary = try await VaultAPI.capture(
+        session, to: .newNote(folder: nil), text: "questo/non va\ncorpo qualsiasi"
+    )
+
+    #expect(summary.applied)
+    #expect(summary.path == "00 Inbox/questo non va.md")
+    let onDisk = try String(contentsOf: vault.root.appending(path: summary.path), encoding: .utf8)
+    // The title differs from the line, so nothing the person typed is lost: the first line
+    // goes to the body as well.
+    let body = bodyOf(onDisk)
+    #expect(body.contains("questo/non va"))
+    #expect(body.contains("corpo qualsiasi"))
+}
+
+// (n1-seams R-03, R-04)
+@MainActor
+@Test func aFirstLineEndingInAVersionTokenLosesTheTokenFromTheTitleOnly() async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVault(vault)
+    VaultAPI.arm(session, command: "capture", dryRun: false)
+
+    let summary = try await VaultAPI.capture(session, to: .newNote(folder: nil), text: "Relazione v2")
+
+    #expect(summary.path == "00 Inbox/Relazione.md")
+    let onDisk = try String(contentsOf: vault.root.appending(path: summary.path), encoding: .utf8)
+    #expect(bodyOf(onDisk) == "Relazione v2")
+}
+
+// (n1-seams R-03)
+@MainActor
+@Test func aLegalFirstLineIsTheTitleAndIsNotRepeatedInTheBody() async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVault(vault)
+    VaultAPI.arm(session, command: "capture", dryRun: false)
+
+    let summary = try await VaultAPI.capture(
+        session, to: .newNote(folder: nil), text: "Mescola per il distretto\nProvata a 60 shore."
+    )
+
+    #expect(summary.path == "00 Inbox/Mescola per il distretto.md")
+    let onDisk = try String(contentsOf: vault.root.appending(path: summary.path), encoding: .utf8)
+    #expect(bodyOf(onDisk) == "Provata a 60 shore.")
+}
+
+// (n1-seams R-04)
+@MainActor
+@Test func aDerivedTitleAlreadyTakenIsRefusedAndWritesNothing() async throws {
+    let vault = try TemporaryVault()
+    let taken = "---\ndate: 2026-08-11\ntags:\n  - type-note\n---\n\nGià qui.\n"
+    try vault.write(taken, to: "00 Inbox/questo non va.md")
+    let session = try await openVault(vault)
+    VaultAPI.arm(session, command: "capture", dryRun: false)
+
+    let error = await #expect(throws: ConnectorError.self) {
         try await VaultAPI.capture(
             session, to: .newNote(folder: nil), text: "questo/non va\ncorpo qualsiasi"
         )
     }
-    await #expect(throws: ConnectorError.self) {
-        try await VaultAPI.capture(session, to: .newNote(folder: nil), text: "Relazione v2")
+
+    // The refusal is the "already exists" one, exactly as a typed title would get, and not
+    // the old "titolo non conforme" for the line the person typed.
+    #expect(error?.description.contains("esiste già") == true, "\(String(describing: error))")
+    let onDisk = try String(
+        contentsOf: vault.root.appending(path: "00 Inbox/questo non va.md"), encoding: .utf8
+    )
+    #expect(onDisk == taken)
+    let siblings = try FileManager.default.contentsOfDirectory(
+        atPath: vault.root.appending(path: "00 Inbox").path(percentEncoded: false)
+    )
+    #expect(siblings == ["questo non va.md"])
+}
+
+// (n1-seams R-04)
+@MainActor
+@Test func anEmptyOrWhitespaceOnlyCaptureAsANoteIsRefusedAndWritesNothing() async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVault(vault)
+    VaultAPI.arm(session, command: "capture", dryRun: false)
+
+    for text in ["", "   ", "\n\n  \n"] {
+        await #expect(throws: ConnectorError.self) {
+            try await VaultAPI.capture(session, to: .newNote(folder: nil), text: text)
+        }
     }
-    #expect(!session.exists("00 Inbox/Relazione v2.md"))
+    #expect(!FileManager.default.fileExists(
+        atPath: vault.root.appending(path: "00 Inbox").path(percentEncoded: false)
+    ))
+}
+
+// (n1-seams R-03, R-04)
+@MainActor
+@Test func aLineOfNothingButForbiddenCharactersBecomesTheTimestampedCaptureTitle() async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVault(vault)
+    VaultAPI.arm(session, command: "capture", dryRun: false)
+
+    let summary = try await VaultAPI.capture(session, to: .newNote(folder: nil), text: "???")
+
+    // The title reads the clock (`VaultAPI.capture` has no clock parameter), so only its
+    // shape is pinned: `YYYYMMDD HHmm Cattura`, in the inbox.
+    let shape = #"^00 Inbox/\d{8} \d{4} Cattura\.md$"#
+    #expect(
+        summary.path.range(of: shape, options: .regularExpression) != nil,
+        "«\(summary.path)» non ha la forma del titolo di ripiego"
+    )
+    let onDisk = try String(contentsOf: vault.root.appending(path: summary.path), encoding: .utf8)
+    #expect(bodyOf(onDisk) == "???", "il testo digitato deve restare nel corpo")
 }
 
 @MainActor
@@ -234,4 +342,119 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 
     let onDisk = try String(contentsOf: vault.root.appending(path: "Nota.md"), encoding: .utf8)
     #expect(!onDisk.contains("Aggiunta"))
+}
+
+// MARK: - A lone carriage return ends the typed line (PG-327, ADR-0080 §D3)
+
+// (coverage) `CaptureTitle.endsTypedLine` is the one place capture decides where the first
+// line stops; `captureAsNote` splits its body at the same character.
+@Test func theTypedLineEndsAtEveryKindOfBreakAndNowhereElse() {
+    #expect(CaptureTitle.endsTypedLine("\n"))
+    #expect(CaptureTitle.endsTypedLine("\r"))
+    #expect(CaptureTitle.endsTypedLine("\r\n"))
+    #expect(!CaptureTitle.endsTypedLine("a"))
+    #expect(!CaptureTitle.endsTypedLine(" "))
+}
+
+// (coverage) A lone "\r" after a legal title splits like any break and loses no text.
+@MainActor
+@Test func aLoneCarriageReturnAfterALegalTitleSplitsTheTitleOffAndKeepsTheBody() async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVault(vault)
+    VaultAPI.arm(session, command: "capture", dryRun: false)
+
+    let summary = try await VaultAPI.capture(
+        session, to: .newNote(folder: nil), text: "Relazione fornitore\runo\rdue"
+    )
+
+    #expect(summary.path == "00 Inbox/Relazione fornitore.md")
+    #expect(!summary.path.unicodeScalars.contains("\r"))
+    let onDisk = try String(contentsOf: vault.root.appending(path: summary.path), encoding: .utf8)
+    #expect(onDisk.contains("uno"))
+    #expect(onDisk.contains("due"))
+    #expect(!onDisk.contains("Relazione fornitore\r"))
+}
+
+// (coverage) The case the lone "\r" would have lost text in: a derived title sends the whole
+// text to the body, so the line after the "\r" must be there.
+@MainActor
+@Test func aLoneCarriageReturnAfterARefusedTitleKeepsTheTextAfterItInTheBody() async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVault(vault)
+    VaultAPI.arm(session, command: "capture", dryRun: false)
+
+    let summary = try await VaultAPI.capture(
+        session, to: .newNote(folder: nil), text: "questo/non va\rcorpo qualsiasi"
+    )
+
+    #expect(summary.path == "00 Inbox/questo non va.md")
+    let onDisk = try String(contentsOf: vault.root.appending(path: summary.path), encoding: .utf8)
+    let body = bodyOf(onDisk)
+    #expect(body.contains("questo/non va"))
+    #expect(body.contains("corpo qualsiasi"))
+}
+
+// (coverage) The same for a CRLF break: no "\r" on the derived title, no text lost.
+@MainActor
+@Test func aCRLFAfterARefusedTitleKeepsTheTextAfterItInTheBody() async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVault(vault)
+    VaultAPI.arm(session, command: "capture", dryRun: false)
+
+    let summary = try await VaultAPI.capture(
+        session, to: .newNote(folder: nil), text: "questo/non va\r\ncorpo qualsiasi"
+    )
+
+    #expect(summary.path == "00 Inbox/questo non va.md")
+    #expect(!summary.path.unicodeScalars.contains("\r"))
+    let body = bodyOf(try String(contentsOf: vault.root.appending(path: summary.path), encoding: .utf8))
+    #expect(body.contains("questo/non va"))
+    #expect(body.contains("corpo qualsiasi"))
+}
+
+// (coverage) A rehearsal of a capture with a derived title names the derived title and
+// writes nothing, the dry-run branch of `captureAsNote`.
+@MainActor
+@Test func aDryRunCaptureWithADerivedTitleNamesItAndWritesNothing() async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVault(vault)
+    VaultAPI.arm(session, command: "capture", dryRun: true)
+
+    let summary = try await VaultAPI.capture(
+        session, to: .newNote(folder: nil), text: "questo/non va\ncorpo qualsiasi"
+    )
+
+    #expect(!summary.applied)
+    #expect(summary.path == "00 Inbox/questo non va.md")
+    #expect(summary.note?.contains("il corpo verrebbe aggiunto") == true)
+    #expect(!session.exists(summary.path))
+    #expect(!FileManager.default.fileExists(
+        atPath: vault.root.appending(path: "00 Inbox").path(percentEncoded: false)
+    ))
+}
+
+// (coverage) The panel's caption and the file the capture writes come from one function:
+// for every text, the caption (or, with none, the typed line) is the file's name.
+@MainActor
+@Test(arguments: [
+    "Idea: usare i token\rcorpo",
+    "questo/non va\r\ncorpo",
+    "  \n  a/b  ",
+    "Relazione v2",
+    "Mescola per il distretto\rProvata.",
+])
+func theCaptionAndTheFileNameOfACaptureAgree(text: String) async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVault(vault)
+    VaultAPI.arm(session, command: "capture", dryRun: false)
+    let controller = CaptureController()
+    controller.destination = .note
+    controller.text = text
+
+    let summary = try await VaultAPI.capture(session, to: .newNote(folder: nil), text: text)
+
+    let stem = try #require(summary.path.split(separator: "/").last.map { String($0.dropLast(3)) })
+    let typed = CaptureTitle.typedLine(of: text.trimmingCharacters(in: .whitespacesAndNewlines))
+    let shown = controller.titleCaption().map { String($0.dropFirst("Titolo: ".count)) } ?? typed
+    #expect(stem == shown, "«\(text)»: il file è «\(stem)», la didascalia dice «\(shown)»")
 }

@@ -103,7 +103,11 @@ private let sampleDate = CalendarDate(iso: "2026-08-18")!
 
     let result = try await session.createNote(title: "Semplice", date: sampleDate)
 
-    #expect(result.text == "---\ndate: 2026-08-18\ntags:\n  - type-note\n---\n\n")
+    // REWRITTEN (PG-384, ADR-0080 §D1): this pinned `type-note` alone. A note born with no
+    // `topic-*` is now a capture on every path, so `status-inbox` follows `type-note`. The
+    // regression it guards is unchanged: nothing else about the bytes moved.
+    // (n1-seams R-01)
+    #expect(result.text == "---\ndate: 2026-08-18\ntags:\n  - type-note\n  - status-inbox\n---\n\n")
 }
 
 @MainActor
@@ -120,11 +124,14 @@ private let sampleDate = CalendarDate(iso: "2026-08-18")!
     )
     let result = try await session.createNote(title: "Riunione con Rossi", date: sampleDate, body: body)
 
+    // REWRITTEN (PG-384, ADR-0080 §D1): the same one-line change as the pin above, the
+    // template's body is untouched. (n1-seams R-01)
     #expect(result.text == """
     ---
     date: 2026-08-18
     tags:
       - type-note
+      - status-inbox
     ---
 
     # Riunione con Rossi

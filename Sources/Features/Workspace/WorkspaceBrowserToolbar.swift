@@ -19,7 +19,7 @@ struct WorkspaceBrowserToolbar: View {
     /// folder, with no fallback when nothing is selected (ADR-0025 §D8, ADR-0024 §D7).
     /// The two verbs dispatch on its case, and so does the wording below.
     let selection: WorkspaceSelection?
-    /// «Nuova board»: a `.canvas` file, in the folder `WorkspaceBrowser.target(for:)`
+    /// «Nuova board…»: a `.canvas` file, in the folder `WorkspaceBrowser.target(for:)`
     /// names (R-02).
     let onNew: () -> Void
     /// «Nuova cartella»: a directory, and nothing inside it (R-01, ADR-0025 §D7). A
@@ -34,16 +34,16 @@ struct WorkspaceBrowserToolbar: View {
 
     var body: some View {
         HStack(spacing: theme.spacing(.xs)) {
-            // «Nuova board» keeps `plus` and `workspace-new` byte for byte: it is the
+            // «Nuova board…» keeps `plus` and `workspace-new` byte for byte: it is the
             // button that was here, doing what it did, and the UI suite reaches it by
             // that identifier (ADR-0025 §D7).
-            button("Nuova board", symbol: "plus", identifier: "workspace-new", action: onNew)
+            button("Nuova board…", symbol: "plus", identifier: "workspace-new", action: onNew)
             button(
-                "Nuova cartella", symbol: "folder.badge.plus",
+                "Nuova cartella…", symbol: "folder.badge.plus",
                 identifier: "workspace-new-folder", action: onNewFolder
             )
             button(
-                "Rinomina \(targetNoun)", symbol: "pencil", identifier: "workspace-rename",
+                "Rinomina \(targetNoun)…", symbol: "pencil", identifier: "workspace-rename",
                 enabled: Self.canMutate(selection), action: onRename
             )
             button(

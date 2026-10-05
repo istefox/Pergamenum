@@ -90,7 +90,7 @@ Labs/                           ← vault Obsidian esistente (o altro vault scel
 │   ├── settings.json
 │   ├── themes/                 ← temi DTCG, §12
 │   └── vocabolari.json         ← replica dichiarata delle tabelle chiuse di tag.md (§4.6)
-├── 00 Inbox/                   ← capture in triage
+├── 00 Inbox/                   ← capture in triage (cartella configurabile)
 ├── 01 Progetti/
 ├── 02 Aree/
 ├── 03 Risorse/
@@ -98,6 +98,8 @@ Labs/                           ← vault Obsidian esistente (o altro vault scel
 │   └── 20260811.md
 └── qualsiasi altra cartella e nota
 ```
+
+*Emendato 2026-10-04 (ADR-0080).* La cartella dove finiscono le catture, la nota `Capture.md` dei task e i file importati è configurabile (Impostazioni › Convenzioni › Cartella inbox, default `00 Inbox`); un valore vuoto, assoluto, con un componente `..` o fuori dal vault vale il default.
 
 L'app non impone la struttura 00-03: la rispetta se esiste. Le uniche cartelle proprie sono `.pergamenum/` e la cartella daily configurabile. Cache indice, thumbnail e cronologia sono derivati e non stanno più qui: vivono fuori dal vault, in `~/Library/Application Support/it.stefer.pergamenum/vaults/<vaultID>/` (ADR-0017), cancellabili senza perdere nulla e senza toccare il vault, che resta sincronizzabile via iCloud Drive senza portarsi dietro stato macchina-specifico.
 
@@ -133,7 +135,7 @@ Regole vincolanti per l'app:
 - VIETATE le chiavi `title`, `status`, `type`, `draft`, `version`, `author`, chiavi di lingua o di data aggiuntive (F-02, F-05). La spec v1 le prevedeva: sono rimosse.
 - Ordine dei tag nella lista: per namespace nell'ordine di T-01 (`client`, `competitor`, `project`, `type`, `topic`, `status`, `area`, `source`), poi alfabetico dentro il namespace (F-04).
 - Chiavi facoltative senza valore: si omettono, mai vuote o `[]` (F-08).
-- Daily note: `date` + `tags` con il solo `- type-note` (tag.md 5.1). Capture inbox senza argomento: `- type-note` + `- status-inbox`. L'app genera questi blocchi automaticamente.
+- Daily note: `date` + `tags` con il solo `- type-note` (tag.md 5.1). *Emendato 2026-10-04 (ADR-0080).* Ogni nota che nasce senza un `topic-*`, da qualunque superficie (Cmd+N, Apri rapido, «Documento», cattura, `perg`, MCP), è una cattura: `- type-note` + `- status-inbox`. La daily note resta col solo `- type-note`. L'app genera questi blocchi automaticamente.
 - L'app crea ogni nuova nota con blocco conforme e segnala (linter, §4.7) le note non conformi senza correggerle in massa: l'adeguamento avviene solo quando la nota viene toccata (non retroattività, frontmatter.md 6.2).
 
 ### 4.4 Tag (tag.md)
@@ -241,7 +243,7 @@ Terminologia vincolante: la vista spaziale si chiama **Workspace** in tutta la U
 ### 6.1 Struttura e navigazione (modello VisualOS)
 
 - **Gerarchia**: il Workspace è organizzato in **cartelle** e **board**, due concetti distinti (ADR-0025). Una cartella è un contenitore; una board è un documento `.canvas` che vive dentro una cartella qualsiasi, con qualsiasi nome, in qualsiasi numero — zero board, una, o dieci nella stessa cartella. Il sidebar disegna le une e le altre come righe separate: una cartella che contiene una board ha la propria riga *accanto* a quella della board, e una cartella vuota è comunque visibile. La radice del vault è l'elenco stesso, non una riga. Sulla board, le cartelle appaiono come card cartella e **il doppio click su una card cartella entra nella sua board solo quando quella cartella ne contiene esattamente una**; se ne contiene più di una, o nessuna, la cartella viene selezionata e non si apre niente. Annidamento illimitato, corrispondente 1:1 alle cartelle reali del vault.
-- **Mappatura su disco**: una board è indirizzata dal **proprio percorso file**, mai dedotta dal nome della cartella che la contiene (ADR-0025). Qualsiasi `.canvas` del vault è una board — `01 Progetti/vibrofer-emea/analisi-concorrenza.canvas` quanto `01 Progetti/vibrofer-emea/vibrofer-emea.canvas` — e una cartella può contenerne quante ne servono, anche nessuna. La convenzione precedente resta valida senza eccezioni: un vault dove ogni cartella ha la sua board omonima (`prova/prova.canvas`) continua a funzionare esattamente come prima e **non richiede nessuna conversione**, semplicemente non è più una regola. Nessuna board viene creata automaticamente entrando in una cartella: si crea esplicitamente con «Nuova board» dalla barra strumenti del sidebar. Un file spostato su una board viene spostato su disco nella cartella che contiene quella board: la board è una vista spaziale della cartella reale (file over app). La radice del Workspace è configurabile (default: radice del vault).
+- **Mappatura su disco**: una board è indirizzata dal **proprio percorso file**, mai dedotta dal nome della cartella che la contiene (ADR-0025). Qualsiasi `.canvas` del vault è una board — `01 Progetti/vibrofer-emea/analisi-concorrenza.canvas` quanto `01 Progetti/vibrofer-emea/vibrofer-emea.canvas` — e una cartella può contenerne quante ne servono, anche nessuna. La convenzione precedente resta valida senza eccezioni: un vault dove ogni cartella ha la sua board omonima (`prova/prova.canvas`) continua a funzionare esattamente come prima e **non richiede nessuna conversione**, semplicemente non è più una regola. Nessuna board viene creata automaticamente entrando in una cartella: si crea esplicitamente con «Nuova board…» dalla barra strumenti del sidebar. Un file spostato su una board viene spostato su disco nella cartella che contiene quella board: la board è una vista spaziale della cartella reale (file over app). La radice del Workspace è configurabile (default: radice del vault).
 - **Barra superiore**: selettore del vault/workspace (pallino di stato + nome) · **breadcrumb** del percorso (es. `Workspace › 01 Progetti › vibrofer-emea`), ogni segmento cliccabile per risalire · annulla/ripeti · ricerca globale · impostazioni · indicatore **Salvato** (autosalvataggio continuo, ~1 s dopo ogni modifica; l'indicatore mostra lo stato di scrittura su disco).
 - **Controlli zoom** (angolo basso destra): riduci `−` · percentuale corrente cliccabile (reset 100%) · ingrandisci `+` · adatta alla vista (zoom to fit). Range 5%–400%, pinch e Cmd+/−.
 - **File nuovi rilevati**: file aggiunti alla cartella dal Finder o da altre app appaiono in un vassoio "Nuovi elementi" della board, da trascinare in posizione (modello VisualOS new-items pool). Nessun file viene posizionato automaticamente.
@@ -376,7 +378,7 @@ Comportamento identico al Finder, implementato con `QLPreviewPanel` (framework Q
 ### 8.1 Daily note
 
 - Nome file `YYYYMMDD.md` (naming.md 4.6), cartella configurabile (default `Calendar/`). Frontmatter auto-generato conforme (§4.3).
-- `Cmd+T` apre oggi; frecce giorno precedente/successivo; mini-calendario mensile come date picker. Template configurabile.
+- `Cmd+Shift+D` apre la nota di oggi; `Cmd+T` apre una nuova tab (ADR-0012 §D5) (*emendato 2026-10-04, ADR-0080*); frecce giorno precedente/successivo; mini-calendario mensile come date picker. Template configurabile.
 - Struttura vista giorno: (1) area riferimenti: task `>data` e backlink alla data; (2) corpo della nota; (3) timeline oraria laterale.
 - *Emendato 2026-08-20 (ADR-0013 §D4 e §D2, M12).* **Giorno, settimana e mese sono tre scale della stessa vista**, scelte dalla barra strumenti e ancorate allo stesso giorno: muoversi nella settimana e tornare al giorno porta sul giorno che la settimana teneva evidenziato. La griglia della settimana disegna quattro sorgenti e non una quinta - eventi EventKit, task pianificati, scadenze, time block - e la daily note è l'intestazione della colonna, non una sorgente: un giorno non è una nota che ha una settimana, è un giorno che ha una nota.
 - *Emendato 2026-08-20 (ADR-0013 §D2 e §D3, M12).* **Note evento**: da un evento della timeline si crea `YYYYMMDD-<slug>.md` **nella stessa cartella delle daily note**, accanto a `YYYYMMDD.md`. Non è una cartella riservata nuova. La nota nasce nella forma di una cattura, `type-note` + `status-inbox`, con l'ora e i partecipanti stampati nel corpo e un wikilink dalla daily note del giorno; il backlink risponde già alla domanda «di che giorno era questa riunione» senza indicizzare niente di nuovo.
@@ -423,17 +425,17 @@ Ogni nota, canvas e card espone "Copia link Pergamenum" nel menu contestuale, pe
 
 **Pergamenum**: Informazioni · Impostazioni… (Cmd+,) · Servizi · Nascondi · Esci
 
-**File**: Nuova nota (Cmd+N) · Nuova board (Cmd+Shift+C) · Nuovo task rapido (Cmd+Shift+N) · Apri vault… · Vault recenti · Importa file… (con rinomina assistita §4.2) · Importa convenzioni… (§4.6) · Esporta nota (PDF/HTML/MD, con rimozione frontmatter e "Note correlate" per consegna a terzi, frontmatter.md 6.3 e wikilink.md 6.3) · Mostra nel Finder (Cmd+Shift+R) · Chiudi (Cmd+W) · aggiunte da ADR successivi: Nuova pratica… (ADR-0036) · Nota del giorno · Nuova tab / Chiudi tab / Riapri l'ultima tab chiusa / Vai alla tab 1-9 (ADR-0012) · Cattura globale (ADR-0008) · Salva · Cronologia… · Rigenera indice
+**File**: Nuova nota (Cmd+N) · Nuova board… (Cmd+Shift+B) · Nuova pratica… (Cmd+Opt+P, ADR-0036) · Nota di oggi (Cmd+Shift+D) · Nuovo task rapido… (Cmd+Shift+N) · Cattura rapida (Ctrl+Opt+Spazio, tasto globale, ADR-0008) · Apri cartella note… (Cmd+Shift+O) · Cartelle recenti · Rigenera indice · Importa file… (con rinomina assistita §4.2) · Importa convenzioni… (§4.6) · Esporta nota (PDF/HTML/MD, con rimozione frontmatter e "Note correlate" per consegna a terzi, frontmatter.md 6.3 e wikilink.md 6.3) · Salva (Cmd+S) · Mostra nel Finder (Cmd+Shift+R) · Nuova tab (Cmd+T) · Chiudi tab (Cmd+W) · Riapri l'ultima tab chiusa (Cmd+Shift+T) · Vai alla tab 1-9 (Cmd+1…9, ADR-0012) · più la voce standard macOS Chiudi (la finestra)
 
-**Modifica**: Annulla/Ripeti · Taglia/Copia/Incolla · Incolla come testo puro · Copia link Pergamenum (Cmd+Shift+L) · Trova nella nota (Cmd+F) · Sostituisci · Ricerca globale (Cmd+Shift+F)
+**Modifica**: voci standard macOS (Annulla/Ripeti · Taglia/Copia/Incolla · Seleziona tutto) · Incolla come testo puro (Cmd+Opt+Shift+V) · Copia link Pergamenum (Cmd+Shift+L) · Ricerca globale… (Cmd+Shift+F) · Sposta nel Cestino (selezione del Contenitore, ADR-0071) · Trova nella nota (Cmd+F) · Sostituisci (Cmd+Opt+F) · Trova successivo (Cmd+G) · Trova precedente (Cmd+Shift+G)
 
 **Inserisci**: Wikilink [[ · Tag # (autocompletamento vincolato) · Task (- [ ]) · Data pianificata > · Scadenza ! · Promemoria @remind · Nota correlata… (flusso W-04/W-05) · Tabella · Immagine/file… · Link email da Mail (legge la selezione corrente di Mail via AppleScript e inserisce `message://`)
 
-**Vista**: Editor · Workspace · Oggi (Cmd+T) · Calendario · Attività · Vai alla nota… · Anteprima rapida (Spazio, §6.6) · Mostra/nascondi sidebar (Cmd+0) · Backlink · Task collegati · Timeline · Link non risolti · Solo sorgente/Stile applicato (Cmd+Shift+E) · Zoom board · Tema (chiaro/scuro/sistema, temi installati §11)
+**Vista**: Indietro (Cmd+[) · Avanti (Cmd+]) · un pannello per voce: Note · Workspace · Oggi · Diario · Attività · Tag · Preferite · Viste · Registrazioni · Pratiche · Contenitore (Ctrl+Cmd+1, 2, 3, 6, 4, 7, 9, 8, 0, P, C, ADR-0002) · Vai alla nota… (Cmd+O) · Cronologia… (Cmd+Shift+H) · Dividi l'editor · Chiudi la colonna · Ispettore (Cmd+Opt+I) · Pannello Workspace · Concentrazione Workspace · Nascondi albero Workspace · Concentrazione Note · Nascondi albero Note · Ripiega la sezione (Cmd+Opt+←) · Espandi tutto (Cmd+Opt+→) · Mostra/Nascondi il frontmatter (Cmd+Opt+Y, ADR-0078) · Aggiorna registrazioni (Cmd+R) · Aggiungi alle/Togli dalle preferite (Cmd+Shift+S) · Applica un template… (Ctrl+Cmd+T) · Anteprima rapida (Spazio, §6.6) · Tema (chiaro/scuro/sistema, temi installati §11) · più le voci standard macOS (barra laterale, barra strumenti, schermo intero)
 
 **Task**: Completa/riapri (Cmd+Invio) · Pianifica oggi (Cmd+0) · domani (Cmd+1) · +2 giorni (Cmd+2) · settimana prossima (Cmd+3) · Scegli data… · Aggiungi scadenza · Aggiungi promemoria · Collega una board… (§7.2, ADR-0039) · Annulla task · Vai alla nota di origine · Vai alla board collegata
 
-**Calendario**: Vai a oggi · Giorno precedente/successivo (Cmd+←/→) · Vai a data… · Nuovo evento (Cmd+E) · Nuovo promemoria (Cmd+Shift+E) · Pubblica time block come evento · Aggiorna da EventKit
+**Calendario**: Vai a oggi · Giorno precedente (Cmd+←) · Giorno successivo (Cmd+→) · Vai a data… · Nuovo evento… (Cmd+E) · Nuovo promemoria… (Cmd+Shift+E) · Pubblica i time block sul Calendario · Aggiorna da EventKit
 
 **Finestra / Aiuto**: standard macOS; Aiuto include "Guida sintassi task" e "Convenzioni harness" (rinvio ai documenti della repo).
 
@@ -492,7 +494,7 @@ Valutazione richiesta (CSS/HTML): un sistema di stili CSS/HTML non è applicabil
   Sempre ricostruibile da una scansione del vault, mai la fonte di verità (principio 3).
   Watcher FSEvents sul vault: modifiche esterne (anche da Obsidian) recepite in tempo reale.
   Le viste (§17) interrogano lo stesso indice, mai una loro copia.
-- Impostazioni: Generali (vault, lingua, tema) · Editor · Canvas (griglia, snap, import copia/riferimento) · Task (orario default promemoria) · Calendario (calendari visibili, calendario di scrittura, fascia timeline) · Convenzioni (cartella daily, percorso repo harness per import vocabolari) · Avanzate (rigenera indice, svuota cache, log).
+- Impostazioni: Generali (vault, lingua, tema) · Editor · Canvas (griglia, snap, import copia/riferimento) · Task (orario default promemoria) · Calendario (calendari visibili, calendario di scrittura, fascia timeline) · Convenzioni (cartella daily, cartella inbox, percorso repo harness per import vocabolari) · Avanzate (rigenera indice, svuota cache, log).
 
 ---
 
@@ -564,9 +566,15 @@ chiamava "globale" una cattura in realtà legata alla finestra (Cmd+Shift+N).*
   secondi dopo la chiusura del pannello.
 - **Quattro destinazioni**, ricordata l'ultima usata: nuova nota · task nell'Inbox · in coda
   alla daily note di oggi (creata se assente) · in coda a una nota esistente scelta. L'Inbox
-  è un file reale, `00 Inbox/Capture.md` — distinto dalla vista task Inbox di §7.4, che
+  è un file reale, `<cartella inbox>/Capture.md` (default `00 Inbox/Capture.md`, *emendato
+  2026-10-04, ADR-0080*) — distinto dalla vista task Inbox di §7.4, che
   resta "task senza data né progetto": la cattura dà a un task acquisito un posto su disco
   dal primo secondo, non sostituisce quella vista.
+- *Emendato 2026-10-04 (ADR-0080).* Una prima riga che non è un nome di nota valido produce
+  un titolo proposto (caratteri vietati sostituiti da spazi, spazi compattati, suffisso di versione tolto,
+  taglio a 60 caratteri a una parola); se diverso dalla riga, tutto il testo va nel corpo;
+  se non resta nulla, il titolo è `YYYYMMDD HHmm Cattura`. Il pannello mostra «Titolo: …»
+  prima dell'invio. Solo una cattura vuota è rifiutata.
 - **Un'unica scrittura condivisa**: il pannello, la route `pergamenum://capture` (§9),
   `perg capture` e il tool MCP passano tutti per lo stesso punto in `Sources/Connector/`
   (ADR-0007 §D2/§D4) — stessa cartella di destinazione, stesso frontmatter, giornalata e

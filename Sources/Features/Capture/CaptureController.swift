@@ -74,7 +74,7 @@ final class CaptureController {
     /// destination cannot be used yet; for `.task`, nil means the fixed inbox note - a
     /// usable default, not a refusal.
     var notePath: String?
-    /// Where `.note` writes. Nil means the default folder (`VaultAPI.CaptureDestination.defaultFolder`).
+    /// Where `.note` writes. Nil means the vault's inbox folder (`VaultSession.inboxFolder`).
     var folder: String?
     private(set) var outcome: Outcome?
 
@@ -87,6 +87,19 @@ final class CaptureController {
     private var draftExpiry: Date?
 
     var isEmpty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    /// «Titolo: …» for a «Nota nuova» whose derived title differs from the typed line,
+    /// nil otherwise (ADR-0080 §D3).
+    ///
+    /// Asks the same function the capture writes through, on the text trimmed the way
+    /// `VaultAPI.capture` trims it, so the caption and the file name cannot disagree. The
+    /// one named exception is a fallback title shown in one minute and sent in the next.
+    func titleCaption(now: Date = Date(), calendar: Calendar = .current) -> String? {
+        guard destination == .note, !isEmpty else { return nil }
+        let typed = CaptureTitle.typedLine(of: text.trimmingCharacters(in: .whitespacesAndNewlines))
+        let derived = CaptureTitle.derive(fromTypedLine: typed, now: now, calendar: calendar)
+        return derived.differsFromTyped ? "Titolo: \(derived.title)" : nil
+    }
 
     // MARK: Opening and closing
 

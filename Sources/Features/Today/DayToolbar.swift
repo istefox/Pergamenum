@@ -51,6 +51,7 @@ struct DayToolbar: ToolbarContent {
                 Label("Vai a data", systemImage: "calendar")
             }
             .help("Vai a una data")
+            .accessibilityIdentifier("day-go-to-date")
 
             // Three scales of one thing, not three views: whichever is chosen, the day
             // underneath does not move (ADR-0013 §D4).
@@ -94,10 +95,10 @@ struct DayToolbar: ToolbarContent {
             // that vanishes leaves the user looking for a feature they were told
             // exists, and the Impostazioni pane is where the grant is explained.
             Button { controller.isCreatingEvent = true } label: {
-                Label("Nuovo evento", systemImage: CalendarDayCommand.newEvent.symbol)
+                Label(CalendarDayCommand.newEvent.title, systemImage: CalendarDayCommand.newEvent.symbol)
             }
             .help(calendar.eventAccess.isGranted
-                ? "Nuovo evento"
+                ? CalendarDayCommand.newEvent.title
                 : "Serve l'accesso al Calendario, da Impostazioni")
             .disabled(!calendar.eventAccess.isGranted)
 

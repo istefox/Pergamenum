@@ -289,7 +289,10 @@ struct PergamenumApp: App {
             onToday: { Task { @MainActor in await vault.handle(.today) } },
             onInbox: {
                 Task { @MainActor in
-                    await vault.handle(.note(path: VaultSession.TaskDestination.inboxPath))
+                    // The vault's own inbox note (ADR-0080 §D5); the default only when no
+                    // vault is open yet to say otherwise.
+                    let path = vault.session?.inboxNotePath ?? VaultSession.TaskDestination.inboxPath
+                    await vault.handle(.note(path: path))
                 }
             }
         )

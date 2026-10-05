@@ -140,9 +140,48 @@ struct VaultSettings: Codable, Equatable, Sendable {
     /// Contenitore root. Nested and defaulted like `pratiche`, for the same reason.
     var contenitore: ContenitoreSettings
 
+    /// The vault-relative folder a capture, the inbox note and an import land in
+    /// (ADR-0080 §D5). Stored as typed; every reader goes through `resolveInboxFolder`,
+    /// because `settings.json` is a file a person or another tool can edit.
+    var inboxFolder: String
+
     /// Named so the memberwise initialiser can default to it without repeating the
     /// string in every test that builds settings by hand.
     static let defaultDiaryFolder = "Diario"
+
+    /// Today's literal, named once (ADR-0080 §D5).
+    static let defaultInboxFolder = "00 Inbox"
+
+    /// The stored inbox folder as a reader may use it, or `defaultInboxFolder` when the
+    /// stored value is refused (ADR-0080 §D5).
+    ///
+    /// Trimmed, then canonicalised component by component (empty and `.` components dropped,
+    /// each component trimmed, rejoined with `/`), and refused when nothing is left, when
+    /// absolute, carrying any `..` component or escaping the vault. The explicit `..` check
+    /// is needed because `VaultBoundary` accepts `a/../b`: it collapses back inside, but it
+    /// is not a folder name anyone means.
+    static func resolveInboxFolder(_ stored: String, root: URL) -> String {
+        resolveInboxFolder(stored, boundary: VaultBoundary(root: root))
+    }
+
+    /// The same resolution against a boundary the caller already holds, so a reader
+    /// evaluated per keystroke does not resolve the root's symlinks on every call. Only
+    /// the boundary is reused: the stored value is read fresh each time, so a settings
+    /// change applies at the next read.
+    static func resolveInboxFolder(_ stored: String, boundary: VaultBoundary) -> String {
+        let trimmed = stored.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.hasPrefix("/") else { return defaultInboxFolder }
+        let components = trimmed.split(separator: "/", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard !components.contains("..") else { return defaultInboxFolder }
+        // The one spelling the scanner gives the same folder: no empty or `.` component,
+        // no space hugging a separator.
+        let folder = components.filter { !$0.isEmpty && $0 != "." }.joined(separator: "/")
+        guard !folder.isEmpty, (try? boundary.url(for: folder)) != nil else {
+            return defaultInboxFolder
+        }
+        return folder
+    }
 
     static let `default` = VaultSettings(
         dailyFolder: "Calendar",
@@ -166,7 +205,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
         rolloverDays: VaultSettings.defaultRolloverDays,
         patronSaint: nil,
         pratiche: .default,
-        contenitore: .default
+        contenitore: .default,
+        inboxFolder: VaultSettings.defaultInboxFolder
     )
 
     /// A week back, which is the unit M12 is about.
@@ -238,6 +278,10 @@ struct VaultSettings: Codable, Equatable, Sendable {
         // decodes to `.default` rather than losing the whole file.
         contenitore = try container.decodeIfPresent(ContenitoreSettings.self, forKey: .contenitore)
             ?? fallback.contenitore
+        // ADR-0080 §D5: additive, so a `settings.json` written before the setting existed
+        // decodes to `00 Inbox` and no vault migrates. Resolved where it is read, not here.
+        inboxFolder = try container.decodeIfPresent(String.self, forKey: .inboxFolder)
+            ?? fallback.inboxFolder
     }
 
     init(
@@ -258,7 +302,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
         patronSaint: PatronSaint? = nil,
         vaultID: String? = nil,
         pratiche: PraticheSettings = .default,
-        contenitore: ContenitoreSettings = .default
+        contenitore: ContenitoreSettings = .default,
+        inboxFolder: String = VaultSettings.defaultInboxFolder
     ) {
         self.dailyFolder = dailyFolder
         self.diaryFolder = diaryFolder
@@ -278,5 +323,6 @@ struct VaultSettings: Codable, Equatable, Sendable {
         self.vaultID = vaultID
         self.pratiche = pratiche
         self.contenitore = contenitore
+        self.inboxFolder = inboxFolder
     }
 }
