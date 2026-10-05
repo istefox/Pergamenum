@@ -1,7 +1,7 @@
 # ADR-0089: A conflicted board or diary is asked about at quit
 
-- Status: **proposed**. The implementation is on `fix/pg-336-conflicted-board-diary-at-quit`, not
-  yet on `main`.
+- Status: **accepted**. Merged to `main` via PR #906 (`88a1d614`, 2026-10-05): the quit review
+  names a conflicted board or diary day, and only «Non salvare» lets either go.
 - Date: 2026-10-05. Written before the implementation, against `05fa8bb2`. `origin/main` is
   `0e2fd436` and differs from it in `TODO.md` only. Every line number below was read from that
   tree.
