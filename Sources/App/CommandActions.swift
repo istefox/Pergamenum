@@ -162,24 +162,23 @@ final class CommandActions {
         switch command {
         case .newNote:
             // The Note pane first: the composer is part of the editor, so from any other
-            // pane the command would compose out of sight.
+            // pane the command would compose out of sight. The seed is read from the tree's
+            // mirrored selection, which survives the pane change (n1-seams R-11).
             navigation.pane = .notes
-            vault.beginNewNote()
+            // The tree's folders: note-derived plus a disk walk (note-less ones), for one row only.
+            let selection = navigation.noteTreeSelection
+            let walked = selection.count == 1 ? vault.root.map { CanvasStore(root: $0).allFolders() } : nil
+            let known = Set(walked ?? []).union(vault.folders)
+            vault.beginNewNote(seed: NewNoteSeed.folder(forSelection: selection, knownFolders: known))
         case .newBoard:
             // The Workspace pane first, for the same reason: the folder-naming sheet
             // opens on the Workspace, so any other pane would compose it out of sight.
             navigation.pane = .workspace
             vault.beginNewBoard()
         case .dailyNote:
-            // Reported rather than swallowed: the command doing nothing at all, with no
-            // reason given, is the worst outcome when the daily note cannot be created.
-            Task { @MainActor in
-                do {
-                    _ = try await vault.openDailyNote(for: .today)
-                } catch {
-                    vault.recordProblem("nota del giorno: \(error)")
-                }
-            }
+            // In the Note pane, and a failure reported rather than swallowed
+            // (`openTodayNote`, n1-seams R-09).
+            Task { @MainActor in await openTodayNote() }
         case .quickTask:
             vault.beginTaskCapture()
         case .globalCapture:
@@ -195,18 +194,17 @@ final class CommandActions {
             navigation.pane = .pratiche
             navigation.isShowingNuovaPratica = true
         case .copyLink, .revealInFinder, .toggleStar:
-            if !runOnContenitoreSelection(command) { runOnOpenNote(command) }
+            runOnSelectionOrOpenNote(command)
         default:
             assertionFailure("«\(command.title)» is in the File section and is not handled")
         }
     }
 
-    /// The three that act on the note in front of you.
-    ///
-    /// One arm of `runFile` between them rather than three: they share a precondition and
-    /// a subject, and three arms was what took that switch past the complexity the linter
-    /// reports.
-    private func runOnOpenNote(_ command: ShortcutCommand) {
+    /// The three that act on what is in front of you: the Contenitore pane's selection when that
+    /// pane is shown, else the open note. One arm of `runFile` rather than three, which is what
+    /// took that switch past the complexity the linter reports.
+    private func runOnSelectionOrOpenNote(_ command: ShortcutCommand) {
+        guard !runOnContenitoreSelection(command) else { return }
         switch command {
         case .copyLink:
             copyLinkToOpenNote()

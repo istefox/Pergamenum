@@ -84,6 +84,9 @@ final class VaultController {
     var noteDraft: NoteDraft?
     /// Whether the new-note composer occupies the editor column.
     var isComposingNote = false
+    /// The sentence a failed Quick Open creation shows inside the switcher (n1-seams R-18), set
+    /// and cleared by `createNoteFromQuickOpen`, cleared by the switcher on the next keystroke.
+    var quickSwitcherProblem: String?
     /// Notes whose tab was closed, newest last, for «riapri l'ultima tab chiusa».
     /// Paths and not buffers: a closed tab was saved or explicitly discarded (ADR-0012 D3),
     /// so there is nothing left to keep that the file does not already have.

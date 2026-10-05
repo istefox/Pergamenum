@@ -9,8 +9,9 @@ import SwiftUI
 /// read every face from `ProseTypography`, and the note editor's own `.bold` arm is
 /// `ProseTypography.proseBold(theme)` as well - not the `NSFont.monospacedSystemFont(ofSize: 13,
 /// weight: .bold)` source-mode look it carried when ADR-0027 §D1 first split the two tables.
-/// What still separates them is everything else: a card's `.linkTarget`/`.embedTarget` are never
-/// clickable (below), the two colour tables are free to diverge, and a card takes the prose faces
+/// What still separates them is everything else: a card's `.linkTarget`/`.embedTarget` carry
+/// `.editorLink`, never `.link`, and open only through `FormattingTextView`'s own Cmd+click
+/// (issue #188, below), the two colour tables are free to diverge, and a card takes the prose faces
 /// but deliberately **not** the page's line height (ADR-0030 §D10), so `base(theme:)` here sets no
 /// `.paragraphStyle` where the note editor's does. This table is the sibling ADR-0027 §D1 names -
 /// a card renders through this table only, and the note editor's own styling is never touched by
@@ -100,13 +101,20 @@ enum CardTextAttributes {
             let range = NSRange(styled.range, in: text)
             guard range.location != NSNotFound, NSMaxRange(range) <= length else { continue }
             storage.addAttributes(attributes(for: styled.span, theme: theme), range: range)
+            // A tag's or a date's click (n1-seams R-12, R-13), read off the source because a
+            // date span carries no payload: the link and cursor only, over the colour above.
+            let click = MarkdownAttributedText.clickAttributes(for: styled.span, source: text[styled.range])
+            if !click.isEmpty { storage.addAttributes(click, range: range) }
         }
     }
 
     /// One span's attributes. Same signature shape as
     /// `MarkdownAttributedText.attributes(for:theme:links:)` for consistency between the two
-    /// tables, minus the `links:` parameter - a card's links are never clickable, so there is
-    /// no default to override.
+    /// tables, minus the `links:` parameter - whether a card's link, tag or date navigates is
+    /// decided by `FormattingTextView`'s own click handling, not by a toggle here, so there is
+    /// no default to override. A tag's or a date's click URL is not this table's: the styling
+    /// pass merges `MarkdownAttributedText.clickAttributes(for:source:)` over these attributes
+    /// (n1-seams R-12, R-13).
     static func attributes(
         for span: MarkdownStyler.Span,
         theme: Theme
@@ -117,9 +125,11 @@ enum CardTextAttributes {
             // resizes `font.proseTitle`'s own descriptor (ADR-0030 §D1), so a theme that gives
             // that token a family or a weight of its own is followed on a card at every level -
             // which rebuilding the font from the system family here would silently discard.
+            // The colour too, H6's quieter one included (n1-seams R-15), from the same helper the
+            // note editor's heading arm reads.
             [
                 .font: ProseTypography.heading(level: level, theme),
-                .foregroundColor: NSColor(theme.color(.textPrimary)),
+                .foregroundColor: NSColor(theme.color(ProseTypography.headingColor(level: level))),
             ]
         case .bold:
             // The prose family's real bold face. ADR-0027 §D1's requirement is unchanged - a

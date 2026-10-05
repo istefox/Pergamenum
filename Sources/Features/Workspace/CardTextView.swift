@@ -85,6 +85,10 @@ struct CardTextView: NSViewRepresentable {
     /// surface previews an embed today, so the default is a no-op rather than a required
     /// wiring - out of this feature's scope (SPEC scope is wikilinks/CommonMark links).
     var onOpenEmbed: (String) -> Void = { _ in }
+    /// A `#tag` / a `>date` was Cmd+clicked (n1-seams R-12, R-13). Reported, not acted on, like
+    /// the closures above.
+    var onOpenTag: (Tag) -> Void = { _ in }
+    var onOpenDay: (CalendarDate) -> Void = { _ in }
 
     func makeNSView(context: Context) -> NSScrollView {
         // Apple's own wiring rather than a hand-assembled pair: it returns an instance of the
@@ -347,6 +351,11 @@ struct CardTextView: NSViewRepresentable {
                 parent.onOpenEmbed(name)
             case .note(let title):
                 parent.onFollowLink(title)
+            // Reported to the card's host, which owns the pane change (n1-seams R-12, R-13).
+            case .tag(let tag):
+                parent.onOpenTag(tag)
+            case .day(let day):
+                parent.onOpenDay(day)
             }
             return true
         }

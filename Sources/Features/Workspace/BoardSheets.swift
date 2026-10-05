@@ -6,9 +6,14 @@ struct NewCanvasItemSheet: View {
     @Environment(\.theme) private var theme
     let kind: Kind
     let onCancel: () -> Void
-    let onConfirm: (String) -> Void
+    /// Makes the item and answers the sentence to show when it could not, nil when it was
+    /// made. Awaited, so the sheet stays open, with what was typed, until the write is done
+    /// (n1-seams R-18); the caller closes it on success.
+    let onConfirm: (String) async -> String?
 
     @State private var value = ""
+    @State private var failure: String?
+    @State private var isCreating = false
 
     private var title: String {
         switch kind {
@@ -31,17 +36,36 @@ struct NewCanvasItemSheet: View {
             Text(title).themedText(.title)
             TextField(prompt, text: $value)
                 .textFieldStyle(.roundedBorder)
+                // The sentence is about the value that failed: a new one is a new attempt.
+                .onChange(of: value) { _, _ in failure = nil }
+            // In place, the way the Cmd+N composer reports a refused title.
+            if let failure {
+                Text(failure).themedText(.caption, color: .taskOverdue)
+            }
             HStack {
                 Spacer()
-                Button("Annulla", action: onCancel).keyboardShortcut(.cancelAction)
-                Button("Crea") { onConfirm(value.trimmingCharacters(in: .whitespaces)) }
+                // Not while the write runs: dismissing mid-write would still make the item,
+                // and a failure after that would have no sheet left to show its sentence.
+                Button("Annulla", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(isCreating)
+                Button("Crea", action: confirm)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(value.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(value.trimmingCharacters(in: .whitespaces).isEmpty || isCreating)
             }
         }
         .padding(theme.spacing(.l))
         .frame(width: 460)
         .background(theme.color(.surfaceCard))
+    }
+
+    private func confirm() {
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        isCreating = true
+        Task { @MainActor in
+            failure = await onConfirm(trimmed)
+            isCreating = false
+        }
     }
 }
 

@@ -11,7 +11,11 @@ extension VaultController {
     /// tests that expect it did not have to move with the code.
     typealias CreationError = VaultSession.CreationError
 
-    /// Creates a note and opens it.
+    /// Creates a note and, unless `opening` is false, opens it.
+    ///
+    /// `opening: false` is the Workspace «Documento» sheet's (n1-seams R-10): the note goes on
+    /// the board as a card and the person stays on the board, so no tab is opened and no
+    /// column's focus moves.
     @discardableResult
     func createNote(
         title: String,
@@ -19,7 +23,8 @@ extension VaultController {
         date: CalendarDate,
         category: NoteCategory = .note,
         topics: [Tag] = [],
-        body: String = ""
+        body: String = "",
+        opening: Bool = true
     ) async throws -> String {
         guard let session else { throw CreationError.alreadyExists("nessuna cartella note aperta") }
         let relativePath = try await session.createNote(
@@ -28,12 +33,28 @@ extension VaultController {
         // A tab of its own, and never the preview: making a note is as deliberate an act as
         // «Apri in una nuova tab», and landing it in the preview tab would mean the next
         // click in the list overwrites the note you just decided to write.
-        openNoteInNewTab(at: relativePath)
+        if opening { openNoteInNewTab(at: relativePath) }
         // Every other write that adds something to the vault already does this (PG-095):
         // the write itself only updates the in-memory index, and the sidebar's own tree is
         // rebuilt on `scanGeneration` alone, not on the index changing underneath it.
         Task { await rescan() }
         return relativePath
+    }
+
+    /// «Crea la nota» in the quick switcher (n1-seams R-18): a note at the vault root, opened in
+    /// a new tab. Answers whether it was made, and on a failure leaves the creation failure's
+    /// sentence on `quickSwitcherProblem` for the switcher to show under its field, so the
+    /// person can change the title and try again instead of the panel closing on nothing.
+    @discardableResult
+    func createNoteFromQuickOpen(title: String) async -> Bool {
+        do {
+            try await createNote(title: title, date: .today)
+            quickSwitcherProblem = nil
+            return true
+        } catch {
+            quickSwitcherProblem = ConformanceText.creationFailure(error)
+            return false
+        }
     }
 
     /// A note's text, for a caller that has to look inside one it is not editing - the
@@ -125,9 +146,19 @@ extension VaultController {
     ///
     /// Only a draft with a title is picked up, which is the same threshold `parkNewNote`
     /// uses: a folder chosen and then walked away from is not a note somebody started
-    /// writing, and Cmd+N still means the vault root.
-    func beginNewNote(in folder: String? = nil) {
-        var draft = parkedDraft ?? NoteDraft()
+    /// writing, and Cmd+N starts afresh from its seed.
+    ///
+    /// `seed` is Cmd+N's folder from the Note tree's selection (n1-seams R-11,
+    /// `NewNoteSeed`). It applies only to a fresh draft: a parked one keeps the folder it was
+    /// going to, and «Nuova nota qui»'s `folder` still wins over both.
+    func beginNewNote(in folder: String? = nil, seed: String? = nil) {
+        var draft: NoteDraft
+        if let parkedDraft {
+            draft = parkedDraft
+        } else {
+            draft = NoteDraft()
+            if let seed { draft.folder = seed }
+        }
         if let folder { draft.folder = folder }
         noteDraft = draft
         isComposingNote = true

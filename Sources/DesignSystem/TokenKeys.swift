@@ -138,6 +138,11 @@ enum SpacingToken: String, TokenKey {
     // inset a text container clamps to rather than tracking the whole window.
     case readable = "spacing.readable"
 
+    // The gap after a prose or heading paragraph in the note editor (n1-seams R-14), 8 in both
+    // bundled themes. Its `Theme.emergency` entry is load-bearing: a case without one traps at
+    // `theme.spacing(_:)` (PG-225).
+    case paragraph = "spacing.paragraph"
+
     var path: String { rawValue }
 }
 

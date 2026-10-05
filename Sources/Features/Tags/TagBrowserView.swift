@@ -70,6 +70,18 @@ struct TagBrowserView: View {
             }
         }
         .toolbar { ToolbarItemGroup(placement: .primaryAction) { themeToggleToolbarItem(themeEngine) } }
+        // A Cmd+clicked `#tag` (n1-seams R-12): taken on appearing, when the click brought the
+        // pane up, and on a new request while the pane is already showing.
+        .task { applyTagFilter() }
+        .onChange(of: navigation.tagFilter?.id) { _, _ in applyTagFilter() }
+    }
+
+    /// Narrows to exactly the requested tag, replacing whatever was chosen, with its namespace
+    /// open so the lit row is in sight. Nothing pending, nothing changes.
+    private func applyTagFilter() {
+        guard let tag = navigation.takeTagFilter() else { return }
+        chosen = [tag]
+        openNamespaces.insert(tag.namespace)
     }
 
     /// What the rename left behind, and the only way back. Shown until it is used or replaced.

@@ -225,6 +225,99 @@ import Testing
         #expect(composed.lineHeightMultiple == 1.4, "the theme's own line height must still be added")
     }
 
+    // MARK: - H6 (n1-seams R-15)
+
+    /// Today's formula, restated from the plan's "sizes unchanged": the title token's size stepped
+    /// down by 2pt per level, never below the body size plus one.
+    private static func expectedHeadingSize(level: Int, _ theme: Theme) -> CGFloat {
+        let title = theme.nsFont(.proseTitle).pointSize
+        let body = ProseTypography.prose(theme).pointSize
+        return max(body + 1, title - CGFloat(level - 1) * 2)
+    }
+
+    @Test func headingSixHasNoBoldTraitAndHeadingFiveKeepsIt() throws { // (n1-seams R-15)
+        let theme = try Self.theme(proseWeight: 400, proseTitleWeight: 700)
+        let h6 = ProseTypography.heading(level: 6, theme)
+        let h5 = ProseTypography.heading(level: 5, theme)
+
+        #expect(!h6.fontDescriptor.symbolicTraits.contains(.bold), "H6 is set in the regular prose face")
+        #expect(h5.fontDescriptor.symbolicTraits.contains(.bold), "H5 keeps the title token's weight")
+    }
+
+    @Test func headingSixIsSetInTheProseFamilyAndTheOthersInTheTitleFamily() throws { // (n1-seams R-15)
+        // Two different families, so "which token supplied the face" is observable.
+        let theme = try Self.theme(proseFamily: "Avenir Next", proseTitleFamily: "Georgia")
+        #expect(ProseTypography.heading(level: 6, theme).familyName == ProseTypography.prose(theme).familyName)
+        for level in 1...5 {
+            #expect(
+                ProseTypography.heading(level: level, theme).familyName == theme.nsFont(.proseTitle).familyName,
+                "H\(level) keeps the proseTitle family"
+            )
+        }
+    }
+
+    @Test(arguments: 1...6)
+    func theHeadingSizesAreTodaysFormula(_ level: Int) throws { // (n1-seams R-15)
+        let theme = try Self.theme(proseSize: 16, proseTitleSize: 24)
+        #expect(
+            ProseTypography.heading(level: level, theme).pointSize == Self.expectedHeadingSize(level: level, theme),
+            "H\(level)"
+        )
+    }
+
+    @Test func headingSixIsDrawnInTheSecondaryColourAndTheOthersInThePrimary() { // (n1-seams R-15)
+        #expect(ProseTypography.headingColor(level: 6) == .textSecondary)
+        for level in 1...5 {
+            #expect(ProseTypography.headingColor(level: level) == .textPrimary, "H\(level)")
+        }
+    }
+
+    @MainActor
+    @Test func aSixthLevelHeadingInTheEditorsStyledStorageIsSecondary() { // (n1-seams R-15)
+        let theme = Theme.emergency
+        let text = "###### Nota\n# Titolo\n"
+        let fixture = EmbedEditorFixtures.editor(
+            text: text, hidesMarkup: false, root: nil, thumbnails: nil
+        )
+        fixture.coordinator.applyStyling(to: fixture.textView, theme: theme)
+        let storage = fixture.textView.textStorage
+        let h6 = storage?.attribute(
+            .foregroundColor, at: (text as NSString).range(of: "Nota").location, effectiveRange: nil
+        ) as? NSColor
+        let h1 = storage?.attribute(
+            .foregroundColor, at: (text as NSString).range(of: "Titolo").location, effectiveRange: nil
+        ) as? NSColor
+        #expect(h6 == NSColor(theme.color(.textSecondary)))
+        #expect(h1 == NSColor(theme.color(.textPrimary)))
+    }
+
+    @Test func aSixthLevelHeadingInACardsStyledTextIsSecondary() { // (n1-seams R-15)
+        let theme = Theme.emergency
+        let text = "###### Nota\n# Titolo\n"
+        let styled = CardTextAttributes.attributed(text, theme: theme)
+
+        let h6 = styled.attribute(
+            .foregroundColor, at: (text as NSString).range(of: "Nota").location, effectiveRange: nil
+        ) as? NSColor
+        let h1 = styled.attribute(
+            .foregroundColor, at: (text as NSString).range(of: "Titolo").location, effectiveRange: nil
+        ) as? NSColor
+        #expect(h6 == NSColor(theme.color(.textSecondary)))
+        #expect(h1 == NSColor(theme.color(.textPrimary)))
+    }
+
+    @Test func aSixthLevelHeadingInTheTransclusionPictureIsSecondaryToo() { // (n1-seams R-15)
+        // `MarkdownAttributedText.attributed` is the picture of a transcluded note; its heading arm
+        // is one of the two the plan routes through `headingColor`.
+        let theme = Theme.emergency
+        let text = "###### Nota"
+        let styled = MarkdownAttributedText.attributed(text, theme: theme)
+        let colour = styled.attribute(
+            .foregroundColor, at: (text as NSString).range(of: "Nota").location, effectiveRange: nil
+        ) as? NSColor
+        #expect(colour == NSColor(theme.color(.textSecondary)))
+    }
+
     // MARK: - mono(_:size:) (chrome/code face, unaffected by prose tokens)
 
     @Test func monoIsThemeNsFontMono() throws {
