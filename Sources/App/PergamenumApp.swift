@@ -254,17 +254,19 @@ struct PergamenumApp: App {
         _reminders = State(initialValue: reminders)
 
         let pratiche = PraticheController.live(vault: vault)
+        let contenitore = ContenitoreController.live(vault: vault)
         // ADR-0026 §D7: the choke point for every folder move and rename, forward and
         // through undo/redo, hands its relocations here so the ledger (and the other
-        // path-keyed state `followFolderRelocations` covers) never orphans - `weak` since
-        // the controller, not this closure, owns the lifetime.
-        vault.didRelocateFolders = { [weak pratiche] moved in
+        // path-keyed state `followFolderRelocations` covers) never orphans, and the
+        // Contenitore's scope and selection follow a container moved from another pane
+        // (PG-344) - `weak` since the controllers, not this closure, own the lifetime.
+        vault.didRelocateFolders = { [weak pratiche, weak contenitore] moved in
             pratiche?.followFolderRelocations(moved, in: vault)
+            contenitore?.followRelocatedContainers(moved)
         }
         // PG-169, the deletion twin: state keyed by a trashed folder is forgotten, not followed.
         vault.didTrashFolder = { [weak pratiche] in pratiche?.followFolderTrashing($0, in: vault) }
         _pratiche = State(initialValue: pratiche)
-        let contenitore = ContenitoreController.live(vault: vault)
         _contenitore = State(initialValue: contenitore)
 
         let panel = CapturePanel(

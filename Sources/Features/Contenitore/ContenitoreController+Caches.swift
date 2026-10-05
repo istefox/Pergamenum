@@ -134,10 +134,30 @@ extension ContenitoreController {
         containerRevision += 1
     }
 
+    /// Points the scope and the selection at where a relocated container's contents went, one
+    /// pair at a time and in order, so a later pair of a batch can carry an earlier pair's
+    /// landing folder further. The pane's own verbs call it after their rename or move; every
+    /// other folder relocation reaches it through `VaultController.didRelocateFolders`, wired in
+    /// `PergamenumApp.init`: a rename or move made from the Note pane, and the undo and redo of
+    /// any move (PG-344). Calling it twice for one pair changes nothing, since a folder never
+    /// lands inside itself.
+    func followRelocatedContainers(_ moved: [MovedNote]) {
+        for pair in moved {
+            if case .container(let scoped) = scope,
+               let followed = ContenitoreCommandActions.remapped(scoped, from: pair.old, to: pair.new) {
+                scope = .container(followed)
+            }
+            if let selected = selection,
+               let followed = ContenitoreCommandActions.remapped(selected, from: pair.old, to: pair.new) {
+                selection = followed
+            }
+        }
+    }
+
     /// A scope naming a container that is no longer in `tree` falls back to «Tutti», rather than
-    /// an empty list under a name that no longer exists. The pane's own verbs follow the folder
-    /// (`ContenitoreCommandActions.followContainer`); this is for what they cannot see: an undo of
-    /// a move, or a rename or move made from the Note pane.
+    /// an empty list under a name that no longer exists. A rename or move is followed instead
+    /// (`followRelocatedContainers(_:)`); this is for what no folder door reports: a container
+    /// trashed from another pane, or renamed or removed outside the app.
     func dropVanishedScope(in tree: [ContainerNode]) {
         guard case .container(let path) = scope,
               !ContenitoreListModel.allPaths(tree).contains(where: { $0.path == path }) else { return }

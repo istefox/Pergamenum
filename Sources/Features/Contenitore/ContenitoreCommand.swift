@@ -224,7 +224,7 @@ struct ContenitoreCommandActions {
             return "Sottocontenitore non rinominato: vedi i problemi del vault."
         }
         contenitore.containersChanged()
-        followContainer(from: path, to: newPath)
+        contenitore.followRelocatedContainers([MovedNote(old: path, new: newPath)])
         return nil
     }
 
@@ -235,7 +235,8 @@ struct ContenitoreCommandActions {
         let outcome = await vault.moveItems([VaultItemRef(path: path, kind: .folder)], into: parent, undo: undo)
         contenitore.containersChanged()
         if outcome.didMove {
-            followContainer(from: path, to: parent + "/" + (path as NSString).lastPathComponent)
+            let newPath = parent + "/" + (path as NSString).lastPathComponent
+            contenitore.followRelocatedContainers([MovedNote(old: path, new: newPath)])
         }
     }
 
@@ -263,16 +264,6 @@ struct ContenitoreCommandActions {
     static func remapped(_ path: String, from old: String, to new: String) -> String? {
         guard isInside(path, container: old) else { return nil }
         return new + path.dropFirst(old.count)
-    }
-
-    /// Points the scope and the selection at where a renamed or moved container's contents went.
-    private func followContainer(from old: String, to new: String) {
-        if case .container(let scoped) = contenitore.scope, let moved = Self.remapped(scoped, from: old, to: new) {
-            contenitore.scope = .container(moved)
-        }
-        if let selected = contenitore.selection, let moved = Self.remapped(selected, from: old, to: new) {
-            contenitore.selection = moved
-        }
     }
 
     // MARK: - Pieces
