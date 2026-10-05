@@ -261,15 +261,18 @@ final class FormattingTextView: NSTextView {
 
     /// Splices `candidate` into the trigger's range as `[[<insertText>]]` - the `[[` is
     /// already there, only `prefix` (what `context.range` covers) and the closing `]]` are
-    /// written - through the single one-undo-step edit path
-    /// (`replaceWholeText(with:selecting:)`) every other programmatic edit on this view
-    /// already goes through.
+    /// written, the `]]` reused when it already follows the caret
+    /// (`WikilinkTrigger.closingInsertion`, the note editor's rule too) - through the single
+    /// one-undo-step edit path (`replaceWholeText(with:selecting:)`) every other programmatic
+    /// edit on this view already goes through.
     func applyWikilinkCompletion(_ candidate: WikilinkCandidate) {
         guard let completion = wikilinkCompletion else { return }
         let whole = string as NSString
-        let inserted = "\(candidate.insertText)]]"
-        let newText = whole.replacingCharacters(in: completion.context.range, with: inserted)
-        let caret = completion.context.range.location + (inserted as NSString).length
+        let range = completion.context.range
+        let ahead = whole.substring(from: NSMaxRange(range))
+        let insertion = WikilinkTrigger.closingInsertion(of: candidate.insertText, ahead: Substring(ahead))
+        let newText = whole.replacingCharacters(in: range, with: insertion.text)
+        let caret = range.location + insertion.caretOffset
         wikilinkDismissedLocation = nil
         setWikilinkCompletion(nil)
         replaceWholeText(with: newText, selecting: NSRange(location: caret, length: 0))

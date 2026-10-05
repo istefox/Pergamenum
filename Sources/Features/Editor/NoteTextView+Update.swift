@@ -13,6 +13,7 @@ extension NoteTextView {
         coordinator.parent = self
         coordinator.undoManager = textView.window?.undoManager
         textView.noteTitles = noteTitles
+        textView.noteAliases = noteAliases
         textView.boardTitles = boardTitles
         textView.tagSuggestions = tagSuggestions
         textView.editorCommands = editorCommands

@@ -277,6 +277,17 @@ final class Navigation {
     /// Workspace's board.
     var taskSelection: TaskPaneSelection = .view(.today)
 
+    /// The pending Tags-pane request (n1-seams R-12, `Navigation+TagFilter.swift`).
+    /// Internal setter, not `private(set)`: `Navigation+TagFilter.swift` writes it.
+    var tagFilter: TagFilterRequest?
+    /// The last request's `id`, so the next one is always different.
+    /// Internal, not private: `Navigation+TagFilter.swift` reads and bumps it.
+    var lastTagFilterID = 0
+
+    /// What the Note pane's tree has selected, mirrored here by `NoteListPane` so Cmd+N from any
+    /// pane can seed the composer's folder (n1-seams R-11, `NewNoteSeed`).
+    var noteTreeSelection: Set<String> = []
+
     /// Set by the Modifica menu; the editor opens its find bar when it sees it.
     var isFindRequested = false
     var isReplaceRequested = false

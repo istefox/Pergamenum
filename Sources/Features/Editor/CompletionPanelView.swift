@@ -117,9 +117,7 @@ struct CompletionPanelView: View {
                     .frame(width: 16)
                     .foregroundStyle(theme.color(isSelected ? .textPrimary : .textSecondary))
             }
-            Text(item.title)
-                .themedText(.body, color: isSelected ? .textPrimary : .textSecondary)
-                .lineLimit(1)
+            rowTitle(item, isSelected: isSelected)
             Spacer(minLength: theme.spacing(.s))
             if let shortcut = item.shortcutCaption {
                 Text(shortcut).themedText(.caption, color: .textTertiary)
@@ -139,6 +137,30 @@ struct CompletionPanelView: View {
         // had it.
         .contentShape(Rectangle())
         .onTapGesture { onChoose(item) }
+    }
+
+    /// A row's name. A note found through an alias draws the alias as its own piece with the
+    /// higher layout priority, so a long title is what gives way: the panel is 340 pt wide and
+    /// one `Text` of «Titolo · alias: X» cut the tail, which is exactly the alias that explains
+    /// why the row matched (n1-seams R-08, seen on screen on 2026-10-05).
+    @ViewBuilder
+    private func rowTitle(_ item: CompletionItem, isSelected: Bool) -> some View {
+        if case .wikilink(let candidate) = item, let alias = candidate.matchedAlias {
+            HStack(spacing: theme.spacing(.xs)) {
+                Text(candidate.displayTitle)
+                    .themedText(.body, color: isSelected ? .textPrimary : .textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text("· alias: \(alias)")
+                    .themedText(.body, color: .textTertiary)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+            }
+        } else {
+            Text(item.title)
+                .themedText(.body, color: isSelected ? .textPrimary : .textSecondary)
+                .lineLimit(1)
+        }
     }
 
     /// Says what was typed and what it did not match, rather than showing an empty box.

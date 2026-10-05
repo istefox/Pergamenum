@@ -124,7 +124,8 @@
     "m": { "$value": { "value": 16, "unit": "px" } },
     "l": { "$value": { "value": 24, "unit": "px" } },
     "xl": { "$value": { "value": 40, "unit": "px" } },
-    "readable": { "$value": { "value": 720, "unit": "px" } }
+    "readable": { "$value": { "value": 720, "unit": "px" } },
+    "paragraph": { "$value": { "value": 8, "unit": "px" } }
   },
   "radius": {
     "$type": "dimension",

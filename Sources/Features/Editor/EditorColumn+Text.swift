@@ -62,6 +62,7 @@ extension EditorColumnView {
             // evaluation, walking the vault on disk once per keystroke.
             noteTitles: noteTitles,
             boardTitles: boardTitles,
+            noteAliases: noteAliases,
             tagSuggestions: tagSuggestions,
             spellCheck: vault.settings.spellCheck,
             hidesMarkup: vault.settings.hidesMarkup,
@@ -105,6 +106,9 @@ extension EditorColumnView {
             // columns get two independent builders (ADR-0012 §D4's rule applied here too).
             onEditQuery: { request in editingViewQuery = request },
             onOpenEmbed: { name in preview(embed: name, in: note) },
+            // A Cmd+clicked tag or date leaves for its pane (n1-seams R-12, R-13).
+            onOpenTag: { commandActions.open(tag: $0) },
+            onOpenDay: { commandActions.open(day: $0) },
             onDropFile: { url in vault.importFileIntoVault(url, near: note.relativePath) },
             onPasteImage: { data in save(pastedImage: data, in: note) }
         )

@@ -105,6 +105,12 @@ func rejectsMalformedHex(_ input: String) {
         #expect(!theme.inheritedTokens.contains("font.proseTitle"), "\(id) should define font.proseTitle")
         #expect(!theme.inheritedTokens.contains("spacing.readable"), "\(id) should define spacing.readable")
         #expect(theme.spacing(.readable) == 720, "\(id): spacing.readable should resolve to 720")
+        // n1-seams R-14: the gap between two paragraphs. Named for the same reason as the page
+        // tokens above; red until both theme files gain `spacing.paragraph` (8).
+        #expect(
+            !theme.inheritedTokens.contains("spacing.paragraph"), "\(id) should define spacing.paragraph"
+        ) // (n1-seams R-14)
+        #expect(theme.spacing(.paragraph) == 8, "\(id): spacing.paragraph should resolve to 8") // (n1-seams R-14)
         // PG-263: the SF Symbol glyph sizes, named here for the same reason.
         #expect(!theme.inheritedTokens.contains("font.icon.small"), "\(id) should define font.icon.small")
         #expect(!theme.inheritedTokens.contains("font.icon.badge"), "\(id) should define font.icon.badge")
@@ -130,6 +136,12 @@ func rejectsMalformedHex(_ input: String) {
         #expect(!theme.inheritedTokens.contains("color.category.pink"), "\(id) should define color.category.pink")
         #expect(!theme.inheritedTokens.contains("color.category.grey"), "\(id) should define color.category.grey")
     }
+}
+
+/// n1-seams R-14 and PG-225: `spacing.paragraph` is in the emergency dictionary from the moment the
+/// case exists, so a theme that lacks it falls back to 8 instead of trapping the process.
+@Test func emergencyThemeDefinesTheParagraphSpacing() { // (n1-seams R-14)
+    #expect(Theme.emergency.spacing(.paragraph) == 8)
 }
 
 /// PG-225: the same fallback contract from the other side. `rawColor(_:)` force-unwraps
@@ -173,7 +185,8 @@ func rejectsMalformedHex(_ input: String) {
     let caption2 = NSFont.preferredFont(forTextStyle: .caption2)
     for (id, theme) in themes {
         #expect(theme.nsFont(.iconSmall).pointSize == 10, "\(id): font.icon.small should be 10 pt")
-        #expect(theme.nsFont(.iconSmall).pointSize == caption2.pointSize, "\(id): font.icon.small should match caption2's size")
+        #expect(theme.nsFont(.iconSmall).pointSize == caption2.pointSize,
+                "\(id): font.icon.small should match caption2's size")
         #expect(
             theme.nsFont(.iconSmall).displayName == caption2.displayName,
             "\(id): font.icon.small should match caption2's face, \(String(describing: caption2.displayName))"
