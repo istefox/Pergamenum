@@ -1,9 +1,8 @@
 # ADR-0080: A note born without a topic is a capture, a capture's title is derived rather than refused, and the inbox folder is a setting
 
-- Status: **proposed**. The implementation is not on `main` yet. Every decision below lands with
-  the PR that carries Tasks 1 to 3 of `docs/plans/pg-384-n1-seams.md`. Flip to `accepted` as the
-  first docs change after that PR merges, naming the PR, its merge hash as
-  `git log --first-parent main` shows it, and the date (`docs/adr/README.md` rule 2).
+- Status: **accepted**. Merged to `main` via PR #897 (`5056c61f`, 2026-10-05), carrying Tasks 1 to 3
+  of `docs/plans/pg-384-n1-seams.md`: the topic-less rule, the derived capture title, the inbox
+  folder setting, and this record with its SPEC amendments.
 - Date: 2026-10-04. Written against `6c03f024` (branch `kepler/task-00994c70`). `origin/main` was
   at `babdbb49` when this was written; its diff against `6c03f024` touches the menus, SPEC §6.1
   and §10, the icon-size theme tokens, the hosted-view test support and `TODO.md`, none of the
