@@ -113,8 +113,7 @@ reverse. They are listed so a reader of the archived N1-only SPEC does not undo 
 - **The pointer (`PG-219`, R-09).** The N1-only SPEC left it out of scope. The note-workflow SPEC
   takes it into N1. The delta tries SwiftUI's `.pointerStyle` on the text views' hosts, the
   `TimelineBlockBox.swift:105` precedent. If that fails, the `.onContinuousHover` restructure the
-  ledger entry describes gets its own ADR. Decided in ADR-0090: the route measured with a real mouse (AppKit decides and draws, not
-  `.pointerStyle`), built by `docs/plans/pg-219-pointer-feedback.md`.
+  ledger entry describes gets its own ADR.
 - **An event note opens with the caret in the editor (R-04).** A one-shot request in the shape of
   `closeRequest`.
 - **Every failure in the Workspace creation sheet is shown in the sheet and kept in the problem
