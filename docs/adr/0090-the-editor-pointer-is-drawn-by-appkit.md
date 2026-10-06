@@ -1,8 +1,8 @@
 # ADR-0090: The editor's pointer is decided and drawn by AppKit, from two overrides
 
-- Status: **proposed**. It lands with the PG-219 PR built from `docs/plans/pg-219-pointer-feedback.md`.
-  Flip it to `accepted` as the first docs change after that PR merges, naming the PR, its merge
-  hash as `git log --first-parent main` shows it, and the date (`docs/adr/README.md` rule 2).
+- Status: **accepted**. Merged to `main` via PR #920 (`6260afeb`, 2026-10-06), built from
+  `docs/plans/pg-219-pointer-feedback.md`: both text views set the pointer from `cursorUpdate(with:)`
+  and again after `super.mouseMoved(with:)`, checked with a real mouse the same day.
 - Date: 2026-10-06. Written against `main` at `9103768f` (PR #910). Amended the same day (route C,
   see `## Amendment`): the file name keeps its first title, because `CLAUDE.md` and the plan cite it.
 - Number: `0090` was checked free on every local and remote-tracking ref on 2026-10-06. Check it
