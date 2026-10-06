@@ -89,6 +89,10 @@ final class FormatBarPanel {
         panel?.orderOut(nil)
     }
 
+    /// Same reason as `CompletionPanel`'s: a visible panel outlives its owner unless the
+    /// owner takes it down.
+    isolated deinit { hide() }
+
     private func render(into panel: NSPanel) {
         guard let theme else { return }
         let hosting = NSHostingView(
