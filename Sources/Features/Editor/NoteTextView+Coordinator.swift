@@ -382,13 +382,6 @@ extension NoteTextView {
             // it ends up in always has; the resize path does not.
             viewBlocks.refresh(in: textView, theme: theme, commit: { self.commitViewBlock($0, at: $1, in: $2) },
                                growToFit: { [weak self] in self?.growToFitTheText($0) })
-            // `.editorLink` spans can have moved without the view resizing (an edit above or
-            // beside one, a reveal toggling a marker's width) - a tracking area does not
-            // follow that on its own the way it follows a resize, so this is the seam that asks
-            // `CompletingTextView+CursorRects.swift` to rebuild them (issue #191 follow-up).
-            // `NSView` has no settable "needs update" flag for tracking areas the way it does
-            // for layout/display - `updateTrackingAreas()` is itself the public call.
-            textView.updateTrackingAreas()
         }
 
         /// Which kind of hidden marker a span becomes, or none for a span that is only

@@ -102,7 +102,7 @@ enum CardTextAttributes {
             guard range.location != NSNotFound, NSMaxRange(range) <= length else { continue }
             storage.addAttributes(attributes(for: styled.span, theme: theme), range: range)
             // A tag's or a date's click (n1-seams R-12, R-13), read off the source because a
-            // date span carries no payload: the link and cursor only, over the colour above.
+            // date span carries no payload: the link only, over the colour above.
             let click = MarkdownAttributedText.clickAttributes(for: styled.span, source: text[styled.range])
             if !click.isEmpty { storage.addAttributes(click, range: range) }
         }
@@ -172,7 +172,6 @@ enum CardTextAttributes {
                 [
                     .foregroundColor: NSColor(theme.color(.accentPrimary)),
                     .editorLink: url,
-                    .cursor: NSCursor.pointingHand,
                 ]
             } else {
                 [.foregroundColor: NSColor(theme.color(.accentPrimary))]
@@ -183,7 +182,6 @@ enum CardTextAttributes {
                 .editorLink: Transclusion.isNoteReference(target)
                     ? MarkdownAttributedText.noteURL(for: target)
                     : MarkdownAttributedText.embedURL(for: target),
-                .cursor: NSCursor.pointingHand,
             ]
         case .embedRun:
             // Nothing, for the reason the note editor's table returns nothing: the span covers a

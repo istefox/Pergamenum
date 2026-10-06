@@ -229,10 +229,7 @@ enum MarkdownAttributedText {
 
     private static func clickable(_ color: Color, url: URL?) -> [NSAttributedString.Key: Any] {
         var attributes: [NSAttributedString.Key: Any] = [.foregroundColor: NSColor(color)]
-        if let url {
-            attributes[.editorLink] = url
-            attributes[.cursor] = NSCursor.pointingHand
-        }
+        if let url { attributes[.editorLink] = url }
         return attributes
     }
 

@@ -305,16 +305,19 @@ import Testing
 
     // MARK: - CommonMark links get a real clickable target (issue #188)
 
-    @Test func aCommonMarkLinkLabelCarriesLinkAndCursorForAnExternalURL() {
+    @Test func aCommonMarkLinkLabelCarriesLinkForAnExternalURL() {
         let theme = Theme.emergency
         let attributed = MarkdownAttributedText.attributed("[apri](https://example.com)", theme: theme)
         let labelRange = ("[apri](https://example.com)" as NSString).range(of: "apri")
         let link = attributed.attribute(.editorLink, at: labelRange.location, effectiveRange: nil) as? URL
         #expect(link?.absoluteString == "https://example.com")
-        #expect(attributed.attribute(.cursor, at: labelRange.location, effectiveRange: nil) != nil)
+        #expect(
+            attributed.attribute(.cursor, at: labelRange.location, effectiveRange: nil) == nil,
+            "a link label carries no .cursor: nothing reads it and AppKit draws it through EditorPointer (ADR-0090 §D7)"
+        )
     }
 
-    @Test func aCommonMarkLinkLabelCarriesLinkAndCursorForAVaultRelativeNote() throws {
+    @Test func aCommonMarkLinkLabelCarriesLinkForAVaultRelativeNote() throws {
         let theme = Theme.emergency
         let attributed = MarkdownAttributedText.attributed("[vedi](Nota.md)", theme: theme)
         let labelRange = ("[vedi](Nota.md)" as NSString).range(of: "vedi")

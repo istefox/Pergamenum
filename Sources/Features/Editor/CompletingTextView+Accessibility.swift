@@ -66,8 +66,7 @@ extension CompletingTextView {
 
     /// The on-screen rectangle of a character range's **first** line fragment segment, in this
     /// view's own coordinates - the `NSTextRange`/`enumerateTextSegments` shape
-    /// `CompletingTextView+CursorRects.swift` and `FormattingTextView.frame(for:type:)` already
-    /// use for exact placement.
+    /// `FormattingTextView.frame(for:type:)` already uses for exact placement.
     ///
     /// The first segment rather than the union of all of them: a link that wraps across a line
     /// break has a union rectangle whose centre falls on whatever sits between the two pieces,

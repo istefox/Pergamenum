@@ -83,13 +83,6 @@ extension CardTextView.Coordinator {
         // runs unconditionally on every `updateNSView`.
         decorations.apply(revealsInlineSpans: parent.revealsInlineSpans)
         storage.endEditing()
-        // `.editorLink` spans can have moved without the view resizing - a tracking area
-        // does not follow that on its own the way it follows a resize, so this is the seam
-        // that asks `FormattingTextView+CursorRects.swift` to rebuild them (issue #191
-        // follow-up), the same placement `NoteTextView+Coordinator.applyStyling` uses.
-        // `NSView` has no settable "needs update" flag for tracking areas the way it does
-        // for layout/display - `updateTrackingAreas()` is itself the public call.
-        textView.updateTrackingAreas()
     }
 
     /// Lets go of everything the shared delegate is holding on this card's behalf (R-11).
