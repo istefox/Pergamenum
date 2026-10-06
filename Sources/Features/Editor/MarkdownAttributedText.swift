@@ -229,8 +229,6 @@ enum MarkdownAttributedText {
 
     private static func clickable(_ color: Color, url: URL?) -> [NSAttributedString.Key: Any] {
         var attributes: [NSAttributedString.Key: Any] = [.foregroundColor: NSColor(color)]
-        // No `.cursor`: it never reached the screen; the pointer is the host's `.pointerStyle`,
-        // decided from `.editorLink` (PG-219).
         if let url { attributes[.editorLink] = url }
         return attributes
     }

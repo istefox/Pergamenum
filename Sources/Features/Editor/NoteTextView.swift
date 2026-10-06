@@ -72,9 +72,6 @@ struct NoteTextView: NSViewRepresentable {
     /// Called when the editor takes the keyboard. The split view uses it to move the focus
     /// to the column that was clicked into (ADR-0012 D4).
     var onTakeFocus: (() -> Void)?
-    /// The pointer the text view wants, reported on a change; the host applies it with
-    /// `.pointerStyle` (PG-219, note-workflow R-09).
-    var onPointerChange: (EditorPointer) -> Void = { _ in }
 
     enum FindRequest { case find, replace }
 
@@ -203,7 +200,6 @@ struct NoteTextView: NSViewRepresentable {
         textView.onPasteImage = { data in coordinator.parent.vault.onPasteImage?(data) }
         textView.onRunCommand = { command in coordinator.parent.onRunCommand?(command) }
         textView.onTakeFocus = { coordinator.parent.onTakeFocus?() }
-        textView.onPointerChange = { pointer in coordinator.parent.onPointerChange(pointer) }
         // Three claimants, asked in turn the way the `onClickInMargin` chain below is:
         // the caret and Backspace/Delete crossing a drawn embed's run in one step
         // (ADR-0018 slice 3, Step 4, D5), then Return inside a list item (ADR-0028 §D6,

@@ -48,16 +48,6 @@ final class CompletingTextView: NSTextView {
     /// offset - reused for exactly the reason the embed cache above is
     /// (`CompletingTextView+Accessibility.swift`).
     var linkAccessibilityElements: [Int: NSAccessibilityElement] = [:]
-    /// One `NSTrackingArea` per `.editorLink` span, rebuilt on every restyle
-    /// (`CompletingTextView+CursorRects.swift`): the geometry `pointer(at:)` answers from, so
-    /// hover and click agree on what counts as a link (PG-219).
-    var linkTrackingAreas: [NSTrackingArea] = []
-    /// The last pointer `trackPointer(at:)` reported, so a change is reported once and moving
-    /// straight from one link into an adjacent one reports nothing.
-    var reportedPointer: EditorPointer = .text
-    /// Called with the pointer the view wants whenever it changes (`CompletingTextView+CursorRects
-    /// .swift`'s `trackPointer(at:)`); the SwiftUI host turns it into `.pointerStyle` (PG-219).
-    var onPointerChange: ((EditorPointer) -> Void)?
     /// The link character index the first click of what might become a double-click resolved
     /// to, recorded by `CompletingTextView+Pasteboard.swift`'s `mouseDown` before `super`
     /// places the caret and reveal-on-caret runs (issue #191 follow-up). Revealing does not

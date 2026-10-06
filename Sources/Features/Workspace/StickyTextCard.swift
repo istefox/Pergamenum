@@ -19,8 +19,6 @@ struct StickyTextCard: View {
     let workspace: WorkspaceController
 
     @FocusState private var isFocused: Bool
-    /// The pointer the card's text view asked for (PG-219, note-workflow R-09).
-    @State private var pointer: EditorPointer = .text
 
     private var isEditing: Bool { workspace.editingTextNodeID == node.id }
 
@@ -112,12 +110,8 @@ struct StickyTextCard: View {
             // A Cmd+clicked tag or date leaves for its pane (n1-seams R-12, R-13), the same
             // doors the note editor uses.
             onOpenTag: { commandActions.open(tag: $0) },
-            onOpenDay: { commandActions.open(day: $0) },
-            onPointerChange: { pointer = $0 }
+            onOpenDay: { commandActions.open(day: $0) }
         )
-        // The I-beam and the pointing hand over a link (PG-219), while the card is edited only:
-        // a card at rest is dragged, not typed into, and keeps the board's own pointer.
-        .pointerStyle(isEditing ? pointer.style : nil)
         .focused($isFocused)
         // The placeholder is the one thing the text view does not draw: it is not the card's
         // text, and writing it into the storage would make an empty card commit the word

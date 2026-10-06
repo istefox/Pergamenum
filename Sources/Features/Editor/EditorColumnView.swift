@@ -68,9 +68,6 @@ struct EditorColumnView: View {
     /// Every note's aliases by title, the third pool, on the same schedule (n1-seams R-08).
     @State var noteAliases: [String: [String]] = [:]
     @State var boardTitles: [String] = []
-    /// The pointer the text view asked for over what is under the mouse, applied with
-    /// `.pointerStyle` in `editing(_:)` (PG-219, note-workflow R-09).
-    @State var pointer: EditorPointer = .text
 
     var body: some View {
         VStack(spacing: 0) {

@@ -30,8 +30,6 @@ struct TodayView: View {
     /// Every note's aliases by title, on the same schedule (n1-seams R-08).
     @State private var noteAliases: [String: [String]] = [:]
     @State private var boardTitles: [String] = []
-    /// The pointer the daily note's text view asked for (PG-219, note-workflow R-09).
-    @State private var pointer: EditorPointer = .text
 
     @State private var draftTitle = ""
     @State private var draftStartHour = 9
@@ -238,10 +236,8 @@ struct TodayView: View {
                     thumbnails: vault.thumbnails,
                     onOpenTag: { commandActions.open(tag: $0) },
                     onOpenDay: { commandActions.open(day: $0) }
-                ),
-                onPointerChange: { pointer = $0 }
+                )
             )
-            .pointerStyle(pointer.style)
             .frame(minHeight: 320)
             .accessibilityIdentifier("today-editor")
         } else {

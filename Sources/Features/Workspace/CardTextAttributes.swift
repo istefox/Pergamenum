@@ -102,7 +102,7 @@ enum CardTextAttributes {
             guard range.location != NSNotFound, NSMaxRange(range) <= length else { continue }
             storage.addAttributes(attributes(for: styled.span, theme: theme), range: range)
             // A tag's or a date's click (n1-seams R-12, R-13), read off the source because a
-            // date span carries no payload: the link and cursor only, over the colour above.
+            // date span carries no payload: the link only, over the colour above.
             let click = MarkdownAttributedText.clickAttributes(for: styled.span, source: text[styled.range])
             if !click.isEmpty { storage.addAttributes(click, range: range) }
         }
