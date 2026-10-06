@@ -199,7 +199,10 @@ private struct NoteTabChip: View {
         }
         .background(background)
         .onHover { isHovering = $0 }
-        .accessibilityIdentifier("note-tab")
+        // The note's path, not its title: a UI test asks for the tab of one note, and a title
+        // is the note's prose (PG-265). Not unique on purpose when the note is open in both
+        // columns (one chip each): the lookup is column-agnostic and takes `firstMatch`.
+        .accessibilityIdentifier("note-tab-\(tab.note.relativePath)")
     }
 
     private var title: some View {

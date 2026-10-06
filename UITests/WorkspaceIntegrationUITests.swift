@@ -44,7 +44,7 @@ final class WorkspaceIntegrationUITests: PergamenumUITestCase {
     func testSendingANoteFromAnAmbiguousFolderToTheWorkspaceSelectsTheFolderAndRecordsAProblem() throws {
         launch()
         openSidebarRow("pane-notes", timeout: 10)
-        openNoteInEditor(titled: ambiguousNoteTitle)
+        openNoteInEditor(titled: ambiguousNoteTitle, at: ambiguousNotePath)
         openSidebarRow("pane-workspace", timeout: 10)
 
         app.menuBars.menuItems["Apri nel Workspace"].click()
@@ -66,17 +66,16 @@ final class WorkspaceIntegrationUITests: PergamenumUITestCase {
     /// Filters the Note pane down to one note and opens it - "Apri nel Workspace"
     /// (`MenuCommands.swift`'s Inserisci menu) is `.disabled(vault.openNote == nil)`, so the
     /// note has to really be open, not merely selected. `note-filter` is the Note pane's own
-    /// equivalent of the Workspace browser's `workspace-filter`. The row itself carries no
-    /// identifier (`NoteListPane.flatList`'s `Text(note.title)`), so it is matched on
-    /// `value`, the same substitution `DesignAndReadingUITests.text(withValue:)` uses for a
-    /// plain `Text` on macOS - the title is content this fixture wrote, not app prose.
-    private func openNoteInEditor(titled title: String) {
+    /// equivalent of the Workspace browser's `workspace-filter`. The filter is typed with the
+    /// title; the row is then found by its `note-row-<path>` identifier (`noteRow(_:)`,
+    /// PG-265), which `NoteListPane.flatList` draws as the tree does.
+    private func openNoteInEditor(titled title: String, at relativePath: String) {
         let filter = app.textFields["note-filter"]
         XCTAssertTrue(filter.waitForExistence(timeout: 8), "il filtro delle note non è comparso")
         filter.click()
         filter.typeText(title)
 
-        let row = app.staticTexts.matching(NSPredicate(format: "value == %@", title)).firstMatch
+        let row = noteRow(relativePath)
         XCTAssertTrue(row.waitForExistence(timeout: 8), "la nota «\(title)» non è nell'elenco filtrato")
         row.click()
     }
@@ -88,7 +87,7 @@ final class WorkspaceIntegrationUITests: PergamenumUITestCase {
     /// window's own title comes from the system, so neither test names it.
     private func assertProblemRecorded(containing text: String) {
         app.typeKey(",", modifierFlags: .command)
-        let advancedTab = app.descendants(matching: .any).matching(identifier: "Avanzate").firstMatch
+        let advancedTab = element("Avanzate")
         XCTAssertTrue(advancedTab.waitForExistence(timeout: 10), "la scheda Avanzate non è comparsa")
         advancedTab.click()
 

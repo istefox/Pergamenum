@@ -229,6 +229,7 @@ struct NoteListPane: View {
                     }
                 }
             }
+            .accessibilityIdentifier("sidebar-trash-confirm")
             Button("Annulla", role: .cancel) { deleting = nil }
         } message: { _ in
             Text("Va nel Cestino del Finder, non è una cancellazione definitiva. I link che puntavano qui resteranno non risolti.")

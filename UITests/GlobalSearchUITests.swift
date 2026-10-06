@@ -13,7 +13,8 @@ import XCTest
 /// justification. The chain adds exactly this one GUI test.
 ///
 /// Controls are found by `accessibilityIdentifier` only (`vault-note-count`, `search-field`,
-/// `search-progress`, `search-results`), and the one label read is text this test wrote.
+/// `search-progress`, `search-results`, `search-result-<path>`), and the one value read is the
+/// note count this test's own fixture sets.
 final class GlobalSearchUITests: PergamenumUITestCase {
     /// Filler notes, deterministic prose with no needle in it. Sized so one search over the
     /// vault takes visible time on the development machine; the measured duration is recorded
@@ -32,13 +33,10 @@ final class GlobalSearchUITests: PergamenumUITestCase {
         launchApp()
     }
 
-    private func element(_ identifier: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
-    }
-
-    /// Same lookup, scoped to the search sheet's own subtree rather than the whole app.
+    /// `element(_:)`'s lookup (`PergamenumUITestCase`), scoped to the search sheet's own subtree
+    /// rather than the whole app.
     ///
-    /// `element(_:)`'s `app.descendants(matching: .any)` walks every element of every kind in
+    /// Its `app.descendants(matching: .any)` walks every element of every kind in
     /// every window, including the sidebar behind the sheet - on this fixture, a 4001-row note
     /// list. `waitForExistence` re-runs that walk on every poll for the length of its timeout,
     /// so while the cooperative search holds the main actor in short chunks (`CooperativeLoop`),
@@ -128,7 +126,7 @@ final class GlobalSearchUITests: PergamenumUITestCase {
         XCTContext.runActivity(named: String(format: "ricerca sul fixture: %.1f s", elapsed)) { _ in }
 
         let target = results.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Bersaglio", "Bersaglio")).firstMatch
+            .matching(identifier: "search-result-Bersaglio.md").firstMatch
         XCTAssertTrue(target.waitForExistence(timeout: 5), "manca la riga di Bersaglio")
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: progress)
         XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 10), .completed, "l'indicatore è rimasto dopo i risultati")

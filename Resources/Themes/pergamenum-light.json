@@ -115,6 +115,11 @@
       "display": {
         "$value": { "fontFamily": "system", "fontSize": 32, "fontWeight": 400, "lineHeight": 1.0 }
       }
+    },
+    "control": {
+      "label": {
+        "$value": { "fontFamily": "system", "fontSize": 9, "fontWeight": 600, "lineHeight": 1.0 }
+      }
     }
   },
   "spacing": {
