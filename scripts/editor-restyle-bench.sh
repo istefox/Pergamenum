@@ -23,6 +23,7 @@
 #   RESTYLE_BUDGET_1MB=1|only    the two 1 MB rows, beside the others or alone.
 #   RESTYLE_BUDGET_RUNS=N        N measured runs per case instead of 5 (3 at 1 MB).
 #   RESTYLE_BUDGET_NO_WARMUP=1   no warm-up keystroke.
+#   RESTYLE_BUDGET_50KB=0        no 50 KB rows; the CI workflow sets it (the ceilings are this machine's).
 #
 # It builds into its own DerivedData (`build/restyle-bench-dd`), never the default one the
 # Stop hook's unit build uses: two xcodebuilds on one `build.db` produce "database is locked"

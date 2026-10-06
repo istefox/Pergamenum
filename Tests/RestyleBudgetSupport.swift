@@ -52,6 +52,15 @@ enum RestyleBudget {
         ProcessInfo.processInfo.environment["RESTYLE_BUDGET_200KB"] == "1"
     }
 
+    /// Whether the 50 KB cases run. They do, except when `RESTYLE_BUDGET_50KB=0`, which the CI workflow
+    /// sets: the ceilings are three times a "before" measured on the development machine, and the
+    /// hosted runner takes 4.8 and 5.1 s of CPU against 4.3 and 4.4 s allowed (PR #921). A machine
+    /// dependent absolute ceiling cannot gate a different machine; the budget is a local measure
+    /// until G-ceiling fixes a ratio that travels (ADR-0082 §D9).
+    static var includesSmallNotes: Bool {
+        ProcessInfo.processInfo.environment["RESTYLE_BUDGET_50KB"] != "0"
+    }
+
     /// Whether the warm-up keystroke runs. `RESTYLE_BUDGET_NO_WARMUP=1` skips it, only for a
     /// measurement where one keystroke already takes minutes.
     static var warmsUp: Bool {
@@ -59,7 +68,7 @@ enum RestyleBudget {
     }
 
     /// The cases this run measures, smallest first: the 50 KB rows unless only the 1 MB ones were
-    /// asked for, the 200 KB rows behind `includesMediumNotes`, the 1 MB rows behind
+    /// asked for or `includesSmallNotes` is off, the 200 KB rows behind `includesMediumNotes`, the 1 MB rows behind
     /// `includesLargeNotes`.
     static var activeCases: [Case] {
         let largeOnly = ProcessInfo.processInfo.environment["RESTYLE_BUDGET_1MB"] == "only"
@@ -67,7 +76,8 @@ enum RestyleBudget {
             .filter { c in
                 if c.bytes >= 1024 * kilobyte { return includesLargeNotes }
                 if largeOnly { return false }
-                return c.bytes < 200 * kilobyte || includesMediumNotes
+                if c.bytes < 200 * kilobyte { return includesSmallNotes }
+                return includesMediumNotes
             }
             .sorted { ($0.bytes, $0.variant.rawValue) < ($1.bytes, $1.variant.rawValue) }
     }
