@@ -105,7 +105,7 @@ L'app non impone la struttura 00-03: la rispetta se esiste. Le uniche cartelle p
 
 ### 4.2 Nomi dei file (naming.md §4.6)
 
-- **Note**: il titolo è il nome file. Ammessi spazi e lettere accentate; vietati `/ \ : * ? " < > | # ^ [ ]`. Massimo 60 caratteri. Frase nominale. Niente `vN`, niente suffissi di stato.
+- **Note**: il titolo è il nome file. Ammessi spazi e lettere accentate; vietati `/ \ : * ? " < > | # ^ [ ]`. Massimo 60 caratteri. Frase nominale. Niente `vN`, niente suffissi di stato. *Emendato 2026-10-06 (ADR-0088).* Una nota creata dalla cattura «Nota nuova» con una prima riga che non è un nome valido riceve un titolo proposto: la regola è in §16.
 - **Note legate a un evento**: data in testa, formato `YYYYMMDD Titolo evento`.
 - **Daily note**: solo `YYYYMMDD` (es. `20260811.md`). NON `YYYY-MM-DD`.
 - **Canvas**: stessa grammatica dei titoli nota (4.6). Nota di governance: la categoria "canvas" non esiste ancora in naming.md; la sua introduzione formale richiede ADR + nuova sottosezione in naming.md §4 (procedura G-04). Fino ad allora l'app applica per analogia la grammatica delle note.
@@ -576,8 +576,10 @@ chiamava "globale" una cattura in realtà legata alla finestra (Cmd+Shift+N).*
 - *Emendato 2026-10-04 (ADR-0080).* Una prima riga che non è un nome di nota valido produce
   un titolo proposto (caratteri vietati sostituiti da spazi, spazi compattati, suffisso di versione tolto,
   taglio a 60 caratteri a una parola); se diverso dalla riga, tutto il testo va nel corpo;
-  se non resta nulla, il titolo è `YYYYMMDD HHmm Cattura`. Il pannello mostra «Titolo: …»
-  prima dell'invio. Solo una cattura vuota è rifiutata.
+  se non resta nulla, il titolo è `YYYYMMDD HHmm Cattura`. *Emendato 2026-10-06 (ADR-0088).*
+  Il pannello mostra sempre «Titolo: …» prima dell'invio, anche quando coincide con la riga; un
+  titolo già preso è rifiutato con la frase del compositore e non scrive nulla. Oltre a questo,
+  solo una cattura vuota è rifiutata.
 - **Un'unica scrittura condivisa**: il pannello, la route `pergamenum://capture` (§9),
   `perg capture` e il tool MCP passano tutti per lo stesso punto in `Sources/Connector/`
   (ADR-0007 §D2/§D4) — stessa cartella di destinazione, stesso frontmatter, giornalata e

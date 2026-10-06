@@ -193,13 +193,17 @@ import Testing
             attributes[.editorLink] as? URL, ".linkTarget must now carry .editorLink (issue #191)"
         )
         #expect(MarkdownAttributedText.clickTarget(for: url) == .note(title: "Nota"))
-        #expect(attributes[.cursor] != nil, ".linkTarget must now carry .cursor (R-06)")
+        // The `.cursor` attribute is gone on purpose: it never reached the screen (PG-219), the
+        // pointer now comes from the host's `.pointerStyle` (`EditorPointer`, R-09).
+        #expect(attributes[.cursor] == nil, ".linkTarget no longer carries .cursor (PG-219)")
     }
 
     @Test func embedTargetCarriesLinkAndCursorForAFileReference() {
         let attributes = CardTextAttributes.attributes(for: .embedTarget("foto.png"), theme: theme)
         #expect(attributes[.editorLink] as? URL == MarkdownAttributedText.embedURL(for: "foto.png"))
-        #expect(attributes[.cursor] != nil, ".embedTarget must now carry .cursor (R-06)")
+        // `.cursor` is gone on purpose: the attribute never reached the screen (PG-219), the
+        // pointer now comes from the host's `.pointerStyle` (`EditorPointer`, R-09).
+        #expect(attributes[.cursor] == nil, ".embedTarget no longer carries .cursor (PG-219)")
     }
 
     /// An empty CommonMark href (`[testo]()`) never reaches `.linkTarget` at all

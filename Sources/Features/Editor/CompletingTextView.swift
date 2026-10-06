@@ -49,15 +49,15 @@ final class CompletingTextView: NSTextView {
     /// (`CompletingTextView+Accessibility.swift`).
     var linkAccessibilityElements: [Int: NSAccessibilityElement] = [:]
     /// One `NSTrackingArea` per `.editorLink` span, rebuilt on every restyle
-    /// (`CompletingTextView+CursorRects.swift`) - `addCursorRect` never took effect in this
-    /// app's SwiftUI-hosted window (issue #191 follow-up), so the pointing-hand cursor is
-    /// driven by real `mouseEntered`/`mouseExited` events instead, the mechanism
-    /// `EditorColumns.swift`'s divider already proves works here.
+    /// (`CompletingTextView+CursorRects.swift`): the geometry `pointer(at:)` answers from, so
+    /// hover and click agree on what counts as a link (PG-219).
     var linkTrackingAreas: [NSTrackingArea] = []
-    /// How many of `linkTrackingAreas` the mouse is currently inside, so a push/pop pair only
-    /// fires on the 0→1/1→0 transition - moving straight from one link into an adjacent one
-    /// must not flicker the cursor back to the arrow in between.
-    var hoveredLinkCount = 0
+    /// The last pointer `trackPointer(at:)` reported, so a change is reported once and moving
+    /// straight from one link into an adjacent one reports nothing.
+    var reportedPointer: EditorPointer = .text
+    /// Called with the pointer the view wants whenever it changes (`CompletingTextView+CursorRects
+    /// .swift`'s `trackPointer(at:)`); the SwiftUI host turns it into `.pointerStyle` (PG-219).
+    var onPointerChange: ((EditorPointer) -> Void)?
     /// The link character index the first click of what might become a double-click resolved
     /// to, recorded by `CompletingTextView+Pasteboard.swift`'s `mouseDown` before `super`
     /// places the caret and reveal-on-caret runs (issue #191 follow-up). Revealing does not

@@ -47,6 +47,13 @@ final class VaultController {
     var focusedColumnIndex = 0
     /// Cmd+W's dirty tab until its column raises the dialog; written only by the doors (ADR-0073 §D11).
     var closeRequest: NoteTab.ID?
+    /// Bumped each time something asks the editor to take the keyboard (an event note opened in
+    /// the Note pane, «Apri» from the Workspace sheet); the column that owns the request takes it
+    /// through `takeEditorFocusRequest(forColumn:)` (note-workflow R-04, R-05). Written only by the
+    /// doors in `VaultController+Tabs.swift`, `closeRequest`'s convention.
+    var editorFocusRequest = 0
+    /// The column the pending focus request is for, nil once taken or when none was made.
+    var editorFocusColumn: Int?
     /// Columns whose «Chiudi la colonna» is still asking or saving (PG-335): a second request for
     /// one of them is ignored. Written only by `closeColumn(_:ask:saveAll:)`.
     @ObservationIgnored var closingColumns: Set<EditorColumn.ID> = []

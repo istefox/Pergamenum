@@ -1,38 +1,14 @@
 import AppKit
 
-/// The pointing-hand cursor over a wikilink target or a CommonMark label (issue #191
-/// follow-up) - **currently non-functional, out of scope for this branch, see below.**
+/// The pointer over editor text (issue #191 follow-up, `PG-219`): the view decides it, SwiftUI
+/// draws it. `NSCursor` calls made from here - cursor rects, `push()`/`.pop()` on enter and exit,
+/// `.set()` in `cursorUpdate(with:)` - all ran as designed and never changed what the Window
+/// Server drew in this SwiftUI-hosted window, while `NSCursor.current` agreed they had.
 ///
-/// Three independent mechanisms were tried and instrumented with logging to confirm each one
-/// actually ran: `resetCursorRects()`/`addCursorRect(_:cursor:)`; `mouseEntered`/`mouseExited`
-/// calling `NSCursor.push()`/`.pop()` directly (the shape `EditorColumns.swift`'s divider uses
-/// successfully elsewhere in this app); and `cursorUpdate(with:)` calling `.set()` (chosen after
-/// logging showed `NSTextView`'s own whole-bounds tracking area carries `.cursorUpdate`/
-/// `.mouseMoved`/`.inVisibleRect`, consulted on every mouse-moved tick). All three fired exactly
-/// as designed and none changed the visible cursor. Padding the tracking rects (in case ordinary
-/// mouse jitter was exiting a too-tight boundary) made no difference either.
-///
-/// The decisive check: logging `NSCursor.current` itself, before and after every `.set()` call,
-/// for the whole duration of a real hover. It read as our pushed `NSCursor.pointingHand`
-/// instance, consistently, for every tick of the dwell - AppKit's own bookkeeping agrees the
-/// pointing-hand cursor is active the entire time. The screen still showed the arrow throughout.
-/// This is not a logic, geometry or timing bug in this code: `NSCursor.current` and what the
-/// Window Server actually draws have come apart, which is a window-level cursor-ownership issue
-/// outside anything `NSCursor`'s public API can query or override from here.
-///
-/// Every *working* custom cursor in this codebase (`BoardHandles.swift`, `BoardCropEditor.swift`,
-/// `WorkspacePaneDivider.swift`, `EditorColumns.swift`) goes through SwiftUI's own `.onHover` +
-/// `push()`/`.pop()`, never a raw `NSTrackingArea`/`cursorUpdate` override - consistent with
-/// SwiftUI owning cursor display for this window and not honoring AppKit-side changes made
-/// outside its own hover pipeline. Recommended, not yet filed: a ticket covering this together
-/// with the separately-confirmed, app-wide absence of the ordinary I-beam cursor (same family of
-/// symptom). A real fix likely means restructuring `NoteTextView`/`FormattingTextView` around
-/// `.onContinuousHover`, which for `NoteTextView` means threading through its ~40 forwarded
-/// properties across four call sites - too wide for a click-reveal bugfix branch.
-///
-/// The `cursorUpdate(with:)` shape and the padded tracking-area geometry are left in place below:
-/// both are correct and harmless (hover-only, no effect on click hit-testing), just not sufficient
-/// on their own to make the cursor visible.
+/// So the view only answers which pointer it wants, `EditorPointer`, from one tracking area per
+/// `.editorLink` run (the geometry clicks already key off), and reports a change through
+/// `onPointerChange`; the host applies it with `.pointerStyle`, the route SwiftUI honours here
+/// (`docs/plans/note-workflow-n1.md` Task 4, note-workflow R-09).
 extension CompletingTextView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -46,7 +22,7 @@ extension CompletingTextView {
             super.mouseEntered(with: event)
             return
         }
-        hoveredLinkCount += 1
+        trackPointer(at: convert(event.locationInWindow, from: nil))
     }
 
     override func mouseExited(with event: NSEvent) {
@@ -54,15 +30,30 @@ extension CompletingTextView {
             super.mouseExited(with: event)
             return
         }
-        hoveredLinkCount = max(0, hoveredLinkCount - 1)
+        trackPointer(at: convert(event.locationInWindow, from: nil))
     }
 
+    /// `.link` when a link's tracking area holds `point` (view space), `.text` otherwise: the
+    /// same rectangles hover already uses, with no second scan of the text.
+    func pointer(at point: NSPoint) -> EditorPointer {
+        linkTrackingAreas.contains { $0.rect.contains(point) } ? .link : .text
+    }
+
+    /// Reports the pointer at `point` through `onPointerChange`, only when it changed since the
+    /// last report - moving from one link straight into an adjacent one reports nothing.
+    func trackPointer(at point: NSPoint) {
+        let pointer = pointer(at: point)
+        guard pointer != reportedPointer else { return }
+        reportedPointer = pointer
+        onPointerChange?(pointer)
+    }
+
+    /// `NSTextView`'s own whole-bounds tracking area carries `.cursorUpdate`, so this runs on
+    /// every mouse-moved tick: the one place that sees the pointer cross a link's edge without
+    /// an enter or exit of its own.
     override func cursorUpdate(with event: NSEvent) {
-        if hoveredLinkCount > 0 {
-            NSCursor.pointingHand.set()
-        } else {
-            super.cursorUpdate(with: event)
-        }
+        trackPointer(at: convert(event.locationInWindow, from: nil))
+        super.cursorUpdate(with: event)
     }
 
     /// One tracking area per `.editorLink` run - the same signal `followLinkIfPresent(at:)`

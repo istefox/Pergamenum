@@ -311,7 +311,9 @@ import Testing
         let labelRange = ("[apri](https://example.com)" as NSString).range(of: "apri")
         let link = attributed.attribute(.editorLink, at: labelRange.location, effectiveRange: nil) as? URL
         #expect(link?.absoluteString == "https://example.com")
-        #expect(attributed.attribute(.cursor, at: labelRange.location, effectiveRange: nil) != nil)
+        // `.cursor` is gone on purpose: the attribute never reached the screen (PG-219), the
+        // pointer now comes from the host's `.pointerStyle` (`EditorPointer`, R-09).
+        #expect(attributed.attribute(.cursor, at: labelRange.location, effectiveRange: nil) == nil)
     }
 
     @Test func aCommonMarkLinkLabelCarriesLinkAndCursorForAVaultRelativeNote() throws {

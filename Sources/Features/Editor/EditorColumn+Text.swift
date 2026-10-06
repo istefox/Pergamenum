@@ -79,8 +79,12 @@ extension EditorColumnView {
             outline: outlineInputs(for: note),
             // Clicking into the text is how a person says which half they are working in, and
             // the column's own tap gesture never sees that click: the text view takes it.
-            onTakeFocus: { vault.focusColumn(columnIndex) }
+            onTakeFocus: { vault.focusColumn(columnIndex) },
+            onPointerChange: { pointer = $0 }
         )
+        // The I-beam over text and the pointing hand over a link: SwiftUI's own pointer, since
+        // the text view's `NSCursor` calls never reached the screen (PG-219).
+        .pointerStyle(pointer.style)
         .modifier(FindKeeping(
             find: find,
             navigation: navigation,

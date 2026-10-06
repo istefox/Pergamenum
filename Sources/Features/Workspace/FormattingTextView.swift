@@ -24,8 +24,10 @@ final class FormattingTextView: NSTextView {
     /// (`FormattingTextView+CursorRects.swift`) - never shared, per this file's own header:
     /// no fork, no common base.
     var linkTrackingAreas: [NSTrackingArea] = []
-    /// The mirror of `CompletingTextView.hoveredLinkCount`.
-    var hoveredLinkCount = 0
+    /// The mirror of `CompletingTextView.reportedPointer`.
+    var reportedPointer: EditorPointer = .text
+    /// The mirror of `CompletingTextView.onPointerChange` (PG-219).
+    var onPointerChange: ((EditorPointer) -> Void)?
 
     /// A click landed on a folded heading's badge, naming the entry ordinal it stands for
     /// (ADR-0028 §D8). Nil on a card whose board never asked to be told, which is a preview or a

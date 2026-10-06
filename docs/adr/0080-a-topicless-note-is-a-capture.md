@@ -3,6 +3,8 @@
 - Status: **accepted**. Merged to `main` via PR #897 (`5056c61f`, 2026-10-05), carrying Tasks 1 to 3
   of `docs/plans/pg-384-n1-seams.md`: the topic-less rule, the derived capture title, the inbox
   folder setting, and this record with its SPEC amendments.
+- Scope: §D3's caption clause and the panel's refusal of a taken title, and §D4, amended by
+  ADR-0088.
 - Date: 2026-10-04. Written against `6c03f024` (branch `kepler/task-00994c70`). `origin/main` was
   at `babdbb49` when this was written; its diff against `6c03f024` touches the menus, SPEC §6.1
   and §10, the icon-size theme tokens, the hosted-view test support and `TODO.md`, none of the

@@ -52,7 +52,10 @@ extension VaultController {
             quickSwitcherProblem = nil
             return true
         } catch {
-            quickSwitcherProblem = ConformanceText.creationFailure(error)
+            // Shown under the field and kept in the problem list as well (note-workflow R-11).
+            let sentence = ConformanceText.creationFailure(error)
+            quickSwitcherProblem = sentence
+            recordProblem(sentence)
             return false
         }
     }

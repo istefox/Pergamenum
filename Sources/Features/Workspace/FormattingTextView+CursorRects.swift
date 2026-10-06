@@ -1,14 +1,10 @@
 import AppKit
 
 /// `CompletingTextView+CursorRects.swift`'s twin, not a shared helper (ADR-0027 §D9: this view
-/// forks nothing from the note editor's) - **currently non-functional, out of scope for this
-/// branch.** See that file's header for the full root-cause chain (issue #191 follow-up): three
-/// independent mechanisms all fired as designed and never changed the visible cursor, and the
-/// decisive check - logging `NSCursor.current` itself through a real hover - showed AppKit's own
-/// bookkeeping agreeing the pointing-hand cursor was active the whole time while the screen
-/// still showed the arrow. Not a bug in this code: `NSCursor.current` and what the Window Server
-/// draws have come apart, a window-level cursor-ownership issue outside what `NSCursor`'s public
-/// API can query or fix from here.
+/// forks nothing from the note editor's). See that file's header (`PG-219`): `NSCursor` calls
+/// made from here never reached the screen, so the view only answers which pointer it wants and
+/// reports a change through `onPointerChange`, and `StickyTextCard` applies it with
+/// `.pointerStyle` while the card is being edited (`docs/plans/note-workflow-n1.md` Task 4).
 extension FormattingTextView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -22,7 +18,7 @@ extension FormattingTextView {
             super.mouseEntered(with: event)
             return
         }
-        hoveredLinkCount += 1
+        trackPointer(at: convert(event.locationInWindow, from: nil))
     }
 
     override func mouseExited(with event: NSEvent) {
@@ -30,20 +26,27 @@ extension FormattingTextView {
             super.mouseExited(with: event)
             return
         }
-        hoveredLinkCount = max(0, hoveredLinkCount - 1)
+        trackPointer(at: convert(event.locationInWindow, from: nil))
     }
 
-    /// `CompletingTextView+CursorRects.swift`'s twin finding: `NSTextView` installs its own
-    /// whole-bounds tracking area with `.cursorUpdate` and `.mouseMoved`, so `cursorUpdate(with:)`
-    /// fires on every mouse-moved tick and its default re-asserts a cursor each time - which is
-    /// what discarded a one-shot `push()` from `mouseEntered`. Answering here, last every tick,
-    /// is what makes it stick.
+    /// `.link` when a link's tracking area holds `point` (view space), `.text` otherwise.
+    func pointer(at point: NSPoint) -> EditorPointer {
+        linkTrackingAreas.contains { $0.rect.contains(point) } ? .link : .text
+    }
+
+    /// Reports the pointer at `point` through `onPointerChange`, only on a change.
+    func trackPointer(at point: NSPoint) {
+        let pointer = pointer(at: point)
+        guard pointer != reportedPointer else { return }
+        reportedPointer = pointer
+        onPointerChange?(pointer)
+    }
+
+    /// `CompletingTextView+CursorRects.swift`'s twin: `NSTextView`'s whole-bounds tracking area
+    /// carries `.cursorUpdate`, so this runs on every mouse-moved tick.
     override func cursorUpdate(with event: NSEvent) {
-        if hoveredLinkCount > 0 {
-            NSCursor.pointingHand.set()
-        } else {
-            super.cursorUpdate(with: event)
-        }
+        trackPointer(at: convert(event.locationInWindow, from: nil))
+        super.cursorUpdate(with: event)
     }
 
     /// One tracking area per `.editorLink` run, the same signal `followLinkIfPresent(at:)`

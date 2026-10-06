@@ -166,37 +166,35 @@ enum ImportNaming {
     /// `recordingNoteTitle` above, in this same file, and `PraticaNaming.messageFileName`
     /// (`Sources/Core/Pratiche/PraticaNaming.swift`), which used to keep its own
     /// identical copy - an edit here now turns both `Tests/ConventionsTests.swift` and
-    /// `Tests/PraticaNamingTests.swift` red.
-    static func truncatedAtWordBoundary(_ slug: String, toFit budget: Int) -> String {
+    /// `Tests/PraticaNamingTests.swift` red. Its third caller is `truncatedAtSpace` below,
+    /// which cuts `CaptureTitle`'s prose on `" "` instead of `"-"` (ADR-0088 §D1).
+    static func truncatedAtWordBoundary(
+        _ slug: String, toFit budget: Int, separator: Character = "-"
+    ) -> String {
         guard budget > 0 else { return "" }
         guard slug.count > budget else { return slug }
 
         var kept: [Substring] = []
         var length = 0
-        for word in slug.split(separator: "-") {
+        for word in slug.split(separator: separator) {
             let addition = kept.isEmpty ? word.count : word.count + 1
             guard length + addition <= budget else { break }
             kept.append(word)
             length += addition
         }
-        return kept.joined(separator: "-")
+        return kept.joined(separator: String(separator))
     }
 
     /// Cuts space-separated prose to `limit` characters at the last space that keeps it
     /// within the limit, or at `limit` itself when the first word is longer (ADR-0080 §D4).
     ///
-    /// Beside `truncatedAtWordBoundary` rather than a generalisation of it: that one cuts
-    /// a hyphen-joined slug and feeds two protected names, and a capture title is prose.
+    /// A wrapper over `truncatedAtWordBoundary` with `" "` as the separator, so one cutting
+    /// loop serves the slug and the prose (ADR-0045 §D5's rule, ADR-0088 §D1); the hard cut
+    /// when the first word alone exceeds the limit is the one thing it adds.
     static func truncatedAtSpace(_ text: String, toFit limit: Int) -> String {
         guard limit > 0 else { return "" }
-        guard text.count > limit else { return text }
-        // One character past the limit, so a space right at the limit still counts.
-        let window = text.prefix(limit + 1)
-        if let space = window.lastIndex(of: " ") {
-            let kept = window[..<space].trimmingCharacters(in: .whitespaces)
-            if !kept.isEmpty { return kept }
-        }
-        return String(text.prefix(limit))
+        let cut = truncatedAtWordBoundary(text, toFit: limit, separator: " ")
+        return cut.isEmpty ? String(text.prefix(limit)) : cut
     }
 
     /// `NoteName.sanitized`'s missing caller (PG-134/#234): a file dropped or chosen

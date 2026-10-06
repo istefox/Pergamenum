@@ -31,7 +31,25 @@ extension WorkspaceController {
             _ = placeCreatedNote(path, title: title, at: point, openedOn: targetBoard)
             return .created(path: path)
         } catch {
-            return .failed(ConformanceText.creationFailure(error))
+            // Shown in the sheet and kept in the problem list as well (note-workflow R-11).
+            let sentence = ConformanceText.creationFailure(error)
+            recordProblem(sentence)
+            return .failed(sentence)
+        }
+    }
+
+    /// The folder kind of the sheet: makes the folder and its card, and answers the sentence the
+    /// sheet shows when it could not, nil when it was made (note-workflow R-11). The sentence is
+    /// recorded in the problem list too, in today's wording, and the sheet stays open on it, the
+    /// note kind's route.
+    func createFolderFromSheet(named name: String, at point: CGPoint) -> String? {
+        do {
+            _ = try createFolder(named: name, at: point)
+            return nil
+        } catch {
+            let sentence = "\(error)"
+            recordProblem(sentence)
+            return sentence
         }
     }
 }

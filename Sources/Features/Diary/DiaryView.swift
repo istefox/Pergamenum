@@ -35,6 +35,8 @@ struct DiaryView: View {
     @State private var boardTitles: [String] = []
     /// Every note's aliases by title, on the same schedule (n1-seams R-08).
     @State private var noteAliases: [String: [String]] = [:]
+    /// The pointer the diary's text view asked for (PG-219, note-workflow R-09).
+    @State private var pointer: EditorPointer = .text
 
     var body: some View {
         HSplitView {
@@ -127,8 +129,10 @@ struct DiaryView: View {
                 onOpenDay: { commandActions.open(day: $0) },
                 onDropFile: { url in vault.importFileIntoVault(url, near: fileLabel) },
                 onPasteImage: { data in vault.importPastedImage(data, near: fileLabel) }
-            )
+            ),
+            onPointerChange: { pointer = $0 }
         )
+        .pointerStyle(pointer.style)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("diary-editor")
     }

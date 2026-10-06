@@ -39,14 +39,14 @@ extension MarkdownAttributedText {
         }
     }
 
-    /// The click half of a tag or date run (n1-seams R-12, R-13): `clickable`'s link and
-    /// cursor without its colour, so the run keeps the token colour its span already has. Empty
+    /// The click half of a tag or date run (n1-seams R-12, R-13): `clickable`'s link without its
+    /// colour, so the run keeps the token colour its span already has. Empty
     /// for every span `clickURL(for:source:)` answers nil for. Shared with the Workspace card's
     /// table, which merges it the same way.
     static func clickAttributes(
         for span: MarkdownStyler.Span, source: Substring
     ) -> [NSAttributedString.Key: Any] {
         guard let url = clickURL(for: span, source: source) else { return [:] }
-        return [.editorLink: url, .cursor: NSCursor.pointingHand]
+        return [.editorLink: url]
     }
 }

@@ -68,6 +68,9 @@ struct EditorColumnView: View {
     /// Every note's aliases by title, the third pool, on the same schedule (n1-seams R-08).
     @State var noteAliases: [String: [String]] = [:]
     @State var boardTitles: [String] = []
+    /// The pointer the text view asked for over what is under the mouse, applied with
+    /// `.pointerStyle` in `editing(_:)` (PG-219, note-workflow R-09).
+    @State var pointer: EditorPointer = .text
 
     var body: some View {
         VStack(spacing: 0) {
@@ -162,6 +165,13 @@ struct EditorColumnView: View {
         .onChange(of: vault.isComposingNote) { wasComposing, isComposing in
             guard wasComposing, !isComposing, isFocused else { return }
             focusRequest += 1
+        }
+        // Something outside the editor asked for the caret in it (an event note opened, «Apri»
+        // from the Workspace sheet; note-workflow R-04, R-05). `initial: true` for the same reason
+        // as `closeRequest` above: the request is usually made from another pane, before this
+        // column appears.
+        .onChange(of: vault.editorFocusRequest, initial: true) { _, _ in
+            if vault.takeEditorFocusRequest(forColumn: columnIndex) { focusRequest += 1 }
         }
     }
 

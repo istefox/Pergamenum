@@ -89,6 +89,8 @@ struct CardTextView: NSViewRepresentable {
     /// the closures above.
     var onOpenTag: (Tag) -> Void = { _ in }
     var onOpenDay: (CalendarDate) -> Void = { _ in }
+    /// The pointer the card's text view wants, reported on a change (PG-219, note-workflow R-09).
+    var onPointerChange: (EditorPointer) -> Void = { _ in }
 
     func makeNSView(context: Context) -> NSScrollView {
         // Apple's own wiring rather than a hand-assembled pair: it returns an instance of the
@@ -130,6 +132,8 @@ struct CardTextView: NSViewRepresentable {
         textView.onToggleFold = { [weak coordinator] entry in coordinator?.parent.onToggleFold(entry) }
         // A click on a task line's checkbox glyph (PG-074), reported the same way.
         textView.onToggleTask = { [weak coordinator] lineIndex in coordinator?.parent.onToggleTask(lineIndex) }
+        // The pointer the text wants over a link (PG-219), reported the same way.
+        textView.onPointerChange = { [weak coordinator] pointer in coordinator?.parent.onPointerChange(pointer) }
         // The `[[` completion popup changed, reported the same way.
         textView.onWikilinkCompletionChange = { [weak coordinator] view in
             coordinator?.parent.onWikilinkCompletionChange(view)

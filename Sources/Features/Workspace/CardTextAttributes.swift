@@ -172,7 +172,6 @@ enum CardTextAttributes {
                 [
                     .foregroundColor: NSColor(theme.color(.accentPrimary)),
                     .editorLink: url,
-                    .cursor: NSCursor.pointingHand,
                 ]
             } else {
                 [.foregroundColor: NSColor(theme.color(.accentPrimary))]
@@ -183,7 +182,6 @@ enum CardTextAttributes {
                 .editorLink: Transclusion.isNoteReference(target)
                     ? MarkdownAttributedText.noteURL(for: target)
                     : MarkdownAttributedText.embedURL(for: target),
-                .cursor: NSCursor.pointingHand,
             ]
         case .embedRun:
             // Nothing, for the reason the note editor's table returns nothing: the span covers a

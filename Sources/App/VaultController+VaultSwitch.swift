@@ -86,11 +86,13 @@ extension VaultController {
         focusedColumnIndex = 0
         // What belongs to the folder being left and names its files: the composer's draft
         // (as `close()` does), the tabs reopenable with «riapri ultima tab», the quick
-        // switcher's in-memory recents and a pending close question about a tab now gone.
+        // switcher's in-memory recents, a pending close question about a tab now gone and a
+        // pending request for the caret in a column of the folder being left (note-workflow R-04).
         endNewNote()
         closedTabPaths = []
         recentNotePaths = []
         closeRequest = nil
+        editorFocusColumn = nil
         await open(url)
         // Defence: the preflight above makes this unreachable for an unresolvable state base,
         // but should `open(_:)` still give up before touching the session or the watcher, the

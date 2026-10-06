@@ -300,14 +300,19 @@ private let captionUTC: Calendar = {
 /// 2026-10-04 14:30 UTC.
 private let captionNow = Date(timeIntervalSince1970: 1_791_124_200)
 
-// (n1-seams R-05)
+// (note-workflow R-02) Changed from `theCaptionIsNilForALegalFirstLine` (ADR-0088 §D2): the
+// caption now shows whenever a «Nota nuova» has text, so the person sees which line becomes
+// the title, and a title that is already taken (below) has a caption to be refused beside.
 @MainActor
-@Test func theCaptionIsNilForALegalFirstLine() {
+@Test func theCaptionNamesALegalFirstLineToo() {
     let controller = CaptureController()
     controller.destination = .note
     controller.text = "Mescola per il distretto\nCorpo."
 
-    #expect(controller.titleCaption(now: captionNow, calendar: captionUTC) == nil)
+    #expect(
+        controller.titleCaption(now: captionNow, calendar: captionUTC)
+            == "Titolo: Mescola per il distretto"
+    )
 }
 
 // (n1-seams R-05)
@@ -386,7 +391,137 @@ private let captionNow = Date(timeIntervalSince1970: 1_791_124_200)
     controller.text = "questo/non va\r\ncorpo"
     #expect(controller.titleCaption(now: captionNow, calendar: captionUTC) == "Titolo: questo non va")
 
-    // A legal first line followed by a refused-looking body shows no caption.
+    // A legal first line followed by a refused-looking body shows its own line as the title.
+    // Changed from `== nil` (ADR-0088 §D2, note-workflow R-02): the caption always shows.
     controller.text = "Mescola per il distretto\rcorpo: con due punti?"
-    #expect(controller.titleCaption(now: captionNow, calendar: captionUTC) == nil)
+    #expect(
+        controller.titleCaption(now: captionNow, calendar: captionUTC)
+            == "Titolo: Mescola per il distretto"
+    )
+}
+
+// MARK: - A taken title is refused with the composer's sentence (ADR-0088 §D2)
+
+/// The composer's sentence for a path, through the one function that words it.
+private func composerSentence(for path: String) -> String {
+    ConformanceText.creationFailure(VaultSession.CreationError.alreadyExists(path))
+}
+
+private func listing(of folder: String, in vault: borrowing TemporaryVault) throws -> [String] {
+    try FileManager.default.contentsOfDirectory(
+        atPath: vault.root.appending(path: folder).path(percentEncoded: false)
+    ).sorted()
+}
+
+// (note-workflow R-02)
+@MainActor
+@Test func aTakenLegalTitleIsRefusedWithTheComposersSentenceAndWritesNothing() async throws {
+    let vault = try TemporaryVault()
+    let taken = "---\ndate: 2026-10-04\ntags:\n  - type-note\n---\n\nGià qui.\n"
+    try vault.write(taken, to: "00 Inbox/Mescola per il distretto.md")
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+    await session.rescan()
+
+    let controller = CaptureController()
+    controller.destination = .note
+    controller.text = "Mescola per il distretto\nAltro"
+
+    #expect(await !controller.capture(into: session))
+    #expect(
+        controller.outcome
+            == .refused("Esiste già una nota in 00 Inbox/Mescola per il distretto.md")
+    )
+    #expect(controller.outcome == .refused(composerSentence(for: "00 Inbox/Mescola per il distretto.md")))
+    // The panel stays open on the only copy of the text.
+    #expect(controller.text == "Mescola per il distretto\nAltro")
+
+    let onDisk = try String(
+        contentsOf: vault.root.appending(path: "00 Inbox/Mescola per il distretto.md"), encoding: .utf8
+    )
+    #expect(onDisk == taken)
+    #expect(try listing(of: "00 Inbox", in: vault) == ["Mescola per il distretto.md"])
+    // The caption still names the title the refusal is about.
+    #expect(
+        controller.titleCaption(now: captionNow, calendar: captionUTC)
+            == "Titolo: Mescola per il distretto"
+    )
+}
+
+// (note-workflow R-02)
+@MainActor
+@Test func aTakenDerivedTitleIsRefusedWithTheSameSentenceShape() async throws {
+    let vault = try TemporaryVault()
+    let taken = "---\ndate: 2026-10-04\ntags:\n  - type-note\n---\n\nGià qui.\n"
+    try vault.write(taken, to: "00 Inbox/Idea usare i token anche per i font.md")
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+    await session.rescan()
+
+    let controller = CaptureController()
+    controller.destination = .note
+    controller.text = "Idea: usare i token anche per i font?"
+
+    #expect(await !controller.capture(into: session))
+    #expect(
+        controller.outcome
+            == .refused(composerSentence(for: "00 Inbox/Idea usare i token anche per i font.md"))
+    )
+    #expect(try listing(of: "00 Inbox", in: vault) == ["Idea usare i token anche per i font.md"])
+    let onDisk = try String(
+        contentsOf: vault.root.appending(path: "00 Inbox/Idea usare i token anche per i font.md"),
+        encoding: .utf8
+    )
+    #expect(onDisk == taken)
+}
+
+// (note-workflow R-02, R-10) The refused path is under the vault's inbox folder setting.
+@MainActor
+@Test func theRefusedPathIsUnderTheInboxFolderSetting() async throws {
+    let vault = try TemporaryVault()
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+    session.updateSettings { $0.inboxFolder = "Triage" }
+    let taken = "---\ndate: 2026-10-04\ntags:\n  - type-note\n---\n\nGià qui.\n"
+    try vault.write(taken, to: "Triage/Mescola per il distretto.md")
+    await session.rescan()
+
+    let controller = CaptureController()
+    controller.destination = .note
+    controller.text = "Mescola per il distretto\nAltro"
+
+    #expect(await !controller.capture(into: session))
+    #expect(
+        controller.outcome
+            == .refused("Esiste già una nota in Triage/Mescola per il distretto.md")
+    )
+    #expect(try listing(of: "Triage", in: vault) == ["Mescola per il distretto.md"])
+}
+
+// (coverage) The taken-title filter reads `CaptureController.folder` before the inbox setting
+// (ADR-0088 §D2's path rule: `folder ?? inboxFolder`): a title taken only in the inbox does not
+// refuse a capture aimed at another folder, and one taken in that folder does.
+@MainActor
+@Test func theTakenTitleFilterLooksInTheCapturesOwnFolderBeforeTheInbox() async throws {
+    let vault = try TemporaryVault()
+    let taken = "---\ndate: 2026-10-04\ntags:\n  - type-note\n---\n\nGià qui.\n"
+    try vault.write(taken, to: "00 Inbox/Mescola per il distretto.md")
+    try vault.write(taken, to: "Progetti/Altra nota.md")
+    let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
+    await session.rescan()
+
+    // Taken in the capture's own folder: refused, and the sentence names that folder.
+    let refused = CaptureController()
+    refused.destination = .note
+    refused.folder = "Progetti"
+    refused.text = "Altra nota\ncorpo"
+    #expect(await !refused.capture(into: session))
+    #expect(refused.outcome == .refused(composerSentence(for: "Progetti/Altra nota.md")))
+    #expect(try listing(of: "Progetti", in: vault) == ["Altra nota.md"])
+
+    // Taken only in the inbox: the capture aimed at another folder is not refused by the filter.
+    let elsewhere = CaptureController()
+    elsewhere.destination = .note
+    elsewhere.folder = "Progetti"
+    elsewhere.text = "Mescola per il distretto\ncorpo"
+    #expect(await elsewhere.capture(into: session))
+    #expect(try listing(of: "Progetti", in: vault).contains("Mescola per il distretto.md"))
+    #expect(try listing(of: "00 Inbox", in: vault) == ["Mescola per il distretto.md"])
 }
