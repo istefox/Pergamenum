@@ -15,7 +15,12 @@ the rules by hand, once, and a mechanical rule nobody runs decays.
   second-level heading, and the status word is one of `accepted`, `proposed`,
   `superseded`, `deprecated`, `rejected`. An ADR the base holds, matched by
   number, that still reads `proposed` is a finding, unless rule 1 reports that
-  number. A commit hash inside the status statement that is
+  number. Against a branch that adds commits to the base, only an ADR the
+  branch touches is judged (added, edited, renamed or removed since the
+  merge-base, the working tree included), so a pull request is not failed by a
+  record it never opened (PG-340). With HEAD at the base itself, a push to
+  `main` or a local run on it, every ADR is judged: that is the audit that keeps
+  an unflipped record visible. A commit hash inside the status statement that is
   not a commit on the base's first-parent line is a warning, never a finding.
 - Rule 3, a citation says where the ADR lives: in every scanned file, the first
   citation of a number `docs/adr/` does not hold must share its sentence with a
@@ -112,10 +117,13 @@ class Warning_:
 
 
 class Base:
-    def __init__(self, ref: str, sha: str, merge_base: str) -> None:
+    def __init__(self, ref: str, sha: str, merge_base: str, head: str = "") -> None:
         self.ref = ref
         self.sha = sha
         self.merge_base = merge_base
+        # An audit is a run where HEAD is the base itself: a push to `main`, or a local run on
+        # it. There is no branch to scope a finding to, so rule 2 reports every ADR (PG-340).
+        self.is_audit = head == sha
 
 
 # --- git -----------------------------------------------------------------------------
@@ -154,7 +162,21 @@ def resolve_base(root: str, ref: str, notices: List[str]) -> Optional[Base]:
     if done.returncode != 0:
         notices.append("base %s has no merge-base with HEAD; %s" % (ref, skipped))
         return None
-    return Base(ref, sha, done.stdout.strip())
+    head = _git(root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}").stdout.strip()
+    return Base(ref, sha, done.stdout.strip(), head)
+
+
+def touched_numbers(root: str, base: Base) -> Optional[set]:
+    """The ADR numbers the branch touches since its merge-base with the base: a file added,
+    edited, renamed or removed under `docs/adr/`, the working tree included. None in an audit
+    (`Base.is_audit`) or when git cannot say, which keeps rule 2 on every ADR: a check that
+    cannot scope itself reports more, never less (PG-340)."""
+    if base.is_audit:
+        return None
+    done = _git(root, "diff", "--name-only", "--no-renames", base.merge_base, "--", ADR_DIR + "/")
+    if done.returncode != 0:
+        return None
+    return set(numbered([os.path.basename(p) for p in done.stdout.splitlines()]))
 
 
 def numbered(names: List[str]) -> Dict[str, List[str]]:
@@ -303,6 +325,7 @@ def rule_two(
     base_held: Dict[str, List[str]],
     reported: set,
     errors: List[str],
+    touched: Optional[set] = None,
 ) -> Tuple[List[Finding], List[Warning_]]:
     found = []  # type: List[Finding]
     hex_sites = []  # type: List[Tuple[str, int, str]]
@@ -323,7 +346,7 @@ def rule_two(
                 found.append(Finding(2, path, line, "status word %r is not one of %s" % (
                     word, ", ".join(STATUS_WORDS))))
             elif word == "proposed" and base is not None and number in base_held \
-                    and number not in reported:
+                    and number not in reported and (touched is None or number in touched):
                 found.append(Finding(2, path, line, "reads proposed, but %s already holds %s: "
                                      "flip it to accepted with its landing evidence" % (
                                          base.ref, number)))
@@ -525,7 +548,8 @@ def run(repo: str, base: Optional[str], verbose: bool) -> int:
         merge_base_held = numbered(commit_names(root, resolved.merge_base))
 
     found_one, reported = rule_one(held, resolved, base_held, merge_base_held)
-    found_two, warnings = rule_two(root, held, resolved, base_held, reported, errors)
+    touched = touched_numbers(root, resolved) if resolved is not None else None
+    found_two, warnings = rule_two(root, held, resolved, base_held, reported, errors, touched)
 
     phrases = None  # type: Optional[List[str]]
     try:
@@ -857,9 +881,39 @@ def _scenario_r04(lab: _Lab) -> None:
     write(repo, "notes.md", "Unrelated.\n")
     commit(lab, repo, "branch")
     code, out, _ = lab.cli(repo, "--base", "main")
+    lab.check("R-04", "pass", code == 0 and not findings(out, 2),
+              "an ADR reading proposed on the base, untouched by the branch: exit 0 (PG-340)")
+
+    repo = lab.repo("r04-audit")
+    adr(repo, 1, "x", "- Status: proposed")
+    commit(lab, repo, "base")
+    code, out, _ = lab.cli(repo, "--base", "main")
     found = findings(out, 2)
     lab.check("R-04", "fail", code == 1 and len(found) == 1 and "proposed" in found[0],
-              "an ADR reading proposed on the base, unchanged on the branch: exit 1")
+              "an audit, HEAD is the base: a proposed ADR the base holds is reported, exit 1")
+
+    repo = lab.repo("r04-touched")
+    relpath = adr(repo, 1, "x", "- Status: proposed")
+    adr(repo, 2, "y", "- Status: proposed")
+    commit(lab, repo, "base")
+    lab.sh(repo, "checkout", "-q", "-b", "feature")
+    write(repo, relpath, "# x\n\n- Status: proposed\n\n## Context\n\nEdited.\n")
+    commit(lab, repo, "branch edits 0001")
+    code, out, _ = lab.cli(repo, "--base", "main")
+    found = findings(out, 2)
+    lab.check("R-04", "fail", code == 1 and len(found) == 1 and "0001-x.md" in found[0],
+              "the branch edits one of two proposed ADRs: only that one is reported, exit 1")
+
+    repo = lab.repo("r04-renamed")
+    adr(repo, 1, "x", "- Status: proposed")
+    commit(lab, repo, "base")
+    lab.sh(repo, "checkout", "-q", "-b", "feature")
+    lab.sh(repo, "mv", "%s/0001-x.md" % ADR_DIR, "%s/0001-renamed.md" % ADR_DIR)
+    commit(lab, repo, "branch renames 0001")
+    code, out, _ = lab.cli(repo, "--base", "main")
+    found = findings(out, 2)
+    lab.check("R-04", "fail", code == 1 and len(found) == 1 and "0001-renamed.md" in found[0],
+              "the branch renames a proposed ADR's slug: it is touched by number, exit 1")
 
     repo = lab.repo("r04-branch-only")
     adr(repo, 1, "x")

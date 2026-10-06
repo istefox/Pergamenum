@@ -177,7 +177,7 @@ extension TableGridView {
     /// `private`.
     func makeGroupLabel(text: String, identifier: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
-        label.font = NSFont.systemFont(ofSize: 9, weight: .semibold)
+        label.font = controlLabelFont
         label.textColor = controlLabelColor
         label.setAccessibilityElement(false)
         label.setAccessibilityIdentifier(identifier)

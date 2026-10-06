@@ -114,6 +114,7 @@ func rejectsMalformedHex(_ input: String) {
         // PG-263: the SF Symbol glyph sizes, named here for the same reason.
         #expect(!theme.inheritedTokens.contains("font.icon.small"), "\(id) should define font.icon.small")
         #expect(!theme.inheritedTokens.contains("font.icon.badge"), "\(id) should define font.icon.badge")
+        #expect(!theme.inheritedTokens.contains("font.control.label"), "\(id) should define font.control.label")
         #expect(!theme.inheritedTokens.contains("font.icon.display"), "\(id) should define font.icon.display")
 
         // ADR-0036 (Pratiche) §D16, plan Task 6 - R-39: the timeline's three surface
@@ -202,6 +203,26 @@ func rejectsMalformedHex(_ input: String) {
     #expect(!ThemeCustomization.customizableFonts.contains(.iconDisplay))
     // The gallery's text-style count excludes exactly the glyph sizes.
     #expect(FontToken.allCases.filter(\.isGlyphSize) == [.iconSmall, .iconBadge, .iconDisplay])
+}
+
+/// PG-263: `font.control.label` replaces the table grid's hand-named
+/// `NSFont.systemFont(ofSize: 9, weight: .semibold)`, so every theme must resolve it to
+/// exactly that face, or the «Riga»/«Colonna» captions change size.
+@Test func controlLabelTokenResolvesToTheFaceItReplaces() throws {
+    var themes: [(String, Theme)] = [("emergency", .emergency)]
+    for id in ["pergamenum-light", "pergamenum-dark"] {
+        let url = try #require(Bundle.pergamenumResources.tokenFileURL(named: id))
+        let document = try DesignTokenDocument(data: try Data(contentsOf: url), fallbackName: id)
+        themes.append((id, Theme(document: document, id: id, inheriting: .emergency)))
+    }
+    let replaced = NSFont.systemFont(ofSize: 9, weight: .semibold)
+    for (id, theme) in themes {
+        let font = theme.nsFont(.controlLabel)
+        #expect(font.pointSize == 9, "\(id): font.control.label should be 9 pt")
+        #expect(font.fontName == replaced.fontName, "\(id): font.control.label should be \(replaced.fontName)")
+        #expect(theme.lineSpacing(.controlLabel) == 0, "\(id): font.control.label has no extra leading")
+    }
+    #expect(!ThemeCustomization.customizableFonts.contains(.controlLabel))
 }
 
 @MainActor

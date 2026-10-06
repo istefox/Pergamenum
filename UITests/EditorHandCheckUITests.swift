@@ -33,7 +33,7 @@ final class EditorHandCheckUITests: PergamenumUITestCase {
     /// G2 H10. Each character goes to the field, none to the note, and Return steps through the
     /// matches. The note's source is read, never its rendered text (CLAUDE.md).
     func testTypingInTheFindFieldNeverMovesTheKeyboardIntoTheNote() {
-        let note = app.staticTexts["Nota di prova"]
+        let note = noteRow("Nota di prova.md")
         XCTAssertTrue(note.waitForExistence(timeout: 10), "la nota non è nell'elenco")
         note.click()
         let editor = app.textViews.firstMatch
@@ -74,7 +74,7 @@ final class EditorHandCheckUITests: PergamenumUITestCase {
         let row = sidebarRow("pane-today")
         XCTAssertTrue(row.waitForExistence(timeout: 10), "la voce Oggi non c'è")
         row.click()
-        let open = app.descendants(matching: .any).matching(identifier: "today-open-daily-note").firstMatch
+        let open = element("today-open-daily-note")
         if open.waitForExistence(timeout: 3) { open.click() }
         assertListContinues(in: editor(identifiedBy: "today-editor"), loadedWhen: { $0.contains("date:") })
     }
@@ -84,7 +84,7 @@ final class EditorHandCheckUITests: PergamenumUITestCase {
     /// The text view behind an identified editor: SwiftUI may put the identifier on the text
     /// view itself or on the scroll view around it.
     private func editor(identifiedBy identifier: String) -> XCUIElement {
-        let container = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+        let container = element(identifier)
         XCTAssertTrue(container.waitForExistence(timeout: 10), "\(identifier) non è apparso")
         if container.elementType == .textView { return container }
         let inner = container.descendants(matching: .textView).firstMatch

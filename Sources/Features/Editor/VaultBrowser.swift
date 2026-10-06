@@ -122,6 +122,7 @@ struct VaultBrowser: View {
             }
             .help(vault.hasParkedDraft ? "Nuova nota (bozza parcheggiata)" : "Nuova nota")
             .disabled(vault.root == nil)
+            .accessibilityIdentifier("note-new")
 
             Button { vault.isShowingQuickSwitcher = true } label: {
                 Label("Vai alla nota", systemImage: "magnifyingglass")

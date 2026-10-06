@@ -153,6 +153,17 @@ final class CompletionPanel {
         selectedIndex = 0
     }
 
+    /// An ordered-front `NSPanel` outlives the object that opened it: AppKit keeps a visible
+    /// window alive on its own. A text view released with its panel still open (a test that
+    /// never closes it, a tab closed mid-completion) would leave the panel on screen for
+    /// good, and with no parent and no caret to hang from it clamps to the screen's
+    /// bottom-left corner, where it covers what is there and cannot be dismissed.
+    isolated deinit {
+        guard let panel else { return }
+        panel.parent?.removeChildWindow(panel)
+        panel.orderOut(nil)
+    }
+
     /// Moves the highlight, stopping at the ends rather than wrapping.
     ///
     /// Wrapping in a list this long turns "I have gone too far" into "where am I": the

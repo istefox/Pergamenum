@@ -165,6 +165,10 @@ enum TagRules {
     /// A `.note` given no tag of namespace `topic` is born a capture too (ADR-0080 §D1):
     /// the test is on the namespace, so a `client-*` alone still earns `status-inbox`. The
     /// daily note keeps `type-note` alone, and `.capture` keeps its exact output.
+    ///
+    /// A `topics` list that already holds a tag of namespace `status` is already statused,
+    /// for `.note` and `.capture` alike: `status-inbox` is not added beside it (PG-390), so
+    /// `--topic status-active` yields one status, not two.
     static func initialTags(for category: NoteCategory, topics: [Tag] = []) -> [Tag] {
         let isCapture = switch category {
         case .capture: true
@@ -174,11 +178,14 @@ enum TagRules {
         // The two tags this function adds are added only when `topics` does not already hold
         // them: the callers (`perg note create --topic`, MCP `create_note`, the Cmd+N topic
         // field) pass a tag through unchecked for its namespace, and a doubled `status-inbox`
-        // is a file the linter flags as `multipleStatus`. The guard lives here, not in
-        // `ordered`, which `canonicalLines` shares with parsed notes whose duplicates
-        // ADR-0065 requires to round-trip faithfully.
+        // is a file the linter flags as `multipleStatus`. The same holds for any other
+        // `status-*` in `topics`: `status-inbox` beside it would be a second status, so a
+        // statused list earns none (PG-390). The guard lives here, not in `ordered`, which
+        // `canonicalLines` shares with parsed notes whose duplicates ADR-0065 requires to
+        // round-trip faithfully.
+        let isStatused = topics.contains { $0.namespace == .status }
         let added = [Tag(namespace: .type, value: "note")]
-            + (isCapture ? [Tag(namespace: .status, value: "inbox")] : [])
+            + (isCapture && !isStatused ? [Tag(namespace: .status, value: "inbox")] : [])
         return ordered(topics + added.filter { !topics.contains($0) })
     }
 

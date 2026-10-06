@@ -87,6 +87,7 @@ struct TasksView: View {
             }
             .help("Cattura rapida di un task")
             .disabled(vault.root == nil)
+            .accessibilityIdentifier("tasks-capture")
         }
 
         ToolbarItem(placement: .navigation) {

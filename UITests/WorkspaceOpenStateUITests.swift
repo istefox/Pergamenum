@@ -62,7 +62,7 @@ final class WorkspaceOpenStateUITests: PergamenumUITestCase {
     }
 
     private var tree: XCUIElement {
-        app.descendants(matching: .any).matching(identifier: "workspace-tree").firstMatch
+        element("workspace-tree")
     }
 
     /// The rows in `workspace-tree` currently reporting the selected state, counted by

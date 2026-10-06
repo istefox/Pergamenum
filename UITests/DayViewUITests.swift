@@ -64,7 +64,7 @@ final class DayViewUITests: PergamenumUITestCase {
         app.toolbars.buttons["day-go-to-date"].click()
         XCTAssertTrue(app.textFields["go-to-date-field"].waitForExistence(timeout: 5))
 
-        let day = app.descendants(matching: .any).matching(identifier: "day-\(target)").firstMatch
+        let day = element("day-\(target)")
         XCTAssertTrue(day.waitForExistence(timeout: 5), "il giorno \(target) non è nel calendario")
         day.click()
         app.buttons["go-to-date-confirm"].click()

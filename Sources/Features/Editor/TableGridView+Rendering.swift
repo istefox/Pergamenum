@@ -25,7 +25,11 @@ extension TableGridView {
         controlColor = NSColor(theme.color(.textTertiary))
         controlLabelColor = NSColor(theme.color(.textPrimary))
         pillColor = NSColor(theme.color(.backgroundTertiary))
-        for label in controlLabels { label.textColor = controlLabelColor }
+        controlLabelFont = theme.nsFont(.controlLabel)
+        for label in controlLabels {
+            label.textColor = controlLabelColor
+            label.font = controlLabelFont
+        }
         // Before the rebuild below, so a cell made by `makeCell` is born with the right face
         // rather than corrected a line later - and read again on every update, because a theme
         // change reaches a grid whose shape has not moved and so is never rebuilt.

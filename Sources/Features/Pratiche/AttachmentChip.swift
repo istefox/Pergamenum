@@ -77,6 +77,7 @@ struct AttachmentChip: View {
             Text("L'allegato non è ancora disponibile in Mail. Verrà riprovato alla prossima sincronizzazione.")
                 .themedText(.body)
                 .padding(theme.spacing(.s))
+                .accessibilityIdentifier("attachment-pending-explanation")
         }
         // ADR-0068 §D10: `presenting:` hands each button the refusal it was raised with
         // (the confirmation-dialog rule in CLAUDE.md), never `openRefusal` read back after
