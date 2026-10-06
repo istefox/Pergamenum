@@ -4,6 +4,8 @@ import SwiftUI
 struct TodayView: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
+    /// Where a Cmd+clicked tag or date in the day's note leads (n1-seams R-12, R-13).
+    @Environment(CommandActions.self) private var commandActions
     @Environment(EventKitStore.self) private var calendar
 
     /// Created at app level so the Calendario menu can act on the same day (SPEC §10).
@@ -25,6 +27,8 @@ struct TodayView: View {
     /// there they sorted the whole index and walked the whole vault on disk
     /// (`CanvasStore.allBoards()` is uncached) on every keystroke typed into the day.
     @State private var noteTitles: [String] = []
+    /// Every note's aliases by title, on the same schedule (n1-seams R-08).
+    @State private var noteAliases: [String: [String]] = [:]
     @State private var boardTitles: [String] = []
 
     @State private var draftTitle = ""
@@ -62,6 +66,7 @@ struct TodayView: View {
         // scan, never per keystroke, which is why the two pools are held at all.
         .task(id: vault.scanGeneration) {
             noteTitles = vault.index.allNotes.map(\.title)
+            noteAliases = NoteTextView.aliasesByTitle(vault.index.allNotes)
             boardTitles = vault.root.map { CanvasStore(root: $0).allBoards() } ?? []
         }
         // Reloads when EventKit says the store moved, or when the app comes back to
@@ -216,6 +221,7 @@ struct TodayView: View {
                 theme: theme,
                 noteTitles: noteTitles,
                 boardTitles: boardTitles,
+                noteAliases: noteAliases,
                 tagSuggestions: [],
                 spellCheck: vault.settings.spellCheck,
                 hidesMarkup: vault.settings.hidesMarkup,
@@ -227,7 +233,9 @@ struct TodayView: View {
                 vault: .init(
                     vaultRoot: vault.root,
                     notePath: note.relativePath,
-                    thumbnails: vault.thumbnails
+                    thumbnails: vault.thumbnails,
+                    onOpenTag: { commandActions.open(tag: $0) },
+                    onOpenDay: { commandActions.open(day: $0) }
                 )
             )
             .frame(minHeight: 320)

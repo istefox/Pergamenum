@@ -21,14 +21,17 @@ struct VaultCommands: Commands {
     }
 
     var body: some Commands {
+        // Five blocks, in this order (PG-263): create, the notes folder, import and export,
+        // the open note's file, then the tabs. Search, navigation and history live in
+        // Modifica and Vista, where SPEC §10 puts them, not here.
         CommandGroup(after: .newItem) {
             Button("Nuova nota") { actions.run(.newNote) }
                 .keyboardShortcut(shortcuts.shortcut(for: .newNote))
                 .disabled(!actions.canRun(.newNote))
-            Button("Nuova board") { actions.run(.newBoard) }
+            Button(ShortcutCommand.newBoard.title) { actions.run(.newBoard) }
                 .keyboardShortcut(shortcuts.shortcut(for: .newBoard))
                 .disabled(!actions.canRun(.newBoard))
-            // Beside «Nuova board» and not in a menu of its own: a pratica is a folder
+            // Beside «Nuova board…» and not in a menu of its own: a pratica is a folder
             // this app creates, the same kind of thing as the two above it (R-20).
             Button("Nuova pratica…") { actions.run(.newPratica) }
                 .keyboardShortcut(shortcuts.shortcut(for: .newPratica))
@@ -36,44 +39,15 @@ struct VaultCommands: Commands {
             Button(ShortcutCommand.dailyNote.title) { actions.run(.dailyNote) }
                 .keyboardShortcut(shortcuts.shortcut(for: .dailyNote))
                 .disabled(!actions.canRun(.dailyNote))
-            Button("Nuovo task rapido") { actions.run(.quickTask) }
+            Button(ShortcutCommand.quickTask.title) { actions.run(.quickTask) }
                 .keyboardShortcut(shortcuts.shortcut(for: .quickTask))
                 .disabled(!actions.canRun(.quickTask))
-            Divider()
-            Button("Nuova tab") { actions.run(.newTab) }
-                .keyboardShortcut(shortcuts.shortcut(for: .newTab))
-                .disabled(!actions.canRun(.newTab))
-            Button("Chiudi tab") { actions.run(.closeTab) }
-                .keyboardShortcut(shortcuts.shortcut(for: .closeTab))
-                .disabled(!actions.canRun(.closeTab))
-            Button("Riapri l'ultima tab chiusa") { actions.run(.reopenTab) }
-                .keyboardShortcut(shortcuts.shortcut(for: .reopenTab))
-                .disabled(!actions.canRun(.reopenTab))
-            // Cmd+1…Cmd+9, positional and therefore not in the remappable catalogue
-            // (ADR-0012 D5). Nine is the last tab, whatever its position, as in Safari.
-            ForEach(1...9, id: \.self) { number in
-                Button("Vai alla tab \(number)") { vault.selectTab(number) }
-                    .keyboardShortcut(KeyEquivalent(Character("\(number)")), modifiers: .command)
-            }
-            Divider()
             // No `.keyboardShortcut`: this one is registered with the system and fires
             // whether or not Pergamenum is in front (ADR-0008 §D1). A menu equivalent
             // here as well, because a hot key the system refused leaves the command
             // reachable, and because a command with no menu entry cannot be discovered.
             Button(ShortcutCommand.globalCapture.title) { actions.run(.globalCapture) }
                 .disabled(!actions.canRun(.globalCapture))
-            Button("Ricerca globale…") { actions.run(.globalSearch) }
-                .keyboardShortcut(shortcuts.shortcut(for: .globalSearch))
-                .disabled(!actions.canRun(.globalSearch))
-            Button("Vai alla nota…") { actions.run(.quickSwitcher) }
-                .keyboardShortcut(shortcuts.shortcut(for: .quickSwitcher))
-                .disabled(!actions.canRun(.quickSwitcher))
-            Button("Salva") { actions.run(.save) }
-                .keyboardShortcut(shortcuts.shortcut(for: .save))
-                .disabled(!actions.canRun(.save))
-            Button("Cronologia…") { actions.run(.noteHistory) }
-                .keyboardShortcut(shortcuts.shortcut(for: .noteHistory))
-                .disabled(!actions.canRun(.noteHistory))
             Divider()
             Button("Apri cartella note…") { actions.run(.openVault) }
                 .keyboardShortcut(shortcuts.shortcut(for: .openVault))
@@ -100,10 +74,15 @@ struct VaultCommands: Commands {
                     }
                 }
             }
+            Button("Rigenera indice") { Task { await vault.rescan() } }
+                .disabled(vault.root == nil)
+            Divider()
             Button("Importa file…") {
+                // The vault's inbox folder, where `commitImport` copies (ADR-0080 §D5).
+                let folder = vault.session?.inboxFolder ?? VaultSettings.defaultInboxFolder
                 if let urls = VaultOpenPanel.chooseFiles(
                     title: "Importa file",
-                    message: "I file vengono copiati in 00 Inbox, con proposta di nome."
+                    message: "I file vengono copiati in \(folder), con proposta di nome."
                 ) {
                     vault.fileImportProposals = vault.proposeImport(urls)
                 }
@@ -118,15 +97,28 @@ struct VaultCommands: Commands {
             }
             .disabled(vault.openNote == nil)
             Divider()
-            Button("Rigenera indice") { Task { await vault.rescan() } }
-                .disabled(vault.root == nil)
-            Divider()
-            Button("Copia link Pergamenum") { actions.run(.copyLink) }
-                .keyboardShortcut(shortcuts.shortcut(for: .copyLink))
-                .disabled(!actions.canRun(.copyLink))
+            Button("Salva") { actions.run(.save) }
+                .keyboardShortcut(shortcuts.shortcut(for: .save))
+                .disabled(!actions.canRun(.save))
             Button(ShortcutCommand.revealInFinder.title) { actions.run(.revealInFinder) }
                 .keyboardShortcut(shortcuts.shortcut(for: .revealInFinder))
                 .disabled(!actions.canRun(.revealInFinder))
+            Divider()
+            Button("Nuova tab") { actions.run(.newTab) }
+                .keyboardShortcut(shortcuts.shortcut(for: .newTab))
+                .disabled(!actions.canRun(.newTab))
+            Button("Chiudi tab") { actions.run(.closeTab) }
+                .keyboardShortcut(shortcuts.shortcut(for: .closeTab))
+                .disabled(!actions.canRun(.closeTab))
+            Button("Riapri l'ultima tab chiusa") { actions.run(.reopenTab) }
+                .keyboardShortcut(shortcuts.shortcut(for: .reopenTab))
+                .disabled(!actions.canRun(.reopenTab))
+            // Cmd+1…Cmd+9, positional and therefore not in the remappable catalogue
+            // (ADR-0012 D5). Nine is the last tab, whatever its position, as in Safari.
+            ForEach(1...9, id: \.self) { number in
+                Button("Vai alla tab \(number)") { vault.selectTab(number) }
+                    .keyboardShortcut(KeyEquivalent(Character("\(number)")), modifiers: .command)
+            }
         }
     }
 }

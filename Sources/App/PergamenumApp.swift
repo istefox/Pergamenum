@@ -71,7 +71,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Built on first use rather than as a `lazy var`: a lazy initializer is not a main-actor
     /// context, and the compiler refuses the async `sleep` closure there.
     private var quitCoordinator: QuitCoordinator?
-    private let quitFocus = QuitFocus()
+    // Internal, not private: read by `AppDelegate+QuitReveal.swift` (ADR-0045 §D3).
+    let quitFocus = QuitFocus()
 
     private var quit: QuitCoordinator {
         if let quitCoordinator { return quitCoordinator }
@@ -91,30 +92,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             reply: { NSApp.reply(toApplicationShouldTerminate: $0) },
             reveal: { [weak self] in self?.revealAfterCancelledQuit($0) },
             revealContenitore: { [weak self] in self?.revealContenitoreAfterCancelledQuit($0) },
+            revealBoard: { [weak self] in self?.revealBoardAfterCancelledQuit() },
+            revealDiary: { [weak self] in self?.revealDiaryAfterCancelledQuit() },
             sleep: { try? await Task.sleep(for: $0) }
         )
         quitCoordinator = made
         return made
-    }
-
-    /// What a cancelled quit shows (ADR-0073 §D7): the main window, reopened if the red
-    /// button had closed it, the Note pane, and the first unresolved tab in front of its
-    /// column.
-    private func revealAfterCancelledQuit(_ id: NoteTab.ID?) {
-        vault?.reopenMainWindow?()
-        navigation?.pane = .notes
-        // The keyboard goes back where `commitEditing` took it from (departure 14), and only
-        // then is the tab revealed: the other order lets the restore pull the focus back to
-        // the column the reveal had just left (`QuitFocus.restore(thenReveal:in:)`).
-        quitFocus.restore(thenReveal: id, in: vault)
-    }
-
-    /// A quit cancelled by a scheda edit that could not be written brings the Contenitore back
-    /// on that scheda (ADR-0073 §D7's twin for the pane).
-    private func revealContenitoreAfterCancelledQuit(_ schedaPath: String?) {
-        vault?.reopenMainWindow?()
-        navigation?.pane = .contenitore
-        if let schedaPath { contenitore?.selection = schedaPath }
     }
 
     /// Which app was in front before this one, so an all-capture batch can give the
@@ -254,17 +237,19 @@ struct PergamenumApp: App {
         _reminders = State(initialValue: reminders)
 
         let pratiche = PraticheController.live(vault: vault)
+        let contenitore = ContenitoreController.live(vault: vault)
         // ADR-0026 §D7: the choke point for every folder move and rename, forward and
         // through undo/redo, hands its relocations here so the ledger (and the other
-        // path-keyed state `followFolderRelocations` covers) never orphans - `weak` since
-        // the controller, not this closure, owns the lifetime.
-        vault.didRelocateFolders = { [weak pratiche] moved in
+        // path-keyed state `followFolderRelocations` covers) never orphans, and the
+        // Contenitore's scope and selection follow a container moved from another pane
+        // (PG-344) - `weak` since the controllers, not this closure, own the lifetime.
+        vault.didRelocateFolders = { [weak pratiche, weak contenitore] moved in
             pratiche?.followFolderRelocations(moved, in: vault)
+            contenitore?.followRelocatedContainers(moved)
         }
         // PG-169, the deletion twin: state keyed by a trashed folder is forgotten, not followed.
         vault.didTrashFolder = { [weak pratiche] in pratiche?.followFolderTrashing($0, in: vault) }
         _pratiche = State(initialValue: pratiche)
-        let contenitore = ContenitoreController.live(vault: vault)
         _contenitore = State(initialValue: contenitore)
 
         let panel = CapturePanel(
@@ -287,7 +272,10 @@ struct PergamenumApp: App {
             onToday: { Task { @MainActor in await vault.handle(.today) } },
             onInbox: {
                 Task { @MainActor in
-                    await vault.handle(.note(path: VaultSession.TaskDestination.inboxPath))
+                    // The vault's own inbox note (ADR-0080 §D5); the default only when no
+                    // vault is open yet to say otherwise.
+                    let path = vault.session?.inboxNotePath ?? VaultSession.TaskDestination.inboxPath
+                    await vault.handle(.note(path: path))
                 }
             }
         )

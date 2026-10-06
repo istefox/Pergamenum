@@ -29,6 +29,8 @@ private final class SchedaQuitProbe {
             reply: { [unowned self] in replies.append($0) },
             reveal: { _ in },
             revealContenitore: { [unowned self] in revealedContenitore.append($0) },
+            revealBoard: {},
+            revealDiary: {},
             // Every timer waits: the caps must not decide these tests.
             sleep: { [unowned self] _ in await hold.wait() }
         )

@@ -144,13 +144,43 @@ final class HostedView<Content: View> {
     /// as the window server says so, while the workspace notification reaches this process only
     /// when the main run loop next drains it; a read landing between the two still fails as
     /// before. The foreground log narrows the flake, it does not remove it.
+    ///
+    /// **When it answers false it records an issue naming every input it read**
+    /// (`NeverShown.report`): which half failed, each window and app-level value at the start
+    /// and now, whether a notification came, the frontmost application and the running set at
+    /// the start and at this read, and every workspace notification delivered meanwhile. The
+    /// cause of this flake has not been measured: on 2026-10-04, 27 runs of the five hosted
+    /// suites beside 336 launches and quits of a second `xcodebuild` test host never changed
+    /// this app's active state or key window at all, so the scenario named above did not
+    /// reproduce. A synchronous poll of the frontmost application, counted as "another app
+    /// moved", was tried and dropped for want of evidence: it would skip the app-level half on
+    /// any process coming or going. The report says what that poll would have answered
+    /// (`foreground poll`), so the next red shows whether it would have saved the test.
     var neverShown: Bool {
-        NeverShown.holds(
-            windowHidden: !window.isVisible && !window.isKeyWindow,
-            otherApplicationMoved: foreground.otherApplicationMoved,
-            activeUnchanged: NSApp.isActive == wasActive,
-            keyWindowUnchanged: NSApp.keyWindow === keyWindowAtStart
+        let windowVisible = window.isVisible
+        let windowKey = window.isKeyWindow
+        let activeNow = NSApp.isActive
+        let keyWindowNow = NSApp.keyWindow
+        let otherApplicationMoved = foreground.otherApplicationMoved
+        let holds = NeverShown.holds(
+            windowHidden: !windowVisible && !windowKey,
+            otherApplicationMoved: otherApplicationMoved,
+            activeUnchanged: activeNow == wasActive,
+            keyWindowUnchanged: keyWindowNow === keyWindowAtStart
         )
+        guard !holds else { return true }
+        // Read after the app's own state, so the foreground the report shows is at least as
+        // recent as the change it is meant to explain.
+        let state = NeverShown.State(
+            windowVisible: windowVisible, windowKey: windowKey,
+            activeAtStart: wasActive, activeNow: activeNow,
+            keyWindowAtStart: NeverShown.describe(keyWindowAtStart),
+            keyWindowNow: NeverShown.describe(keyWindowNow),
+            keyWindowUnchanged: keyWindowNow === keyWindowAtStart,
+            foreground: foreground.diagnose()
+        )
+        Issue.record(Comment(rawValue: NeverShown.report(state)))
+        return false
     }
 
     /// True when `neverShown` has stopped asking the app-level half, because another app
@@ -244,11 +274,72 @@ enum NeverShown {
         guard windowHidden else { return false }
         return otherApplicationMoved || (activeUnchanged && keyWindowUnchanged)
     }
+
+    /// Every input `HostedView.neverShown` read, as it read them.
+    struct State {
+        var windowVisible: Bool
+        var windowKey: Bool
+        var activeAtStart: Bool
+        var activeNow: Bool
+        var keyWindowAtStart: String
+        var keyWindowNow: String
+        var keyWindowUnchanged: Bool
+        var foreground: ForegroundLog.Diagnosis
+    }
+
+    /// A window as the report names it: its class, number and title, or `none`.
+    @MainActor
+    static func describe(_ window: NSWindow?) -> String {
+        guard let window else { return "none" }
+        return "\(type(of: window)) #\(window.windowNumber) \"\(window.title)\""
+    }
+
+    /// The text recorded when `neverShown` answers false: one line per half, then what the
+    /// foreground log knew - whether a notification counted, what the report-only poll would
+    /// have answered, the frontmost application and the running set at the start and at this
+    /// read, and every workspace notification delivered since the start.
+    static func report(_ state: State) -> String {
+        let foreground = state.foreground
+        func name(_ pid: pid_t?, in snapshot: ForegroundLog.Snapshot?) -> String {
+            guard let pid else { return "none" }
+            return snapshot?.names[pid].map { "\(pid) \($0)" } ?? "\(pid)"
+        }
+        func list(_ pids: Set<pid_t>, in snapshot: ForegroundLog.Snapshot?) -> String {
+            "[" + pids.sorted().map { name($0, in: snapshot) }.joined(separator: ", ") + "]"
+        }
+        var lines = [
+            "neverShown is false (PG-331 diagnosis)",
+            "window: visible=\(state.windowVisible) key=\(state.windowKey)",
+            "app: isActive start=\(state.activeAtStart) now=\(state.activeNow); "
+                + "keyWindow start=\(state.keyWindowAtStart) now=\(state.keyWindowNow) "
+                + "changed=\(!state.keyWindowUnchanged)",
+            "foreground: moved=\(foreground.moved) (from notifications); "
+                + "foreground poll would say moved=\(foreground.pollWouldMove) (report only, not counted)",
+        ]
+        if let start = foreground.start, let now = foreground.now {
+            lines.append(
+                "frontmost: start=\(name(start.frontmostPID, in: start)) now=\(name(now.frontmostPID, in: now))"
+            )
+            lines.append(
+                "running: appeared \(list(now.runningPIDs.subtracting(start.runningPIDs), in: now)) "
+                    + "vanished \(list(start.runningPIDs.subtracting(now.runningPIDs), in: start))"
+            )
+        } else {
+            lines.append("frontmost: not listening")
+        }
+        lines.append("notifications: [" + foreground.notifications.joined(separator: ", ") + "]")
+        return lines.joined(separator: "\n")
+    }
 }
 
 /// Records whether an application other than this one launched, became active or quit, through
 /// the workspace's own notifications: the three ways another process changes this app's
 /// activation without anything in this process asking (PG-331, `HostedView.neverShown`).
+///
+/// For the report alone (`diagnose()`, `NeverShown.report`) it also keeps a snapshot of the
+/// frontmost application and the running set taken in `startListening`, compares it with one
+/// read at diagnosis time, and lists every notification it received. None of that changes
+/// `otherApplicationMoved`: only a notification from another process does.
 ///
 /// A class rather than state on `HostedView` because the observer blocks outlive no test: they
 /// are removed in `stopListening()` (called by `tearDown()`). A harness a test never tears down
@@ -256,10 +347,57 @@ enum NeverShown {
 /// this log weakly, so neither the log nor the view is kept alive by them.
 @MainActor
 final class ForegroundLog {
+    /// The frontmost application and every running one, by pid, with their names.
+    struct Snapshot: Equatable {
+        let frontmostPID: pid_t?
+        let runningPIDs: Set<pid_t>
+        var names: [pid_t: String] = [:]
+    }
+
+    /// Where a `Snapshot` is read from: the live workspace by default, a closure a test drives
+    /// otherwise.
+    struct Source {
+        let read: @MainActor () -> Snapshot
+
+        static var workspace: Source {
+            Source {
+                let workspace = NSWorkspace.shared
+                let running = workspace.runningApplications
+                var names: [pid_t: String] = [:]
+                for app in running {
+                    names[app.processIdentifier] = app.localizedName ?? app.bundleIdentifier ?? "?"
+                }
+                return Snapshot(
+                    frontmostPID: workspace.frontmostApplication?.processIdentifier,
+                    runningPIDs: Set(running.map(\.processIdentifier)),
+                    names: names
+                )
+            }
+        }
+    }
+
+    /// What one diagnosis saw (`NeverShown.report`).
+    struct Diagnosis {
+        /// `otherApplicationMoved` at this read: a notification from another process came.
+        var moved: Bool
+        /// What `ForegroundLog.wouldMove` answers for `start` and `now`. Not counted.
+        var pollWouldMove: Bool
+        var start: Snapshot?
+        var now: Snapshot?
+        /// Every notification delivered since the start, this process's own included:
+        /// "<event> <pid> <name> +<seconds since the start>".
+        var notifications: [String] = []
+    }
+
     private(set) var otherApplicationMoved = false
     /// Every notification this log's observers received, counted before the PID filter, so a
     /// test can tell "filtered out" from "never delivered".
     private(set) var delivered = 0
+    private var notifications: [String] = []
+    private var start: Snapshot?
+    private var startUptime: TimeInterval = 0
+    private let source: Source
+    private let currentPID: pid_t
     private var observers: [any NSObjectProtocol] = []
     private var center: NotificationCenter?
 
@@ -269,20 +407,62 @@ final class ForegroundLog {
         NSWorkspace.didTerminateApplicationNotification,
     ]
 
+    init(source: Source = .workspace, currentPID: pid_t = ProcessInfo.processInfo.processIdentifier) {
+        self.source = source
+        self.currentPID = currentPID
+    }
+
+    /// The report's poll: a pid other than `currentPID` appeared in or vanished from the
+    /// running set, or the frontmost application changed to one that is not `currentPID`.
+    /// It says whether a poll would have explained a red; it decides nothing.
+    static func wouldMove(from start: Snapshot, to now: Snapshot, currentPID: pid_t) -> Bool {
+        var changed = start.runningPIDs.symmetricDifference(now.runningPIDs)
+        changed.remove(currentPID)
+        if !changed.isEmpty { return true }
+        return now.frontmostPID != start.frontmostPID && now.frontmostPID != currentPID
+    }
+
+    /// Reads the foreground once more and answers what the log knows now. Changes nothing.
+    func diagnose() -> Diagnosis {
+        let now = start.map { _ in source.read() }
+        var pollWouldMove = false
+        if let start, let now { pollWouldMove = Self.wouldMove(from: start, to: now, currentPID: currentPID) }
+        return Diagnosis(
+            moved: otherApplicationMoved, pollWouldMove: pollWouldMove,
+            start: start, now: now, notifications: notifications
+        )
+    }
+
     func startListening(to center: NotificationCenter = NSWorkspace.shared.notificationCenter) {
-        let currentPID = ProcessInfo.processInfo.processIdentifier
+        let currentPID = currentPID
+        start = source.read()
+        startUptime = ProcessInfo.processInfo.systemUptime
         observers = Self.events.map { name in
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
-                let movedPID = (notification.userInfo?[NSWorkspace.applicationUserInfoKey]
-                    as? NSRunningApplication)?.processIdentifier
+                let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                let movedPID = app?.processIdentifier
+                let entry = Self.entry(name: notification.name, app: app)
+                let uptime = ProcessInfo.processInfo.systemUptime
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.delivered += 1
+                    self.notifications.append(entry + String(format: " +%.3fs", uptime - self.startUptime))
                     if let movedPID, movedPID != currentPID { self.otherApplicationMoved = true }
                 }
             }
         }
         self.center = center
+    }
+
+    private nonisolated static func entry(name: Notification.Name, app: NSRunningApplication?) -> String {
+        let event = switch name {
+        case NSWorkspace.didLaunchApplicationNotification: "launch"
+        case NSWorkspace.didActivateApplicationNotification: "activate"
+        case NSWorkspace.didTerminateApplicationNotification: "terminate"
+        default: name.rawValue
+        }
+        guard let app else { return "\(event) ?" }
+        return "\(event) \(app.processIdentifier) \(app.localizedName ?? app.bundleIdentifier ?? "?")"
     }
 
     func stopListening() {

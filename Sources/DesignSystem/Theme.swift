@@ -322,6 +322,7 @@ extension Theme {
             .iconBadge: TypographyValue(family: .system, size: 7, weight: 400, lineHeight: 1.0),
             // The AppKit control-group caption (the table grid's «Riga»/«Colonna»).
             .controlLabel: TypographyValue(family: .system, size: 9, weight: 600, lineHeight: 1.0),
+            .iconDisplay: TypographyValue(family: .system, size: 32, weight: 400, lineHeight: 1.0),
         ],
         spacings: [
             .xs: 4, .s: 8, .m: 16, .l: 24, .xl: 40,
@@ -329,6 +330,10 @@ extension Theme {
             // it is a measure, which is why `DesignGalleryView` draws the five steps by
             // name instead of iterating `allCases` and rendering a 720x720 swatch.
             .readable: 720,
+            // The gap after a prose paragraph (n1-seams R-14). In the same edit as the
+            // `SpacingToken.paragraph` case: a case without this entry traps at
+            // `theme.spacing(_:)` and takes the whole test process with it (PG-225).
+            .paragraph: 8,
         ],
         radii: [.card: 10, .control: 6, .sticky: 4],
         shadows: [

@@ -13,8 +13,9 @@ import XCTest
 /// Row lookup and menu-item lookup follow `SidebarMoveUITests`'s documented convention:
 /// the note row itself carries an `accessibilityIdentifier`, but a `.contextMenu`'s
 /// entries are `NSMenuItem`s outside that row's accessibility hierarchy, so the menu
-/// item is found by its production title. The confirmation dialog's destructive button
-/// carries its own identifier (`sidebar-trash-confirm`, PG-265).
+/// item is found by its production title. So is the confirmation dialog's destructive
+/// button: whether a `confirmationDialog` button carries its identifier on macOS has not
+/// been measured on screen (PG-265).
 final class SidebarDeleteUITests: PergamenumUITestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -35,8 +36,11 @@ final class SidebarDeleteUITests: PergamenumUITestCase {
 
         let sheet = app.sheets.firstMatch
         XCTAssertTrue(sheet.waitForExistence(timeout: 5), "il dialogo di conferma non è comparso")
-        // Scoped to the sheet, like the dialog it belongs to.
-        let confirm = sheet.buttons["sidebar-trash-confirm"]
+        // Scoped to the sheet, not `app.buttons[...]`: the destructive button's title also
+        // matches other, unrelated controls in the wider accessibility tree. Found by title
+        // on purpose (PG-265): whether a `confirmationDialog` button carries its identifier
+        // on macOS has not been measured on screen yet.
+        let confirm = sheet.buttons["Sposta nel Cestino"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5), "manca il bottone «Sposta nel Cestino»")
         confirm.click()
 

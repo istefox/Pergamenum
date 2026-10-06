@@ -105,10 +105,17 @@ func rejectsMalformedHex(_ input: String) {
         #expect(!theme.inheritedTokens.contains("font.proseTitle"), "\(id) should define font.proseTitle")
         #expect(!theme.inheritedTokens.contains("spacing.readable"), "\(id) should define spacing.readable")
         #expect(theme.spacing(.readable) == 720, "\(id): spacing.readable should resolve to 720")
-        // PG-263: the two SF Symbol glyph sizes, named here for the same reason.
+        // n1-seams R-14: the gap between two paragraphs. Named for the same reason as the page
+        // tokens above; red until both theme files gain `spacing.paragraph` (8).
+        #expect(
+            !theme.inheritedTokens.contains("spacing.paragraph"), "\(id) should define spacing.paragraph"
+        ) // (n1-seams R-14)
+        #expect(theme.spacing(.paragraph) == 8, "\(id): spacing.paragraph should resolve to 8") // (n1-seams R-14)
+        // PG-263: the SF Symbol glyph sizes, named here for the same reason.
         #expect(!theme.inheritedTokens.contains("font.icon.small"), "\(id) should define font.icon.small")
         #expect(!theme.inheritedTokens.contains("font.icon.badge"), "\(id) should define font.icon.badge")
         #expect(!theme.inheritedTokens.contains("font.control.label"), "\(id) should define font.control.label")
+        #expect(!theme.inheritedTokens.contains("font.icon.display"), "\(id) should define font.icon.display")
 
         // ADR-0036 (Pratiche) §D16, plan Task 6 - R-39: the timeline's three surface
         // tokens must be defined by both bundled themes, not inherited from
@@ -130,6 +137,12 @@ func rejectsMalformedHex(_ input: String) {
         #expect(!theme.inheritedTokens.contains("color.category.pink"), "\(id) should define color.category.pink")
         #expect(!theme.inheritedTokens.contains("color.category.grey"), "\(id) should define color.category.grey")
     }
+}
+
+/// n1-seams R-14 and PG-225: `spacing.paragraph` is in the emergency dictionary from the moment the
+/// case exists, so a theme that lacks it falls back to 8 instead of trapping the process.
+@Test func emergencyThemeDefinesTheParagraphSpacing() { // (n1-seams R-14)
+    #expect(Theme.emergency.spacing(.paragraph) == 8)
 }
 
 /// PG-225: the same fallback contract from the other side. `rawColor(_:)` force-unwraps
@@ -157,9 +170,11 @@ func rejectsMalformedHex(_ input: String) {
     }
 }
 
-/// PG-263: the glyph-size tokens replace `.font(.caption2)` and `.font(.system(size: 7))`
+/// PG-263: the glyph-size tokens replace `.font(.caption2)`, `.font(.system(size: 7))` and
+/// the empty states' `.font(.system(size: 26/32/40))` (one size, 32, `font.icon.display`)
 /// at the call sites, so every theme - both bundled ones and the emergency fallback -
-/// must resolve them to exactly those sizes, or the chevrons and badges change size.
+/// must resolve them to exactly those sizes, or the chevrons, badges and empty-state
+/// glyphs change size.
 @Test func iconTokensResolveToTheSizesTheyReplace() throws {
     var themes: [(String, Theme)] = [("emergency", .emergency)]
     for id in ["pergamenum-light", "pergamenum-dark"] {
@@ -171,7 +186,8 @@ func rejectsMalformedHex(_ input: String) {
     let caption2 = NSFont.preferredFont(forTextStyle: .caption2)
     for (id, theme) in themes {
         #expect(theme.nsFont(.iconSmall).pointSize == 10, "\(id): font.icon.small should be 10 pt")
-        #expect(theme.nsFont(.iconSmall).pointSize == caption2.pointSize, "\(id): font.icon.small should match caption2's size")
+        #expect(theme.nsFont(.iconSmall).pointSize == caption2.pointSize,
+                "\(id): font.icon.small should match caption2's size")
         #expect(
             theme.nsFont(.iconSmall).displayName == caption2.displayName,
             "\(id): font.icon.small should match caption2's face, \(String(describing: caption2.displayName))"
@@ -179,9 +195,14 @@ func rejectsMalformedHex(_ input: String) {
         #expect(theme.nsFont(.iconBadge).pointSize == 7, "\(id): font.icon.badge should be 7 pt")
         #expect(theme.lineSpacing(.iconSmall) == 0, "\(id): font.icon.small has no extra leading")
         #expect(theme.lineSpacing(.iconBadge) == 0, "\(id): font.icon.badge has no extra leading")
+        #expect(theme.nsFont(.iconDisplay).pointSize == 32, "\(id): font.icon.display should be 32 pt")
+        #expect(theme.lineSpacing(.iconDisplay) == 0, "\(id): font.icon.display has no extra leading")
     }
     #expect(!ThemeCustomization.customizableFonts.contains(.iconSmall))
     #expect(!ThemeCustomization.customizableFonts.contains(.iconBadge))
+    #expect(!ThemeCustomization.customizableFonts.contains(.iconDisplay))
+    // The gallery's text-style count excludes exactly the glyph sizes.
+    #expect(FontToken.allCases.filter(\.isGlyphSize) == [.iconSmall, .iconBadge, .iconDisplay])
 }
 
 /// PG-263: `font.control.label` replaces the table grid's hand-named

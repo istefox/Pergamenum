@@ -109,8 +109,14 @@ import Testing
 
         let reserved = Self.spacing(in: textView, atLineContaining: "![[Prove]]")
         #expect((reserved ?? 0) > 0)
-        // And nobody else's line pays for it.
-        #expect(Self.spacing(in: textView, atLineContaining: "coda") ?? 0 == 0)
+        // (n1-seams R-14) Updated: this used to expect 0 for `coda`. A prose line now takes
+        // `spacing.paragraph` (8 pt) after itself, and `coda` is prose, so 8 is the correct
+        // value. The transcluded line keeps its own reserved height (asserted above), and
+        // nobody else's line pays for that reservation: `coda` carries the paragraph gap only.
+        let paragraph = Theme.emergency.spacing(.paragraph)
+        #expect(paragraph == 8)
+        #expect(Self.spacing(in: textView, atLineContaining: "coda") == paragraph)
+        #expect(reserved != paragraph)
     }
 
     @Test func theSpaceSurvivesTheNextStylingPass() {
@@ -242,6 +248,10 @@ import Testing
         let (textView, coordinator) = Self.editor(transclusions: nil)
         coordinator.applyStyling(to: textView, theme: .emergency)
         coordinator.applyTransclusions(to: textView, theme: .emergency)
-        #expect(Self.spacing(in: textView, atLineContaining: "![[Prove]]") ?? 0 == 0)
+        // (n1-seams R-14) Updated: this used to expect 0. With no vault behind it `![[Prove]]`
+        // is an ordinary prose line, and an ordinary prose line takes `spacing.paragraph`
+        // (8 pt) after itself, so 8 is the correct value. What stays pinned is that no
+        // transclusion height is reserved: the value is the paragraph gap and nothing more.
+        #expect(Self.spacing(in: textView, atLineContaining: "![[Prove]]") == Theme.emergency.spacing(.paragraph))
     }
 }

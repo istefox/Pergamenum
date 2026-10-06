@@ -242,25 +242,6 @@ extension NoteTextView {
             return performLinkNavigation(link)
         }
 
-        /// The actual link-target routing, shared by the Cmd-gated delegate method above and
-        /// "Apri collegamento"'s menu action, which calls this directly to bypass that gate.
-        @discardableResult
-        func performLinkNavigation(_ link: Any) -> Bool {
-            guard let url = link as? URL,
-                  let target = MarkdownAttributedText.clickTarget(for: url)
-            else { return false }
-
-            switch target {
-            case .external(let url):
-                NSWorkspace.shared.open(url)
-            case .embed(let name):
-                parent.vault.onOpenEmbed?(name)
-            case .note(let title):
-                parent.onFollowLink(title)
-            }
-            return true
-        }
-
         /// Rewrites the whole attribute run. Notes are small enough that styling the
         /// full text on each keystroke stays imperceptible, and a visible-range
         /// optimisation would have to be re-run on every scroll to avoid unstyled
@@ -300,13 +281,16 @@ extension NoteTextView {
                 context.base,
                 range: NSRange(location: 0, length: nsText.length)
             )
-            for styled in MarkdownStyler.spans(in: text) {
+            let spans = MarkdownStyler.spans(in: text)
+            for styled in spans {
                 let nsRange = NSRange(styled.range, in: text)
                 guard nsRange.location != NSNotFound,
                       NSMaxRange(nsRange) <= nsText.length
                 else { continue }
+                // Through the source-aware entry: a tag's or a date's click (n1-seams R-12,
+                // R-13) is read off the characters it covers, not the span alone.
                 storage.addAttributes(
-                    context.attributes(for: styled.span),
+                    context.attributes(for: styled, in: text),
                     range: nsRange
                 )
                 if MarkdownStyler.suppressesSpellCheck(styled.span) { unspellable.append(nsRange) }
@@ -327,6 +311,11 @@ extension NoteTextView {
                 if case .tableRun = styled.span { tableRuns.append(nsRange) }
                 if case .viewBlockRun = styled.span { viewBlockRuns.append(nsRange) }
             }
+            // The gap after a prose or heading line (n1-seams R-14), after every span has put its
+            // own style down and before `applyTransclusions` reserves its height: merged into
+            // the style already on the line, never a fresh one, because a list line, a heading
+            // and a transclusion each carry a style of their own (ADR-0030 §D5).
+            ProseParagraphSpacing.apply(ProseTypography.paragraphSpacing(theme), to: storage, text: text, spans: spans)
             // A drawn embed's resize handle, from a token (ADR-0019 §D5) - the same
             // one-line hand-over `decorations.badgeColor = NSColor(theme.color(...))`
             // makes in the folding pass (`FoldController.apply`, `NoteTextView+Folding.swift`).

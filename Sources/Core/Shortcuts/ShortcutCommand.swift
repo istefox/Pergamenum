@@ -11,7 +11,7 @@ import Foundation
 /// not text: renaming one silently drops the user's binding for that command.
 enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case newNote
-    /// File → "Nuova board" (SPEC §10): switches to the Workspace and opens the
+    /// File → "Nuova board…" (SPEC §10): switches to the Workspace and opens the
     /// "Cartella" tool's naming sheet on the current board, since a folder is what
     /// SPEC §6.1 calls a board into being.
     case newBoard
@@ -196,12 +196,12 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .newNote: "Nuova nota"
-        case .newBoard: "Nuova board"
+        case .newBoard: "Nuova board…"
         case .dailyNote: "Nota di oggi"
         case .newTab: "Nuova tab"
         case .closeTab: "Chiudi tab"
         case .reopenTab: "Riapri l'ultima tab chiusa"
-        case .quickTask: "Nuovo task rapido"
+        case .quickTask: "Nuovo task rapido…"
         case .globalCapture: "Cattura rapida"
         case .quickLook: "Anteprima rapida"
         case .globalSearch: "Ricerca globale…"
@@ -241,8 +241,8 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .taskAddSubtask: "Aggiungi sotto-task"
         case .previousDay: "Giorno precedente"
         case .nextDay: "Giorno successivo"
-        case .newEvent: "Nuovo evento"
-        case .newReminder: "Nuovo promemoria"
+        case .newEvent: "Nuovo evento…"
+        case .newReminder: "Nuovo promemoria…"
         case .paneRecordings: "Vai a Registrazioni"
         case .refreshRecordings: "Aggiorna registrazioni"
         case .panePratiche: "Vai a Pratiche"
@@ -258,7 +258,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     /// These are the keys SPEC §10 assigns, with two departures recorded in
     /// ADR-0002: the panes take Control-Command-digit, which §10 leaves unassigned,
     /// and reading mode keeps Cmd+Shift+M because §10's Cmd+Shift+E is already the
-    /// Calendario menu's "Nuovo promemoria".
+    /// Calendario menu's "Nuovo promemoria…".
     var defaultBinding: KeyBinding {
         switch self {
         case .newNote: KeyBinding("n", .command)

@@ -115,9 +115,11 @@ enum FontToken: String, TokenKey {
     // calendar mark, a badge dot. Never customizable (`ThemeCustomization
     // .customizableFonts` stays the two page faces). `iconSmall` is what
     // `.caption2` resolves to on macOS (10 pt, medium); `iconBadge` replaces
-    // `.system(size: 7)`.
+    // `.system(size: 7)`; `iconDisplay` is the one size of the large glyph
+    // above an empty state (it replaced 26, 32 and 40 pt).
     case iconSmall = "font.icon.small"
     case iconBadge = "font.icon.badge"
+    case iconDisplay = "font.icon.display"
 
     // The small caption an AppKit control group carries beside its buttons (the
     // table grid's «Riga»/«Colonna»): system 9 pt semibold, the value
@@ -125,6 +127,9 @@ enum FontToken: String, TokenKey {
     case controlLabel = "font.control.label"
 
     var path: String { rawValue }
+
+    /// Whether this token sizes an SF Symbol rather than setting a text face.
+    var isGlyphSize: Bool { path.hasPrefix("font.icon.") }
 }
 
 enum SpacingToken: String, TokenKey {
@@ -137,6 +142,11 @@ enum SpacingToken: String, TokenKey {
     // The editor's readable-width column (ADR-0030 §D7): 720pt, the horizontal
     // inset a text container clamps to rather than tracking the whole window.
     case readable = "spacing.readable"
+
+    // The gap after a prose or heading paragraph in the note editor (n1-seams R-14), 8 in both
+    // bundled themes. Its `Theme.emergency` entry is load-bearing: a case without one traps at
+    // `theme.spacing(_:)` (PG-225).
+    case paragraph = "spacing.paragraph"
 
     var path: String { rawValue }
 }

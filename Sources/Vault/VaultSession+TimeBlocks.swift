@@ -93,13 +93,14 @@ extension VaultSession {
         return outcome.succeeded ? PlacedBlock(block: block, write: outcome) : nil
     }
 
-    /// The daily note's text, written from the template first when the file is not
-    /// there. Same frontmatter `createNote` would give it (SPEC §4.3), so a note born
-    /// this way is indistinguishable from one opened with Cmd+T.
+    /// The daily note's text, written first when the file is not there: the daily
+    /// frontmatter `createNote` would give it (SPEC §4.3) and an empty body, since there
+    /// is no daily template, so a note born this way is indistinguishable from one opened
+    /// with Cmd+Shift+D.
     ///
     /// Returns the hash `setTimeBlocks` above should `expecting:` on its own write
     /// (ADR-0043 §D8, Task 9): the existing note's own hash when there was one, or the
-    /// hash of the template this call just wrote when there was not - never nil in the
+    /// hash of the frontmatter this call just wrote when there was not - never nil in the
     /// creation case, since by the time this returns the file is no longer new.
     private func dailyNoteBody(for day: CalendarDate) async throws -> (text: String, expecting: String?) {
         let relativePath = dailyNotePath(for: day)
@@ -107,7 +108,7 @@ extension VaultSession {
 
         var frontmatter = Frontmatter.empty
         frontmatter.date = day
-        frontmatter.tags = TagRules.ordered([Tag(namespace: .type, value: "note")])
+        frontmatter.tags = TagRules.initialTags(for: .daily)
         let text = FrontmatterSerializer.render(frontmatter) + "\n"
         try await write(text, to: relativePath)
         return (text, NoteStore.hash(Data(text.utf8)))

@@ -25,6 +25,7 @@ enum Help {
                            --limit <n> per fermarsi prima (200 di default)
 
       note new <titolo>                 [--folder <cartella>] [--topic <tag>] [--date <data>]
+                                        senza topic la nota nasce come cattura (status-inbox)
       note append <percorso> <testo>    aggiunge in fondo, dopo una riga vuota
       note rename <percorso> <titolo>   rinomina, riscrivendo i link e le board che puntano
       note move <percorso> <cartella>   sposta; cartella vuota per portarla alla radice
@@ -32,8 +33,10 @@ enum Help {
 
     CATTURA
       capture <testo>      [--dest note|task|today|note:PERCORSO]  (note)
-                           note   una nota nuova, il titolo è la prima riga
-                                  [--folder <cartella>]  (00 Inbox)
+                           note   una nota nuova, il titolo viene dalla prima riga
+                                  (reso un nome valido se non lo è)
+                                  [--folder <cartella>]  la cartella inbox
+                                  (00 Inbox se non impostata)
                            task   una riga di task nell'inbox
                                   [--scheduled <data>] [--due <data>]
                            today  in fondo alla nota di oggi, creata se manca

@@ -250,6 +250,103 @@ private func openedContainerDocument(
     #expect(harness.contenitore.scope == .all)
 }
 
+/// `PergamenumApp.init`'s own wiring of the folder-relocation hook (PG-344): not going through
+/// `PergamenumApp` in a test, so it is set by hand, the shape `PraticheControllerTests+FolderRelocation`
+/// uses for the Pratiche half.
+@MainActor
+private func wireRelocationHook(_ harness: ContenitoreHarness) {
+    harness.vault.didRelocateFolders = { [weak contenitore = harness.contenitore] moved in
+        contenitore?.followRelocatedContainers(moved)
+    }
+}
+
+@MainActor
+@Test func aContainerRenamedFromTheNotePaneIsFollowedByTheScopeAndTheSelection() async throws {
+    let vault = try TemporaryVault()
+    let (harness, _) = try await openedContainerDocument(vault, description: "")
+    wireRelocationHook(harness)
+    harness.contenitore.scope = .container("Contenitore/Fatture")
+
+    // The Note pane's folder door, which the Contenitore's own verbs never see.
+    #expect(harness.vault.renameFolder(at: "Contenitore/Fatture", to: "Utenze") == "Contenitore/Utenze")
+    await harness.vault.rescan()
+    harness.contenitore.dropVanishedScope(in: harness.contenitore.containers())
+
+    #expect(harness.contenitore.scope == .container("Contenitore/Utenze"), "the scope follows, it does not fall back")
+    #expect(harness.contenitore.selection == "Contenitore/Utenze/2026/\(stem).md")
+}
+
+@MainActor
+@Test func aContainerMovedFromAnotherPaneAndItsUndoAreFollowedByTheScopeAndTheSelection() async throws {
+    let vault = try TemporaryVault()
+    let (harness, _) = try await openedContainerDocument(vault, description: "")
+    wireRelocationHook(harness)
+    #expect(await harness.actions.createContainer(named: "Utenze", in: "Contenitore") == nil)
+    harness.contenitore.scope = .container("Contenitore/Fatture")
+    let manager = UndoManager()
+
+    // The vault's own move door, as the Note pane's drag and drop reaches it.
+    let outcome = await harness.vault.moveItems(
+        [VaultItemRef(path: "Contenitore/Fatture", kind: .folder)], into: "Contenitore/Utenze", undo: manager
+    )
+    #expect(outcome.didMove)
+    await harness.vault.rescan()
+    harness.contenitore.dropVanishedScope(in: harness.contenitore.containers())
+
+    #expect(harness.contenitore.scope == .container("Contenitore/Utenze/Fatture"))
+    #expect(harness.contenitore.selection == "Contenitore/Utenze/Fatture/2026/\(stem).md")
+
+    manager.undo()
+    try await waitUntil { harness.contenitore.scope == .container("Contenitore/Fatture") }
+
+    #expect(harness.contenitore.scope == .container("Contenitore/Fatture"), "the undo carries the scope back")
+    #expect(harness.contenitore.selection == "Contenitore/Fatture/2026/\(stem).md")
+}
+
+/// (coverage) A batch is followed one pair at a time and in order, so a later pair carries an
+/// earlier pair's landing further.
+@MainActor
+@Test func followRelocatedContainersAppliesABatchInOrderAndLeavesUnrelatedPathsAlone() async throws {
+    let vault = try TemporaryVault()
+    let harness = try await ContenitoreHarness.make(root: vault.root, home: vault.stateBase)
+
+    harness.contenitore.scope = .container("A/x")
+    harness.contenitore.selection = "A/x/doc.md"
+    harness.contenitore.followRelocatedContainers([MovedNote(old: "A", new: "B"), MovedNote(old: "B", new: "C")])
+    #expect(harness.contenitore.scope == .container("C/x"))
+    #expect(harness.contenitore.selection == "C/x/doc.md")
+
+    // A sibling sharing a prefix, and a scope of «Tutti» with no selection, are not touched.
+    harness.contenitore.scope = .container("Cx")
+    harness.contenitore.selection = "Cx/doc.md"
+    harness.contenitore.followRelocatedContainers([MovedNote(old: "C", new: "D")])
+    #expect(harness.contenitore.scope == .container("Cx"))
+    #expect(harness.contenitore.selection == "Cx/doc.md")
+
+    harness.contenitore.scope = .all
+    harness.contenitore.selection = nil
+    harness.contenitore.followRelocatedContainers([MovedNote(old: "Cx", new: "D")])
+    #expect(harness.contenitore.scope == .all)
+    #expect(harness.contenitore.selection == nil)
+}
+
+/// (coverage) The pane's own verbs and the vault hook both report one relocation; the second
+/// report changes nothing.
+@MainActor
+@Test func followingTheSameRelocationTwiceLeavesTheSecondReportInert() async throws {
+    let vault = try TemporaryVault()
+    let harness = try await ContenitoreHarness.make(root: vault.root, home: vault.stateBase)
+    harness.contenitore.scope = .container("A/x")
+    harness.contenitore.selection = "A/x/doc.md"
+    let pair = [MovedNote(old: "A", new: "B")]
+
+    harness.contenitore.followRelocatedContainers(pair)
+    harness.contenitore.followRelocatedContainers(pair)
+
+    #expect(harness.contenitore.scope == .container("B/x"))
+    #expect(harness.contenitore.selection == "B/x/doc.md")
+}
+
 @MainActor
 @Test func trashingAContainerLeavesNoEditToSaveOnADeadPathAndClearsTheSelection() async throws {
     let vault = try TemporaryVault()

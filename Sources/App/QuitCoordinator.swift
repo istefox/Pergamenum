@@ -15,7 +15,9 @@ enum QuitReply: Equatable, Sendable {
 /// 0. **Open field-editor edits end** (`commitEditing`), so a table cell being typed in is in
 ///    its note's buffer before anything below reads it.
 /// 1. **The board settles**, synchronously (ADR-0066 §D5).
-/// 2. **The notes.** Every dirty tab of every column is reviewed (`QuitReview`). With none, the
+/// 2. **The notes.** Every dirty tab of every column is reviewed (`QuitReview`), with the open
+///    board and the diary day when either is conflicted (ADR-0089): named in the question,
+///    never written by «Salva», which cancels and shows its banner. With none, the
 ///    quit behaves exactly as it did before this type existed (R-10). Otherwise the person is
 ///    asked, app-modally, before anything replies (§D3), so no timer runs while the question
 ///    is open. «Annulla» cancels; «Non salvare» covers the snapshot the question showed;
@@ -56,6 +58,8 @@ final class QuitCoordinator {
     private let reply: @MainActor (Bool) -> Void
     private let reveal: @MainActor (NoteTab.ID?) -> Void
     private let revealContenitore: @MainActor (String?) -> Void
+    private let revealBoard: @MainActor () -> Void
+    private let revealDiary: @MainActor () -> Void
     private let sleep: @MainActor (Duration) async -> Void
     private let saveAll: (@MainActor (QuitReview) async -> QuitSaveReport)?
 
@@ -99,6 +103,8 @@ final class QuitCoordinator {
         reply: @escaping @MainActor (Bool) -> Void,
         reveal: @escaping @MainActor (NoteTab.ID?) -> Void,
         revealContenitore: @escaping @MainActor (String?) -> Void,
+        revealBoard: @escaping @MainActor () -> Void,
+        revealDiary: @escaping @MainActor () -> Void,
         sleep: @escaping @MainActor (Duration) async -> Void,
         saveAll: (@MainActor (QuitReview) async -> QuitSaveReport)? = nil
     ) {
@@ -110,6 +116,8 @@ final class QuitCoordinator {
         self.reply = reply
         self.reveal = reveal
         self.revealContenitore = revealContenitore
+        self.revealBoard = revealBoard
+        self.revealDiary = revealDiary
         self.sleep = sleep
         self.saveAll = saveAll
     }
@@ -140,10 +148,14 @@ final class QuitCoordinator {
         // 2. The notes, and the scheda edits whose write cannot land (PG-341) or already failed
         // (PG-373).
         let pane = contenitore()
+        // The board and the diary day join it when conflicted (ADR-0089 §D2), the board read
+        // after the settle, so a flush the settle got refused is asked about too.
         let review = QuitReview(
             columns: vault?.columns ?? [],
             vanishedSchede: pane?.vanishedSchedaEdits ?? [],
-            failedSchede: pane?.failedSchedaEdits ?? []
+            failedSchede: pane?.failedSchedaEdits ?? [],
+            board: vault?.openBoard?.quitConflict,
+            diary: diary()?.quitConflict
         )
         guard let vault, !review.isEmpty else { return diaryPhase(covering: review) }
 
@@ -152,16 +164,14 @@ final class QuitCoordinator {
         isAsking = false
         switch answer {
         case .cancel:
-            if review.entries.isEmpty {
-                revealContenitore(review.schede.first?.path)
-            } else {
-                reveal(nil)
-            }
+            show(review.firstReveal(namingTab: false))
             return .cancel
         case .discard:
-            // Re-read after the question: typing that raced the answer is uncovered work.
-            if let first = review.uncovered(in: current).first {
-                reveal(first.tabID)
+            // Re-read after the question: typing that raced the answer is uncovered work, and so
+            // is a board or diary day that changed or became conflicted (ADR-0089 §D4).
+            let left = review.uncoveredWork(in: current)
+            if !left.isEmpty {
+                showUncovered(left)
                 return .cancel
             }
             contenitore()?.discardEdits(at: review.schede.map(\.path))
@@ -232,8 +242,9 @@ final class QuitCoordinator {
     }
 
     /// «Salva tutto» covers nothing it did not save (§D7): the app goes on only when a fresh
-    /// review is empty. Anything left - a failed save, a conflict, work typed meanwhile -
-    /// cancels, reveals the first such tab and names the notes left unsaved.
+    /// review is empty. Anything left - a failed save, a conflict, work typed meanwhile, a
+    /// conflicted board or diary day, which «Salva» never writes (ADR-0089 §D5) - cancels,
+    /// reveals the first such item and names what was left.
     private func notesSaved(attempt: Int) {
         guard attempt == self.attempt, notesPending else { return }
         notesPending = false
@@ -242,8 +253,11 @@ final class QuitCoordinator {
             _ = diaryPhase(covering: left)
             return
         }
-        vault()?.recordProblem("Uscita annullata: note non salvate: \(Self.names(of: left))")
-        reveal(left.entries.first?.tabID)
+        if !left.entries.isEmpty {
+            vault()?.recordProblem("Uscita annullata: note non salvate: \(Self.names(of: left))")
+        }
+        recordConflicts(of: left)
+        show(left.firstReveal(namingTab: true))
         answer(false, attempt: attempt)
     }
 
@@ -254,9 +268,12 @@ final class QuitCoordinator {
         guard attempt == self.attempt, notesPending else { return }
         notesPending = false
         let left = current
-        let names = left.isEmpty ? Self.names(of: review) : Self.names(of: left)
-        vault.recordProblem("Uscita annullata: il salvataggio di \(names) non è terminato")
-        reveal(left.entries.first?.tabID ?? review.entries.first?.tabID)
+        let names = left.entries.isEmpty ? Self.names(of: review) : Self.names(of: left)
+        // A review of only a conflicted board or diary day has no note to name; its own line
+        // comes from `recordConflicts`.
+        if !names.isEmpty { vault.recordProblem("Uscita annullata: il salvataggio di \(names) non è terminato") }
+        recordConflicts(of: left)
+        show(left.firstReveal(namingTab: true) ?? .note(review.entries.first?.tabID))
         answer(false, attempt: attempt)
     }
 
@@ -300,12 +317,16 @@ final class QuitCoordinator {
         answer(lastCheck(covering: covered), attempt: attempt)
     }
 
-    /// The last check before letting go (§D6): true when every dirty tab is covered and the
-    /// Contenitore inspector owes nothing. An uncovered tab, or a scheda edit whose write did
-    /// not land, is revealed and cancels the quit (§D7).
+    /// The last check before letting go (§D6): true when every dirty tab, and any conflicted
+    /// board or diary day, is covered and the Contenitore inspector owes nothing. Anything
+    /// uncovered, or a scheda edit whose write did not land, is revealed and cancels the quit
+    /// (§D7, ADR-0089 §D4). No line for an uncovered board or day: its own conflict recorded one.
+    /// A covered conflicted board the reveal switches away from gets its `leftProblem` line, in
+    /// `showUncovered` (ADR-0089, implementation notes).
     private func lastCheck(covering covered: QuitReview) -> Bool {
-        if let first = covered.uncovered(in: current).first {
-            reveal(first.tabID)
+        let left = covered.uncoveredWork(in: current)
+        if !left.isEmpty {
+            showUncovered(left)
             return false
         }
         if let owed = contenitore(), owed.hasUnsettledEdits {
@@ -325,9 +346,41 @@ final class QuitCoordinator {
 
     // MARK: Helpers
 
-    /// The dirty set as it is now.
+    /// The dirty set as it is now, with the conflicted board and diary day (ADR-0089 §D1).
     private var current: QuitReview {
-        QuitReview(columns: vault()?.columns ?? [])
+        let vault = vault()
+        return QuitReview(
+            columns: vault?.columns ?? [], board: vault?.openBoard?.quitConflict, diary: diary()?.quitConflict
+        )
+    }
+
+    /// One problem line for a conflicted board or diary day left behind (ADR-0089 §D5).
+    private func recordConflicts(of left: QuitReview) {
+        for line in [left.board?.leftProblem, left.diary?.leftProblem].compactMap({ $0 }) {
+            vault()?.recordProblem(line)
+        }
+    }
+
+    /// Takes a cancelled quit to the item it names (ADR-0089 §D6).
+    private func show(_ item: QuitReview.Reveal?) {
+        switch item {
+        case .board: revealBoard()
+        case .note(let id): reveal(id)
+        case .diary: revealDiary()
+        case .scheda(let path): revealContenitore(path)
+        case nil: break
+        }
+    }
+
+    /// Reveals what an answer left uncovered. A conflicted board the answer covered is not in
+    /// `left`, so a reveal of a note, the diary or a scheda can switch the pane away from it and
+    /// destroy its controller; that loss gets its own problem line (ADR-0089 §D5's wording).
+    private func showUncovered(_ left: QuitReview.Uncovered) {
+        let item = left.firstReveal()
+        if item != .board, let board = vault()?.openBoard?.quitConflict {
+            vault()?.recordProblem(board.leftProblem)
+        }
+        show(item)
     }
 
     private static func names(of review: QuitReview) -> String {

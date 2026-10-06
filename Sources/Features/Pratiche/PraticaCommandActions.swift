@@ -285,13 +285,9 @@ struct PraticaCommandActions {
         // the `.eml` independently, and with only the sidecar moved the message is still in the
         // source, so its entries stay anchored to it there (`moveFiles` has already said why the
         // note did not move).
-        let blocks = PraticaEntryCarry.noteMoved(in: moved, of: detail, under: vault.root) ? anchored : []
-        await updateDossier(at: praticaPath) { dossier in
-            if !dossier.excluded.contains(messageID) { dossier.excluded.append(messageID) }
-        }
-        await updateDossier(at: destination.id) { dossier in
-            if !dossier.included.contains(messageID) { dossier.included.append(messageID) }
-        }
+        let messageMoved = PraticaEntryCarry.noteMoved(in: moved, of: detail, under: vault.root)
+        let blocks = messageMoved ? anchored : []
+        await recordMembership(of: messageID, source: praticaPath, destination: destination.id, noteMoved: messageMoved)
         let transfer = PraticaEntryCarry.Transfer(
             blocks: blocks, messageID: messageID, source: praticaPath, destination: destination.id
         )
@@ -311,8 +307,10 @@ struct PraticaCommandActions {
             if messageRestored {
                 await actions.files.reverseContentRewrites(rewrites, notePath: detail.notePath)
             }
-            await actions.updateDossier(at: praticaPath) { $0.excluded.removeAll { $0 == messageID } }
-            await actions.updateDossier(at: destination.id) { $0.included.removeAll { $0 == messageID } }
+            await actions.liftMembership(
+                of: messageID, source: praticaPath, destination: destination.id,
+                noteMoved: messageMoved, noteRestored: messageRestored
+            )
             if messageRestored {
                 await PraticaEntryCarry(pratiche: actions.pratiche, vault: actions.vault)
                     .carryBack(outcome, transfer, in: movedSession)
@@ -321,6 +319,40 @@ struct PraticaCommandActions {
             actions.register(undoName: "Sposta") { redo in
                 await redo.move(entry, detail: detail, to: destination)
             }
+        }
+    }
+
+    /// «Sposta»'s two dossier steps, keyed on where the message NOTE is, not on "some file
+    /// moved": `moveFiles` and `moveBack` move the `.md` and the `.eml` independently.
+    ///
+    /// The source excludes the message only while its note is away. With only the sidecar moved
+    /// the note is still there, and an exclusion would stop the source's sync from ever completing
+    /// it again (a pending body, a pending attachment, «Rigenera»). The destination includes it.
+    private func recordMembership(of messageID: String, source: String, destination: String, noteMoved: Bool) async {
+        if noteMoved {
+            await updateDossier(at: source) { dossier in
+                if !dossier.excluded.contains(messageID) { dossier.excluded.append(messageID) }
+            }
+        }
+        await updateDossier(at: destination) { dossier in
+            if !dossier.included.contains(messageID) { dossier.included.append(messageID) }
+        }
+    }
+
+    /// The undo's side of `recordMembership`. The source's exclusion is lifted only when the note
+    /// came back (PG-383): lifting it while the note stayed in the destination would turn the
+    /// entries left in the source from hidden into orphaned (ADR-0079) and let the source's next
+    /// sync write the message back; a note that never moved was never excluded by the move, and a
+    /// restored note implies a moved one. The destination's inclusion is lifted unless the note is
+    /// still there: a note `moveBack` could not take out stays claimed by the pratica that holds it.
+    private func liftMembership(
+        of messageID: String, source: String, destination: String, noteMoved: Bool, noteRestored: Bool
+    ) async {
+        if noteRestored {
+            await updateDossier(at: source) { $0.excluded.removeAll { $0 == messageID } }
+        }
+        if noteRestored || !noteMoved {
+            await updateDossier(at: destination) { $0.included.removeAll { $0 == messageID } }
         }
     }
 

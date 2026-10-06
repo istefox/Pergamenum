@@ -74,12 +74,22 @@ struct QuitReview: Equatable, Sendable {
     /// ones first. Only the quit passes any: a vault switch and a column close never reach the
     /// Contenitore.
     let schede: [Scheda]
+    /// The open Workspace board when its save is in conflict (PG-336, ADR-0089 §D1). Only the
+    /// quit passes one.
+    let board: Board?
+    /// The diary day when its save is in conflict (PG-336, ADR-0089 §D1). Only the quit passes
+    /// one.
+    let diary: DiaryDay?
 
     init(
         columns: [EditorColumn],
         vanishedSchede: [String] = [],
-        failedSchede: [String] = []
+        failedSchede: [String] = [],
+        board: Board? = nil,
+        diary: DiaryDay? = nil
     ) {
+        self.board = board
+        self.diary = diary
         schede = vanishedSchede.map { Scheda(path: $0, problem: .gone) }
             + failedSchede.map { Scheda(path: $0, problem: .writeFailed) }
         entries = columns.flatMap { column in
@@ -98,7 +108,7 @@ struct QuitReview: Equatable, Sendable {
         }
     }
 
-    var isEmpty: Bool { entries.isEmpty && schede.isEmpty }
+    var isEmpty: Bool { entries.isEmpty && schede.isEmpty && board == nil && diary == nil }
 
     /// The entries «Salva tutto» may write: every one that is neither conflicted nor from a
     /// previous vault.
@@ -202,11 +212,14 @@ struct QuitReview: Equatable, Sendable {
     /// The quit's words.
     var copy: Copy { copy(for: .quit) }
 
+    /// The items are named in `firstReveal(board:notes:diary:schede:namingTab:)`'s order - the
+    /// board, the notes, the diary, the schede (ADR-0089 §D6) - in the list and in the sentences
+    /// alike, so a cancel shows the item the question named first.
     func copy(for occasion: Occasion) -> Copy {
         let notes = notes
         let noteNames = notes.map { Self.displayName(of: $0, among: notes) }
-        let schedaNames = schede.map(\.name)
-        let names = noteNames + schedaNames
+        let lines = [board?.listLine].compactMap { $0 } + noteNames.map { "«\($0)»" }
+            + [diary?.listLine].compactMap { $0 } + schede.map { "«\($0.name)»" }
         let words = Self.words(for: occasion)
         let before = words.before
         let losing = words.losing
@@ -214,34 +227,25 @@ struct QuitReview: Equatable, Sendable {
         var paragraphs: [String] = []
         let message: String
         let saveLabel: String
-        if names.count == 1, let name = names.first {
-            message = "Salvare le modifiche a «\(name)» \(before)"
+        if lines.count == 1, let line = lines.first {
+            let phrase = board?.singularPhrase ?? diary?.singularPhrase ?? "a \(line)"
+            message = "Salvare le modifiche \(phrase) \(before)"
             saveLabel = "Salva"
         } else {
-            message = "Salvare le modifiche a \(Self.counted(notes: notes.count, schede: schede.count)) \(before)"
+            let counts = Self.counted(
+                boards: board == nil ? 0 : 1, notes: notes.count, diaries: diary == nil ? 0 : 1,
+                schede: schede.count
+            )
+            message = "Salvare le modifiche a \(counts) \(before)"
             saveLabel = "Salva tutto"
-            var listed = names.prefix(Self.listedTitleLimit).map { "«\($0)»" }
-            if names.count > Self.listedTitleLimit {
-                listed.append("e altre \(names.count - Self.listedTitleLimit)")
+            var listed = Array(lines.prefix(Self.listedTitleLimit))
+            if lines.count > Self.listedTitleLimit {
+                listed.append("e altre \(lines.count - Self.listedTitleLimit)")
             }
             paragraphs.append(listed.joined(separator: "\n"))
         }
         paragraphs.append(losing)
-        for (note, name) in zip(notes, noteNames) where note.isConflicted {
-            paragraphs.append(
-                "«\(name)» è cambiata anche su disco: "
-                    + "\(staying) per farti scegliere quale versione tenere."
-            )
-        }
-        for (note, name) in zip(notes, noteNames) where note.isFromPreviousVault {
-            paragraphs.append(
-                "«\(name)» è di una cartella note aperta prima e non viene salvata in questa: "
-                    + "\(staying) se scegli di salvare."
-            )
-        }
-        for (scheda, name) in zip(schede, schedaNames) {
-            paragraphs.append(Self.sentence(for: scheda, named: name, saveLabel: saveLabel))
-        }
+        paragraphs += sentences(noteNames: noteNames, saveLabel: saveLabel, staying: staying)
         return Copy(
             message: message,
             informative: paragraphs.joined(separator: "\n\n"),
@@ -249,6 +253,31 @@ struct QuitReview: Equatable, Sendable {
             discardLabel: "Non salvare",
             cancelLabel: "Annulla"
         )
+    }
+
+    /// One sentence per item that needs one, in the items' order: the board, the conflicted and
+    /// the foreign notes, the diary, the schede.
+    private func sentences(noteNames: [String], saveLabel: String, staying: String) -> [String] {
+        let notes = notes
+        var result: [String] = []
+        if let board { result.append(board.sentence(saveLabel: saveLabel, staying: staying)) }
+        for (note, name) in zip(notes, noteNames) where note.isConflicted {
+            result.append(
+                "«\(name)» è cambiata anche su disco: "
+                    + "\(staying) per farti scegliere quale versione tenere."
+            )
+        }
+        for (note, name) in zip(notes, noteNames) where note.isFromPreviousVault {
+            result.append(
+                "«\(name)» è di una cartella note aperta prima e non viene salvata in questa: "
+                    + "\(staying) se scegli di salvare."
+            )
+        }
+        if let diary { result.append(diary.sentence(saveLabel: saveLabel, staying: staying)) }
+        for (scheda, name) in zip(schede, schede.map(\.name)) {
+            result.append(Self.sentence(for: scheda, named: name, saveLabel: saveLabel))
+        }
+        return result
     }
 
     /// Why a scheda's edit is in the question: its file is gone (PG-341), or its write failed
@@ -295,12 +324,16 @@ struct QuitReview: Equatable, Sendable {
         }
     }
 
-    /// «3 note», «2 schede», «1 nota e 1 scheda»: what the question counts when it names more
-    /// than one thing.
-    private static func counted(notes: Int, schede: Int) -> String {
-        [
+    /// «3 note», «2 schede», «1 nota e 1 scheda», «1 board, 2 note e 1 diario»: what the question
+    /// counts when it names more than one thing, in the items' order (ADR-0089 §D3).
+    private static func counted(boards: Int, notes: Int, diaries: Int, schede: Int) -> String {
+        let parts = [
+            boards > 0 ? "\(boards) board" : nil,
             notes > 0 ? "\(notes) \(notes == 1 ? "nota" : "note")" : nil,
+            diaries > 0 ? "\(diaries) \(diaries == 1 ? "diario" : "diari")" : nil,
             schede > 0 ? "\(schede) \(schede == 1 ? "scheda" : "schede")" : nil,
-        ].compactMap { $0 }.joined(separator: " e ")
+        ].compactMap { $0 }
+        guard parts.count > 1, let last = parts.last else { return parts.first ?? "" }
+        return parts.dropLast().joined(separator: ", ") + " e " + last
     }
 }

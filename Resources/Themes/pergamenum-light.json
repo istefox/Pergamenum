@@ -111,6 +111,9 @@
       },
       "badge": {
         "$value": { "fontFamily": "system", "fontSize": 7, "fontWeight": 400, "lineHeight": 1.0 }
+      },
+      "display": {
+        "$value": { "fontFamily": "system", "fontSize": 32, "fontWeight": 400, "lineHeight": 1.0 }
       }
     },
     "control": {
@@ -126,7 +129,8 @@
     "m": { "$value": { "value": 16, "unit": "px" } },
     "l": { "$value": { "value": 24, "unit": "px" } },
     "xl": { "$value": { "value": 40, "unit": "px" } },
-    "readable": { "$value": { "value": 720, "unit": "px" } }
+    "readable": { "$value": { "value": 720, "unit": "px" } },
+    "paragraph": { "$value": { "value": 8, "unit": "px" } }
   },
   "radius": {
     "$type": "dimension",

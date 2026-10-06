@@ -49,6 +49,8 @@ private final class QuitProbe {
             reply: { [unowned self] in replies.append($0) },
             reveal: { [unowned self] in revealed.append($0) },
             revealContenitore: { _ in },
+            revealBoard: {},
+            revealDiary: {},
             sleep: { [unowned self] duration in
                 slept.append(duration)
                 if instant.contains(duration) { return }
@@ -64,13 +66,6 @@ private func diary(for controller: VaultController) -> DiaryController {
     let diary = DiaryController(vault: controller)
     diary.show(testDay)
     return diary
-}
-
-/// A few turns of the main actor, for the "nothing else happens" assertions.
-@MainActor
-private func drain() async {
-    for _ in 0..<20 { await Task.yield() }
-    try? await Task.sleep(for: .milliseconds(50))
 }
 
 // MARK: No dirty tab: as before (R-10)

@@ -36,6 +36,7 @@ struct QuickSwitcher: View {
         let groups = self.groups
         VStack(spacing: 0) {
             field
+            problem
             Divider()
             list(groups)
             Divider()
@@ -57,12 +58,30 @@ struct QuickSwitcher: View {
             .font(theme.font(.title))
             .padding(theme.spacing(.m))
             .onSubmit { choose(selection) }
+            // The sentence below is about the title that was refused: typing is a new attempt.
+            .onChange(of: query) { _, _ in vault.quickSwitcherProblem = nil }
             // `pergamenum://search?q=` parks its query on the controller and this is what
             // picks it up. Without it the route opened the switcher with an empty field: the
-            // link worked, visibly, and did the wrong thing.
+            // link worked, visibly, and did the wrong thing. A sentence left from a switcher
+            // closed with Esc after a refusal is not this one's, so it goes first.
             .task {
+                vault.quickSwitcherProblem = nil
                 if let pending = vault.consumePendingSearch() { query = pending }
             }
+    }
+
+    /// Why «Crea la nota» could not make the note (n1-seams R-18), under the field it is about,
+    /// while the switcher stays open for another title.
+    @ViewBuilder
+    private var problem: some View {
+        if let problem = vault.quickSwitcherProblem {
+            Text(problem)
+                .themedText(.caption, color: .textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, theme.spacing(.m))
+                .padding(.bottom, theme.spacing(.s))
+                .accessibilityIdentifier("quick-switcher-problem")
+        }
     }
 
     /// Says what is missing rather than showing an empty box under a heading that promises

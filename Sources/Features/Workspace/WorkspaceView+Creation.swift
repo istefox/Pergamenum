@@ -46,18 +46,30 @@ extension WorkspaceView {
         if !workspace.tool.isDragDriven { workspace.finishToolUse() }
     }
 
+    /// The sheet closes only once its creation is done, and stays open with the sentence and
+    /// the typed value when it failed (n1-seams R-18). Closed only if it is still this draft's
+    /// sheet after the write (ADR-0043 §D7).
     func newItemSheet(_ draft: NewItemDraft) -> some View {
         NewCanvasItemSheet(
             kind: draft.kind,
             onCancel: { newItemDraft = nil },
             onConfirm: { value in
-                create(draft.kind, value: value, at: draft.point)
-                newItemDraft = nil
+                let failure = await create(draft.kind, value: value, at: draft.point)
+                if newItemDraft?.id == draft.id {
+                    if failure == nil { newItemDraft = nil }
+                    return failure
+                }
+                // The sheet is no longer this draft's (closed by other means during the
+                // write): its sentence has nowhere to show, so the workspace reports it.
+                if let failure { workspace.recordProblem(failure) }
+                return failure
             }
         )
     }
 
-    private func create(_ kind: NewCanvasItemSheet.Kind, value: String, at point: CGPoint) {
+    /// Makes what the sheet asked for. Answers the sentence to show in the sheet, or nil when
+    /// the sheet can close.
+    private func create(_ kind: NewCanvasItemSheet.Kind, value: String, at point: CGPoint) async -> String? {
         switch kind {
         case .folder:
             do {
@@ -67,27 +79,16 @@ extension WorkspaceView {
                 // modal: the board is still usable and the name can be retried.
                 workspace.recordProblem("\(error)")
             }
+            return nil
         case .link:
             _ = workspace.addLink(value, at: point)
+            return nil
         case .note:
-            // The hop, and both branches inside it: creating the note now goes through the
-            // one asynchronous write door (ADR-0043 §D2), and placing the card on the board
-            // has to wait for the file it points at to exist.
-            //
-            // The board and its folder are read before the suspension and checked again
-            // after it by `placeCreatedNote` (ADR-0043 §D7, #569 point 9): another board
-            // opened meanwhile must not receive a card for a note made in the first one's folder.
-            let targetBoard = workspace.board
-            let targetFolder = workspace.folder
-            Task { @MainActor in
-                do {
-                    let path = try await vault.createNote(
-                        title: value, in: targetFolder, date: .today
-                    )
-                    workspace.placeCreatedNote(path, title: value, at: point, openedOn: targetBoard)
-                } catch {
-                    workspace.recordProblem(ConformanceText.creationFailure(error))
-                }
+            // Awaited, so the sheet waits for the write (n1-seams R-18): the note and its card,
+            // and no tab, since the person is working on the board (R-10).
+            switch await workspace.createDocument(titled: value, at: point, through: vault) {
+            case .created: return nil
+            case .failed(let sentence): return sentence
             }
         }
     }

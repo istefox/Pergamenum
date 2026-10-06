@@ -101,14 +101,13 @@ final class WorkspaceOpenStateUITests: PergamenumUITestCase {
     // MARK: Ported (R-14) - same assertions as before, row lookup substituted for the row's new element type.
 
     func testThePaneOpensEmptyAndFillsInOnlyAfterAClick() throws {
-        let emptyState = app.staticTexts["workspace-empty-state"]
-        XCTAssertTrue(emptyState.waitForExistence(timeout: 5),
+        XCTAssertTrue(app.staticTexts["workspace-empty"].waitForExistence(timeout: 5),
                       "il pane dovrebbe aprirsi senza nessuna board scelta")
         XCTAssertTrue(rootBoardRow.waitForExistence(timeout: 5))
 
         rootBoardRow.click()
 
-        XCTAssertFalse(emptyState.exists,
+        XCTAssertFalse(app.staticTexts["workspace-empty"].exists,
                         "lo stato vuoto dovrebbe sparire una volta aperta una board")
     }
 

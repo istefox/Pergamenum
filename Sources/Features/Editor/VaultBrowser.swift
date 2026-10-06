@@ -42,10 +42,7 @@ struct VaultBrowser: View {
             get: { vault.isShowingQuickSwitcher },
             set: { vault.isShowingQuickSwitcher = $0 }
         )) {
-            QuickSwitcher { choice in
-                vault.isShowingQuickSwitcher = false
-                open(choice)
-            }
+            QuickSwitcher { choice in open(choice) }
         }
         .sheet(isPresented: Binding(
             get: { vault.isAddingRelatedLink },
@@ -68,7 +65,18 @@ struct VaultBrowser: View {
     /// screen has the editor a heading jump lands in, and only the controller knows whether
     /// Cmd+T asked for a tab of its own (ADR-0012 D5), which is why `openChosenNote` and not
     /// `openNote`.
+    ///
+    /// The switcher closes first, except for «Crea la nota»: that one closes only once the note
+    /// exists, and a refused title leaves the switcher open with the sentence under its field
+    /// (`createNoteFromQuickOpen`, n1-seams R-18).
     private func open(_ choice: QuickSwitcher.Choice) {
+        if case .createNote(let title) = choice {
+            Task { @MainActor in
+                if await vault.createNoteFromQuickOpen(title: title) { vault.isShowingQuickSwitcher = false }
+            }
+            return
+        }
+        vault.isShowingQuickSwitcher = false
         switch choice {
         case .note(let path):
             vault.openChosenNote(at: path)
@@ -78,12 +86,9 @@ struct VaultBrowser: View {
                     vault.recordProblem(ConformanceText.creationFailure(error))
                 }
             }
-        case .createNote(let title):
-            Task { @MainActor in
-                do { try await vault.createNote(title: title, date: .today) } catch {
-                    vault.recordProblem(ConformanceText.creationFailure(error))
-                }
-            }
+        case .createNote:
+            // Handled above, before the switcher closes.
+            break
         case .heading(let path, let range, let ordinal):
             vault.openChosenNote(at: path)
             // One turn later, so the column has the note before the jump reaches it. Sent in

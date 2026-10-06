@@ -182,6 +182,10 @@ struct NoteListPane: View {
         // while the composer is up» is the behaviour that would otherwise be lost, taking
         // the `leaveComposer()` click with it.
         .onChange(of: vault.isOpenNoteVisible) { _, _ in syncSelectedRows() }
+        // Mirrored on every change, whoever made it (a click, `syncSelectedRows`, `rebuild`'s
+        // pruning, a folder reveal), so Cmd+N from any pane seeds the composer from what the
+        // tree last showed lit (n1-seams R-11, `NewNoteSeed`).
+        .onChange(of: selectedRows, initial: true) { _, rows in navigation.noteTreeSelection = rows }
         // `VaultTopBar`'s breadcrumb (2026-08-28): a folder crumb opens the tree down to
         // it and lights its row, without touching the note open in the editor - a folder
         // id never ends `.md`, so `opening(...)` above reads this as "nothing to open or

@@ -161,10 +161,25 @@ enum TagRules {
     /// hand in `inboxTemplate`, next to a `createNote` that built the same set from the
     /// same rule - which is how the app came to generate a file its own linter flagged
     /// without anybody noticing (#30).
+    ///
+    /// A `.note` given no tag of namespace `topic` is born a capture too (ADR-0080 §D1):
+    /// the test is on the namespace, so a `client-*` alone still earns `status-inbox`. The
+    /// daily note keeps `type-note` alone, and `.capture` keeps its exact output.
     static func initialTags(for category: NoteCategory, topics: [Tag] = []) -> [Tag] {
-        ordered([Tag(namespace: .type, value: "note")] + topics + (
-            category == .capture ? [Tag(namespace: .status, value: "inbox")] : []
-        ))
+        let isCapture = switch category {
+        case .capture: true
+        case .note: !topics.contains { $0.namespace == .topic }
+        case .daily: false
+        }
+        // The two tags this function adds are added only when `topics` does not already hold
+        // them: the callers (`perg note create --topic`, MCP `create_note`, the Cmd+N topic
+        // field) pass a tag through unchecked for its namespace, and a doubled `status-inbox`
+        // is a file the linter flags as `multipleStatus`. The guard lives here, not in
+        // `ordered`, which `canonicalLines` shares with parsed notes whose duplicates
+        // ADR-0065 requires to round-trip faithfully.
+        let added = [Tag(namespace: .type, value: "note")]
+            + (isCapture ? [Tag(namespace: .status, value: "inbox")] : [])
+        return ordered(topics + added.filter { !topics.contains($0) })
     }
 
     /// T-07 forbids date tags. Catches the shapes a date actually takes in practice:

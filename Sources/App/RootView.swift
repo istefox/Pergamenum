@@ -141,6 +141,8 @@ struct RootView: View {
                 // in a vault did nothing at all and the picker in Settings could only
                 // ever offer the two bundled themes.
                 .onChange(of: vault.root) { _, newRoot in
+                    // The tree's lit rows named the previous vault's paths (n1-seams R-11).
+                    navigation.noteTreeSelection = []
                     if let newRoot {
                         engine.attach(vaultRoot: newRoot)
                     } else {
@@ -323,7 +325,7 @@ struct RootView: View {
         if vault.root == nil {
             VStack(spacing: theme.spacing(.m)) {
                 Image(systemName: "folder")
-                    .font(.system(size: 40))
+                    .font(theme.font(.iconDisplay))
                     .foregroundStyle(theme.color(.textTertiary))
                 Text("Nessuna cartella note aperta").themedText(.title)
                 Text(explanation)

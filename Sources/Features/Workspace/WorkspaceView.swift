@@ -95,9 +95,11 @@ struct WorkspaceView: View {
                 }
                 .onDisappear {
                     // A conflicted board is not flushed here: flushing would attempt
-                    // exactly the write already refused, on the same stale expectation.
-                    // `detach()` (the next thing to run when the vault itself closes)
-                    // reports the loss instead (ADR-0054 §D5).
+                    // exactly the write already refused, on the same stale expectation
+                    // (ADR-0054 §D5). `detach()` reports the loss only when the vault itself
+                    // changes; a pane switch or a window close drops the conflicted board's
+                    // edits with no problem line, because this view's controller goes with it
+                    // (ADR-0089 §D7).
                     guard case .conflicted = workspace.saveState else {
                         workspace.flushPendingSave()
                         return
@@ -249,10 +251,10 @@ struct WorkspaceView: View {
     private var emptyState: some View {
         VStack(spacing: theme.spacing(.s)) {
             Image(systemName: "square.grid.2x2")
-                .font(.system(size: 32))
+                .font(theme.font(.iconDisplay))
                 .foregroundStyle(theme.color(.textTertiary))
             Text("Nessuna board aperta").themedText(.body, color: .textSecondary)
-                .accessibilityIdentifier("workspace-empty-state")
+                .accessibilityIdentifier("workspace-empty")
             Text("Seleziona una board dall'elenco a sinistra").themedText(.caption, color: .textTertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -12,7 +12,7 @@ extension EditorColumnView {
     var emptyState: some View {
         VStack(spacing: theme.spacing(.s)) {
             Image(systemName: "doc.text")
-                .font(.system(size: 32))
+                .font(theme.font(.iconDisplay))
                 .foregroundStyle(theme.color(.textTertiary))
             Text("Nessuna nota aperta").themedText(.body, color: .textSecondary)
             Text("Cmd+O per il quick switcher").themedText(.caption, color: .textTertiary)

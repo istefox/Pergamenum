@@ -12,16 +12,16 @@ extension ToolCatalogue {
         Tool(
             name: "create_note",
             description: """
-                Crea una nota con frontmatter conforme già a posto. Rifiuta un titolo che \
-                le regole non accettano invece di correggerlo di nascosto. \
-                dryRun è true se omesso: torna il diff e non scrive.
+                Crea una nota con frontmatter conforme già a posto. Rifiuta un titolo che le regole non accettano \
+                invece di correggerlo di nascosto. dryRun è true se omesso: torna il diff e non scrive.
                 """,
             inputSchema: [
                 "type": "object",
                 "properties": [
                     "title": ["type": "string", "description": "il titolo, che diventa anche il nome del file"],
                     "folder": ["type": "string", "description": "cartella di destinazione, la radice se omessa"],
-                    "topic": ["type": "string", "description": "un tag topic-*, es. topic-acustica"],
+                    "topic": ["type": "string", "description":
+                        "un tag topic-*, es. topic-acustica; senza topic la nota nasce come cattura (status-inbox)"],
                     "date": ["type": "string", "description": "YYYY-MM-DD, oggi se omesso"],
                     "dryRun": dryRunProperty,
                 ],
@@ -119,10 +119,10 @@ extension ToolCatalogue {
             name: "capture",
             description: """
                 Cattura una riga dove dice la destinazione: «note» una nota nuova il cui \
-                titolo è la prima riga, «task» una riga di task nell'inbox, «today» in \
-                fondo alla nota di oggi che viene creata se manca, «note:PERCORSO» in \
-                fondo a una nota che esiste. Le date valgono solo per «task». \
-                dryRun è true se omesso.
+                titolo viene dalla prima riga, reso un nome valido se non lo è, «task» una \
+                riga di task nell'inbox, «today» in fondo alla nota di oggi che viene creata \
+                se manca, «note:PERCORSO» in fondo a una nota che esiste. Le date valgono \
+                solo per «task». dryRun è true se omesso.
                 """,
             inputSchema: [
                 "type": "object",
@@ -134,7 +134,7 @@ extension ToolCatalogue {
                     ],
                     "folder": [
                         "type": "string",
-                        "description": "solo con «note»: la cartella, «00 Inbox» se omessa",
+                        "description": "solo con «note»; se omessa, la cartella inbox (00 Inbox se non impostata)",
                     ],
                     "scheduled": ["type": "string", "description": "solo con «task»: YYYY-MM-DD"],
                     "due": ["type": "string", "description": "solo con «task»: YYYY-MM-DD"],

@@ -55,6 +55,10 @@ extension VaultAPI {
 
     // MARK: Notes
 
+    /// Creates a note through `VaultSession.createNote`, for `perg note create` and MCP
+    /// `create_note`. With no `topic` the note is born a capture, `type-note` plus
+    /// `status-inbox` (ADR-0080 §D1). An invalid title is refused with the validator's
+    /// reason, never corrected.
     @MainActor
     static func createNote(
         _ session: VaultSession, title: String, folder: String?, topic: String?, date: String?

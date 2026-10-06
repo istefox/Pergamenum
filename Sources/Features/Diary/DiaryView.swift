@@ -20,6 +20,8 @@ struct DiaryView: View {
     @Environment(\.theme) var theme
     @Environment(VaultController.self) private var vault
     @Environment(Navigation.self) private var navigation
+    /// Where a Cmd+clicked tag or date in the diary leads (n1-seams R-12, R-13).
+    @Environment(CommandActions.self) private var commandActions
     // Internal, not private: read by `DiaryView+Conflict.swift`.
     @Environment(DiaryController.self) var controller
     @Environment(ThemeEngine.self) private var themeEngine
@@ -31,6 +33,8 @@ struct DiaryView: View {
     /// computed there it ran on every keystroke. `TasksView.boards` and
     /// `WorkspacePicker` make the same trade for the same reason.
     @State private var boardTitles: [String] = []
+    /// Every note's aliases by title, on the same schedule (n1-seams R-08).
+    @State private var noteAliases: [String: [String]] = [:]
 
     var body: some View {
         HSplitView {
@@ -46,6 +50,7 @@ struct DiaryView: View {
         .task(id: vault.root) { controller.load() }
         .task(id: vault.scanGeneration) {
             boardTitles = vault.root.map { CanvasStore(root: $0).allBoards() } ?? []
+            noteAliases = NoteTextView.aliasesByTitle(vault.index.allNotes)
         }
         // Every way out of this pane writes the day: switching pane takes the view
         // away, and clicking on another app does not go through here at all. A diary
@@ -107,6 +112,7 @@ struct DiaryView: View {
             theme: theme,
             noteTitles: vault.index.allNotes.map(\.title),
             boardTitles: boardTitles,
+            noteAliases: noteAliases,
             tagSuggestions: vault.tagSuggestions,
             spellCheck: vault.settings.spellCheck,
             hidesMarkup: vault.settings.hidesMarkup,
@@ -117,6 +123,8 @@ struct DiaryView: View {
                 vaultRoot: vault.root,
                 notePath: fileLabel,
                 thumbnails: vault.thumbnails,
+                onOpenTag: { commandActions.open(tag: $0) },
+                onOpenDay: { commandActions.open(day: $0) },
                 onDropFile: { url in vault.importFileIntoVault(url, near: fileLabel) },
                 onPasteImage: { data in vault.importPastedImage(data, near: fileLabel) }
             )

@@ -8,6 +8,8 @@ import SwiftUI
 struct DayTimeline: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
+    /// The event note's open, which owns the move to the Note pane (n1-seams R-10).
+    @Environment(CommandActions.self) private var commandActions
 
     let controller: DayController
     let calendar: EventKitStore
@@ -126,7 +128,8 @@ struct DayTimeline: View {
         }
     }
 
-    /// Creates the note when it is missing and opens it either way.
+    /// Creates the note when it is missing and opens it either way, in the Note pane
+    /// (`CommandActions.openEventNote`, n1-seams R-10).
     ///
     /// The hour and the attendees are stamped from the event, so the note says what the
     /// meeting was before anybody types a word into it (§D3).
@@ -138,7 +141,7 @@ struct DayTimeline: View {
         let start = event.isAllDay ? nil : time(at: DayProjection.minuteOfDay(event.start))
         let end = event.isAllDay ? nil : time(at: DayProjection.minuteOfDay(event.end))
         Task { @MainActor in
-            await vault.openEventNote(
+            await commandActions.openEventNote(
                 for: event.title,
                 on: controller.day,
                 start: start,

@@ -143,4 +143,29 @@ extension CompletingTextView {
         if let prefix = Self.punctuationTrigger(":", in: beforeCursor) { return .emoji(prefix: prefix) }
         return nil
     }
+
+    /// The `[[` candidates for `prefix`: the same ranking the Workspace `.text` card's own
+    /// popup uses (`CardWikilinkCompletion.swift`) - notes and boards fuzzy-scored together, a
+    /// board's bare filename as the insertable text - with each note's aliases offered too
+    /// (n1-seams R-08), which only the note editor does.
+    /// Internal, not private: `CompletingTextView.swift` reads it for the panel and AppKit's list.
+    func wikilinkCandidates(matching prefix: String) -> [WikilinkCandidate] {
+        CardWikilinkCompletion.candidates(
+            matching: prefix,
+            notes: noteTitles.map { WikilinkNote(title: $0, aliases: noteAliases[$0] ?? []) },
+            boards: boardTitles,
+            limit: 12
+        )
+    }
+
+    /// The chosen candidate's title and the closing `]]` over `range`, caret after it
+    /// (n1-seams R-07): a `]]` already right after the caret is reused, never doubled.
+    /// Internal, not private: `CompletingTextView.swift`'s `apply` calls it.
+    func insertWikilink(_ candidate: WikilinkCandidate, replacing range: NSRange) {
+        let text = string as NSString
+        let ahead = text.substring(from: min(NSMaxRange(range), text.length))
+        let insertion = WikilinkTrigger.closingInsertion(of: candidate.insertText, ahead: Substring(ahead))
+        insertText(insertion.text, replacementRange: range)
+        setSelectedRange(NSRange(location: range.location + insertion.caretOffset, length: 0))
+    }
 }

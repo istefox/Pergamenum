@@ -138,6 +138,7 @@ struct SettingsView: View {
                 }
             ))
             .disabled(vault.root == nil)
+            InboxFolderField()
             TextField("Cartella diario", text: Binding(
                 get: { vault.settings.diaryFolder },
                 set: { value in
@@ -314,11 +315,35 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
     }
+}
 
+// Pure code motion out of the struct body, which sat at exactly `type_body_length`'s 250
+// lines when «Cartella inbox» (ADR-0080 §D6) took one more (the PG-035 shape).
+extension SettingsView {
     private var scanDuration: String {
         let milliseconds = vault.index.lastScanDuration.components.attoseconds / 1_000_000_000_000_000
         let seconds = vault.index.lastScanDuration.components.seconds
         return seconds > 0 ? "\(seconds),\(milliseconds / 100) s" : "\(milliseconds) ms"
+    }
+}
+
+/// «Cartella inbox» in Convenzioni (ADR-0080 §D6), beside the daily and diary folders and in
+/// their binding shape: where a capture, the inbox note and an import land. Every reader goes
+/// through `VaultSession.inboxFolder`, so a change needs no relaunch.
+///
+/// The text is stored as typed, never trimmed here: a setter that trims runs on every
+/// keystroke and the getter writes the result back into the field, so a trailing space
+/// would vanish before the next character arrives and «00 Inbox» could not be typed.
+/// `VaultSettings.resolveInboxFolder` trims on every read, which is where it belongs.
+private struct InboxFolderField: View {
+    @Environment(VaultController.self) private var vault
+
+    var body: some View {
+        TextField("Cartella inbox", text: Binding(
+            get: { vault.settings.inboxFolder },
+            set: { value in vault.updateSettings { $0.inboxFolder = value } }
+        ))
+        .disabled(vault.root == nil)
     }
 }
 
