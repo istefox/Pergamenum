@@ -70,6 +70,9 @@ extension CardTextView.Coordinator {
         // never be left drawing a badge in its `.secondaryLabelColor` default on a themed card.
         decorations.badgeColor = NSColor(parent.theme.color(.textTertiary))
         decorations.badgeBackground = NSColor(parent.theme.color(.backgroundTertiary))
+        // The rule a card now conceals (ADR-0082 §D8), in the token the note editor draws it in,
+        // so a themed card never shows the delegate's `.separatorColor` default.
+        decorations.ruleColor = NSColor(parent.theme.color(.borderSubtle))
         // Before `endEditing()`, not after: that call is what fires the document-wide
         // `.editedAttributes` that re-triggers the content manager's enumeration, so the table
         // has to already be current when it does (ADR-0018 §D1). The setting travels beside

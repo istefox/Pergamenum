@@ -323,9 +323,16 @@ private func substitutedParagraph(
 // MARK: - 4. ADR-0037 §D8 amendment (2026-09-09 hand check): CardTextView's hiddenKind switch
 // now maps seven kinds, not five - F1's original boundary is reversed by explicit instruction,
 // this fence now guards the widened boundary instead of the narrower one.
+//
+// (n2-page R-19) Restated for nine, plan docs/plans/pg-385-n2-page.md Task 2, ADR-0082 §D8. The
+// reason: R-19 gives the card two more concealed kinds, `.blockquoteMarker` and `.horizontalRule`
+// (`.blockquote` and `.rule`), the way it gave it strikethrough and links in 2026-09. The fence
+// still counts the arms of the one switch, and still exists to keep `.tableRun`, `.viewBlockRun`
+// and `.messageAnchor` out of it (ADR-0029 §D17's `default: nil` seam); only the number moves,
+// from 7 to 9. The opener string it searches is byte-identical in `CardTextView.swift`.
 
-@Suite struct CardTextViewHiddenKindSwitchMapsExactlySevenKinds {
-    @Test func theSwitchMapsExactlySevenNonNilKinds() throws {
+@Suite struct CardTextViewHiddenKindSwitchMapsExactlyNineKinds {
+    @Test func theSwitchMapsExactlyNineNonNilKinds() throws {
         let repoRoot = try resolvedRepoRoot()
         let url = repoRoot.appendingPathComponent("Sources/Features/Workspace/CardTextView.swift")
         let contents = try String(contentsOf: url, encoding: .utf8)
@@ -347,8 +354,8 @@ private func substitutedParagraph(
             .filter { $0.hasPrefix("case .") }
 
         #expect(
-            mappedCases.count == 7,
-            "CardTextView's hiddenKind switch maps \(mappedCases.count) kinds, expected exactly 7 (ADR-0037 §D8 amendment, 2026-09-09): \(mappedCases) - strikethrough and link/wikilink syntax now conceal in the card identically to the note editor, by explicit instruction reversing F1's original boundary"
+            mappedCases.count == 9,
+            "CardTextView's hiddenKind switch maps \(mappedCases.count) kinds, expected exactly 9 (ADR-0037 §D8 amendment, 2026-09-09, plus R-19 of n2-page: blockquote and rule): \(mappedCases) - strikethrough and link/wikilink syntax conceal in the card identically to the note editor, and so now do quote and rule markers; tables, view blocks and message anchors stay out (ADR-0029 §D17)"
         )
     }
 }

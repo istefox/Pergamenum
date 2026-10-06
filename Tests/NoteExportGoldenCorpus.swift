@@ -5,7 +5,8 @@ import Foundation
 //
 // The corpus `NoteExportGoldenTests.swift` pins, beside it rather than in it for `file_length`
 // (`FormatEdgeCorpus.swift`'s shape). E01 to E45 are the inputs of the plan's decision table,
-// verbatim; X01 to X08 put `&`, `<`, `>`, `"` and `'` everywhere a note can hold text, and X09
+// verbatim (E46 to E48 were added by the N2 chain, after E45); X01 to X08 put `&`, `<`, `>`, `"` and
+// `'` everywhere a note can hold text, and X09
 // writes the entities themselves out, which must come back escaped once, not left alone.
 //
 // Task 1 captured every expected string by running `MarkdownHTML` as it stood on `1535c2d9`,
@@ -297,6 +298,31 @@ private let decisionTable: [ExportGoldenCase] = [
         "E45", "1. [x] numerato",
         .unchanged, "a numbered list draws no task box",
         #"<ol>\#n<li>[x] numerato</li>\#n</ol>"#
+    ),
+    // ADR-0082 §D4, plan docs/plans/pg-385-n2-page.md, Task 2 (n2-page R-18): the one export
+    // change of the N2 chain. `>YYYY-MM-DD` at the start of a line is the app's scheduling token
+    // in the shared block grammar, as it has always been in the editor, so the exporter draws a
+    // paragraph where it drew a quote. E46 is red until Task 3 adopts the reading; E47, with a
+    // space after the caret, is a quote before and after.
+    ExportGoldenCase(
+        "E46", ">2026-10-04 riunione",
+        .a, "a scheduling date right after the caret is a paragraph, not a quote (ADR-0082 §D4)",
+        #"<p>&gt;2026-10-04 riunione</p>"#
+    ),
+    ExportGoldenCase(
+        "E47", "> 2026-10-04 riunione",
+        .unchanged, "a date after a caret and a space stays a quote",
+        #"<blockquote><p>2026-10-04 riunione</p></blockquote>"#
+    ),
+    // ADR-0082 §D4, the chain's second export change (review finding, n2-page R-18): the parser's
+    // `closingRange` steps a single `*` over a `**` pair nested in it, which the styler needed for
+    // S36. On `3e5df0a6` this exported as `<p><em>corsivo con *</em>forte** dentro*</p>`: the
+    // italic closed at the first star of `**` and left `forte** dentro*` as text. The expectation
+    // below is the new renderer's output, checked against that reading.
+    ExportGoldenCase(
+        "E48", "*corsivo con **forte** dentro*",
+        .a, "a strong run nested in an italic one comes out nested, with no star left over",
+        #"<p><em>corsivo con </em><strong><em>forte</em></strong><em> dentro</em></p>"#
     ),
 ]
 

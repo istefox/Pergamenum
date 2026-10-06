@@ -379,6 +379,11 @@ struct CardTextView: NSViewRepresentable {
             // it.
             case .strikethroughMarker: .strikethrough
             case .linkSyntax: .link
+            // ADR-0082 §D8 (R-19): a quote and a rule draw in a card as they do in a note. Both
+            // are a paragraph-level substitution with no live view, so a culled card loses
+            // nothing; the table and the view block stay out (`default: nil`, ADR-0029 §D17).
+            case .blockquoteMarker: .blockquote
+            case .horizontalRule: .rule
             default: nil
             }
             return kind

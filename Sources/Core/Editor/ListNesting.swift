@@ -129,9 +129,10 @@ enum ListNesting {
     }
 
     /// The width of a list marker (itself plus its one mandatory trailing space) at the
-    /// start of `content`, restating `MarkdownStyler`'s private `listMarkerLength(in:)`
-    /// grammar (accepted duplication, per `ListContinuation.swift`'s own precedent - the
-    /// grammar is private to that file and this is a different file).
+    /// start of `content`, restating the bullet and ordered-marker grammar of
+    /// `MarkdownBlockParser.lineTokens(in:readsFrontmatter:endsLine:)` with ASCII digits. Accepted
+    /// duplication: `lineTokens` calls `ListNesting.levels(in:)` to give a list line its level, so
+    /// `ListNesting` cannot project from those tokens without a dependency cycle.
     private static func markerWidth(in content: some StringProtocol) -> Int? {
         guard let first = content.first else { return nil }
         if first == "-" || first == "*" || first == "+" {

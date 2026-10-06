@@ -67,4 +67,75 @@ extension NoteTextView.Coordinator {
             location: min(caret, (renumbered as NSString).length), length: 0
         ))
     }
+
+    /// Renumbers the ordered run an edit touched, and only that run (ADR-0082 §D6).
+    ///
+    /// `edited` is the range `textView(_:shouldChangeTextInRanges:replacementStrings:)` recorded
+    /// for this change, in the text as it now is. With it, only the covering range of the digits
+    /// that change is replaced, through the same `replaceAtomically` the whole-text form uses, so
+    /// the keystroke and its renumbering stay one undo step, and the caret is carried through the
+    /// rewrite by `Renumbering.mapping`: a run's tenth item shrinking to a ninth no longer leaves
+    /// it a character ahead. A misnumbered list elsewhere in the note is left as it is until it is
+    /// itself edited.
+    ///
+    /// Without a recorded range (an undo, a redo, a change nobody typed) this is the whole-text
+    /// `renumberLists(in:)`, caret clamped as before. The write's own `didChangeText()` re-enters
+    /// `textDidChange` with the range this replacement recorded, and that pass answers nil: the
+    /// run it reaches is already contiguous.
+    func renumberLists(in textView: NSTextView, touching edited: NSRange?) {
+        guard let edited else {
+            renumberLists(in: textView)
+            return
+        }
+        guard let rewrite = ListContinuation.renumbered(textView.string, touching: edited) else { return }
+        let caret = textView.selectedRange().location
+        guard Self.replaceAtomically(rewrite.range, with: rewrite.replacement, in: textView) else { return }
+        textView.setSelectedRange(NSRange(
+            location: min(rewrite.mapping(caret), (textView.string as NSString).length), length: 0
+        ))
+    }
+
+    /// Records where a change lands before AppKit makes it, for the scoped renumber
+    /// (ADR-0082 §D6). Always allows the change: this delegate method only watches.
+    ///
+    /// The recorded range is the union of the replacement ranges as they will stand after the
+    /// change - each range's location moved by the length changes before it, and its length the
+    /// replacement's own - so `textDidChange` can hand `renumberLists(in:touching:)` a range of
+    /// the text it sees. Nothing is recorded while the undo manager is undoing or redoing: an undo
+    /// restores a whole earlier text, and the whole-text fallback is the honest answer for it.
+    func textView(
+        _ textView: NSTextView, shouldChangeTextInRanges affectedRanges: [NSValue], replacementStrings: [String]?
+    ) -> Bool {
+        if let undo = textView.undoManager, undo.isUndoing || undo.isRedoing {
+            renumbering.editedRange = nil
+            return true
+        }
+        var shift = 0
+        var union: NSRange?
+        for (index, value) in affectedRanges.enumerated() {
+            let range = value.rangeValue
+            let length = replacementStrings.flatMap { index < $0.count ? ($0[index] as NSString).length : nil }
+                ?? range.length
+            let landed = NSRange(location: range.location + shift, length: length)
+            union = union.map { NSUnionRange($0, landed) } ?? landed
+            shift += length - range.length
+        }
+        renumbering.editedRange = union
+        return true
+    }
+}
+
+/// The range the last change landed on, between `shouldChangeTextInRanges` recording it and
+/// `textDidChange` taking it (ADR-0082 §D6). Its own type, held by the coordinator as one stored
+/// property, the shape ADR-0074 §D2 gives every feature's state.
+@MainActor
+final class ListRenumberLedger {
+    var editedRange: NSRange?
+
+    /// The recorded range, cleared as it is read, so a change that skipped the recording (a
+    /// programmatic replacement) never inherits the previous keystroke's range.
+    func take() -> NSRange? {
+        defer { editedRange = nil }
+        return editedRange
+    }
 }

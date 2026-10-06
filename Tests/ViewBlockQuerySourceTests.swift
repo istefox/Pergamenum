@@ -351,9 +351,11 @@ private enum Fixture {
 
 @MainActor
 @Suite struct NoteTextViewSafeDefaultWithNoQueries {
-    /// `DiaryView`/`TodayView` and every test built before this task never pass `queries` -
-    /// the property must default to `nil` and leave every existing caller's behaviour
-    /// unchanged. With `hidesMarkup` also left at `NoteTextView`'s own struct default (`false`,
+    /// `NoteTextView`'s own `queries` default stays `nil`: a caller that passes none - a test, or
+    /// any surface with no vault behind it - gets no host and no behaviour change. (Oggi and Diario
+    /// used to be such callers; since ADR-0082 §D8 they pass `ViewQuerySource.live(for:)`, pinned by
+    /// `DailySurfaceQueriesTests`, and this default is no longer theirs.) With `hidesMarkup` also
+    /// left at `NoteTextView`'s own struct default (`false`,
     /// what a caller that has opted into nothing at all gets), D12's escape hatch already
     /// governs: no marker, no hidden lines, no host - the fence stays its own raw source on
     /// screen, `queries` never entering the question.
@@ -379,11 +381,10 @@ private enum Fixture {
         #expect(coordinator.viewBlocks.drawn.isEmpty, "senza hidesMarkup è stato comunque creato un host")
     }
 
-    /// The other configuration a real vault can actually hand `DiaryView`/`TodayView`
-    /// (`VaultSettings.hidesMarkup` is `true` by default, ADR-0028) with `queries` still nil,
-    /// since neither view passes it (this task's own hard constraint - see this file's header
-    /// and `Sources/Features/Diary/DiaryView.swift`/`Sources/Features/Today/TodayView.swift`,
-    /// both read, neither edited). Here D1/D6's attachment mechanism runs independently of
+    /// The other configuration an editor with no vault behind it can be handed
+    /// (`VaultSettings.hidesMarkup` is `true` by default, ADR-0028) with `queries` nil: what
+    /// Oggi and Diario were before ADR-0082 §D8 gave them a live source, and what any surface
+    /// that passes none still is. Here D1/D6's attachment mechanism runs independently of
     /// `queries` (it is not consulted before an attachment forms) - the host still forms, and
     /// what keeps this safe is `RenderedViewBlock.content`'s own pre-existing
     /// `if queries == nil` branch ("Nessun vault dietro questa vista"), not the absence of a

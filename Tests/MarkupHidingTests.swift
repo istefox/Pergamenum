@@ -331,6 +331,32 @@ import Testing
         #expect(MarkupHidingFixture.displayedParagraph("corpo\ndopo\n", markers: [stale]) == nil)
     }
 
+    /// ADR-0082 corpus S53: the styler marks a tab-indented `\t---` as a rule over the whole line,
+    /// so the generic path must collapse it and the layout must draw the rule, together.
+    @Test func aTabIndentedRuleCollapsesAndIsLaidOutAsAHorizontalRuleFragment() {
+        let note = "\t---\ncorpo\n"
+        let tabbed = HiddenMarker(range: NSRange(location: 0, length: 4), kind: .rule)
+        let displayed = MarkupHidingFixture.displayedParagraph(note, markers: [tabbed])
+        #expect(displayed != nil, "the tab-indented rule's characters were not collapsed")
+        for offset in 0..<4 {
+            #expect(
+                (displayed?.attributedString.attribute(.font, at: offset, effectiveRange: nil) as? NSFont)
+                    == EditorDecorationDelegate.collapsedFont,
+                "offset \(offset) non è nel font collassato"
+            )
+        }
+        let laidOut = MarkupHidingFixture.fragments(text: note, markers: [0: [tabbed]], hidesMarkup: true)
+        #expect(laidOut[0] is HorizontalRuleFragment)
+    }
+
+    /// The trim above takes the blanks around the line only: a tab between the dashes is no rule
+    /// for `isRule`, so `\t-\t-\t-` is never collapsed, whatever entry the styler left on it.
+    @Test func aRuleSpelledWithInteriorTabsIsNotCollapsed() {
+        let note = "\t-\t-\t-\ncorpo\n"
+        let entry = HiddenMarker(range: NSRange(location: 0, length: 6), kind: .rule)
+        #expect(MarkupHidingFixture.displayedParagraph(note, markers: [entry]) == nil)
+    }
+
     @Test func theRuleHookIsInertWhenTheSettingIsOff() {
         #expect(MarkupHidingFixture.displayedParagraph(Self.note, markers: [Self.marker], hidesMarkup: false) == nil)
     }

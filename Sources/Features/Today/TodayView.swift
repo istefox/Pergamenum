@@ -234,6 +234,9 @@ struct TodayView: View {
                     vaultRoot: vault.root,
                     notePath: note.relativePath,
                     thumbnails: vault.thumbnails,
+                    // The same source the Note pane draws a fence from (ADR-0082 §D8). No
+                    // query-edit callback, so «Modifica query» is not drawn here.
+                    queries: .live(for: vault),
                     onOpenTag: { commandActions.open(tag: $0) },
                     onOpenDay: { commandActions.open(day: $0) }
                 )

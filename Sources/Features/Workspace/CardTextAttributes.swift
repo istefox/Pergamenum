@@ -220,13 +220,13 @@ enum CardTextAttributes {
         case .frontmatter, .code, .annotation: .textSecondary
         case .linkSyntax, .headingMarker, .emphasisMarker, .embedRun, .listMarker: .textTertiary
         // The four ADR-0029 constructs (plan `2026-09-02-editor-wysiwyg-unification`, Task 1):
-        // Workspace `.text` cards are explicitly out of scope for the concealment mechanism
-        // itself (ADR §D17/CardTextView.swift stays untouched), but this table must still be
-        // exhaustive, so each gets the same shelf `.embedRun` already occupies above.
+        // each gets the same shelf `.embedRun` already occupies above. A card conceals only
+        // what `CardTextView.hiddenKind(for:)` names (ADR-0029 §D17): strikethrough since
+        // ADR-0037 §D8, the blockquote marker and the rule since ADR-0082 §D8; a table never.
         //
-        // `.viewBlockRun` joins the same shelf for the identical reason (ADR-0033 §D1; plan
+        // `.viewBlockRun` joins the same shelf (ADR-0033 §D1; plan
         // `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 1) - a colour only,
-        // never a kind mapping: `CardTextView.swift` stays untouched by this chain too.
+        // never a kind mapping in a card.
         //
         // `.messageAnchor` too (ADR-0076 §D9): a colour only - `CardTextView`'s kind mapping is
         // not touched, so a Workspace card never conceals the line (ADR-0029 §D17).

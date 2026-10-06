@@ -123,6 +123,9 @@ struct DiaryView: View {
                 vaultRoot: vault.root,
                 notePath: fileLabel,
                 thumbnails: vault.thumbnails,
+                // The same source the Note pane draws a fence from (ADR-0082 §D8). No
+                // query-edit callback, so «Modifica query» is not drawn here.
+                queries: .live(for: vault),
                 onOpenTag: { commandActions.open(tag: $0) },
                 onOpenDay: { commandActions.open(day: $0) },
                 onDropFile: { url in vault.importFileIntoVault(url, near: fileLabel) },
