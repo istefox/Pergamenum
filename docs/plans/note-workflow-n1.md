@@ -39,8 +39,8 @@ reverse:
 - **The folder's inline error** follows the note kind's route.
 - **The G1 values** go through tokens.
 
-R-09 too has no ADR, as long as Task 4's probe confirms the `.pointerStyle` route; if it fails, it
-stops at gate G3 for one.
+R-09 is no longer this plan's: it is delivered by `docs/plans/pg-219-pointer-feedback.md` and
+ADR-0090 (see «Covered by» below).
 
 This file replaces the full N1 plan written on 2026-10-04. Its ADR draft,
 `docs/adr/0080-a-note-born-without-a-topic-is-a-capture.md`, is superseded by #897's ADR-0080 and
@@ -64,6 +64,10 @@ is to be discarded (a human deletion).
     scheduling tokens») does not name. That is reported at gate G4, not planned.
 - **R-10**, the inbox folder setting, its default, its absent key and its field, used by note and
   task capture. Done by their R-16/R-17, Tasks 1 and 2, shipped in #897.
+- **R-09**, the pointing hand over a click target and the I-beam over text. Delivered by
+  `docs/plans/pg-219-pointer-feedback.md` and ADR-0090 (`PG-219`/#445), which supersedes this
+  plan's pointer half: its probe, its decision from the padded tracking-area rects, its hosts and
+  its gate G3.
 
 ## What reading `origin/main` @ `5056c61f` established
 
@@ -219,39 +223,13 @@ empty-text guards.
 - `rg -n 'lastIndex\(of: " "\)' Sources/Core/Conventions/ImportNaming.swift` must find nothing,
   which shows that one cutting loop is left.
 
-### Task 3 — Tester: the pointer, and the G1 re-pins (R-08, R-09)
+### Task 3 — Tester: the G1 re-pins (R-08)
 Owner: tester
-Files: Sources/Features/Editor/EditorPointer.swift, Sources/Features/Editor/CompletingTextView.swift, Sources/Features/Editor/CompletingTextView+CursorRects.swift, Sources/Features/Workspace/FormattingTextView.swift, Sources/Features/Workspace/FormattingTextView+CursorRects.swift, Sources/Features/Editor/NoteTextView.swift, Sources/Features/Workspace/CardTextView.swift, Tests/EditorPointerTests.swift, Tests/DesignSystemTests.swift, Tests/ProseParagraphSpacingTests.swift, Tests/ProseTypographyTests.swift
-Tests: EditorPointerTests.swift, DesignSystemTests.swift, ProseParagraphSpacingTests.swift, ProseTypographyTests.swift, ListIndentFontInvariantTests.swift, TransclusionLayoutTests.swift, WikilinkClickNavigationTests.swift, TagDateClickTargetTests.swift, CardTextViewTests.swift
+Files: Tests/DesignSystemTests.swift, Tests/ProseParagraphSpacingTests.swift, Tests/ProseTypographyTests.swift
+Tests: DesignSystemTests.swift, ProseParagraphSpacingTests.swift, ProseTypographyTests.swift, ListIndentFontInvariantTests.swift, TransclusionLayoutTests.swift
 Signatures:
-- EditorPointer — `enum EditorPointer: Equatable, Sendable { case text, link }` with `var style: PointerStyle` (SwiftUI; app-only file)
-- CompletingTextView.pointer — `func pointer(at point: NSPoint) -> EditorPointer`
-- CompletingTextView.trackPointer — `func trackPointer(at point: NSPoint)`
-- CompletingTextView.onPointerChange — `var onPointerChange: ((EditorPointer) -> Void)?` (stored, in `CompletingTextView.swift`)
-- FormattingTextView.pointer — `func pointer(at point: NSPoint) -> EditorPointer`
-- FormattingTextView.trackPointer — `func trackPointer(at point: NSPoint)`
-- FormattingTextView.onPointerChange — `var onPointerChange: ((EditorPointer) -> Void)?` (stored, in `FormattingTextView.swift`)
-- NoteTextView.onPointerChange — `var onPointerChange: (EditorPointer) -> Void = { _ in }`
-- CardTextView.onPointerChange — `var onPointerChange: (EditorPointer) -> Void = { _ in }`
 - SpacingToken.paragraph, ProseTypography.paragraphSpacing, ProseTypography.headingColor, ProseParagraphSpacing.paragraphRanges — as session 2 ships them (relied on)
 Red: yes
-
-**R-09.** Neutral bodies: `pointer(at:)` returns `.text`, and `trackPointer` does nothing.
-Every new property is defaulted, because about twenty tests build `NoteTextView(`.
-
-`EditorPointerTests.swift` (new, in-process: an offscreen window, a `CompletingTextView` and a
-`FormattingTextView`, each holding one `.editorLink` run, laid out with `updateTrackingAreas()`
-called):
-
-- `pointer(at:)` is `.link` at the run's midpoint and `.text` over plain text.
-- It is `.link` over a Cmd+clickable `#client-acme` and `>2026-10-14` too, which session 2 made
-  `.editorLink` runs.
-- `trackPointer` called over the link, then over text twice, calls back exactly `[.link, .text]`:
-  once per change, never repeated.
-- `EditorPointer.link.style == .link`, and `.text.style == .horizontalText`.
-
-The cursor actually drawn on screen cannot be asserted in-process. It is checked by hand in
-Task 8.
 
 **R-08, only where G1's answers differ from what session 2 shipped.** Session 2 ships 8 pt,
 spacing after heading lines, blank lines not spaced, and H6 regular in `textSecondary`.
@@ -267,45 +245,13 @@ spacing after heading lines, blank lines not spaced, and H6 regular in `textSeco
 
 Each changed pin names G1 in its comment. If G1 confirms everything, this half writes nothing.
 
-### Task 4 — Coder: the pointer through SwiftUI, and the G1 values (R-08, R-09)
+### Task 4 — Coder: the G1 values (R-08)
 Owner: coder
-Files: Sources/Features/Editor/EditorPointer.swift, Sources/Features/Editor/CompletingTextView.swift, Sources/Features/Editor/CompletingTextView+CursorRects.swift, Sources/Features/Workspace/FormattingTextView.swift, Sources/Features/Workspace/FormattingTextView+CursorRects.swift, Sources/Features/Editor/NoteTextView.swift, Sources/Features/Editor/NoteTextView+Update.swift, Sources/Features/Editor/EditorColumn+Text.swift, Sources/Features/Today/TodayView.swift, Sources/Features/Diary/DiaryView.swift, Sources/Features/Workspace/CardTextView.swift, Sources/Features/Workspace/StickyTextCard.swift, Sources/Features/Editor/MarkdownAttributedText.swift, Sources/Features/Workspace/CardTextAttributes.swift, Resources/Themes/pergamenum-light.json, Resources/Themes/pergamenum-dark.json, Sources/DesignSystem/Theme.swift, Sources/Features/Editor/ProseParagraphSpacing.swift, Sources/DesignSystem/ProseTypography.swift
-Tests: EditorPointerTests.swift, DesignSystemTests.swift, ProseParagraphSpacingTests.swift, ProseTypographyTests.swift
+Files: Resources/Themes/pergamenum-light.json, Resources/Themes/pergamenum-dark.json, Sources/DesignSystem/Theme.swift, Sources/Features/Editor/ProseParagraphSpacing.swift, Sources/DesignSystem/ProseTypography.swift
+Tests: DesignSystemTests.swift, ProseParagraphSpacingTests.swift, ProseTypographyTests.swift
 Signatures:
-- EditorPointer.style — `var style: PointerStyle`
+- (none: G1's answers change token values and function bodies only)
 Red: no
-
-**Probe first, before anything else is written** (`PG-219`):
-
-1. On a Debug build, wrap the Note editor's `NoteTextView` in `EditorColumn+Text` in an
-   unconditional `.pointerStyle(.link)`.
-2. Hover the text.
-3. If the pointing hand shows, remove the probe and go on.
-4. If it does not, try the modifier on a `Color.clear` overlay with `allowsHitTesting(false)`.
-5. If neither shows, stop. R-09 stays red and gate G3 is raised (an ADR for the
-   `.onContinuousHover` restructure the ledger entry describes). Do not improvise it.
-
-Record the route and the macOS build in the PR body.
-
-**R-09.**
-
-- **`pointer(at:)`** answers `.link` when a rect of the existing `linkTrackingAreas` contains the
-  point. It reuses the geometry hover and clicks already share, with no second scan.
-- **`trackPointer(at:)`** keeps the last answer and calls `onPointerChange` only on a change.
-  `cursorUpdate(with:)`, `mouseEntered` and `mouseExited` call it with the event's location in
-  view space.
-- **Both `cursorUpdate` overrides** lose `NSCursor.pointingHand.set()` and keep `super`. Shorten
-  the two files' header comments to what is now true, citing `PG-219` and this plan.
-- **The hosts** each hold `@State var pointer: EditorPointer = .text`, pass
-  `onPointerChange: { pointer = $0 }`, and apply `.pointerStyle(pointer.style)` to the text view.
-  There are three:
-  - the Note editor (`EditorColumn+Text`);
-  - the Today pane's daily note (`TodayView`);
-  - the Diario (`DiaryView`).
-- **A Workspace card** does the same in `StickyTextCard`, while it is being edited only. A card
-  that is not being edited is dragged, not typed into.
-- **The `.cursor` attribute** goes from `MarkdownAttributedText.clickable` (`:220`) and
-  `CardTextAttributes` (`:165`, `:176`): it never reached the screen.
 
 **R-08.** Apply G1's answers, only where they differ from what session 2 shipped:
 
@@ -454,7 +400,6 @@ style.
 - **ADR-0088.** Flip it to `accepted`, naming the PR, its merge hash from
   `git log --first-parent main` and the date (`docs/adr/README.md` rule 2).
 - **The ledger.**
-  - `PG-219`/#445 is closed by this PR.
   - `PG-384`/#886 closes with it, if gate G6 keeps #886 open until the delta merges.
   - Use the usual `chore(tasks)` sync, not a hand edit inside the feature PR.
 
@@ -479,10 +424,6 @@ Re-run each one after session 2 lands and on the branch, then list anything new.
 - **The capture panel refuses a taken title before writing.** `CaptureTests.swift:172` pins the
   connector's wording and stays unmodified. No other test sends a taken `.note` through
   `capture(into:)`.
-- **The pointer.** `rg -n 'NSCursor.pointingHand|\.cursor\]|\.cursor:' Sources` must find nothing
-  after Task 4. On the base it finds `CompletingTextView+CursorRects.swift:62`,
-  `FormattingTextView+CursorRects.swift:43`, `MarkdownAttributedText.swift:220` and
-  `CardTextAttributes.swift:165,176`.
 - **`NewCanvasItemSheet` no longer closes on a created note.** `NewCanvasItemSheet(` has one call
   site (`WorkspaceView+Creation.swift:50`). N4 later replaces its note kind and keeps the
   confirmation.
@@ -499,8 +440,6 @@ Re-run each one after session 2 lands and on the branch, then list anything new.
 
 **By hand, on this checkout's Debug build** (found by `WorkspacePath`, CLAUDE.md):
 
-- the I-beam over editor and editing-card text;
-- the pointing hand over a wikilink, a URL, a `#tag` and a `>date` (R-09);
 - the caret in the editor after «Nota per questo evento» (R-04);
 - «Documento» showing its confirmation, with «Apri» landing in the Note pane with the caret
   (R-05);
@@ -526,9 +465,6 @@ Re-run each one after session 2 lands and on the branch, then list anything new.
     covered list.
   - Recommendation: keep ADR-0088. One cutting loop is ADR-0045 §D5's own rule, and the
     taken-title edge case cannot be met without the caption.
-- **G3, the PG-219 probe fails (HITL).** R-09 stays red. The PR either ships without it (#445
-  stays open) or waits for an ADR on the `.onContinuousHover` restructure. Nothing else here
-  depends on R-09.
 - **G4, readings of #897's chain to confirm.** Neither is planned unless Stefano asks:
   - aliases offered in the note editor only, not in Workspace cards (our R-03);
   - `!date` clickable as well as `>date` (beyond our R-07's Decision).
@@ -542,9 +478,10 @@ Re-run each one after session 2 lands and on the branch, then list anything new.
     the sheet's note kind (R-05 here).
   - It cites the inbox setting as «ADR-0080 §D6». In #897's ADR-0080 that is §D5 (§D6 is where
     it is edited); N4's citation needs that correction.
-  - N3 (`docs/plans/note-workflow-n3.md`) assumes PG-219's pointer from N1: R-09 here.
+  - N3 (`docs/plans/note-workflow-n3.md`) assumes PG-219's pointer from N1: R-09, now delivered
+    by `docs/plans/pg-219-pointer-feedback.md` (ADR-0090).
 - **Merge friction.**
-  - Session 2 edits most files Tasks 3 to 6 touch. The CursorRects files are this delta's alone.
+  - Session 2 edits most files Tasks 3 to 6 touch.
   - `CommandActions+Reveal.swift` is new so as not to edit session 2's `CommandActions+Open.swift`
     beyond one call.
 - **Protected surfaces.**
