@@ -189,9 +189,8 @@ a pane switch, and on a window close, which includes the red button on the last 
 also records nothing (Context fact 1). This chain corrects the misleading comment at
 `WorkspaceView.swift:97-100`.
 
-The residual, a conflicted board lost on a pane switch or a window close, is recorded as a P2
-ledger entry to be filed at ship time through `/project-tasks`; replace this sentence with the
-entry's id once it exists. Its remedy is to lift `WorkspaceController` to the vault's lifetime,
+The residual, a conflicted board lost on a pane switch or a window close, is recorded as the P2
+ledger entry `PG-392` (issue #918). Its remedy is to lift `WorkspaceController` to the vault's lifetime,
 in its own ADR. It is not fixed here, for two reasons:
 
 - it changes the board's whole lifecycle: ADR-0066's reset door, `attach`/`detach`, and
@@ -289,10 +288,9 @@ screen. For the diary it holds on every termination, the red button included.
   `QuitReview.firstReveal(board:notes:diary:schede:namingTab:)`; `copy(for:)` builds its list and
   its sentences in the same sequence, and a test pins that the question's first line is the item a
   cancel reveals.
-- **D7's ledger entry: to be filed at ship time (G2 open).** The residual (a conflicted board lost
-  on a pane switch or a window close) is recorded as a P2 entry filed through `/project-tasks` at
-  ship time, its remedy being to lift `WorkspaceController` to the vault's lifetime in its own ADR.
-  D7 and this line are to be replaced with the entry's id once it exists. `WorkspaceView.swift`'s
+- **D7's ledger entry: `PG-392` (issue #918, G2 open).** The residual (a conflicted board lost
+  on a pane switch or a window close) is recorded as that P2 entry, its remedy being to lift
+  `WorkspaceController` to the vault's lifetime in its own ADR. `WorkspaceView.swift`'s
   corrected comment cites ADR-0089 §D7 only, so no id needs to reach the code.
 - **D3, how the words are built.** `Board` and `DiaryDay` each carry three internal helpers beside
   `leftProblem`: `singularPhrase` («alla board «B»», «al diario del giorno D»), `listLine` («la board
