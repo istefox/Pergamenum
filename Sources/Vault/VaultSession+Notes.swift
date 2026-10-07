@@ -12,11 +12,12 @@ extension VaultSession {
 
         var description: String {
             switch self {
-            // Each violation described on its own rather than the array interpolated:
-            // interpolating a collection describes its elements the way a debugger
-            // would, module name and all, and this sentence is read by a person.
+            // Worded as `ConformanceText` words a note title, the one wording
+            // `FileOperationError.invalidTitle` uses too, never a violation interpolated: that
+            // reads as the enum case name, and this sentence reaches a person through every
+            // connector that prints the error.
             case .invalidTitle(let violations):
-                "titolo non conforme: " + violations.map { "\($0)" }.joined(separator: ", ")
+                ConformanceText.lines(NoteViolations(name: violations)).joined(separator: "; ")
             case .alreadyExists(let path): "esiste già: \(path)"
             }
         }
@@ -103,11 +104,12 @@ extension VaultSession {
         _ = try store.url(for: relativePath)
         guard !exists(relativePath) else { throw CreationError.alreadyExists(relativePath) }
 
-        try await writeFile(
-            String(decoding: try CanvasDocument.empty.encoded(), as: UTF8.self),
-            to: relativePath,
-            expectingAbsent: true
-        )
+        // Decoded as `NoteFileOperations`/`FolderFileOperations` decode an encoded board:
+        // bytes that are not UTF-8 fail the creation, never write an empty or mangled file.
+        guard let text = String(bytes: try CanvasDocument.empty.encoded(), encoding: .utf8) else {
+            throw CocoaError(.fileWriteInapplicableStringEncoding)
+        }
+        try await writeFile(text, to: relativePath, expectingAbsent: true)
         return relativePath
     }
 

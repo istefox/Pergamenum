@@ -90,6 +90,51 @@ import Testing
         )
     }
 
+    // PG-396: `CreationError.invalidTitle` reaches a person through every connector that prints
+    // the error, and used to word each violation with `"\($0)"`, which reads as the enum case
+    // name (`containsForbiddenCharacter("/")`). It now goes through the one wording.
+
+    @Test func aCreationErrorsTitleSentenceIsConformanceTextsWording() {
+        let error = VaultSession.CreationError.invalidTitle([.containsForbiddenCharacter("/")])
+        #expect(error.description == "Carattere vietato nel titolo: /")
+        #expect(!error.description.contains("containsForbiddenCharacter"))
+        #expect(!error.description.contains("Pergamenum."))
+    }
+
+    @Test func aCreationErrorJoinsSeveralTitleViolationsOnTheSharedSeparator() {
+        let violations: [NoteName.Violation] = [.empty, .hasLeadingOrTrailingWhitespace, .tooLong(count: 200)]
+        let error = VaultSession.CreationError.invalidTitle(violations)
+        #expect(error.description == [
+            "Il titolo è vuoto",
+            "Spazi all'inizio o alla fine del titolo",
+            "Titolo di 200 caratteri, massimo \(NoteName.maximumLength)",
+        ].joined(separator: "; "))
+        #expect(!error.description.contains("hasLeadingOrTrailingWhitespace"))
+        #expect(!error.description.contains("tooLong"))
+    }
+
+    /// The two errors are the same sentence for the same violations: that is what "one wording"
+    /// means, and what a third copy drifting would break.
+    @Test func aCreationErrorAndAFileOperationErrorWordATitleAlike() {
+        let violations: [NoteName.Violation] = [
+            .containsForbiddenCharacter(":"), .hasVersionSuffix("v2"), .malformedDailyName("2026-1"),
+        ]
+        #expect(
+            VaultSession.CreationError.invalidTitle(violations).description
+                == FileOperationError.invalidTitle(violations).description
+        )
+        #expect(
+            VaultSession.CreationError.invalidTitle(violations).description
+                == ConformanceText.creationFailure(VaultSession.CreationError.invalidTitle(violations))
+        )
+    }
+
+    /// (coverage) The sibling case of the same `description`, which no test read: the
+    /// connectors print it as is.
+    @Test func aCreationErrorNamesTheTakenPath() {
+        #expect(VaultSession.CreationError.alreadyExists("a/b.md").description == "esiste già: a/b.md")
+    }
+
     @Test func fallsBackToTheErrorsOwnTextForAnyOtherError() {
         struct Other: Error, CustomStringConvertible { var description: String { "boom" } }
         #expect(ConformanceText.creationFailure(Other()) == "boom")

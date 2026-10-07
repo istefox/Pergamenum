@@ -432,12 +432,14 @@ private func limitSentence(_ attempt: () throws -> Any?) -> ConnectorError? {
         try await VaultAPI.createNote(session, title: "questo/non va", folder: nil, topic: nil, date: nil)
     }
     // And the sentence is one a person can read: interpolating the array of violations
-    // would put the module name in it.
+    // would put the module name in it, and interpolating one violation its case name (PG-396).
+    // The wording is `ConformanceText`'s, the one `FileOperationError.invalidTitle` uses too.
     do {
         _ = try await VaultAPI.createNote(session, title: "questo/non va", folder: nil, topic: nil, date: nil)
     } catch let refusal as ConnectorError {
         #expect(!refusal.description.contains("Pergamenum.NoteName"))
-        #expect(refusal.description.contains("containsForbiddenCharacter"))
+        #expect(!refusal.description.contains("containsForbiddenCharacter"))
+        #expect(refusal.description.contains("Carattere vietato nel titolo: /"))
     }
 }
 
