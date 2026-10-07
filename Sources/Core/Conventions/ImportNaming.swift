@@ -167,7 +167,8 @@ enum ImportNaming {
     /// (`Sources/Core/Pratiche/PraticaNaming.swift`), which used to keep its own
     /// identical copy - an edit here now turns both `Tests/ConventionsTests.swift` and
     /// `Tests/PraticaNamingTests.swift` red. Its third caller is `truncatedAtSpace` below,
-    /// which cuts `CaptureTitle`'s prose on `" "` instead of `"-"` (ADR-0088 §D1).
+    /// which cuts `CaptureTitle`'s prose and `ContenitoreNaming`'s scheda name on `" "`
+    /// instead of `"-"` (ADR-0088 §D1).
     static func truncatedAtWordBoundary(
         _ slug: String, toFit budget: Int, separator: Character = "-"
     ) -> String {

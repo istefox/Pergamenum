@@ -61,7 +61,14 @@ extension WorkspaceView {
                 return confirmation
             },
             onOpen: { path in
-                commandActions?.showInNotePane(path)
+                if let commandActions {
+                    commandActions.showInNotePane(path)
+                } else {
+                    // A host that forgot to inject `CommandActions` would make «Apri» do nothing in
+                    // silence: loud in Debug, and a problem in the list everywhere.
+                    assertionFailure("WorkspaceView hosted without CommandActions: «Apri» cannot open \(path)")
+                    vault.recordProblem("Impossibile aprire \(path) nel pannello Note")
+                }
                 newItemDraft = nil
             }
         )

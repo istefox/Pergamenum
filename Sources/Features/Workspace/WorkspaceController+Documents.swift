@@ -1,8 +1,9 @@
 import CoreGraphics
 import Foundation
 
-/// The Workspace «Documento» sheet's creation: the note and its card, and no tab (n1-seams
-/// R-10, R-18).
+/// The Workspace new-item sheet's two creation doors: the «Documento» kind, the note and its
+/// card with no tab (n1-seams R-10, R-18), and the folder kind, the folder and its card with the
+/// failure worded for the sheet (note-workflow R-11).
 extension WorkspaceController {
     /// What «Crea» in the «Documento» sheet came to: the note's path, or the sentence the
     /// sheet shows in place, so the person can change the title and try again.
@@ -40,8 +41,10 @@ extension WorkspaceController {
 
     /// The folder kind of the sheet: makes the folder and its card, and answers the sentence the
     /// sheet shows when it could not, nil when it was made (note-workflow R-11). The sentence is
-    /// recorded in the problem list too, in today's wording, and the sheet stays open on it, the
-    /// note kind's route.
+    /// recorded in the problem list too, and the sheet stays open on it, the note kind's route.
+    /// Every error keeps its own text: an invalid name (`FileOperationError.invalidTitle`)
+    /// describes itself as the note kind words it (`ConformanceText`), and the others
+    /// (`CanvasStore.StoreError`, `VaultBoundary.Violation`, a file-system failure) as they do.
     func createFolderFromSheet(named name: String, at point: CGPoint) -> String? {
         do {
             _ = try createFolder(named: name, at: point)

@@ -264,6 +264,24 @@ private func tabCount(_ vault: VaultController) -> Int { vault.columns.flatMap(\
 }
 
 @MainActor
+@Test func anInvalidFolderNameIsWordedForAPersonNotDumpedAsAnEnum() async throws {
+    let root = try TemporaryVault()
+    let f = try await fixture(root)
+    defer { f.workspace.detach(); f.vault.close() }
+
+    let sentence = f.workspace.createFolderFromSheet(named: "Atti/Sotto", at: .zero)
+
+    let shown = try #require(sentence) // (note-workflow R-11)
+    #expect(!shown.contains("Violation"))
+    #expect(!shown.contains("Pergamenum."))
+    #expect(!shown.contains("["))
+    let violations = FolderFileOperations.validate("Atti/Sotto")
+    #expect(!violations.isEmpty)
+    #expect(shown == ConformanceText.lines(NoteViolations(name: violations)).joined(separator: "; "))
+    #expect(f.vault.problems.contains(shown)) // (note-workflow R-11)
+}
+
+@MainActor
 @Test func aValidFolderNameAnswersNilAndPlacesOneFolderNode() async throws {
     let root = try TemporaryVault()
     let f = try await fixture(root)

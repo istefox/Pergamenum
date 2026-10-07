@@ -267,7 +267,7 @@ Owner: tester
 Files: Sources/App/VaultController.swift, Sources/App/VaultController+Tabs.swift, Sources/App/CommandActions+Reveal.swift, Sources/Features/Workspace/BoardSheets.swift, Sources/Features/Workspace/WorkspaceController+Documents.swift, Tests/NoteRevealTests.swift, Tests/WorkspaceDocumentCreationTests.swift, Tests/QuickOpenCreationTests.swift, Tests/VaultSwitchTests.swift
 Tests: NoteRevealTests.swift, WorkspaceDocumentCreationTests.swift, QuickOpenCreationTests.swift, VaultSwitchTests.swift, CommandActionNavigationTests.swift, CommandActionTests.swift, WindowPlaceTests.swift
 Signatures:
-- VaultController.editorFocusRequest — `private(set) var editorFocusRequest = 0` (stored, in `VaultController.swift`)
+- VaultController.editorFocusRequest — `var editorFocusRequest = 0` (stored, in `VaultController.swift`) (plain `var`: its setter is written from `VaultController+Tabs.swift`)
 - VaultController.requestEditorFocus — `func requestEditorFocus()`
 - VaultController.takeEditorFocusRequest — `func takeEditorFocusRequest(forColumn column: Int) -> Bool`
 - CommandActions.showInNotePane — `func showInNotePane(_ path: String)` (new file `CommandActions+Reveal.swift`, beside session 2's `CommandActions+Open.swift`)
@@ -497,3 +497,36 @@ TEST-CMD CANDIDATE: xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergame
 TEST-CMD MODE: brownfield
 
 CHECK-CMD CANDIDATE: ! swiftlint lint --quiet 2>&1 | grep -E "/Sources/.+: error: "
+
+## Build result (2026-10-06)
+
+BUILD · DONE WITH WARNINGS
+
+- Files: 14 tracked files changed plus 1 untracked test (Tests/InboxFolderFieldBindingTests.swift); pointer files are #920's, merged in at 02387306
+- Tests: unit suite green, 5502 passed, 5 known issues (HostedViewPrototypeTests); `perg` and `pergamenum-mcp` build; mcp-smoke and check-adr-references clean apart from ADR-0088 `proposed`
+- Review: sonnet, safe; opus, safe (escalated, 25 files > 20)
+- Coverage: R-12 stale waiver (the SPEC's `(no-test: …)` clause for R-12 is now covered by a test; delete the clause)
+- Deferred: 0; Dropped: 4 (3 post-sweep, listed below, plus the pre-sweep unlocated untracked-file note)
+- Dispatch: Round 0 (red): tester — Task 1, Task 3, Task 5; Round 1: coder, debugger-free; Round 2: coder; Round 1 (sweep): coder — C1-C5, WorkspaceView.swift:22, WorkspaceController+Documents.swift:4
+
+WARN: tree realigned with #920 mid-build (merge 02387306); the SwiftUI pointer half (plan Tasks 3/4) is dropped, R-09 is owned by #920
+WARN: hand checks not run: R-02, R-04, R-05, R-10, R-11 (Debug build, by hand)
+WARN: departures to name in the PR body: plan Task 6 «today's wording» (invalid-name sentence now through ConformanceText), `editorFocusRequest` plain `var` instead of `private(set)`, R-10 pins added (Tests/InboxFolderFieldBindingTests.swift is untracked, `git add` it at /ship)
+WARN: root SPEC.md is the note-workflow SPEC over main's #920 PG-219 SPEC, which has no copy under docs/specs/ on main: a /ship decision (archive it as docs/specs/pg-219-pointer-feedback.spec.md, or state the drop)
+WARN: branch behind origin/main (81c11962, PR #921) which edits CLAUDE.md, docs/20260811_Pergamenum_SpecApp.md and docs/adr/0090: merge origin/main per-file before pushing
+WARN: warning only: ADR-0088 stays `proposed` until the merge, then flips to `accepted`
+INFO: review escalated, size: 25 changed files, threshold 20
+INFO: follow-up outside the diff: Sources/Vault/VaultSession+Notes.swift:19, CreationError.invalidTitle still prints the enum case name to the connectors
+
+```text
+FIX swept	**MINOR** [style] Sources/Features/Capture/CapturePanelView.swift:28 — caption comment restated
+FIX swept	**MINOR** [style] Sources/Core/Contenitore/ContenitoreNaming.swift:22 — calls ImportNaming.truncatedAtSpace, third loop removed
+FIX swept	**MINOR** [other] docs/adr/0048-externalized-attachments-resolved-from-sibling-directory.md:3 — status hash 9ebf69ed (#304)
+FIX swept	**MINOR** [other] docs/adr/0064-external-deletion-reaches-the-tabs-and-the-diary.md:3 — status hash 638f5e41 (#530)
+FIX swept	**MINOR** [other] Sources/Core/Vault/FileOperationError.swift:14 — invalidTitle worded through ConformanceText
+FIX swept	**MINOR** [other] Sources/Features/Workspace/WorkspaceView.swift:22 — «Apri» asserts in Debug and records a problem when CommandActions is missing
+FIX swept	**NIT** Sources/Features/Workspace/WorkspaceController+Documents.swift:4 — header names both doors
+DROP post-sweep	**MINOR** [other] SPEC.md:1 — the pointer SPEC has no copy under docs/specs/; a /ship decision, not a coder change (reviewer: opus)
+DROP post-sweep	**MINOR** [other] CLAUDE.md:607 — branch behind origin/main (#921); a merge commit, taken at /ship (reviewer: opus)
+DROP post-sweep	**MINOR** [plan-deviation] Tests/InboxFolderFieldBindingTests.swift:1 — untracked, `git add` at /ship and name R-10 in the PR body (reviewer: opus)
+```

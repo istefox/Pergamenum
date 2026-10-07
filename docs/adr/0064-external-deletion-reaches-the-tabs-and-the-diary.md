@@ -1,6 +1,6 @@
 # ADR-0064: An external deletion reaches the editor tabs and the Diario pane, not just the index
 
-- Status: **accepted**. Merged to `main` via PR #530 (`c2cf19b`, 2026-09-25). **§D6 confirmed by
+- Status: **accepted**. Merged to `main` via PR #530 (`638f5e41`, 2026-09-25). **§D6 confirmed by
   Stefano at gate G1 (2026-09-25)**: the absence-marker fix on `VaultSession.moveFile`, not
   Alternative 4b.
 - Date: 2026-09-25. Written **before** the implementation, against `5531f72` (tree clean apart
