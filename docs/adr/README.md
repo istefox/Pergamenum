@@ -25,6 +25,12 @@ trustworthy. Each one answers a defect found on 2026-09-26 (issue #581).
 - `proposed` is only for an ADR whose implementation is not on `main` yet. The merge hash exists
   only after the merge, so the flip to `accepted` is the first docs change after it, not
   something left for a later chain to notice.
+- `planned` is a `proposed` record that reaches `main` ahead of its implementation on purpose,
+  committed with the plan that will build it (`docs/plans/`), so the plan and the decision it
+  answers to travel together and the number is held. It flips to `accepted` exactly as `proposed`
+  does, with the merge of the PR that implements it. A record nobody means to land before its code
+  stays `proposed`. Introduced 2026-10-06, when PR #904 landed ADR-0081 to ADR-0088 with the
+  note-workflow plans.
 
 ## 3. A citation says where the ADR lives
 
@@ -60,8 +66,8 @@ runs both on every pull request and every push to `main`, as an advisory check, 
 one. The check is not in the pre-push hook, because a comment citation should not stop a push.
 
 It checks less of rule 2 than the rule says: a status line in the head with one of the words
-`accepted`, `proposed`, `superseded`, `deprecated` or `rejected`; no ADR on the base that reads
-`proposed`; and, as a warning only, a commit hash in a status line that is not on the base's
+`accepted`, `planned`, `proposed`, `superseded`, `deprecated` or `rejected`; no ADR on the base
+that reads `proposed` (`planned` is the one way to be on the base before the code); and, as a warning only, a commit hash in a status line that is not on the base's
 first-parent line. The PR, hash and date that `accepted` should name are not checked. A record that
 reaches `main` ahead of its implementation is reported while it reads `proposed` there, by the
 check on `main` itself (a push, or a local run with HEAD at the base): a pull request is judged only

@@ -1,6 +1,6 @@
 # ADR-0088: One word-boundary truncator, and a capture title the panel always shows
 
-- Status: **proposed**. Lands with the N1 delta PR, Tasks 1 and 2 of
+- Status: **planned**. Lands with the N1 delta PR, Tasks 1 and 2 of
   `docs/plans/note-workflow-n1.md`. Flip to `accepted` as the first docs change after that PR
   merges, naming the PR, its merge hash as `git log --first-parent main` shows it, and the date
   (`docs/adr/README.md` rule 2).

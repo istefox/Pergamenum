@@ -1,6 +1,6 @@
 # ADR-0082: The styler classifies through the shared parsers
 
-- Status: **proposed**. Written before the implementation, for `PG-385`/#887 (milestone N2 of the
+- Status: **planned**. Written before the implementation, for `PG-385`/#887 (milestone N2 of the
   note-workflow chain); closes `PG-347`/#762. Flips to `accepted` with the merge of the N2 code PR
   (`docs/adr/README.md` rule 2). §D9's ceiling table is filled from measurement during the build,
   before the merge, at a human gate; until then it reads "to be measured" on purpose.
