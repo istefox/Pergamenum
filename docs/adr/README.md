@@ -67,9 +67,20 @@ reaches `main` ahead of its implementation is reported while it reads `proposed`
 check on `main` itself (a push, or a local run with HEAD at the base): a pull request is judged only
 on the ADRs it touches, added, edited, renamed or removed since its merge-base, so a record it never
 opened does not turn it red (PG-340). The base's ADRs are matched by number, the identity rule 1
-counts, so an ADR whose slug the branch renamed is still checked. A number rule 1 reports, in the tree or against the base, is not checked for
-`proposed` until the collision is resolved: the collision is already a finding, and a file that
-never landed must not be told to flip to `accepted`.
+counts, so an ADR whose slug the branch renamed is still checked. A number rule 1 reports, in the
+tree or against the base, is not checked for `proposed` until the collision is resolved: the
+collision is already a finding, and a file that never landed must not be told to flip to
+`accepted`.
+
+`scripts/adr-index.py` keeps `CLAUDE.md`'s `## ADR index` in step with this directory (PG-397). With
+no option it prints the index, one `- ADR-NNNN — <title>` line per `NNNN-<slug>.md` in file name
+order, the title read from the file's first line in either heading shape, `# ADR-NNNN: <title>` or
+`# ADR-NNNN — <title>`. `--check` compares those lines with the bullets under the heading and names
+each stale or missing line and the first out-of-order one. Exit 0 is in step, 1 out of step, 2 an
+index it could not build or read: a first line in neither shape, a heading naming another number,
+no such section.
+`--self-test` runs its own scenarios in throwaway directories. It reads the working tree only, and
+no workflow or hook runs it.
 
 ## Renumbering register
 
@@ -90,7 +101,8 @@ together pass 150k characters, so what goes where is a decision of its own (2026
 `CLAUDE.md` stood at 129k and the three ADR summary sections were 91k of it).
 
 - `CLAUDE.md`: what every session needs, plus `## ADR index`, one line per ADR file built from the
-  file's own `# ADR-NNNN` heading. **A new ADR needs no line added there.**
+  file's own `# ADR-NNNN` heading. **A new ADR needs no line written by hand there:** paste what
+  `scripts/adr-index.py` prints, and `scripts/adr-index.py --check` says when the index is behind.
 - `docs/adr/INDEX.md`: the long-form ADR summaries that used to sit in `CLAUDE.md`, moved verbatim.
   A plan or spec that says to add a line to "CLAUDE.md's Chain decision index" means this file, at
   the end of its "Chain decision index" section, and only when the ADR gets a long-form summary.
