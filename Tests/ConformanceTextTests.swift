@@ -120,6 +120,12 @@ import Testing
         #expect(description == "Carattere vietato nel titolo: /; Suffisso di versione nel titolo: v2")
     }
 
+    /// The sibling case of the same `description`, which no test read: the connectors print it
+    /// as is.
+    @Test func aCreationErrorNamesTheTakenPath() {
+        #expect(VaultSession.CreationError.alreadyExists("a/b.md").description == "esiste già: a/b.md")
+    }
+
     @Test func fallsBackToTheErrorsOwnTextForAnyOtherError() {
         struct Other: Error, CustomStringConvertible { var description: String { "boom" } }
         #expect(ConformanceText.creationFailure(Other()) == "boom")
