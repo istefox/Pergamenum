@@ -1,4 +1,4 @@
-**Requirement set:** `SPEC.md`
+**Requirement set:** `docs/specs-pending/pg-385-n2-page.SPEC.md`
 
 # PG-385 — N2 the page, part one: markers in the gutter, a measured keystroke, one grammar
 
