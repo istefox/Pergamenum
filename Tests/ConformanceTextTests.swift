@@ -90,6 +90,36 @@ import Testing
         )
     }
 
+    /// PG-396: `VaultSession.CreationError.invalidTitle` once worded each violation with
+    /// `"\($0)"`, so a connector reader saw the enum case name. It now goes through the one
+    /// wording, the same as `FileOperationError.invalidTitle` (PR #924) and `creationFailure`.
+    @Test func aCreationErrorWordsATitleAsTheOtherTitleErrorsDo() {
+        let cases: [[NoteName.Violation]] = [
+            [.empty],
+            [.containsForbiddenCharacter("/")],
+            [.tooLong(count: 61)],
+            [.hasVersionSuffix("v2")],
+            [.hasLeadingOrTrailingWhitespace],
+            [.malformedDailyName("2026-08-11")],
+            [.containsForbiddenCharacter("/"), .hasVersionSuffix("v2"), .tooLong(count: 61)],
+        ]
+        for violations in cases {
+            let creation = VaultSession.CreationError.invalidTitle(violations).description
+            #expect(creation == FileOperationError.invalidTitle(violations).description)
+            #expect(creation == ConformanceText.lines(NoteViolations(name: violations)).joined(separator: "; "))
+            for name in ["containsForbiddenCharacter", "tooLong", "hasVersionSuffix",
+                         "hasLeadingOrTrailingWhitespace", "malformedDailyName", "Violation", "Pergamenum."] {
+                #expect(!creation.contains(name), "«\(creation)» names «\(name)»")
+            }
+        }
+    }
+
+    @Test func aCreationErrorJoinsSeveralTitleViolationsWithSemicolons() {
+        let description = VaultSession.CreationError
+            .invalidTitle([.containsForbiddenCharacter("/"), .hasVersionSuffix("v2")]).description
+        #expect(description == "Carattere vietato nel titolo: /; Suffisso di versione nel titolo: v2")
+    }
+
     @Test func fallsBackToTheErrorsOwnTextForAnyOtherError() {
         struct Other: Error, CustomStringConvertible { var description: String { "boom" } }
         #expect(ConformanceText.creationFailure(Other()) == "boom")
