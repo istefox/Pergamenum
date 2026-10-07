@@ -209,7 +209,7 @@ screen. For the diary it holds on every termination, the red button included.
 - ADR-0073 §D7's rule for notes is unchanged.
 - The vault switch and «Chiudi la colonna» are unchanged.
 - No on-disk format, schema, frontmatter key or protected interface changes.
-- No GUI test is added.
+- No GUI test is added. (Amended 2026-10-07: one is, see the last implementation note.)
 - `detach()` is untouched.
 - ADR-0054 §D5, ADR-0057 §D6 and ADR-0060 §D2 apply exactly as written.
 
@@ -317,5 +317,18 @@ screen. For the diary it holds on every termination, the red button included.
   line reads «ha un conflitto … non risolto» for edits that are in fact being dropped. Revealing
   `.board` first whenever the board is still conflicted would prevent the loss but changes the
   Uncovered reveal rule of D4/D6, so it is not done.
+- **A GUI test, added 2026-10-07 (PG-393 M1/M2).** `QuitReviewUITests.testQuittingWithAConflictedDiaryDayAsksAndWritesNothing`
+  opens the Diario, types, rewrites the day file from outside until `diary-conflict-banner` shows,
+  then quits twice: «Annulla» keeps the app, the banner and the file, «Non salvare» exits and
+  writes nothing. The question's wording, order and count, the last-check cancels and the Problemi
+  lines are pinned in-process (`QuitReviewConflictTests`, `QuitConflictLastCheckTests`,
+  `QuitConflictScopeTests`); what only a real window shows is AppKit's terminate reaching the
+  review with a conflicted item and nothing else dirty, the same gap ADR-0073 §D9 justifies for
+  notes. The day stands in for the board, which takes the same `QuitReview.diary`/`.board` path but
+  needs a drag to be made dirty. The board's own Cmd+Q and M4's Contenitore cancel stay by hand: the
+  harness passes `-disableContenitore YES`, so no schede can be made dirty. The cap of seventeen is
+  a decision taken by hand on 2026-09-21 and `scripts/uitests.sh` does not enforce it; the suite
+  already stood at 29 tests before this one (30 after), so this note records that the test
+  raises a count that was already above the cap, and does not claim the cap holds.
 - No other departure from D1 to D8. Nothing in `Sources/Core` or `sharedSources`; `QuitCoordinator`
   and `QuitReview` stay under SwiftLint's 400-line `file_length` warning.
