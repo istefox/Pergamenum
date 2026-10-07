@@ -1,7 +1,8 @@
 # ADR-0084: Backlinks with context, unresolved per note, mentions that link
 
-- Status: proposed. Milestone N3 of the note-workflow chain (`PG-386`, #888), SPEC R-24..R-28.
-  Not on `main`; the flip to `accepted` names the merge commit of the N3 code PR.
+- Status: planned. Milestone N3 of the note-workflow chain (`PG-386`, #888), SPEC R-24..R-28.
+  The implementation is not on `main`; the flip to `accepted` names the merge commit of the N3
+  code PR.
 - Date: 2026-10-04. Written against `48a2d912` (`origin/main` at the time). Every line number
   below was read there; N3 is built after N1 (ADR-0080) and N2 (ADR-0081, ADR-0082) merge, so the
   symbols named are the contract, not the lines.

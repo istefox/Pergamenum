@@ -12,10 +12,11 @@ the rules by hand, once, and a mechanical rule nobody runs decays.
   number the base does not hold, are not.
 - Rule 2, a status line: every ADR states its status in its head, as a
   `- Status:` bullet (bold or not) or as a `## Status` section that is the first
-  second-level heading, and the status word is one of `accepted`, `proposed`,
-  `superseded`, `deprecated`, `rejected`. An ADR the base holds, matched by
-  number, that still reads `proposed` is a finding, unless rule 1 reports that
-  number. Against a branch that adds commits to the base, only an ADR the
+  second-level heading, and the status word is one of `accepted`, `planned`,
+  `proposed`, `superseded`, `deprecated`, `rejected`. An ADR the base holds,
+  matched by number, that still reads `proposed` is a finding, unless rule 1
+  reports that number. `planned` is never one: a record written ahead of its
+  implementation may sit on the base beside its plan. Against a branch that adds commits to the base, only an ADR the
   branch touches is judged (added, edited, renamed or removed since the
   merge-base, the working tree included), so a pull request is not failed by a
   record it never opened (PG-340). With HEAD at the base itself, a push to
@@ -64,7 +65,7 @@ REGISTRY_HEADING = "## External ADR series"
 PHRASE_COLUMN = "Qualifying phrase"
 SCANNED_SUFFIXES = (".swift", ".md", ".yml", ".yaml", ".py", ".sh")
 EXCLUDED_ROOT_FILES = ("TODO.md", "SPEC.md")
-STATUS_WORDS = ("accepted", "proposed", "superseded", "deprecated", "rejected")
+STATUS_WORDS = ("accepted", "planned", "proposed", "superseded", "deprecated", "rejected")
 DEFAULT_BASE = "origin/main"
 
 PROG = "check-adr-references.py"
@@ -933,6 +934,23 @@ def _scenario_r04(lab: _Lab) -> None:
     code, out, _ = lab.cli(repo, "--base", "main")
     lab.check("R-04", "pass", code == 0,
               "proposed on the base, accepted in the working tree: exit 0")
+
+    repo = lab.repo("r04-planned-audit")
+    adr(repo, 1, "x", "- Status: **planned**. Written before the implementation.")
+    commit(lab, repo, "base")
+    code, out, _ = lab.cli(repo, "--base", "main")
+    lab.check("R-04", "pass", code == 0 and not findings(out, 2),
+              "an audit, HEAD is the base: a planned ADR the base holds is not reported, exit 0")
+
+    repo = lab.repo("r04-planned-touched")
+    relpath = adr(repo, 1, "x", "- Status: planned")
+    commit(lab, repo, "base")
+    lab.sh(repo, "checkout", "-q", "-b", "feature")
+    write(repo, relpath, "# x\n\n- Status: planned\n\n## Context\n\nEdited.\n")
+    commit(lab, repo, "branch edits 0001")
+    code, out, _ = lab.cli(repo, "--base", "main")
+    lab.check("R-04", "pass", code == 0 and not findings(out, 2),
+              "the branch edits a planned ADR the base holds: not reported, exit 0")
 
 
 # PG-290

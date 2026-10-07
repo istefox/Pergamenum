@@ -1,6 +1,6 @@
 # ADR-0081: Block markers reveal in the gutter
 
-- Status: **proposed**. Written before the implementation, for `PG-385`/#887 (milestone N2 of the
+- Status: **planned**. Written before the implementation, for `PG-385`/#887 (milestone N2 of the
   note-workflow chain). Flips to `accepted` with the merge of the N2 code PR, never with the mockup
   PR (`docs/adr/README.md` rule 2).
 - Date: 2026-10-04. Written against `48a2d912` (`origin/main` at the same commit). Every line
