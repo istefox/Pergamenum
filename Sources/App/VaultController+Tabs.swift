@@ -119,6 +119,22 @@ extension VaultController {
         closeRequest = nil
         return tab
     }
+
+    /// Asks the focused column's editor to take the keyboard (note-workflow R-04, R-05): records
+    /// the column and bumps the counter every column watches, so one that appears only after the
+    /// pane switch still answers it.
+    func requestEditorFocus() {
+        editorFocusColumn = focusedColumnIndex
+        editorFocusRequest += 1
+    }
+
+    /// The column the request names takes it, clearing it; any other column gets false and
+    /// leaves it for its owner (`takeCloseRequest(forColumn:)`'s shape).
+    func takeEditorFocusRequest(forColumn column: Int) -> Bool {
+        guard editorFocusColumn == column else { return false }
+        editorFocusColumn = nil
+        return true
+    }
 }
 
 private extension Array {

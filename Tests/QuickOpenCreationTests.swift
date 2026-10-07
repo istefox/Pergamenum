@@ -82,3 +82,30 @@ private func opened(_ vault: borrowing TemporaryVault) async throws -> VaultCont
     #expect(controller.quickSwitcherProblem == nil) // (n1-seams R-18)
     controller.close()
 }
+
+// The failure is shown where the gesture was made and kept in the problem list as well
+// (note-workflow R-11): `quickSwitcherProblem` is the inline sentence, `problems` is the list.
+@MainActor
+@Test func aFailedCreationLeavesItsSentenceInTheProblemListAsWellAsInTheSwitcher() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await opened(vault)
+
+    let created = await controller.createNoteFromQuickOpen(title: "Prova")
+
+    #expect(created == false)
+    let sentence = try #require(controller.quickSwitcherProblem)
+    #expect(controller.problems.contains(sentence)) // (note-workflow R-11)
+    controller.close()
+}
+
+@MainActor
+@Test func aSuccessfulCreationRecordsNoProblem() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await opened(vault)
+    let before = controller.problems
+
+    #expect(await controller.createNoteFromQuickOpen(title: "Nota nuova"))
+
+    #expect(controller.problems == before) // (note-workflow R-11)
+    controller.close()
+}

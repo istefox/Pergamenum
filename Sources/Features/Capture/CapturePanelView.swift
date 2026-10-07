@@ -25,8 +25,9 @@ struct CapturePanelView: View {
         VStack(alignment: .leading, spacing: theme.spacing(.s)) {
             targetRow
             field
-            // The title a «Nota nuova» will carry when its first line is not a legal name,
-            // asked of the same function the capture writes through (ADR-0080 §D3).
+            // The title a «Nota nuova» will carry, shown whenever it has text so the person sees
+            // which line becomes the title (ADR-0088 §D2), asked of the same function the
+            // capture writes through (ADR-0080 §D3).
             if let caption = controller.titleCaption() {
                 Text(caption)
                     .themedText(.caption, color: .textSecondary)

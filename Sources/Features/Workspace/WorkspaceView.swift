@@ -16,6 +16,11 @@ struct WorkspaceView: View {
     // `private` is file scope.
     @Environment(Navigation.self) var navigation
     @Environment(ThemeEngine.self) var themeEngine
+    /// «Apri» on the «Documento» sheet's confirmation goes through `showInNotePane`
+    /// (`WorkspaceView+Creation`, note-workflow R-05). Optional because it is read only there, on
+    /// a press, and a hosted test builds this view without it; a press that finds it nil fails
+    /// an assertion in Debug and records a problem, never a silent no-op.
+    @Environment(CommandActions.self) var commandActions: CommandActions?
     /// The **window's** undo manager, which is the one `NSTextView` already registers its
     /// text edits on (ADR-0026 §D8): one window, one undo history, and Cmd+Z means "undo
     /// the last thing I did here" whatever had focus. Read here and handed to

@@ -46,50 +46,52 @@ extension WorkspaceView {
         if !workspace.tool.isDragDriven { workspace.finishToolUse() }
     }
 
-    /// The sheet closes only once its creation is done, and stays open with the sentence and
-    /// the typed value when it failed (n1-seams R-18). Closed only if it is still this draft's
-    /// sheet after the write (ADR-0043 §D7).
+    /// The sheet closes once a folder or a link is made, stays open on its confirmation once a
+    /// document is (note-workflow R-05), and stays open with the sentence and the typed value
+    /// when the creation failed (n1-seams R-18, note-workflow R-11). Closed only if it is still
+    /// this draft's sheet after the write (ADR-0043 §D7). Every failure is already in the problem
+    /// list by then, recorded where it happened, so a sheet closed during the write loses nothing.
     func newItemSheet(_ draft: NewItemDraft) -> some View {
         NewCanvasItemSheet(
             kind: draft.kind,
             onCancel: { newItemDraft = nil },
             onConfirm: { value in
-                let failure = await create(draft.kind, value: value, at: draft.point)
-                if newItemDraft?.id == draft.id {
-                    if failure == nil { newItemDraft = nil }
-                    return failure
+                let confirmation = await create(draft.kind, value: value, at: draft.point)
+                if newItemDraft?.id == draft.id, confirmation == .editing { newItemDraft = nil }
+                return confirmation
+            },
+            onOpen: { path in
+                if let commandActions {
+                    commandActions.showInNotePane(path)
+                } else {
+                    // A host that forgot to inject `CommandActions` would make «Apri» do nothing in
+                    // silence: loud in Debug, and a problem in the list everywhere.
+                    assertionFailure("WorkspaceView hosted without CommandActions: «Apri» cannot open \(path)")
+                    vault.recordProblem("Impossibile aprire \(path) nel pannello Note")
                 }
-                // The sheet is no longer this draft's (closed by other means during the
-                // write): its sentence has nowhere to show, so the workspace reports it.
-                if let failure { workspace.recordProblem(failure) }
-                return failure
+                newItemDraft = nil
             }
         )
     }
 
-    /// Makes what the sheet asked for. Answers the sentence to show in the sheet, or nil when
-    /// the sheet can close.
-    private func create(_ kind: NewCanvasItemSheet.Kind, value: String, at point: CGPoint) async -> String? {
+    /// Makes what the sheet asked for. Answers what the sheet shows next: `.editing` when it
+    /// can close, the document's confirmation, or the sentence to show in place.
+    private func create(
+        _ kind: NewCanvasItemSheet.Kind, value: String, at point: CGPoint
+    ) async -> NewCanvasItemSheet.Confirmation {
         switch kind {
         case .folder:
-            do {
-                _ = try workspace.createFolder(named: value, at: point)
-            } catch {
-                // Reported through the workspace's own problem list rather than a
-                // modal: the board is still usable and the name can be retried.
-                workspace.recordProblem("\(error)")
-            }
-            return nil
+            // In place and in the problem list, the note kind's route (note-workflow R-11): the
+            // board is still usable and the name can be retried.
+            return workspace.createFolderFromSheet(named: value, at: point).map { .failed($0) } ?? .editing
         case .link:
             _ = workspace.addLink(value, at: point)
-            return nil
+            return .editing
         case .note:
             // Awaited, so the sheet waits for the write (n1-seams R-18): the note and its card,
             // and no tab, since the person is working on the board (R-10).
-            switch await workspace.createDocument(titled: value, at: point, through: vault) {
-            case .created: return nil
-            case .failed(let sentence): return sentence
-            }
+            let creation = await workspace.createDocument(titled: value, at: point, through: vault)
+            return NewCanvasItemSheet.confirmation(after: creation, title: value)
         }
     }
 }

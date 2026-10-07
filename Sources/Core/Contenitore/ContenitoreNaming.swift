@@ -19,8 +19,9 @@ enum ContainerNameCheck: Equatable, Sendable {
 /// The names of a document pair and of the folders it lives in (ADR-0071 §D5).
 ///
 /// Its own type rather than a widening of `ImportNaming`: `recordingNoteTitle` is a protected
-/// name, and `truncatedAtWordBoundary` splits on hyphens only, so it cannot cut the
-/// space-separated name a scheda carries.
+/// name, and the scheda's rules (the date prefix, the `-NN` reserve, the version token) are the
+/// Contenitore's alone. The space-separated name is cut by `ImportNaming.truncatedAtSpace`, the
+/// one word-walking loop (ADR-0088 §D1).
 enum ContenitoreNaming {
     /// The name part a stem takes when the original sanitises to nothing: `20260929` alone
     /// would be read as a daily note (`NoteName.category`).
@@ -40,7 +41,7 @@ enum ContenitoreNaming {
         let rawName = (originalName as NSString).deletingPathExtension
 
         var name = droppingVersionSuffix(NoteName.sanitized(rawName))
-        name = droppingVersionSuffix(cutAtSpace(name, toFit: budget))
+        name = droppingVersionSuffix(ImportNaming.truncatedAtSpace(name, toFit: budget))
         if name.isEmpty { name = fallbackName }
         return prefix + name
     }
@@ -100,25 +101,6 @@ enum ContenitoreNaming {
     }
 
     // MARK: - Pieces
-
-    /// Whole space-separated words only, so the name never ends mid-word. A first word that
-    /// on its own exceeds the budget is cut at the budget: there is no space to cut at, and a
-    /// name must still fit.
-    private static func cutAtSpace(_ name: String, toFit budget: Int) -> String {
-        guard budget > 0 else { return "" }
-        guard name.count > budget else { return name }
-
-        var kept: [Substring] = []
-        var length = 0
-        for word in name.split(separator: " ", omittingEmptySubsequences: true) {
-            let addition = kept.isEmpty ? word.count : word.count + 1
-            guard length + addition <= budget else { break }
-            kept.append(word)
-            length += addition
-        }
-        let cut = kept.isEmpty ? String(name.prefix(budget)) : kept.joined(separator: " ")
-        return cut.trimmingCharacters(in: .whitespaces)
-    }
 
     /// The name without the trailing version tokens `NoteName.validate` flags, along with the
     /// separator before each. The token survives in `pergamenum-contenitore-original`.
