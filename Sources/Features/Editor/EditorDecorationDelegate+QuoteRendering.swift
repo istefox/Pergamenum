@@ -81,7 +81,7 @@ extension EditorDecorationDelegate {
     /// number of bars.
     ///
     /// The run is the `>`s and at most the single space after the last one, which is
-    /// `blockquoteMarkerLength`'s own grammar in `MarkdownStyler.swift`: a range covering
+    /// the quote marker grammar of `MarkdownBlockParser.lineTokens(in:)`: a range covering
     /// more than that is not the run the styling pass recorded.
     static func stillSpellsABlockquoteMarker(_ text: NSString, at range: NSRange) -> Int? {
         guard range.location >= 0, range.length > 0, NSMaxRange(range) <= text.length else { return nil }

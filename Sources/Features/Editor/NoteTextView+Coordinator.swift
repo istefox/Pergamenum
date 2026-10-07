@@ -79,6 +79,9 @@ extension NoteTextView {
         /// outline entry (ADR-0074 §D2, `NoteTextView+Requests.swift`). `lazy` for `tables`'
         /// reason.
         private(set) lazy var requests = RequestLedger(parent: { [weak self] in self?.parent })
+        /// The range the last change landed on, for the scoped renumber (ADR-0082 §D6,
+        /// `NoteTextView+ListEditing.swift`).
+        let renumbering = ListRenumberLedger()
         /// The observation that keeps the readable-width inset right as the pane is resized
         /// (ADR-0030 §D6). It has to exist because `updateNSView` does **not** run on a
         /// window resize - nothing in the SwiftUI graph changed - so without it a column
@@ -194,8 +197,9 @@ extension NoteTextView {
             // After the styling and before the reveal, in that order and for both reasons:
             // this is a text change of its own, so the attributes it needs are the ones the
             // pass it triggers writes, and the offsets the reveal works in are the ones it
-            // leaves behind (ADR-0028 §D6, R-08).
-            renumberLists(in: textView)
+            // leaves behind (ADR-0028 §D6, R-08). Scoped to the run the change landed on when
+            // `shouldChangeTextInRanges` recorded it (ADR-0082 §D6).
+            renumberLists(in: textView, touching: renumbering.take())
             // After the passes above: a keystroke shifts every offset below it, and
             // the revealed set has to be recomputed against the new text (ADR-0018 §D2).
             applyReveal(to: textView)
@@ -389,9 +393,10 @@ extension NoteTextView {
         ///
         /// The note editor's own table, not the card's: `CardTextView`'s switch ends in
         /// `default: nil`, the seam ADR-0029 §D17 relies on to keep the live `NSView` grid
-        /// above all, then blockquote, rule and message anchor out of a card whose text
+        /// above all, then the view block and the message anchor out of a card whose text
         /// view is deallocated on every culling-rect crossing; ADR-0037's §D8 amendment
-        /// gave the card strikethrough and links. The two are one call apart on purpose.
+        /// gave the card strikethrough and links, ADR-0082 §D8 the blockquote and the rule.
+        /// The two are one call apart on purpose.
         static func hiddenKind(for span: MarkdownStyler.Span) -> HiddenMarker.Kind? {
             switch span {
             case .headingMarker: .heading
@@ -516,13 +521,22 @@ extension NoteTextView {
         /// Asking the viewport layout controller to run leaves the resizing to AppKit, which
         /// is what makes it safe: nothing here sets a frame, so nothing here re-enters SwiftUI.
         ///
-        /// `ensureLayout` over the whole document is what makes `usageBoundsForTextContainer`
-        /// mean anything - TextKit 2 lays out lazily, so without it the bounds describe only
-        /// the part that happens to have been drawn. It is the same bargain `applyStyling`
-        /// takes: notes are small, and the alternative is a note whose end cannot be reached.
+        /// What is laid out first is the fragment holding the selection's end and the range the
+        /// viewport currently shows (ADR-0082 §D7, R-17), never the whole document: on a long
+        /// note a whole-document `ensureLayout` on every keystroke was the cost of typing. Those
+        /// two are what the caret and the screen need, and `usageBoundsForTextContainer` reads
+        /// them laid out plus TextKit 2's estimate for the rest. The rest is laid out as it is
+        /// approached - scrolling, Cmd+Down, a click low in the pane - by the viewport controller
+        /// `layoutViewport()` already relies on, so the end of a note stays reachable without the
+        /// whole of it being laid out on a keystroke. (When `layoutViewport()` resizes the view,
+        /// AppKit itself lays out the note's last fragment to size it; that one fragment is its
+        /// cost, not this method's.) Before the first layout pass the viewport has no range yet,
+        /// and the caret's fragment alone is laid out.
         func growToFitTheText(_ textView: NSTextView, revealingCaret: Bool = false) {
             guard let layout = textView.textLayoutManager else { return }
-            layout.ensureLayout(for: layout.documentRange)
+            for range in Self.rangesToLayOut(for: textView, in: layout) {
+                layout.ensureLayout(for: range)
+            }
             let needed = layout.usageBoundsForTextContainer.height
                 + textView.textContainerInset.height * 2
             if abs(textView.frame.height - needed) > 0.5 {
@@ -530,7 +544,15 @@ extension NoteTextView {
             }
             // After the resize, so the scroll is not clamped to the height the note had a
             // moment ago and left short of the end.
-            if revealingCaret { textView.scrollRangeToVisible(textView.selectedRange()) }
+            if revealingCaret {
+                textView.scrollRangeToVisible(textView.selectedRange())
+                // Once more after the viewport has laid out where the scroll landed: what lies
+                // between the old viewport and the caret was an estimate until now, and laying
+                // it out moves the caret. Measured on a 40-line note with the caret parked at its
+                // end: one pass left the caret 32 pt below the visible rect, the second settles it.
+                layout.textViewportLayoutController.layoutViewport()
+                textView.scrollRangeToVisible(textView.selectedRange())
+            }
         }
 
         /// The vertical `textContainerInset`, unchanged by ADR-0030 and named here only so
@@ -612,5 +634,25 @@ extension NoteTextView {
             guard isOn else { return minimum }
             return max(minimum, (viewWidth - cap) / 2)
         }
+    }
+}
+
+// Beside the coordinator rather than in it: its class body is at SwiftLint's length limit.
+private extension NoteTextView.Coordinator {
+    /// The caret's own text range - the selection's end, as a zero-length range at that
+    /// location - and the viewport's, when it has one. `ensureLayout` over the caret's range
+    /// lays out the fragment holding it.
+    static func rangesToLayOut(for textView: NSTextView, in layout: NSTextLayoutManager) -> [NSTextRange] {
+        var ranges: [NSTextRange] = []
+        if let content = layout.textContentManager {
+            let caret = NSMaxRange(textView.selectedRange())
+            if let location = content.location(content.documentRange.location, offsetBy: caret) {
+                ranges.append(NSTextRange(location: location))
+            }
+        }
+        if let viewport = layout.textViewportLayoutController.viewportRange {
+            ranges.append(viewport)
+        }
+        return ranges
     }
 }

@@ -317,3 +317,83 @@ enum ListContinuation {
         )
     }
 }
+
+// The scoped form (ADR-0082 §D6), an extension only to keep the enum's body within SwiftLint's.
+extension ListContinuation {
+    /// What a scoped renumbering rewrites (ADR-0082 §D6): the smallest range covering every marker
+    /// that changes, what replaces it, and where a location of the old text lands in the new one.
+    struct Renumbering: Equatable, Sendable {
+        let range: NSRange
+        let replacement: String
+        /// Every rewritten digit run, in old-text coordinates and document order.
+        fileprivate let edits: [DigitEdit]
+
+        /// Where `location` of the text before the rewrite lands in the text after it: moved by
+        /// every rewritten digit run that ends at or before it, and kept inside a run it falls in,
+        /// so the caret never crosses a marker it sat in.
+        func mapping(_ location: Int) -> Int {
+            var shift = 0
+            for edit in edits {
+                if location >= edit.location + edit.oldLength {
+                    shift += edit.newLength - edit.oldLength
+                } else if location > edit.location {
+                    return min(location, edit.location + edit.newLength) + shift
+                } else {
+                    break
+                }
+            }
+            return location + shift
+        }
+    }
+
+    /// One digit run a scoped renumbering rewrites, with the lengths `mapping` needs.
+    fileprivate struct DigitEdit: Equatable, Sendable { let location, oldLength, newLength: Int }
+
+    /// The renumbering of only the ordered runs that touch `edited`, widened by one line on each
+    /// side, or `nil` when none of them needs a change.
+    ///
+    /// `edited` is a range of `text` after the edit; the widening sees a deleted blank line that
+    /// merged two runs. A misnumbered run the edit does not reach is left alone. `renumbered(_:)`
+    /// stays the whole-text answer for the card and for an unrecorded edit (an undo, a redo).
+    static func renumbered(_ text: String, touching edited: NSRange) -> Renumbering? {
+        let haystack = text as NSString
+        let all = LineScan.lines(in: haystack)
+        let fenced = codeFenceFlags(in: all, haystack: haystack)
+        let lower = max(0, min(edited.location, haystack.length))
+        let upper = max(lower, min(NSMaxRange(edited), haystack.length))
+        guard let first = all.lastIndex(where: { $0.start <= lower }),
+              let last = all.lastIndex(where: { $0.start <= upper })
+        else { return nil }
+
+        var settled: Set<Int> = []
+        var edits: [Edit] = []
+        for index in max(0, first - 1)...min(all.count - 1, last + 1)
+        where !settled.contains(index) && !fenced[index] {
+            guard let marker = marker(on: all[index], in: haystack), case .ordered = marker.kind else { continue }
+            let members = orderedRun(
+                containing: index, level: marker.start - all[index].start, in: all, haystack: haystack, fenced: fenced
+            )
+            settled.formUnion(members)
+            guard let start = ordered(on: all[members[0]], in: haystack)?.number else { continue }
+            for (offset, member) in members.enumerated() {
+                if let edit = renumberEdit(on: all[member], to: start + offset, in: haystack) { edits.append(edit) }
+            }
+        }
+        guard !edits.isEmpty else { return nil }
+
+        // Digit runs never overlap, so the last one in document order ends the covering range.
+        let sorted = edits.sorted { $0.range.location < $1.range.location }
+        let start = sorted[0].range.location
+        let covering = NSRange(location: start, length: NSMaxRange(sorted[sorted.count - 1].range) - start)
+        let local = sorted.map { edit in
+            Edit(range: NSRange(location: edit.range.location - start, length: edit.range.length),
+                 replacement: edit.replacement)
+        }
+        let digits = sorted.map { edit in
+            DigitEdit(location: edit.range.location, oldLength: edit.range.length,
+                      newLength: (edit.replacement as NSString).length)
+        }
+        let replacement = apply(local, to: haystack.substring(with: covering))
+        return Renumbering(range: covering, replacement: replacement, edits: digits)
+    }
+}

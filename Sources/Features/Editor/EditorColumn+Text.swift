@@ -230,35 +230,19 @@ extension EditorColumnView {
 
     /// Where a `pergamenum-view` block gets its rows (ADR-0009 §D4).
     ///
-    /// The index answers everything but `text()`, which reads the files - the same work the
-    /// global search does, and the reason §D7 states the cost as a rule rather than a number.
-    /// `viewQueryGeneration(for:)` rides along so a view is re-evaluated when the index changes
-    /// and not when a key is pressed.
-    ///
     /// **Handed to `NoteTextView.vault.queries` by `editing(_:)` above** (ADR-0033 §D9, R-07). It
     /// stood unreferenced between ADR-0029 §D13, which removed `reading(_:)` - its only
     /// caller, which handed it to `MarkdownReadingView` - and ADR-0033, which made the editor
     /// itself the surface that draws an in-note `pergamenum-view` fence: exactly the "whichever
     /// surface renders one next will want this" that §D13 left it standing for.
     ///
-    /// Still the app's only `ViewQuerySource`. The Viste pane has none: it calls
-    /// `ViewEvaluator.evaluate` directly (`ViewsPane.swift:197`), and a note card on the canvas
-    /// passes no source at all, which is what makes its board a report rather than a surface
-    /// that invites a drag it could not write (§D5).
+    /// A forward to `ViewQuerySource.live(for:)` (ADR-0082 §D8), the factory Oggi and Diario
+    /// hand their editors too, so the three hosts draw a fence from one source. The Viste pane
+    /// has none: it calls `ViewEvaluator.evaluate` directly (`ViewsPane.swift:197`), and a note
+    /// card on the canvas passes no source at all, which is what makes its board a report rather
+    /// than a surface that invites a drag it could not write (§D5).
     var viewQuerySource: ViewQuerySource {
-        ViewQuerySource(
-            evaluate: { block in
-                ViewEvaluator.evaluate(block, over: vault.index) { record in
-                    try? vault.session?.read(record.relativePath).text
-                }
-            },
-            generation: Self.viewQueryGeneration(for: vault),
-            // The one write a view makes (§D5). Offered here, where there is a vault and a
-            // person looking at it; a note card on the canvas passes no source and its board
-            // never invites the drag.
-            move: { path, old, new in await vault.moveOnBoard(path, from: old, to: new) },
-            undo: { id in await vault.undoJournalledWrites([id]).failures.isEmpty }
-        )
+        .live(for: vault)
     }
 
     // Internal, not private: read by `Tests/IndexGenerationFollowUpTests.swift`.

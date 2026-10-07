@@ -866,10 +866,16 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     }
 
     /// Whether `range` still spells a whole thematic break - `MarkdownBlockParser.isRule`'s
-    /// grammar, asked of the live characters rather than restated (ADR-0029 §D1).
+    /// grammar, asked of the live characters rather than restated (ADR-0029 §D1). The line is
+    /// trimmed of surrounding blanks first, as the layout-fragment branch does before it asks
+    /// `isRule`: `isRule` strips spaces only, and the styler marks a tab-indented `\t---` as a
+    /// rule over the whole line (ADR-0082, corpus S53), so without the trim the line was drawn
+    /// as a rule but its characters were never collapsed.
     private static func stillSpellsARule(_ text: NSString, at range: NSRange) -> Bool {
         guard range.location >= 0, range.length > 0, NSMaxRange(range) <= text.length else { return false }
-        return MarkdownBlockParser.isRule(text.substring(with: range))
+        return MarkdownBlockParser.isRule(
+            text.substring(with: range).trimmingCharacters(in: .whitespaces)
+        )
     }
 
     /// Whether `range` still spells a whole Pratiche anchor line - `PraticaEntryAnchor`'s

@@ -79,12 +79,11 @@ extension NoteTextView {
         var transclusions: TransclusionSource?
         /// Where a `pergamenum-view` fence's rows come from (ADR-0033 §D9, plan
         /// `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 7). Nil where there is no
-        /// vault behind the editor - the same permissive default `vaultRoot`/`thumbnails` take,
-        /// and deliberately what `DiaryView`/`TodayView` and every existing call site still get
-        /// without change, since neither passes this property (ADR Consequences).
+        /// vault behind the editor - the same permissive default `vaultRoot`/`thumbnails` take.
         ///
-        /// Handed in by `EditorColumn+Text.swift`'s `editing(_:)`, which owns the app's only
-        /// `ViewQuerySource`, and read by `NoteTextView+ViewBlocks.swift`'s
+        /// Handed in by the three editor hosts - `EditorColumn+Text.swift`'s `editing(_:)`,
+        /// `TodayView` and `DiaryView` - each as `ViewQuerySource.live(for:)`, the one factory
+        /// over a vault (ADR-0082 §D8), and read by `NoteTextView+ViewBlocks.swift`'s
         /// `ViewBlockController.refresh`, which passes it - with `notePath`/`vaultRoot`/`thumbnails`,
         /// `onFollowLink` as the block's `onOpenNote` and a caret-placing `onEditSource` - into
         /// `ViewBlockHostStore.rootView(...)` on every styling pass. That call is the whole of
