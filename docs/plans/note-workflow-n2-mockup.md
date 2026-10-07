@@ -112,3 +112,24 @@ TEST-CMD CANDIDATE: xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergame
 TEST-CMD MODE: brownfield
 
 CHECK-CMD CANDIDATE: NONE
+
+## Build result (2026-10-07)
+
+BUILD · DONE WITH WARNINGS
+Files: 5 changed (GutterRevealMockup.swift, GutterRevealMockupPieces.swift, MockupGalleryView.swift, MockupGalleryLayoutTests.swift, this plan)
+Tests: 5617 passed, 0 failed, 5 known issues already present, 0 (coverage)
+Review: sonnet, safe to merge
+Coverage: COVERED     R-13  plan,tests
+Coverage: COVERED     R-14  plan,tests
+Coverage: UNCOVERED   R-44  plan
+Dispatch: Round 1: coder — Columns arithmetic (GutterRevealMockup.swift:160), coder — unlabelled pairs (GutterRevealMockup.swift:317)
+Dispatch: Round 2 (sweep): coder — 3 NITs (Pieces:52, GutterRevealMockup:34, :54)
+WARN: R-44 has no test; it is a process requirement (mockup PR approved on the Debug build, then the code PR)
+WARN: SPEC read from docs/specs-pending/pg-385-n2-page.SPEC.md, not the root SPEC.md, which belongs to PG-219
+WARN: page not seen on screen, G1 and G2 are decided by eye on the Debug build
+
+```text
+FIX	swept	**NIT** Sources/Features/DesignGallery/GutterRevealMockupPieces.swift:52 — Dash pattern [3, 3] and state label width 64 are bare literals where the plan says every size goes through a token.
+FIX	swept	**NIT** Sources/Features/DesignGallery/GutterRevealMockup.swift:34 — 420 duplicates the minWidth literal of DiaryView and TodayView with no pin, so the mockup can go stale silently if that minimum changes.
+FIX	swept	**NIT** Sources/Features/DesignGallery/GutterRevealMockup.swift:54 — Awkward Italian in the scene 1 caption: "non si spostava già"; suggest "non si sposta già oggi".
+```

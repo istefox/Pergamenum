@@ -28,4 +28,22 @@ struct MockupGalleryLayoutTests {
     @Test func theRowNeverExceedsWhatAPageHolds() {
         #expect(MockupGalleryView.rowWidth <= MockupGalleryView.contentWidth)
     }
+
+    // (n2-page R-13) (n2-page R-14) The gutter page is reachable from the gallery's picker and
+    // carries the milestone that marks it a proposal, not a shipped screen. `milestone` reads
+    // `Screen.page`, which wraps the page's view value in an `AnyView`; its body is never
+    // evaluated, so nothing is laid out or rendered.
+    @Test func theGutterPageIsListedWithItsMilestone() {
+        #expect(MockupGalleryView.Screen.allCases.contains(.gutter))
+        #expect(MockupGalleryView.Screen.gutter.milestone == "N2, da approvare")
+    }
+
+    // (n2-page R-13) (n2-page R-14) Both scenes are drawn inside the row: a scene wider than
+    // `rowWidth` is clipped at both edges, the defect this file exists to keep out.
+    @Test func theGutterScenesFitInTheRow() {
+        #expect(GutterRevealMockup.narrowWidth > 0)
+        #expect(GutterRevealMockup.readableWidth > 0)
+        #expect(GutterRevealMockup.narrowWidth <= MockupGalleryView.rowWidth)
+        #expect(GutterRevealMockup.readableWidth <= MockupGalleryView.rowWidth)
+    }
 }
