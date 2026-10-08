@@ -25,15 +25,12 @@ extension NoteStore {
     /// (ADR-0041 §D7). Moved here unchanged from what `linkTargets(in text:)` used to
     /// compute inline.
     ///
-    /// A board is not a note: a `.canvas` target - a task's `^[[Q4.canvas]]` marker, or a plain
-    /// `[[Q4.canvas]]` - is never a link target, so it is no backlink, unresolved link, graph
-    /// neighbour or `links` value (ADR-0065 §D9.5, R-20).
+    /// Which links count is `Wikilink.isNoteLink`, the predicate a backlink row counts by too
+    /// (ADR-0084 §D1): no embed of a file, no `.canvas` target.
     static func linkTargets(in document: NoteDocument) -> [String] {
         var seen = Set<String>()
         var ordered: [String] = []
-        for link in WikilinkParser.links(in: document.body)
-        where (!link.isEmbed || Transclusion.isNoteReference(link.target))
-            && (link.target as NSString).pathExtension.lowercased() != "canvas" {
+        for link in WikilinkParser.links(in: document.body) where link.isNoteLink {
             if seen.insert(link.target).inserted { ordered.append(link.target) }
         }
         return ordered

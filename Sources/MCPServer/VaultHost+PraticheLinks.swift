@@ -82,7 +82,7 @@ extension VaultHost {
                 session, message: try arguments.required("message"), title: try arguments.required("title")
             ))
         default:
-            return nil
+            return try await writeNoteLinks(name, arguments)
         }
     }
 }
