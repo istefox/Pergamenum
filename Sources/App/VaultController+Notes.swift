@@ -97,15 +97,34 @@ extension VaultController {
     @discardableResult
     func addStructuralLink(
         from sourcePath: String,
-        to targetTitle: String,
+        toNoteAt targetPath: String,
         reason: String,
         reverseReason: String
     ) async -> Bool {
         guard let session else { return false }
         let (created, _) = await session.addStructuralLink(
-            from: sourcePath, to: targetTitle, reason: reason, reverseReason: reverseReason
+            from: sourcePath, toNoteAt: targetPath, reason: reason, reverseReason: reverseReason
         )
         return created
+    }
+
+    /// «Scollega»: removes a structural link from both notes (ADR-0084 §D4). The session writes
+    /// to disk whatever a tab holds; ADR-0067's landed-change door catches a clean tab up and asks
+    /// a dirty one (ADR-0084 §D5, PG-233), so nothing here touches a buffer.
+    @discardableResult
+    func removeStructuralLink(from sourcePath: String, toNoteAt targetPath: String) async -> Bool {
+        guard let session else { return false }
+        let (removed, _) = await session.removeStructuralLink(from: sourcePath, toNoteAt: targetPath)
+        return removed
+    }
+
+    /// «Collega» on a mention (ADR-0084 §D3): one guarded write of the bytes the diff showed,
+    /// reaching open tabs through the same door as «Scollega».
+    func linkMention(
+        in path: String, to title: String, expecting hash: String
+    ) async -> VaultSession.LinkMentionOutcome {
+        guard let session else { return .failed("nessun vault aperto") }
+        return await session.linkMention(in: path, to: title, expecting: hash)
     }
 
     // MARK: The daily note

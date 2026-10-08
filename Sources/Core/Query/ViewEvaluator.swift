@@ -214,12 +214,14 @@ enum ViewEvaluator {
             for record in records {
                 byPath[record.relativePath] = record
                 var reached: Set<String> = []
+                // ADR-0084 §D2: the one derivation, through the memo, so the corpus is still
+                // asked once per title.
+                let unresolved = UnresolvedTargets.of(record.linkTargets, resolving: resolve)
+                if !unresolved.isEmpty {
+                    graph.unresolved[record.relativePath, default: []].append(contentsOf: unresolved)
+                }
                 for target in record.linkTargets {
                     let paths = resolve(target)
-                    if paths.isEmpty {
-                        graph.unresolved[record.relativePath, default: []].append(target)
-                        continue
-                    }
                     reached.formUnion(paths)
                     for path in paths where path != record.relativePath {
                         graph.incoming[path, default: []].append(record.title)

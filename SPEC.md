@@ -1,198 +1,173 @@
-Status: Approved (2026-10-06)
+Status: Approved (2026-10-07)
 
-# SPEC — The pointer reaches the screen (PG-219, #445)
+# SPEC — Note workflow N3, Links (PG-386, #888)
 
 ## Destination
 
-Hovering a clickable span in any editable text of the app shows the pointing hand, hovering any other
-editable text shows the I-beam, and both are seen on screen by Stefano on a Debug build. The chain ends
-with an ADR that records the route taken and what was measured, PG-219 closed, and N3's hover preview
-(PG-386, task 2) unblocked. If no route shows the cursor, the chain ends earlier, at a stop gate with a
-report (R-10).
+Milestone N3 of `docs/20261003_Pergamenum_NoteWorkflowRoadmap.md` reaches `main` in three sessions,
+behind an approved mockup: a link can be peeked at, followed from the keyboard, opened in a tab or the
+other column, disambiguated and created from when dangling; the inspector says why a note is linked,
+what it fails to link, and where it appears. ADR-0083 and ADR-0084 (already on `main` as `planned`,
+written against `48a2d912`) are the decision records: this SPEC re-checks them on current `main` and
+names the places they are amended. PG-386 closes, #888 closes.
+
+Reconciliation: this restores the N3 half of the chain SPEC approved 2026-10-04 (R-20..R-28, since
+archived under another name when PG-219's SPEC took the root). The criterion numbers are kept because
+ADR-0083, ADR-0084 and `docs/plans/note-workflow-n3.md` cite them.
 
 ## Objectives
 
-An `NSCursor` set from AppKit code inside this app's SwiftUI view tree never reaches the screen: the pointing
-hand over a link is absent, and the I-beam over editable text apparently always has been. The ledger entry
-measured that `NSCursor.current` reads the pushed cursor for every tick of a real hover while the screen draws
-the arrow, so the AppKit-side mechanisms (cursor rects, `push`/`pop`, `cursorUpdate` with `set`) are
-exhausted. Every custom cursor that does work in the app goes through SwiftUI. This SPEC gets the pointer
-onto the screen by the cheapest route that a measurement shows to work, and only escalates to a larger
-restructure if that measurement fails. It also removes the dead cursor code, or its false claims, so the
-codebase stops asserting a behaviour it does not have.
+- Follow a link without the mouse, and open it where the person chooses (same tab, new tab, other column).
+- Never open a wrong note silently when a title is shared; never lose a typo'd link's intent: offer to create it.
+- The inspector gives backlinks their reason (the line, a count, a «strutturale» badge), shows the
+  open note's own unresolved links, links an unlinked mention after a diff, removes a structural link
+  from both notes, and lists the boards and pratiche that reference the note.
 
 ## Scope and non-goals
 
-In:
-- The pointing hand over every span the editor already treats as a click target, and the I-beam over the
-  rest of the editable text.
-- Every host of the two text-view classes: the Note editor, the Oggi pane's daily note, the Diario, and the
-  Workspace card text while it is being edited.
-- A probe that decides the route before any structural code is written.
-- The ADR, the ledger and the documentation that this changes.
-
-Out (one line each, detail below): a hand that depends on Cmd; the hover preview; the cursors that already
-work; the cause of the AppKit/Window Server divergence as a goal of its own; read-only text outside the two
-classes.
+In: roadmap §N3 tasks 1 to 11 (findings L-1..L-5, L-8, L-9, I-7, and the decision of PG-233); the two
+ADRs flipped to `accepted` after the code PR; connector parity for link-mention and structural unlink.
+Out: see Out of scope.
 
 ## Decisions
 
-- **Probe first, restructure only on failure.** The first build task wraps the Note editor's text view in an
-  unconditional `.pointerStyle(.link)` on a Debug build, then (if that shows nothing) puts the same modifier
-  on a non-hit-testing clear overlay. If the hand shows, the fix is the cheap route: AppKit reports which
-  pointer applies at the point (a single new callback input per host), SwiftUI draws it with `.pointerStyle`.
-  Only if both probes fail does the `.onContinuousHover` restructure the ledger describes come into play,
-  and then through gate G3 of this chain, not by improvisation. Rejected: committing to the `.onContinuousHover`
-  restructure now (about forty forwarded properties and five call sites, paid before the cheap route is known
-  to fail); and a root-cause hunt in AppKit's window-level cursor ownership (no precedent in the codebase,
-  open-ended, nothing to bound it).
-- **Every surface that hosts the two classes.** Note editor, Oggi, Diario, Workspace card in edit. The two
-  classes are touched whichever route wins, and the ledger says the symptom is app-wide. Rejected: Note
-  editor only, which would leave three surfaces with the wrong cursor and a new ticket for them.
-- **The hand shows over a click target whether or not Cmd is held.** It matches the already-approved wording
-  of the roadmap's R-09 («pointing hand over a link») and needs no modifier tracking. The one signal for
-  "this span is clickable" is the editor's own link attribute, which wikilinks, CommonMark labels, tags and
-  dates already carry; hover and click keep agreeing on what is a target. Rejected: hand only while Cmd is
-  held (it promises exactly what Cmd+click does, but needs a refresh on a bare modifier change with the mouse
-  still, and reopens an approved criterion).
-- **Failure stops the chain at a human gate.** If neither probe shows the cursor, the build stops, writes up
-  what was measured and where, PG-219 stays open and N3's hover preview stays blocked; Stefano decides whether
-  a deeper diagnosis gets its own ADR. Rejected: continuing into an open-ended AppKit diagnosis for a time cap
-  inside the same chain.
-- **The screen is checked by hand.** A cursor on screen cannot be asserted by a test (UI tests cannot read it,
-  and Accessibility is not granted on the dev machine), so the on-screen criteria are hand checks, recorded in
-  the PR body, while the decision and the wiring are tested in process. Rejected: a GUI test whose assertion
-  would not be about the cursor.
+Decided 2026-10-04 and re-confirmed 2026-10-07 unless marked **new**.
+
+- **Reuse the planned ADRs and plan, reconcile against `main`** (2026-10-07) — ADR-0083/0084 and
+  `docs/plans/note-workflow-n3*.md` already exist. Rejected: rewriting from scratch (discards a
+  reviewed decision set).
+- **The preview is an `NSPopover`, not a `NeverKeyPanel`** (**new**, 2026-10-07) — the person's
+  constraint (PG-258 orphan-window lesson) and the roadmap's wording. This reverses ADR-0083 §D7's
+  panel. Rejected: `NeverKeyPanel` (non-key by type, but contradicts the constraint). The cost is
+  named: "never first responder" is proved by a test over the popover's behaviour and a presenter
+  seam, not guaranteed by the type, and the popover is anchored to the link's rect so it never covers
+  the link a Cmd+click is aimed at.
+- **The preview appears on Cmd + hover, after a 250 ms dwell, never on plain hover** — the pointer
+  resting over text pops nothing; the gesture matches Cmd+click. Rejected: plain hover at 400 ms
+  (the roadmap's wording): popovers while reading.
+- **One open-link door with a "how"** (`replace`, `newTab`, `otherColumn`): Cmd+click follows;
+  Cmd+Shift+click opens in a new tab; Cmd+Opt+click in the other column; Cmd+Opt+Return follows the
+  innermost link at the caret and is remappable; the two variants are in Vista with no default key.
+  Rejected: Shift+click (extends the selection in a text view).
+- **A shared title is a choice, never `.first`** — a menu at the click, a sheet from the keyboard,
+  on every surface (editor, Oggi, structural-link sheet, Quick Open). Rejected: a heuristic (same
+  folder, most recent): a silent first match with better odds.
+- **A dangling link offers «Crea «X»» through the composer**, folder = the source note's; the `[[`
+  popup gains the same row when nothing matches. Rejected: creating silently (a typo becomes a file).
+- **Backlinks carry the linking line, a count, a «strutturale» badge and a row menu**; the index
+  keeps paths only, the line is read on demand and memoised by index generation.
+- **Unresolved links are the open note's own**; the vault-wide list becomes a seventh sample view;
+  `perg note unresolved` and the MCP tool are unchanged.
+- **«Collega» writes only what the diff showed**, `[[Titolo]]` or `[[Titolo|testo]]` when the matched
+  text differs from the title (case and accents included); a name inside code is not a mention.
+- **«Scollega» is two guarded writes**, `addStructuralLink` inverted, a half-done result named.
+- **PG-233 stays as decided 2026-10-03**: a dirty source raises the conflict prompt; the roadmap's
+  task 9 "save the buffer first" and report L-5 are not adopted (ADR-0058 Alternative 5, rejected).
+- **«Dove compare» is asked for, read-only**, behind a button (it reads every message file).
+  Rejected: automatic (a vault-wide read on every note change).
+- **Connector parity**: `perg note link-mention`, `perg note unlink-related` and MCP tools
+  `link_mention`, `remove_structural_link` ship (writes behind `--allow-write`, `dryRun` default
+  true). The roadmap called link-mention "optional"; it is not.
+- **Three sessions, three PRs after the mockup PR**: A = pure units, session and connector writes;
+  B = the editor (ADR-0083); C = the inspector and the GUI tests (ADR-0084).
 
 ## Constraints
 
-- **The pasteboard/mouse-down file of the note editor is a protected interface, whole file** — origin:
-  `.claude/protected-interfaces`, restated by ADR-0083. Nothing in this chain edits it; it already exposes
-  the point-to-link resolution the pointer reuses.
-- **No compatibility fallback for older macOS** — origin: project stack (macOS 27). `.pointerStyle` is used
-  directly, with no availability gate.
-- **Every colour and font through a token** — origin: design system rule. This work introduces neither.
-- **`NoteTextView`'s forwarded inputs do not grow beyond one new callback** on the cheap route — origin: ADR-0074
-  §D2/§D3 (controllers, not new stored inputs) and the ledger's own cost estimate; the larger restructure is
-  allowed only through gate G3.
-- **The tracking-area geometry that hover and clicks share is reused, not duplicated** — origin: PG-220
-  (one point-to-link resolution per view).
-- **The link-hover geometry is not a second source of truth for "what is clickable"** — origin: the two
-  classes' own comments; the attribute is the signal.
-- **N3 must not depend on this work's details** — origin: ADR-0083 (the pointer is N1's territory, N3 only needs
-  it to exist).
+- **No cache change**: no new field, `IndexCache.schemaVersion` stays — origin: user mandate, CLAUDE.md principle 3.
+- **Every write through `VaultSession` with `expecting:`**; state read before an `await` is re-read
+  after it — origin: user mandate, ADR-0043 §D7/§D8, ADR-0057 §D3.
+- **No `NeverKeyPanel` for the preview** — origin: user mandate (PG-258).
+- **Section row menus hosted outside `List` rows** — origin: ADR-0069 (the inspector is a `ScrollView`,
+  so a SwiftUI menu is enough; any `List` row uses the AppKit-hosted menu).
+- **The protected pasteboard file is called, never edited** (`linkCharacterIndex(at:)`) — origin: `.claude/protected-interfaces`.
+- **Tokens only; file formats untouched; offline** — origin: CLAUDE.md.
+- **At most three GUI tests, all on `PergamenumUITestCase`**, each justified in its ADR — origin: user mandate, CLAUDE.md merge-gate rule.
+- **A mockup is approved on the Debug build before any view code** — origin: SPEC §11.1, the chain's mockup-first decision.
+- **New code goes in new files where `CommandActions.swift` and `VaultController+Tabs.swift` sit at the file-length warning.**
+- **The tools' build stays green**: `Sources/Core/Links/` and the connector link writes compile into `perg` and `pergamenum-mcp`; the appearances reader stays app-only.
 
 ## Stack
 
-Swift 6, SwiftUI `.pointerStyle` (macOS 15+, used directly on 27), AppKit `NSTextView` subclasses
-(`CompletingTextView`, `FormattingTextView`) behind `NSViewRepresentable` hosts. Swift Testing for unit and
-in-process tests. No new dependency.
+Swift 6, SwiftUI with AppKit for the editor (`NSPopover`, tracking area and a scoped local event
+monitor), Swift Testing, the shared connector layer. No new dependency.
 
 ## Data model
 
-None on disk. In memory, one small value per host describing what the pointer is over:
-
-```swift
-enum EditorPointer: Equatable { case text, link }
-```
-
-`.text` maps to the horizontal-text pointer style, `.link` to the link style. A pointer outside the text view's
-text (nothing under it) is not this type's business: the host applies no style and the system default stands.
+No new storage. Backlink lines, per-note unresolved targets and «Dove compare» are derived on demand
+and memoised by index generation (appearances by path and generation, re-asked by «Cerca di nuovo»).
 
 ## API / interfaces
 
-- Each of the two text-view classes answers **what pointer applies at a point in its own coordinate space** (a
-  pure answer from the text storage and layout) and **reports it only when it changes**, through one callback.
-- Each host (Note editor, Oggi, Diario, Workspace card text) holds the last reported value and applies the
-  matching `.pointerStyle` to its text view.
-- No change to the vault, the index, the connectors or any on-disk format.
+- Open-link door taking a how, used by clicks, the follow command and the backlink menu.
+- `ShortcutCommand`: `followLink`, `followLinkInNewTab`, `followLinkInOtherColumn`.
+- Session: `linkMention(in:to:expecting:)` with outcomes linked / noMention / movedOn / failed;
+  `removeStructuralLink(from:toNoteAt:)`; `addStructuralLink` takes the target as a path.
+- Index snapshot: `unresolvedTargets(of:)`, one derivation shared with the query field and the connector read.
+- Connectors: link-mention and structural-unlink in the shared layer, exposed by `perg` and MCP.
 
 ## UI flows
 
-Hover over a link, tag or date: pointing hand. Move onto plain text: I-beam. Move out of the text view: system
-default. No visual change otherwise, no settings, no menu entries.
+- **Editor**: Cmd+hover → popover (the target's first twelve lines, its heading section, a board's
+  name, a «N note si chiamano» list, or «Nessuna nota…»); Cmd+click / Cmd+Shift+click /
+  Cmd+Opt+click / Cmd+Opt+Return; a shared title shows a folder-path choice; a dangling link offers «Crea».
+- **Inspector**: BACKLINK rows (title, line, count, «strutturale» badge, menu: Apri, Apri nell'altra
+  colonna, Rendi strutturale / Scollega); LINK NON RISOLTI for this note («Crea nota», «Vai al link»);
+  unlinked mentions with «Collega» and a diff sheet; «Dove compare» behind «Cerca dove compare».
 
 ## Edge cases
 
-- **A link restyled or moved under a still pointer** (an edit above it, a reveal-on-caret, a reflow): the
-  answer is recomputed when the geometry changes, not only on mouse movement, so a hand never stays over text
-  that is no longer a link and an I-beam never stays over one that now is.
-- **The pointer leaves the text view or the window, the view is removed, the card is culled or the pane is
-  switched while a hand is up**: the reported value resets, nothing stays pushed.
-- **A drag in progress** (text selection drag, dropping a note title or a file): the pointer logic does not fight
-  the system's drag cursor.
-- **Hosted attachments inside the text** (a table grid, a view block, an image or PDF embed): their own views own
-  the pointer there; this work does not force the I-beam over them.
-- **Board zoom and pan** (Workspace cards): the answer uses view-space geometry, so it holds at any zoom.
-- **The window is not key**: no pointer change is reported, as today's tracking areas already behave.
-- **A cursor already pushed by a divider's `onHover`**: those keep working and are not changed; the hand check
-  covers them.
+- Preview: never takes first responder; closes on Cmd release, pointer leave, Esc, any key, scroll,
+  window resign, text change, note change; none for an external URL or a file embed; the event
+  monitor exists only while the pointer is inside and its removal is asserted (PG-258).
+- Cmd+Opt+Return may collide with a system shortcut: measured before binding, stop if taken.
+- Follow with the caret in no link: the command is disabled, not a no-op.
+- «Collega» on a note that moved on: refused, the diff recomputed in place; on a vanished mention: dropped.
+- «Scollega» whose second write is refused: the first stays, the result names what landed.
+- A target not creatable (`[[X.md]]`): «Vai al link» only. A draft parked in the composer is kept and the offer says so.
+- Ambiguous pratica references are claimed by neither note in «Dove compare»; an unreadable board is skipped and footnoted.
 
 ## Test seams
 
-1. **Pure pointer decision**, at the unit level: the point-to-pointer answer over a text storage with link,
-   tag, date and plain runs, including wrapped links, the boundary of a link and a point outside any text.
-   Reuses the existing in-process text view construction the editor tests already use.
-2. **Wiring**, in process: the callback fires on a change and not twice for the same answer, resets on
-   leaving, and each host applies the style it was told. Reuses the hosted-view test shape already in the merge
-   gate.
-3. **Screen**, by hand, on a Debug build: the probe, the hand, the I-beam on each surface, and the unchanged
-   dividers. Recorded in the PR body (route taken and macOS build). No GUI test.
+Existing seams, highest level possible, fewest:
+
+1. Pure units in `PergamenumTests` (Core and connector layer): backlink line finder, unresolved
+   derivation (three callers over one corpus), mention rewrite, preview trigger and content, reverse-reason mirror.
+2. Session and connector tests: `linkMention`, `removeStructuralLink`, `perg`; `scripts/mcp-smoke.py` after the MCP change.
+3. Hosted-view tests for the popover (presenter spy; never-key and monitor lifecycle), the link
+   commands and variants, the inspector sections.
+4. GUI, three at most: follow from the keyboard then Cmd+[; the preview appears and goes; «Collega» a mention end to end.
 
 ## Success criteria
 
-- [ ] R-01 — Before any structural change, the probe has been run on a Debug build, on the Note editor's text
-  view: the unconditional `.pointerStyle(.link)` first, then the same on a non-hit-testing clear overlay if
-  the first shows nothing. The result (which, if either, showed the hand, and the macOS build) is written in
-  the PR body and in the ADR. (no-test: a cursor on screen cannot be asserted by a test; Stefano's hand check
-  is the evidence)
-- [ ] R-02 — On the Note editor, hovering a wikilink, a CommonMark label, a `#tag` or a `>date`/`!date` span
-  shows the pointing hand on screen. (no-test: hand check, recorded in the PR body)
-- [ ] R-03 — On the Note editor, hovering editable text that is not one of those spans shows the I-beam on
-  screen. (no-test: hand check, recorded in the PR body)
-- [ ] R-04 — R-02 and R-03 hold on the Oggi pane's daily note, the Diario and a Workspace card while it is
-  being edited, at board zoom other than 100% for the card. (no-test: hand check, recorded in the PR body)
-- [ ] R-05 — The pointer decision is pinned by unit tests: a point inside a link gives the link pointer, inside
-  a tag and a date the same, inside plain text gives the text pointer, outside the text gives nothing, and a
-  link wrapped over two lines answers on both lines.
-- [ ] R-06 — The callback reports an answer only when it differs from the last one, and reports the reset when
-  the pointer leaves the view; a host applies the pointer style matching what it was last told. Pinned by
-  in-process tests.
-- [ ] R-07 — A link whose position changes under a still pointer (an edit above it, a restyle) updates the
-  reported pointer without a mouse movement. Pinned by an in-process test that changes the text and reads the
-  answer at the same point.
-- [ ] R-08 — The existing custom cursors (the editor columns' divider, the Workspace pane divider, the board
-  handles and the crop editor) behave as before: resize cursor on hover, arrow after, no cursor left pushed.
-  (no-test: hand check, recorded in the PR body)
-- [ ] R-09 — Code and comments that claim a cursor behaviour the app does not have are gone or made true: the
-  `cursorUpdate` overrides no longer call `NSCursor.pointingHand.set()` and the two cursor-rects files' headers
-  describe what is now the case, citing PG-219 and the ADR. The tracking-area geometry stays as the shared
-  link-hover geometry. The protected note-editor mouse file is byte-identical.
-- [ ] R-10 — If both probes of R-01 fail, the chain stops at a human gate: no restructure is written, the
-  measurements are recorded, PG-219 stays open, N3's hover preview stays blocked, and the report names what
-  Stefano must decide next. (no-test: a process obligation)
-- [ ] R-11 — An ADR records the route, the probe result and the departures from this SPEC, with the rejected
-  alternatives above; the ledger closes PG-219 (#445) on the cheap route, and PG-384's phase and PG-386's
-  prerequisite note are updated. (no-test: documentation obligation)
-- [ ] R-12 — The unit suite and the in-process tests pass; no GUI test is added.
+Sessions: **A** = mockup PR, R-29, pure units and writes (R-24..R-28 logic, R-22 choice rule, connectors R-26/R-27);
+**B** = R-20..R-23; **C** = R-24..R-28 UI, R-30.
+
+- [ ] R-20 — Cmd+hover over a wikilink shows a preview popover with the target's opening lines (or heading section; a board link shows the board name); it closes on Cmd release, pointer leave and Esc, never takes first responder, leaves no event monitor or window behind, and is never shown for an external URL.
+- [ ] R-21 — With the caret inside `[[Nota]]`, Cmd+Opt+Return opens it and Cmd+[ returns; Cmd+Shift+click opens in a new tab, Cmd+Opt+click in the other column; both variants are in Vista and bindable.
+- [ ] R-22 — A title resolving to several notes shows a choice of folder paths (a menu at the click, a sheet from the keyboard) in the editor, Oggi, the structural-link sheet and Quick Open; nothing opens the first match silently.
+- [ ] R-23 — Cmd+click on an unresolved `[[X]]` offers «Crea «X»» with the composer prefilled in the source note's folder; the `[[` popup shows a «Crea «X»» row when nothing matches and the typed text is a valid title.
+- [ ] R-24 — The inspector's backlinks show, per note, the line that links, a count when above one, a «strutturale» badge when the source's `related` names this note, and a row menu (Apri, Apri nell'altra colonna, Rendi strutturale); the index still stores paths only.
+- [ ] R-25 — The inspector lists the open note's own unresolved links, each with «Crea nota» and «Vai al link»; the vault-wide list is a sample view; `perg note unresolved` and its MCP tool are unchanged.
+- [ ] R-26 — «Collega» on an unlinked mention writes `[[Titolo]]` (or `[[Titolo|testo]]`) in the other note after a diff confirmation, in one guarded write refused when the note moved on; `perg` and MCP expose the same operation.
+- [ ] R-27 — The structural-link sheet pre-fills the reverse reason as an editable mirror; «Rendi strutturale» from a backlink row preselects the target; «Scollega» removes the link from both notes in two guarded writes with a half-done result named; a dirty source still raises the conflict prompt (PG-233); `perg` and MCP expose the removal.
+- [ ] R-28 — «Dove compare» lists the boards whose nodes point at the note and the pratiche that link it, read-only, each row opens its target; no cache or schema change.
+- [ ] R-29 — The N3 mockup (preview popover, backlink rows with badge, per-note unresolved rows, «Dove compare») is approved on the Debug build before any view code is written (no-test: human approval gate on the Debug build, nothing a test can assert).
+- [ ] R-30 — No more than three GUI tests, all on `PergamenumUITestCase`; `IndexCache.schemaVersion` unchanged; `PergamenumTests`, `perg` and `pergamenum-mcp` build and pass, `scripts/mcp-smoke.py` passes.
+- [ ] R-31 — ADR-0083 §D7 is rewritten for the `NSPopover` and both ADRs flip to `accepted` naming the merge commit, in the first docs change after the code PR (no-test: documentation obligation).
 
 ## Not yet specified
 
-- **The fate of the `.cursor: pointingHand` attribute set on link runs** in the editor's and the cards'
-  attributed text. Whether it is dead (nothing reads it once the pointer comes from SwiftUI) or still
-  consulted by `NSTextView` is a fact the plan must read from the code before deciding to keep or remove it;
-  R-09 only requires that it does not claim a behaviour the app does not have.
-- **The exact shape of the single callback and where each host stores the value** are design details for
-  `/workplan`, bounded by the Constraints above.
+_none_
 
 ## Out of scope
 
-- **A hand that depends on Cmd** — rejected by the interview (see Decisions); reopen only with a stated reason.
-- **The N3 hover preview (PG-386)** — it is unblocked by this work, not part of it.
-- **The divider, board handle and crop cursors** — they work and go through SwiftUI already; only R-08's
-  regression check touches them.
-- **The AppKit/Window Server divergence as a goal in itself** — this work routes around it; explaining it is
-  allowed only if the probe makes it cheap, and a deeper diagnosis needs its own decision (R-10).
-- **PG-089** — closed won't-fix, a different mechanism (the drag session's operation mask).
-- **Read-only text outside the two text-view classes** — a surface that does not host `CompletingTextView` or
-  `FormattingTextView` is not changed here; an audit of such surfaces is a separate ticket if wanted.
+- **Plain hover preview** — rejected for reading-time popovers; a later ledger entry if wanted.
+- **«Rendi strutturale» from the `[[` popup (L-5's Cmd+Shift+K)** — the backlink row covers the gesture.
+- **A graph view, block references, table formulas** — as in the chain SPEC.
+- **Saving the dirty buffer before «Collega» (L-5)** — PG-233 decided otherwise.
+- **Any index-schema or on-disk format change.**
+
+## Domain terms
+
+- **Structural link** — recorded in both notes' `related` with a reason (W-04), as opposed to an inline wikilink.
+- **Mention** — an unlinked occurrence of a note's title or alias in another note's prose.

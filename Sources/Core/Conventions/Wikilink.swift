@@ -48,6 +48,19 @@ struct Wikilink: Equatable, Hashable, Sendable {
         }
     }
 
+    /// Whether this link is one the index counts as a note link (ADR-0084 §D1): not an embed
+    /// unless it names a note, and never a `.canvas` target. `NoteStore.linkTargets(in:)` and
+    /// `BacklinkContext` both ask this, so "a link the index counts" and "a link a backlink row
+    /// counts" are one predicate.
+    ///
+    /// A board is not a note: a `.canvas` target - a task's `^[[Q4.canvas]]` marker, or a plain
+    /// `[[Q4.canvas]]` - is never a link target, so it is no backlink, unresolved link, graph
+    /// neighbour or `links` value (ADR-0065 §D9.5, R-20).
+    var isNoteLink: Bool {
+        (!isEmbed || Transclusion.isNoteReference(target))
+            && (target as NSString).pathExtension.lowercased() != "canvas"
+    }
+
     var rendered: String {
         var text = target
         if let section { text += "#\(section)" }
@@ -340,7 +353,6 @@ private extension String {
         return self
     }
 }
-
 
 /// Editor text transformations of SPEC §5.
 enum EditorEdits {

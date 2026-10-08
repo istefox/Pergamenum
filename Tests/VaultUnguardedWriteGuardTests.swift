@@ -98,7 +98,7 @@ private func guardSession(_ vault: borrowing TemporaryVault) async -> VaultSessi
     let problemsBefore = session.problems.count
 
     let (succeeded, _) = await session.addStructuralLink(
-        from: "Origine.md", to: "Destinazione",
+        from: "Origine.md", toNoteAt: "Destinazione.md",
         reason: "usa i dati", reverseReason: "fornisce i dati"
     )
 

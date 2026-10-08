@@ -87,7 +87,9 @@ extension VaultAPI {
 
 // MARK: - Which folders are pratiche
 
-private extension VaultAPI {
+/// Not `private` (ADR-0045 §D2): `VaultSession.noteAppearances(of:)` (ADR-0084 §D6) enumerates
+/// the pratiche and their messages through these two, called rather than copied.
+extension VaultAPI {
     /// One pratica as the index sees it: its folder, its `pratica.md` record and the
     /// dossier that makes it a pratica at all.
     struct PraticaNote {
@@ -135,7 +137,9 @@ private extension VaultAPI {
         }
         return grouped
     }
+}
 
+private extension VaultAPI {
     /// `VaultLookup.task(_:matching:)`'s shape, for a pratica: an exact path first,
     /// then the folder's own name, and an ambiguity reported rather than resolved by
     /// taking the first - printing somebody else's correspondence is silent, and

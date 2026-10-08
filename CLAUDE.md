@@ -147,6 +147,9 @@ scripts/check-merge-integrity.py --landings "$(git rev-list --max-parents=0 orig
 scripts/install-git-hooks.sh                                                                    # once per machine: installs the pre-push guard from ADR-0061/0062; rerun with --force after a hook change
 scripts/check-adr-references.py                                                                 # docs/adr/README.md's three rules on the working tree, against origin/main (git fetch first)
 scripts/check-adr-references.py --self-test                                                     # its own scenarios, offline, in throwaway repositories, touches no repository
+scripts/adr-index.py                                                                            # prints the `## ADR index` lines below from the headings of docs/adr/0*.md
+scripts/adr-index.py --check                                                                    # names each stale, missing or out-of-order line of that index (exit 1), offline
+scripts/adr-index.py --self-test                                                                # its own scenarios, offline, in throwaway repositories, touches no repository
 ```
 
 ## AI connector
@@ -320,7 +323,7 @@ Rules keyed to a file type live in `.claude/rules/` and load only when a matchin
 
 ## ADR index
 
-Every ADR is `docs/adr/NNNN-<slug>.md`; the title below is that file's own heading, so a new ADR needs no line added here. Long-form summaries of ADR-0019 to ADR-0090 are in `docs/adr/INDEX.md` (an older instruction to add a line to the "Chain decision index" means that file). ADR conventions (one number per file, the status line, citing an ADR from outside this repo) and the renumbering register: `docs/adr/README.md`.
+Every ADR is `docs/adr/NNNN-<slug>.md`; the title below is that file's own heading, so a new ADR needs no line written by hand here: paste what `scripts/adr-index.py` prints, and `scripts/adr-index.py --check` says when the list is behind. Long-form summaries of ADR-0019 to ADR-0090 are in `docs/adr/INDEX.md` (an older instruction to add a line to the "Chain decision index" means that file). ADR conventions (one number per file, the status line, citing an ADR from outside this repo) and the renumbering register: `docs/adr/README.md`.
 
 - ADR-0001 — Initial architecture
 - ADR-0002 — "Note" in the interface, and shortcuts the user can move
