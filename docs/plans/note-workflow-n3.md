@@ -790,11 +790,10 @@ changed). No code changes in this task.
 
 - **HITL: the mockup approval** (R-29, `docs/plans/note-workflow-n3-mockup.md`) gates the view code
   of Tasks 4 and 6. Its open choices feed them: the preview's size and cut, the badge form, the
-  mirrored text's look. Two items in that plan are stale against this SPEC and are not edited here,
-  as instructed: it draws "the preview panel below the line" (now an `NSPopover` beside the link,
-  ADR-0083 §D7) and offers «Dove compare» automatic as an open question (now settled on request,
-  ADR-0084 §D6). The mockup implementer should draw the popover and only the on-request shape; the
-  person may want that plan amended before it is built.
+  mirrored text's look. Two items in that plan were stale against this SPEC (a preview panel below
+  the line, now an `NSPopover` beside the link, ADR-0083 §D7; «Dove compare» offered automatic as an
+  open question, now settled on request, ADR-0084 §D6). The mockup plan was amended for both on
+  2026-10-08, together with the one-row «Crea «X»» click menu it lacked.
 - **HITL: decisions raised for the person at this plan's gate.** (a) The editor's pure units
   (`LinkOpening`, `LinkAtCaret`, `LinkPreviewTrigger`, `LinkPreviewContent`) are placed in session B,
   not A: the SPEC's Decision says "A = pure units", its Success criteria put R-20, R-21 and R-23 in

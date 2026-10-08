@@ -63,16 +63,17 @@ struct MockupGalleryView: View {
     enum Screen: String, CaseIterable, Identifiable {
         case capture, slash, code, outline, folding, transclusion, embed, find, format,
              history, template, tabs, tagBrowser, mentions, views, week, taskControls,
-             gutter, editor, workspace, today, tasks
+             gutter, editor, workspace, today, tasks, linkPreview, inspectorLinks
 
         var id: String { rawValue }
 
-        var title: String { page.title }
-        var milestone: String { page.milestone }
+        @MainActor var title: String { page.title }
+        @MainActor var milestone: String { page.milestone }
 
         /// The only per-screen table. Exhaustive on purpose: a new `case` above does not
-        /// compile until it has a title, a milestone and a view here.
-        var page: Page {
+        /// compile until it has a title, a milestone and a view here. Main-actor isolated
+        /// because a view with `@State` (`TasksMockup`) has a main-actor initializer.
+        @MainActor var page: Page {
             switch self {
             case .capture: Page("Cattura", "M7, realizzato", CaptureMockup())
             case .slash: Page("Menu /", "M8, realizzato", SlashMenuMockup())
@@ -87,7 +88,7 @@ struct MockupGalleryView: View {
             case .template: Page("Template", "M9, da approvare", TemplateMockup())
             case .tabs: Page("Tab", "M10, da approvare", TabBarMockup())
             case .tagBrowser: Page("Tag e preferiti", "M10, da approvare", TagBrowserMockup())
-            case .mentions: Page("Menzioni", "M10, da approvare", UnlinkedMentionsMockup())
+            case .mentions: Page("Menzioni", "M10, N3 da approvare", UnlinkedMentionsMockup())
             case .views: Page("Viste", "M11, da approvare", ViewMockup())
             case .week: Page("Settimana", "M12, da approvare", WeekMockup())
             case .taskControls: Page("Attività e rollover", "M12, da approvare", TaskControlsMockup())
@@ -96,6 +97,8 @@ struct MockupGalleryView: View {
             case .workspace: Page("Workspace", "M2 e M3, realizzato", WorkspaceMockup())
             case .today: Page("Oggi", "M5, realizzato", TodayMockup())
             case .tasks: Page("Attività", "M4, realizzato", TasksMockup())
+            case .linkPreview: Page("Link", "N3, da approvare", LinkPreviewMockup())
+            case .inspectorLinks: Page("Ispettore: link", "N3, da approvare", InspectorLinksMockup())
             }
         }
     }
