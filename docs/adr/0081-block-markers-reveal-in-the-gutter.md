@@ -4,15 +4,17 @@
   note-workflow chain). Flips to `accepted` with the merge of the N2 code PR, never with the mockup
   PR (`docs/adr/README.md` rule 2).
 - Date: 2026-10-04. Written against `48a2d912` (`origin/main` at the same commit). Every line
-  number below was read there.
+  number below was read there. Re-read on `9103768f` (2026-10-06), after N1 (#897, #905); line
+  numbers corrected there.
 - Number: `0081` was reserved for this record by the dispatch that planned N2 and was checked free
   on every ref on 2026-10-04 (`git log --all -- 'docs/adr/0081*'` printed nothing). Check again
   immediately before the merge (rule 1).
 - Source: root `SPEC.md` (Approved 2026-10-04), requirements R-13 and R-14; background in
   `docs/20261003_Pergamenum_NoteWorkflowRoadmap.md` §2 "N2" and
-  `docs/20261002_Pergamenum_NoteWorkflowReport.md` R-1. Plans:
-  `docs/plans/note-workflow-n2-mockup.md` (mockup PR) and `docs/plans/note-workflow-n2.md`
-  (code PR). Assumes N1 (`docs/plans/note-workflow-n1.md`) merged first.
+  `docs/20261002_Pergamenum_NoteWorkflowReport.md` R-1. Plans: `docs/plans/pg-385-n2-page.md`
+  (the build plan of both PRs, which supersedes `docs/plans/note-workflow-n2.md` for the code PR)
+  and `docs/plans/note-workflow-n2-mockup.md` (the mockup page's own plan). N1
+  (`docs/plans/note-workflow-n1.md`) merged first.
 - **Amends** ADR-0028 §D4 (the last paragraph: "A revealed paragraph gets none of this ... The
   item therefore shifts horizontally ... accepted") and ADR-0018 §D2 (what "reveal" draws, for
   list, heading and quote paragraphs only; the four triggers are unchanged). **Extends** ADR-0029
@@ -30,7 +32,9 @@ indent its concealed twin carried by paragraph style disappears, the collapsed l
 comes back at its source width, and the content moves by the difference. Headings do the same
 through the generic collapse path (the `## ` that was 0.01 pt wide is drawn at heading size in
 front of the title), and quotes through `quoteParagraph` (`EditorDecorationDelegate+QuoteRendering.swift`),
-which also returns `nil` when revealed. ADR-0028 accepted the motion because "the revealed line
+which also returns `nil` when revealed. A revealed list paragraph therefore carries no style at
+all today (`+ListRendering.swift:26` returns `nil` before any style is built), so §D2 *adds* one;
+it does not share an existing one. ADR-0028 accepted the motion because "the revealed line
 must be the file's line". The person who uses the editor every day reports it as the most
 distracting thing on the page (report R-1); the SPEC makes "the content's horizontal origin is
 identical whether the marker is concealed or revealed" a criterion (R-13 for list items at every
@@ -47,12 +51,12 @@ Measured facts this decision rests on, all read on `48a2d912`:
   written. A band of container width to the left of the content column, reserved for markers, is
   required: this ADR calls it the gutter.
 - The readable-width inset (`NoteTextView.Coordinator.horizontalInset(viewWidth:cap:minimum:isOn:)`,
-  `NoteTextView+Coordinator.swift:627`) is `max(24, (W − 720) / 2)`; `lineFragmentPadding` is 5.
+  `NoteTextView+Coordinator.swift:616`) is `max(24, (W − 720) / 2)`; `lineFragmentPadding` is 5.
   Below a 768 pt wide view, and always with «Larghezza leggibile» off, there are 24 + 5 points to
   the left of the text, not enough for `###### `.
 - `ListMarkerRendering.paragraphStyle(level:font:basedOn:)` (`ListMarkerRendering.swift:56`) sets
   `firstLineHeadIndent = 1.5 em × depth` and `headIndent = first + 0.75 em`, and the 0.75 em is
-  "deliberately not measured" (`:85-88`). A concealed item's content therefore starts at
+  "deliberately not measured" (`:85-89`). A concealed item's content therefore starts at
   `first + width("• ")`, which equals `headIndent` only by luck of the face; wrapped lines and the
   first line already disagree by a fraction of a point to a few points.
 - A task line is not a list line (ADR-0028 §D2) and its checkbox is never revealed
@@ -60,10 +64,11 @@ Measured facts this decision rests on, all read on `48a2d912`:
 - Four places read "the column" as the text container's width minus the line fragment padding:
   `HorizontalRuleFragment.ruleWidth` (`HorizontalRuleFragment.swift:33`),
   `TranscludedLineFragment.containerWidth` (`TranscludedLineFragment.swift:82`),
-  `NoteTextView+Transclusion.swift:119` and `EmbedResize.swift:62`. Table and view-block
+  `NoteTextView+Transclusion.swift:119` and `EmbedResize.swift:64`. Table and view-block
   attachments size themselves from `proposedLineFragment`.
 - `EditorDecorationDelegate` is shared by the note editor (Nota, Oggi, Diario all host
-  `NoteTextView`) and the Workspace `.text` card (`CardTextView.swift:138-139`, ADR-0028).
+  `NoteTextView`) and the Workspace `.text` card (`CardTextView.swift:142-143`, the delegate
+  built at `:213`, ADR-0028).
 
 ## Decision
 
@@ -80,6 +85,12 @@ today: `MarkdownAttributedText.StyleContext` gains a `gutter` (default `0`), and
 `basedOn:` (headings, list items, the line-height multiple of ADR-0030 §D6) inherits the indents
 for free. A transcluded note's drawn copy (`MarkdownAttributedText.attributed(_:theme:links:)`)
 keeps `gutter: 0`.
+
+The base style composes with N1's `spacing.paragraph` (`ProseParagraphSpacing.merge` copies the
+style it is given before changing it, so the indents survive) and with N1's H5 and H6 faces. The
+initial inset is set at `NoteTextView.swift:107`, computed the same way as the later one.
+`TranscludedRendition.gutter` (16 pt, `TranscludedLineFragment.swift:25`) is an unrelated constant:
+the band inside a transcluded picture, not this gutter.
 
 The text container inset becomes `max(0, readableInset − G)` on both sides, computed by one pure
 function beside `horizontalInset`, which is left unchanged. The arithmetic, at G = 48:
@@ -121,9 +132,12 @@ position), Tab and Shift+Tab change it through the list commands, and a raw run 
 source width is precisely what moves the content.
 
 `listParagraph(at:storage:)` therefore no longer returns `nil` for a revealed paragraph: it applies
-the style and, when revealed, substitutes nothing. `ListMarkerRendering.paragraphStyle` gains
-`gutter:` and `hanging:` parameters (both defaulted) instead of a `revealed:` flag: the hanging
-width is the only thing the state changes, so the state is not a parameter of the arithmetic.
+the style and, when revealed, substitutes nothing. The style takes the page's `proseFont`, pushed
+at `NoteTextView+Coordinator.swift:344`, and composes on `bodyParagraphStyle(of:)`, which is
+widened from `private` (ADR-0045) because the quote and heading branches read it too.
+`ListMarkerRendering.paragraphStyle` gains `gutter:` and `hanging:` parameters (both defaulted)
+instead of a `revealed:` flag: the hanging width is the only thing the state changes, so the
+state is not a parameter of the arithmetic.
 
 Task items: a task line keeps ADR-0028 §D2's own layout (raw indentation, `- [` collapsed, the
 checkbox glyph, never revealed), shifted by G like every paragraph. It satisfies R-13 already,
@@ -150,9 +164,13 @@ marker face, so a theme that enlarges `font.caption` or shrinks the gutter fails
 shifting headings again. The face reaches the non-`@MainActor` delegate as a pushed value, the way
 `checkboxFont` does (ADR-0030 §D5), through a new `ProseTypography.gutterMarker(_:)`.
 
-A heading is handled by a new branch of the substitution hook
-(`EditorDecorationDelegate+HeadingRendering.swift`), active only when the delegate's gutter is
-greater than zero and the paragraph is revealed. Changing a run's font is an attribute change, so
+No heading branch exists today: the hook's branches are the embed, the list, the checkbox, the
+quote, the table and the view block, then the generic path
+(`textContentStorage(_:textParagraphWith:)`, `EditorDecorationDelegate.swift:471-590`), and a
+revealed heading returns `nil` from the generic path. A heading is handled by a new branch of the
+substitution hook, in `EditorDecorationDelegate+HeadingRendering.swift` because the delegate file
+is 892 lines, active only when the delegate's gutter is greater than zero and the paragraph is
+revealed. Changing a run's font is an attribute change, so
 the paragraph keeps its stored length (the constraint of `NSTextContentManager.h:120`).
 
 ### D5. The optional permanent heading badge is a gate, not a default
@@ -181,12 +199,13 @@ The rule line, the transcluded note, the transclusion's reserved width and the e
 all measured "container width minus padding". With a gutter, that is G too wide on each side. One
 definition replaces the four: a pure `EditorGutter.columnSpan(containerWidth:padding:style:)` that
 returns the leading offset and the width between `headIndent` and `−tailIndent` of the paragraph
-style in force. The two fragments read the style of their own paragraph at drawing time
-(ADR-0019 §D2's reason: a number pushed in goes stale on the next resize); the two coordinator
-sites read the gutter from the theme they already resolve. Table and view-block attachments size
-from `proposedLineFragment`; whether that rectangle already excludes the indents is not known from
-the headers, so a hosted test pins that their drawn frame stays inside the column, and if it does
-not they adopt `columnSpan` too.
+style in force. The transcluded picture starts at that leading offset, and its own 16 pt band
+(`TranscludedRendition.gutter`) follows the offset. The two fragments read the style of their
+own paragraph at drawing time (ADR-0019 §D2's reason: a number pushed in goes stale on the next
+resize); the two coordinator sites read the gutter from the theme they already resolve. Table and
+view-block attachments size from `proposedLineFragment`; whether that rectangle already excludes
+the indents is not known from the headers, so a hosted test pins that their drawn frame stays
+inside the column, and if it does not they adopt `columnSpan` too.
 
 ### D8. What this ADR does not change
 
@@ -199,7 +218,7 @@ the acceptance is hosted-view geometry tests plus the mockup and one hand check 
 
 - **Shift the whole text view frame left when a marker is revealed.** Moves every line of the note,
   not one, and setting this view's frame from inside a layout pass is exactly what cost the Diario
-  everything typed into it (`growToFitTheText`'s header, `NoteTextView+Coordinator.swift:509-532`).
+  everything typed into it (`growToFitTheText`'s header, `NoteTextView+Coordinator.swift:498-541`).
   Rejected.
 - **Draw the revealed marker from a layout fragment in the margin and keep the characters
   collapsed.** It looks right and moves nothing, but the characters the caret is walking over are
@@ -237,6 +256,18 @@ one definition, so the rule, the transcluded note and the embed limit cannot dri
   it runs in the layout pass, not in the styling pass, so ADR-0082's restyle budget does not see it.
 - A revealed heading's `#` run is smaller than its title, which reads as a label rather than as the
   file's text; G1 decides whether that is acceptable.
+- Three existing tests change meaning, each restated with its reason said first (CLAUDE.md: a test
+  changes only after its reason is stated):
+  - `MarkupHidingListTests.swift:185`, `theHookReturnsNilForARevealedListParagraph`, becomes
+    `aRevealedListParagraphKeepsItsColumnAndShowsTheFileMarker`. §D2 makes a revealed list paragraph
+    carry its hanging style instead of `nil`: the displayed paragraph is non-nil, its string is the
+    source with no substitution, and its `headIndent` is `C(L)`.
+  - `CardConcealmentTests.swift:187` expected `nil` for the caret's list paragraph. §D6 says a card
+    hangs lists too, so the paragraph is now non-nil, its string equals the source and it carries a
+    positive `headIndent`. A new sibling pins that a card's revealed heading stays `nil`.
+  - `ReadableWidthTests.swift:78-86` asserted `textContainerInset.width == (W − cap) / 2`. §D1 shrinks
+    the inset by G, so it now asserts `inset + gutter == (W − cap) / 2` before and after the
+    resize: the column is where it was, and only the inset moved.
 
 **Neutral.**
 
@@ -258,6 +289,79 @@ one definition, so the rule, the transcluded note and the embed limit cannot dri
   a heading of each level and a two-level quote at a narrow and a readable width; no glyph moves
   horizontally. Oggi and Diario at their usual size.
 
+## Implementation notes
+
+Written at the code PR, 2026-10-07. The decision above is unchanged; this records the answers to
+the gates, what was built and where, and what the build found.
+
+**Gate answers.** G1 and G2 were answered by the person on the mockup page (PR #934, the design
+gallery's gutter-reveal page, on the Debug build), 2026-10-07:
+
+- G1, the gutter's value: **48 pt**, `spacing.xl` plus `spacing.s` (`spacing.gutter` in both theme
+  files and in `SpacingToken`, with its `Theme.emergency` entry in the same edit, PG-225).
+- G1, the quote step: **0.75 em** per level (`EditorGutter.quoteStepInEms`); the bars hang the same
+  way.
+- G1, the narrow width: the whole column shifts once, by the gutter's net amount, as the mockup
+  draws it. Accepted.
+- G1, the heading marker: the revealed `#` run in the caption face (`ProseTypography.gutterMarker`
+  returns `font.caption`), hanging in the margin, as in the mockup's «Titoli» scene.
+- G2, the permanent `H2` badge: **declined**. The default stays the revealed `#` run only, so §D5 is
+  not built: `FoldedHeadingFragment` is untouched.
+- G3, the arrow-down hand check on the Debug build at a narrow and a readable width, with Oggi and
+  Diario at their usual size and a `pergamenum-view` fence rendering in both: **pending** at the time
+  of writing. It is the person's check before the merge.
+
+**Where it landed.**
+
+- New: `Sources/Features/Editor/EditorGutter.swift` (`EditorGutter`: `containerInset`, `columnSpan`,
+  `quoteColumn`, `quoteStepInEms`; and `MarkerRunWidths`, the lock-guarded per-(run, face) memo of §D2
+  in the shape of ADR-0035's height box, emptied past 256 entries because an ordered list adds one
+  run per ordinal), and
+  `Sources/Features/Editor/EditorDecorationDelegate+HeadingRendering.swift` (§D4).
+- Changed, design system: `TokenKeys.swift` (`SpacingToken.gutter`), `Theme.swift` (the emergency
+  value), `ProseTypography.swift` (`gutterMarker`), both theme files.
+- Changed, editor: `EditorDecorationDelegate.swift` (`gutter`, `markerFont`, `markerWidths`, the
+  heading branch, and `collapsedCopy(at:storage:)` extracted from the generic path so the revealed
+  list, quote and heading keep ADR-0037's span reveal), `+ListRendering.swift`, `+QuoteRendering.swift`,
+  `ListMarkerRendering.swift` (`gutter:`, `hanging:`, `contentColumn`), `MarkdownAttributedText.swift`
+  (`base(theme:gutter:)`, `StyleContext`), `NoteTextView.swift` and `NoteTextView+Coordinator.swift`
+  (the inset, the pushed values), and the four column sites of §D7: `HorizontalRuleFragment.swift`,
+  `TranscludedLineFragment.swift`, `NoteTextView+Transclusion.swift`, `EmbedResize.swift`.
+- Found by measuring, not by the text of §D7: the table attachment needs no change for where it
+  starts, since its grid is placed at the column like any paragraph's content. Its width is out of
+  §D7's reach: `TableGridView` is content-sized (`intrinsicContentSize`, each column 72 to 220 pt) and
+  its attachment answers that size, never the column, so a grid wider than the column runs into the
+  right-hand gutter, as a grid wider than the container ran past it before the gutter.
+  Fitting a wide grid to the column (clamping and scrolling it) is a table decision, not this one;
+  the hosted tests pin a narrow grid inside the column and a wide one starting at it. The view block
+  did need a change, because `proposedLineFragment`
+  is the container less its padding and ignores the indents, so `ViewBlockAttachment.attachmentBounds`
+  clamps its width to `columnSpan`. `EmbedResize.column(of:)` takes the container alone (it is asked
+  from `attachmentBounds` and from the drag), so it reads the gutter the styling pass pushed to the
+  container's decoration delegate, not a paragraph's style.
+- Tests: `Tests/EditorGutterTests.swift` (arithmetic), `Tests/GutterRevealGeometryTests.swift` (the
+  content origin measured through the real layout, concealed against revealed, at 600 and 1200 pt
+  with the readable width on and off), `Tests/GutterColumnSiteTests.swift` (the column sites) and
+  `Tests/GutterBlockRevealCoverageTests.swift` (the memo and the span reveal inside a revealed
+  block), and the restated and new siblings in
+  `MarkupHidingListTests`, `MarkupHidingTests`, `QuoteRenderingTests`, `CardConcealmentTests`,
+  `ReadableWidthTests` and `DesignSystemTests`.
+- A heading with no title (`#`, `######`) does not hang its run, which the plan's G0 item 10 asked
+  for: `MarkdownStyler` registers no heading marker for it (on purpose, so the row does not shrink
+  to nothing when the caret leaves it), so §D4's branch has no run to hang and the line shows its
+  raw source in both states, as before; the hosted test pins only that it does not trap.
+- The two fragment sites of §D7 (`HorizontalRuleFragment`, `TranscludedLineFragment`) never add
+  `columnSpan`'s leading offset, which has no production reader: TextKit already places a layout
+  fragment at `lineFragmentPadding + headIndent` (measured,
+  `GutterRevealGeometryTests.aFragmentStartsAtTheColumnNotAtTheContainersEdge`), so `point.x` in
+  `draw(at:in:)` already is the column's start, and adding the offset counts the padding and the
+  indent twice; the sites read only the width, and `leading` is what the tests assert against.
+- `EmbedEditorFixtures.editor` (`Tests/EmbedEditorTestSupport.swift`) pins its inset at 24 pt, so with
+  the gutter the embed column fell from 542 to 446 pt and clamped every drag number the three embed
+  suites compute. The clamp in `EmbedResize.column` is right (without it an embed overflows by 96 pt);
+  the fixture now widens the container by twice the gutter (frame 696, container 648) and the column
+  is 542 pt again.
+
 ## References
 
 - ADR-0018 §D2, ADR-0028 §D2/§D4, ADR-0029 §D1/§D17, ADR-0030 §D5/§D6, ADR-0019 §D2, ADR-0037,
@@ -265,6 +369,6 @@ one definition, so the rule, the transcluded note and the embed limit cannot dri
 - `NSParagraphStyle.h` (MacOSX27.0 SDK) lines 210 and 229; `NSTextContentManager.h:120`.
 - `Sources/Features/Editor/ListMarkerRendering.swift`, `EditorDecorationDelegate+ListRendering.swift`,
   `EditorDecorationDelegate+QuoteRendering.swift`, `EditorDecorationDelegate+CheckboxRendering.swift`,
-  `MarkdownAttributedText.swift`, `NoteTextView+Coordinator.swift:541-631`,
+  `MarkdownAttributedText.swift`, `NoteTextView+Coordinator.swift:530-631`,
   `HorizontalRuleFragment.swift`, `TranscludedLineFragment.swift`, `EmbedResize.swift`.
 - Root `SPEC.md` R-13, R-14; roadmap §2 N2 tasks 1 to 3; report R-1.

@@ -2,17 +2,19 @@
 
 - Status: **planned**. Written before the implementation, for `PG-385`/#887 (milestone N2 of the
   note-workflow chain); closes `PG-347`/#762. Flips to `accepted` with the merge of the N2 code PR
-  (`docs/adr/README.md` rule 2). §D9's ceiling table is filled from measurement during the build,
-  before the merge, at a human gate; until then it reads "to be measured" on purpose.
+  (`docs/adr/README.md` rule 2). §D9's table is measured (2026-10-07, finished tree);
+  its ceiling column is a proposal until the person decides it at G-ceiling.
 - Date: 2026-10-04. Written against `48a2d912` (`origin/main` at the same commit). Every line
-  number below was read there.
+  number below was read there. Re-read on `9103768f` (2026-10-06), after N1 (#897, #905); line
+  numbers corrected there.
 - Number: `0082` was reserved for this record by the dispatch that planned N2 and was checked free
   on every ref on 2026-10-04 (`git log --all -- 'docs/adr/0082*'` printed nothing). Check again
   immediately before the merge (rule 1).
 - Source: root `SPEC.md` (Approved 2026-10-04), requirements R-15 to R-19, its decision "the
   keystroke budget's ceiling is set from measurement" and its constraint "one grammar". Background:
   `docs/20261003_Pergamenum_NoteWorkflowRoadmap.md` §2 "N2" tasks 4 to 8,
-  `docs/20261002_Pergamenum_NoteWorkflowReport.md` R-2 and R-8. Plan: `docs/plans/note-workflow-n2.md`.
+  `docs/20261002_Pergamenum_NoteWorkflowReport.md` R-2 and R-8. Plan: `docs/plans/pg-385-n2-page.md`
+  (which supersedes `docs/plans/note-workflow-n2.md`).
 - **Extends** ADR-0077 §D1 (the exporter renders from the shared parsers) to the editor's styler,
   ADR-0077 §D5 (parser defects are fixed in the parser) and §D7 (a golden corpus classes every
   difference) to a second consumer, ADR-0028 §D6 (`ListContinuation` owns renumbering) with a
@@ -40,16 +42,16 @@ The keystroke is also unmeasured. `textDidChange` (`NoteTextView+Coordinator.swi
 every key, `applyStyling` over the whole document, `renumberLists`, which replaces the whole
 document with `ListContinuation.renumbered(text)` whenever any marker changes
 (`NoteTextView+ListEditing.swift:61-69`), and `growToFitTheText`, which calls
-`ensureLayout(for: documentRange)` (`:541-552`). Report R-2 measured nothing and asserted nothing;
+`ensureLayout(for: documentRange)` (`:530-541`). Report R-2 measured nothing and asserted nothing;
 the SPEC decided that the cost becomes a number with a ceiling, that N2 measures first, and that
 this ADR records the numbers and the ceiling (R-15).
 
 Facts, read on `48a2d912`:
 
 - Every consumer of the styler reads `MarkdownStyler.spans(in:)` and the `Span` enum:
-  `NoteTextView+Coordinator.swift:303` (`applyStyling`), `MarkdownAttributedText.swift:55`,
-  `CardTextView+Styling.swift:44`, `CardTextAttributes.swift:99`, `InlineSpanReveal.swift:28`;
-  nine test files call it directly.
+  `NoteTextView+Coordinator.swift:284` (`applyStyling`), `MarkdownAttributedText.swift:55`,
+  `CardTextView+Styling.swift:44`, `CardTextAttributes.swift:100`, `InlineSpanReveal.swift:28`;
+  ten test files call it directly.
 - The styler's per-line order is frontmatter, fences (with `CodeSyntax` tokens), `ListNesting.levels`,
   then per line `isRule`, `PraticaEntryAnchor`, the quote marker, the heading, the task marker, the
   list marker, the embed run, inline spans, markdown links; then wikilinks (`WikilinkParser`),
@@ -59,21 +61,21 @@ Facts, read on `48a2d912`:
 - One block-level divergence is known before any corpus: the styler reads a line starting
   `>2026-10-04` as a scheduling token (`blockquoteMarkerLength`, `:630`: one `>` followed by an ISO
   date is not a quote), `MarkdownBlockParser` as a quote (`trimmed.hasPrefix(">")`).
-- `_` delimiters are never concealed by the styler (`delimiterSpan(for:opening:)`, `:351-364`)
+- `_` delimiters are never concealed by the styler (`delimiterSpan(for:opening:)`, `:359`)
   because, with no flanking rule, `nome_file_lungo` parsed as italic and hiding its `_` would read
   `nomefilelungo` (ADR-0018 §D1, slice 2). The roadmap attributes this reason to ADR-0030; it is
   ADR-0018's.
 - `Tests/NoteListEditingTests.swift` pins the caret one character ahead after a run's trailing
   marker shrinks (49 where 48 is right) and says, in its own comment, that closing the gap should
   update the assertion deliberately. `CardFormattingTests` has the card's twin.
-- `growToFitTheText`'s header (`:509-540`) records why it lays out the whole document: without it,
+- `growToFitTheText`'s header (`:498-529`) records why it lays out the whole document: without it,
   `usageBoundsForTextContainer` described only the drawn part and the last 187 pt of a forty-line
   note were out of reach; and that `layoutSubtreeIfNeeded` once made the unit suite green over a
   defect still on screen.
-- `TodayView.swift:211` and `DiaryView.swift:105` build `NoteTextView` with no `queries`, so a
-  `pergamenum-view` fence stays raw there; `EditorColumnView.viewQuerySource` (`EditorColumn+Text.swift:244`)
+- `TodayView.swift:216` and `DiaryView.swift:110` build `NoteTextView` with no `queries`, so a
+  `pergamenum-view` fence stays raw there; `EditorColumnView.viewQuerySource` (`EditorColumn+Text.swift:248`)
   is the only `ViewQuerySource` in the app. They pass no `transclusions` either.
-- `CardTextView.hiddenKind(for:)` (`CardTextView.swift:359-375`) maps headings, emphasis, embeds,
+- `CardTextView.hiddenKind(for:)` (`CardTextView.swift:368-383`) maps headings, emphasis, embeds,
   lists, checkboxes, strikethrough and link syntax; quotes and rules fall to `default: nil`.
 
 ## Decision
@@ -103,6 +105,13 @@ app-convention tokens as plain text, exactly as the exporter shows them today; t
 projection is the existing `Accumulator` fed by `lineTokens`. The acceptance for the projection is
 that `NoteExportGoldenTests` and the parsers' own suites stay green byte for byte, with the
 exceptions §D4 records (the decided `>date` reading and a nested-strong fix found during the build).
+
+The block projection keeps the parser's own line split (`Character.isNewline`) and its trimming (all
+whitespace, tabs included), and reads a body rather than a note: a leading `---` is a rule there,
+which is why `lineTokens` reads frontmatter only when asked (`readsFrontmatter:`, default `false`)
+and only the styler asks. `embedRun(inLine:)` stays app-side (`EmbedRun.swift`); the styler's mapping
+calls it, so `Sources/Core` gains no dependency on the app. `MarkdownTokens.swift` came to 273 lines,
+under the 400 at which the plan would have split it by parser, so it was not split.
 
 So there is one grammar: one place decides what a heading, a list marker, a flanking delimiter or a
 tag is, and the order in which an inline scanner tries them (code, embed, wikilink, link, emphasis).
@@ -144,8 +153,10 @@ Before a line of the styler changes, a corpus is captured by running today's `Ma
 `48a2d912` (or the base the build starts from), never written by hand: `Tests/StylerGoldenCorpus.swift`
 holds the inputs and the captured output, `Tests/StylerGoldenTests.swift` asserts it. The output of
 a case is canonical text: one line per span, `start..<end span`, sorted, plus the hidden-marker
-kinds `NoteTextView.Coordinator.hiddenKind(for:)` derives, so the corpus pins what is concealed as
-well as what is coloured. Inputs: every markdown input of `NoteExportGoldenCorpus` (E01 to E45 and
+kinds `NoteTextView.Coordinator.hiddenKind(for:)` derives, and after them one `order a < b` line per
+pair of overlapping spans in emission order, so the corpus pins what is concealed as well as what is
+coloured and in which order the styler lets a later span win (a sorted list alone cannot see a
+precedence regression). Inputs: every markdown input of `NoteExportGoldenCorpus` (E01 to E45 and
 the escape cases) verbatim, plus the editor's own constructs: tags, both date tokens, annotations,
 every task state, nested bullets and ordered items with spaces and tabs, `1)` markers, nested quotes,
 a heading with no title, `#tag` at line start, fences with and without a language, a view block, a
@@ -163,7 +174,12 @@ letters:
   mapping, never re-captured.
 
 An unchanged case stays unchanged. The class and a one-line reason sit beside each changed case,
-the shape `NoteExportGoldenCorpus` already has. The corpus is reused by N5 for its constructs.
+the shape `NoteExportGoldenCorpus` already has, in a type of the styler corpus's own
+(`StylerGoldenCase`): the export corpus's `Kind` gives `b` and `c` other meanings
+(`NoteExportGoldenCorpus.swift:18-28`). A `captured` output is never edited: the captured strings
+live in `StylerGoldenCapturedExport.swift` and `StylerGoldenCapturedEditor.swift`, and a case that
+moved carries its class, its reason and its new `expected` in `StylerGoldenChanges.swift`. The
+corpus is reused by N5 for its constructs.
 
 ### D4. The parser adopts the app's reading of `>date` at the start of a line
 
@@ -173,7 +189,11 @@ scheduling token, not a quote, in the shared block grammar, as it has always bee
 syntax, and the SPEC of this chain makes the same token the clickable date (N3). `> 2026-10-04`
 with a space stays a quote. This is the one *decided* change to the exporter's output;
 `NoteExportGoldenCorpus` gains a case for it, classed A for the export, and the styler corpus
-shows the case unchanged.
+shows the case unchanged. The reading reaches every consumer of `blocks(in:)`, not only the
+exporter: `MarkdownHTML.swift:20`, `MarkdownReadingView.swift:59`, `TranscludedNoteView.swift:106`,
+`PraticaEntryRow.swift:113`, `PraticaMessageRow.swift:191` and `PratichePane+Inspector.swift:68` all
+read `>2026-10-04 x` as a paragraph now. `ViewBlock.swift:267` reads code blocks only and is
+unaffected.
 
 **A second exporter change, found during the build (2026-10-06).** Moving the styler onto the
 shared scanner made the styler corpus's S36, `**forte con *corsivo* dentro** e *corsivo con
@@ -217,6 +237,14 @@ and is pinned in `MarkupHidingTests` instead.
   in this suite have flaked under that load (`PG-331`). The minimum of K runs after one warm-up
   (K = 5 at 50 KB and 200 KB, K = 3 at 1 MB): the noise is one-sided, so the minimum is the
   estimate. Wall time is printed beside it, never asserted.
+- **Outside the measurement:** in the app a keystroke runs the pipeline at least twice, and only the
+  first pass is measured. `textDidChange` (`NoteTextView+Coordinator.swift:188-222`) is the measured
+  one. The SwiftUI update that the binding write triggers then runs `runPasses`
+  (`NoteTextView+Update.swift:55-71`): styling, embeds, transclusions, folding, matches, reveal and
+  `growToFitTheText`, unconditionally. A renumbering keystroke re-enters `textDidChange` a third
+  time through `replaceAtomically`'s `didChangeText()` (`NoteTextView+EmbedCaret.swift:101-113`).
+  So a keystroke in the app costs about two pipelines. The double pass is named here and proposed as
+  a ledger entry, not fixed in N2; measuring it would double the scope of the six-line contract.
 - **Inputs:** deterministic synthetic notes of 50 KB, 200 KB and 1 MB (UTF-8 bytes) in two
   variants: prose (headings, paragraphs with emphasis, links, tags and dates, nested bullet and
   ordered lists, tasks, quotes) and the same with fences (a code fence every 40 lines or so and a
@@ -243,6 +271,15 @@ so one edit stays one undo step, and maps the caret through `mapping`. That clos
 one-character gap `NoteListEditingTests` pins: its assertion moves from 49 to 48 deliberately, as
 its own comment asks. When no edited range is known (an undo, a programmatic replace), the editor
 falls back to the whole-document path, which already answers `nil` when nothing changes.
+
+The edited range is recorded by the coordinator's
+`textView(_:shouldChangeTextInRanges:replacementStrings:)` (`NoteTextView+ListEditing.swift`), which
+both `insertText` and `replaceAtomically` pass through, and handed to
+`renumberLists(in:touching:)`. With no range the fallback keeps today's clamped caret (49), pinned
+by a test of its own. `mapping(_:)` is exact per rewritten digit run: a location after a shrunk
+`10.` moves back one, a location between two rewritten runs moves by the first run's delta only, and
+a location inside a rewritten run stays inside it. A misnumbered run elsewhere is left alone until
+it is edited, which is R-16's «only the edited ordered run».
 
 The card keeps the whole-text path (`renumbered(_:)`, unchanged, sharing the run helpers): a card
 holds a few lines, the scoped path buys it nothing, and its twin test keeps pinning its own caret.
@@ -272,6 +309,17 @@ R-17 the property a person relies on is that the end is reachable when it is app
 are restated as "after the keystroke, bring the end into view, then the last line is inside the
 frame". `typingAtTheEndOfANoteBringsTheCaretIntoView` is unchanged and must stay green as is.
 
+`growToFitTheText` has three callers and all three take the scoped path:
+`NoteTextView+Coordinator.swift:209` (`textDidChange`), `:384` (the view-block height callback) and
+`NoteTextView+Update.swift:71` (`runPasses`). The restatement, with its reason said first (§D7
+removes the whole-document layout the two tests relied on): each drops its own test-side
+`ensureLayout(for: documentRange)` after the keystroke (`EditorHeightTests.swift:71`, `:86`), brings
+the end into view the way the app does (`moveToEndOfDocument(nil)`, then
+`textViewportLayoutController.layoutViewport()`, never `layoutSubtreeIfNeeded`), and asserts its own
+property: the first, `frame.height >= usageBoundsForTextContainer.height + 2 × verticalInset` as
+TextKit reports it at that moment; the second, that the last line's fragment `maxY` is at or below
+`frame.height`. The private fixture gains `textView.delegate = coordinator`.
+
 **What the hosted scope test does not prove (review, 2026-10-06).** `EditorGrowToFitScopeTests`
 measures one `growToFitTheText` call, not a whole keystroke: it records which layout fragments
 that call requests and finds none between the middle of a 2,000-line note and its last paragraph.
@@ -298,27 +346,35 @@ it.
   those two panes, which `RenderedViewBlock`'s nil-means-no-control rule already handles.
 - The `.text` card's `hiddenKind(for:)` gains `.blockquoteMarker → .blockquote` and
   `.horizontalRule → .rule`; the card pushes `ruleColor` from `color.borderSubtle` as the note
-  editor does, and the quote paragraph composes onto the card's own paragraph style, so the card's
-  line-height multiple survives (ADR-0030 §D6's rule).
+  editor does, and the quote paragraph composes onto the card's own paragraph style, so the card's own
+  paragraph style (its alignment) survives and a card gains no page line height (ADR-0030 §D10).
+  With gutter 0 the quote branch sets no style in a card (ADR-0081 §D6).
+- `CardTextView.hiddenKind(for:)` had seven arms and `InlineSpanRevealFenceTests` pinned exactly
+  seven (`:323-354`); it pins nine now, quote and rule, restated with its reason said first and
+  joined to G-caret.
+- The doc comments that stated the old fact (Oggi and Diario pass no `queries`) are corrected:
+  `NoteTextView+Inputs.swift:83-86`, `EditorColumn+Text.swift:244-247`,
+  `ViewBlockQuerySourceTests.swift:354-358` and `:382-391`, `NoteTextView+Coordinator.swift:396-400`
+  and `CardTextAttributes.swift:222-232`.
 - Tables and view blocks stay out of cards: ADR-0029 §D17's `default: nil` arm is the seam and stays.
 - Named and not fixed: Oggi and Diario pass no `transclusions` either, so `![[nota]]` stays a link
   there. Proposed as a ledger entry; no N2 criterion covers it.
 
 ### D9. The measured numbers and the ceiling
 
-Filled during the build, in this order: "before" by plan Task 2, "after" and "ceiling" by the
-plan's last task, the ceiling decided by the person at gate G-ceiling. Milliseconds of main-thread
-CPU time per keystroke, minimum of K runs, on the development Mac (model and macOS build named
-beside the table when filled).
+Filled during the build, in this order: "before" by plan Task 1 (`docs/plans/pg-385-n2-page.md`),
+"after" by the plan's last task (Task 8), and the ceiling decided by the person at gate
+G-ceiling. Milliseconds of main-thread CPU time per keystroke, minimum of K runs, on the
+development Mac (model and macOS build named beside the table when filled).
 
 | Size | Variant | Before | After | Ceiling |
 | --- | --- | --- | --- | --- |
-| 50 KB | prose | 1469.68 | 1594.41 | to be decided |
-| 50 KB | fences | 1421.30 | 1538.71 | to be decided |
-| 200 KB | prose | 21556.50 | 25848.71 | to be decided |
-| 200 KB | fences | 19969.66 | 21648.63 | to be decided |
-| 1 MB | prose | 646462.33 (one cold run) | not measured (see below) | to be decided |
-| 1 MB | fences | 655081.13 (one cold run) | not measured (see below) | to be decided |
+| 50 KB | prose | 1469.68 | 1459.24 | proposed 4378 (current literal 4410) |
+| 50 KB | fences | 1421.30 | 1417.38 | proposed 4253 (current literal 4264) |
+| 200 KB | prose | 21556.50 | 20438.64 | proposed 61316 (current literal 64670) |
+| 200 KB | fences | 19969.66 | 19705.06 | proposed 59116 (current literal 59909) |
+| 1 MB | prose | 646462.33 (one cold run) | 537673.19 (one cold run) | proposed 1613020 (current literal 1939387) |
+| 1 MB | fences | 655081.13 (one cold run) | 520309.27 (one cold run) | proposed 1560928 (current literal 1965244) |
 
 "Before" measured on 2026-10-06 by `scripts/editor-restyle-bench.sh` on the untouched tree (`3e5df0a6`
 plus only the red-phase stubs, which change no behaviour): Mac model `Mac17,7` (Apple M5 Max),
@@ -338,24 +394,36 @@ the two 200 KB rows. That second run, made while other builds were running on th
 prose: up to 1.7 times the first run's numbers, so the 3 times factor of the provisional ceilings is
 the least that holds against load on this machine.
 
-"After" measured on 2026-10-06 by `scripts/editor-restyle-bench.sh` on the working tree with plan
-Tasks 1 to 4 in (the styler on the shared grammar, the scoped renumber, the scoped grow to fit, the
-surfaces), on the same Mac: `Mac17,7` (Apple M5 Max), macOS 27.0.1 (build 26A434), Debug build. The
-four rows up to 200 KB are the minimum of 5 runs after one warm-up. The 1 MB rows are not measured
-yet: two cold runs (`--large-only --runs 1 --no-warmup`, at 16:22 and 16:38) were each ended by a
-SIGTERM from outside the test, 514 s and 336 s into testing, before the first 1 MB keystroke had
-finished ("Test crashed with signal term." in both result bundles). What sent it is not established;
-other sessions were running `PergamenumTests` and test hosts on the Mac at the time. Given the
-unchanged 50 KB and 200 KB rows, there is no reason to expect the 1 MB rows to have moved either,
-but that is an expectation, not a number: they want one quiet run of `--large-only --runs 1
---no-warmup` before G-ceiling.
-Other sessions' test suites were running on the Mac during the run, which thread CPU time absorbs
-better than wall time but not entirely.
+"After" measured on 2026-10-07 by `scripts/editor-restyle-bench.sh` on the finished tree (plan Tasks 1 to
+8 in, branch `feat/pg-385-n2-gutter`), on the same Mac: `Mac17,7` (Apple M5 Max), macOS 27.0.1 (build
+26A434), Debug build. The four rows up to 200 KB are the minimum of 5 runs after one warm-up. The two
+1 MB rows are **one cold run with no warm-up** (`--large-only --runs 1 --no-warmup`), as the "before"
+rows are: 520.3 s and 537.7 s of thread CPU time, 2,172 s of wall time for the pair, build and
+fixtures included. An earlier "after" taken on 2026-10-06 with Tasks 1 to 4 only gave 1594.41, 1538.71,
+25848.71 and 21648.63 ms for the four small rows; the 1 MB rows then were ended twice by a SIGTERM
+from outside the test (514 s and 336 s in) and gave no number. Both of those readings were taken
+while other sessions were building on the Mac; the finished-tree numbers above are the ones to read.
+The ceiling column is the proposal for G-ceiling: three times the finished-tree "after", rounded up to
+a whole millisecond (the same rule as the provisional literals, which are three times "before").
+`RestyleBudget.ceilings` in `Tests/RestyleBudgetSupport.swift` still holds the provisional literals;
+changing them is the person's decision at G-ceiling.
 
-What the "after" says: the keystroke costs what it cost. Every row is within the load noise the
-"before" paragraph measured (50 KB +8%, 200 KB +8% and +20%, against up to 1.7 times between two
-"before" runs). The two scopings did not move the number because the benchmark keystroke, a letter
-typed at the end of a paragraph, changes no ordered run (the whole-text renumber only scanned), and
+Two things about the bench itself, found while taking these numbers. The script's guard
+(`pgrep -fl 'xcodebuild.*Pergamenum'`) also matches the command line of a *waiting shell* that another
+session left polling for `xcodebuild`, so on a Mac with such a shell the guard refuses indefinitely
+with no build running; the numbers above were taken with a copy of the script whose guard matches the
+`xcodebuild` executable only, after checking that none was running. The measurement lines and the
+`xcodebuild` invocation are the script's, unchanged. The script's own guard now does the same
+(`pgrep -x xcodebuild`, then a check that the process's arguments name `Pergamenum`), so a
+polling shell no longer blocks it. And a 1 MB keystroke costs about nine minutes
+of CPU, so the pair is a half-hour job: run it quiet.
+
+What the "after" says: the keystroke costs what it cost. Every row is at or under its "before"
+(50 KB -1% and -0.3%, 200 KB -5% and -1%, 1 MB -17% and -21% for one cold run each), inside the
+load noise the "before" paragraph measured (up to 1.7 times between two "before" runs): these are
+not a gain to claim, and the 1 MB difference in particular is one cold run against one. The two
+scopings did not move the number because the benchmark keystroke, a letter typed at the end of a
+paragraph, changes no ordered run (the whole-text renumber only scanned), and
 an unchanged number says `growToFitTheText`'s whole-document layout was not where this keystroke's
 cost lay either: the review measured `applyStyling` alone requesting layout for most of a long
 note's paragraphs on every key (§D7's note). The cost is the
@@ -438,7 +506,8 @@ The scoped renumber puts the caret where it belongs.
 - The card's renumber keeps the one-character caret gap.
 
 **Neutral.** No file format, schema, protected interface, `Span` case or consumer signature
-changes. The exporter's output changes for two inputs (§D4: `>date` at the start of a line, E46,
+changes. The exporter's output, and with it that of every other `blocks(in:)` and `spans(in:)`
+consumer §D4 names, changes for two inputs (§D4: `>date` at the start of a line, E46,
 and a strong run nested in an italic one, E48). The connectors compile the new token file and
 behave as before.
 
@@ -449,9 +518,65 @@ behave as before.
   and the six ceilings, from the "after" numbers, decided by the person and written into
   §D9 and the test.
 - **G-grow:** the 1 MB hand check of §D7 on the Debug build.
-- **G-caret:** the deliberate change of the pinned caret assertion from 49 to 48, and the
-  restatement of the two `EditorHeightTests` of §D7 (CLAUDE.md: a test is changed only with the
-  reason stated first).
+- **G-caret:** the deliberate change of the pinned caret assertion from 49 to 48, the
+  restatement of the two `EditorHeightTests` of §D7, and `InlineSpanRevealFenceTests`' arm count
+  from 7 to 9 (§D8) (CLAUDE.md: a test is changed only with the reason stated first).
+
+## Implementation notes
+
+Written at the code PRs (#921 for plan Tasks 1 to 5, the gutter PR for Tasks 6 to 8), 2026-10-07. The
+decision above is unchanged; this records what was built and where, the corpus result, and what the
+build left open. Status stays `planned` until the merge.
+
+**Where it landed.**
+
+- New: `Sources/Core/Markdown/MarkdownTokens.swift` (the token layer both parsers and the styler share,
+  §D1 and §D2). Changed: `MarkdownStyler.swift` (the mapping from tokens to spans, §D2),
+  `NoteTextView+ListEditing.swift` and `CardTextView+ListEditing.swift` (the scoped
+  `renumberLists(in:touching:)`, §D6), `NoteTextView+Coordinator.swift` (the scoped
+  `growToFitTheText`, §D7), `ViewQuerySource+Live.swift` (`ViewQuerySource.live(for:)`, the one factory
+  Oggi, Diario and the note editor share, §D8) and `CardTextView.swift` (`hiddenKind`, 7 to 9 cases).
+- Tests: `Tests/StylerGoldenTests.swift` with `StylerGoldenCorpus.swift`,
+  `StylerGoldenCapturedEditor.swift`, `StylerGoldenCapturedExport.swift` (the captured outputs, never
+  edited) and `StylerGoldenChanges.swift` (the classed differences); `StylerSharedGrammarTests.swift`,
+  `MarkdownStylerBlockTests.swift`, `ListRenumberScopeTests.swift`, `ListRenumberRecordingTests.swift`,
+  `EditorGrowToFitScopeTests.swift`, `EditorRestyleBudgetTests.swift` with `RestyleBudgetSupport.swift`;
+  the bench is `scripts/editor-restyle-bench.sh`.
+
+**The corpus, per class (§D3).** 119 cases captured before the change (`StylerGoldenCorpus`).
+98 cases' output is byte-identical after it. The other 21 moved, and every one is **class A** (the
+old styler was wrong; the exporter or the reading view already read the input as the new styler does):
+`E21`, `E23`, `E25`, `E28`, `E29`, `E42`, `E48`, `S30`, `S32`, `S33`, `S34`, `S35`, `S36`, `S37`,
+`S38`, `S51`, `S52`, `S53`, `S54`, `S59`, `S60`. **Class B: 0. Class C: 0.** Three cases (`S11`, `S36`,
+`S45`) first came out as C and were fixed before the table was written: `S11` and `S45` in the
+styler's mapping (ASCII ordered digits; `lineTokens` is given `LineBreak.isTerminator`, so a U+2028
+ends none), `S36` in the parser's `closingRange`. The reason for each of the 21 is in
+`StylerGoldenChanges.swift`, next to its new `expected`. The exporter's output moved for exactly
+two inputs, as §D4 said it would: `E48` and the second half of `S36` (a strong run nested in an
+italic one). G-corpus is the person's to read.
+
+**The budget (§D9).** Measured on the finished tree: the keystroke costs what it cost, in every row
+(table above). The ceilings in `Tests/RestyleBudgetSupport.swift` are still the provisional ones;
+the proposal is in the table, for G-ceiling.
+
+**Follow-ups, proposed as ledger entries and not built in N2.**
+
+- `_` concealment: `_` emphasis delimiters stay unconcealed (§D2, `delimiterSpan(for:opening:)`); the
+  parser now has the flanking rule that made them safe to hide, so concealing them is a decision
+  for its own record.
+- Transclusions in Oggi and Diario: they pass no `transclusions` (Context), so `![[nota]]` stays a
+  link there; §D8 gave them the view query source only.
+- Tasks on the list column (ADR-0081 Neutral): a task's checkbox keeps its own column.
+- The `runPasses` double pass (§D5, "Outside the measurement"): a keystroke in the app runs the
+  pipeline at least twice, and the budget measures `textDidChange` only. Fixing it would change what
+  the six numbers mean, so it needs its own record and its own "before".
+- Restyle only the edited paragraph (Alternatives, deferred): the "after" says the whole-document
+  restyle is where the cost lies, so it is the change that would move these rows. Evaluation: worth
+  its own chain with §D3's corpus as the safety net.
+
+**Gates still open at the time of writing.** G-ceiling (the six ceilings), G-corpus (reading the
+classed diff), G-grow (§D7's 1 MB hand check on the Debug build), G-caret (the 49 to 48 caret
+assertion, the two `EditorHeightTests`, the arm count 7 to 9, each with its reason in the test).
 
 ## References
 
@@ -459,9 +584,9 @@ behave as before.
   ADR-0081 (the same milestone).
 - `Sources/Features/Editor/MarkdownStyler.swift`, `Sources/Core/Markdown/MarkdownInline.swift`,
   `Sources/Core/Markdown/MarkdownBlocks.swift`, `Sources/Core/Editor/ListContinuation.swift`,
-  `Sources/Features/Editor/NoteTextView+Coordinator.swift:188-209, 509-552`,
+  `Sources/Features/Editor/NoteTextView+Coordinator.swift:188-222, 498-541`,
   `Sources/Features/Editor/NoteTextView+ListEditing.swift:61-69`,
-  `Sources/Features/Workspace/CardTextView.swift:359-375`,
-  `Sources/Features/Editor/EditorColumn+Text.swift:244`.
+  `Sources/Features/Workspace/CardTextView.swift:368-383`,
+  `Sources/Features/Editor/EditorColumn+Text.swift:248`.
 - `Tests/NoteExportGoldenCorpus.swift` (the corpus shape), `Tests/NoteListEditingTests.swift`.
 - Root `SPEC.md` R-15 to R-19, Decisions, Constraints, Test seams 2 and 3; `PG-347`, `PG-385`.

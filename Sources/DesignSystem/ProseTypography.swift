@@ -81,6 +81,13 @@ enum ProseTypography {
         return NSFont(descriptor: base.fontDescriptor, size: size) ?? base
     }
 
+    /// The face a revealed heading's `#` run is drawn in, hanging in the gutter (ADR-0081 §D4):
+    /// the caption face (G1, 2026-10-07). Smaller than the heading on purpose, so `###### ` fits
+    /// in the gutter; `EditorGutterTests` measures that it does, for every bundled theme.
+    static func gutterMarker(_ theme: Theme) -> NSFont {
+        theme.nsFont(.caption)
+    }
+
     /// A paragraph style carrying `font.prose`'s line-height multiple (R-07), composed onto
     /// `basedOn` rather than replacing it — list markers, transclusion `reservedHeight` and card
     /// alignment all build their own style first, and this must not drop their indentation,

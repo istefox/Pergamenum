@@ -18,45 +18,56 @@ extension EditorDecorationDelegate {
     /// stored length, which is `NSTextContentManager.h:120`'s constraint and the reason a
     /// bullet can only ever *replace* a marker rather than be inserted before it.
     ///
+    /// Revealed, because the caret is in it (R-03), the paragraph shows the file's own marker
+    /// with no substitution, and still carries the hanging style (ADR-0081 §D2, amending
+    /// ADR-0028 §D4): the run displayed before the content is measured and hung from the
+    /// item's column in both states, so the content does not move when the marker appears. The
+    /// leading indentation stays collapsed in both states, since a run of spaces drawn at
+    /// source width is exactly what moved the content.
+    ///
     /// Nil - leaving the raw source on screen exactly as today - whenever there is nothing
-    /// to draw: no list marker at this offset, the paragraph revealed because the caret is
-    /// in it (R-03), or the marker gone stale against the real characters since the last
-    /// styling pass.
+    /// to draw: the setting off, no list marker at this offset, or the marker gone stale against
+    /// the real characters since the last styling pass.
     func listParagraph(at range: NSRange, storage: NSTextStorage) -> NSTextParagraph? {
-        guard !revealedParagraphs.contains(range.location) else { return nil }
-        guard let marker = marker(of: .list, at: range) else { return nil }
+        // Its own guard rather than the caller's, as `quoteParagraph` has: this branch can be
+        // reached directly, and ADR-0018 §D10's switch has to mean off wherever it is asked.
+        guard hidesMarkup, let marker = marker(of: .list, at: range) else { return nil }
 
         let text = storage.string as NSString
         let markerRange = NSRange(
             location: range.location + marker.range.location, length: marker.range.length
         )
         guard let item = Self.stillSpellsAListMarker(text, at: markerRange) else { return nil }
+        // The marker as the file spells it, indentation excluded: `- `, `1. `, `12) `.
+        let spelled = text.substring(
+            with: NSRange(location: markerRange.location + item.indent, length: markerRange.length - item.indent)
+        )
 
-        let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
-        // A substitution, not an insertion: one character out, one in, the paragraph's own
-        // length unmoved - `NSTextContentManager.h:120`'s constraint, the same one the
-        // embed branch in the main file keeps. Nil for an ordered marker, whose own digits
-        // are the rendered ordinal and are therefore left exactly as the file spells them
-        // (ADR-0028 §D4).
-        if let glyph = ListMarkerRendering.glyph(for: item.kind) {
-            copy.replaceCharacters(
-                in: NSRange(location: marker.range.location + item.indent, length: 1),
-                with: String(glyph)
-            )
+        let copy: NSMutableAttributedString
+        let displayedRun: String
+        if revealedParagraphs.contains(range.location) {
+            // The generic path's copy, so an inline span inside a revealed item follows
+            // ADR-0037's reveal exactly as it did when this paragraph fell through to it.
+            copy = collapsedCopy(at: range, storage: storage)
+                ?? NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
+            displayedRun = spelled
+        } else {
+            copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
+            displayedRun = Self.substituteGlyph(for: item, marker: marker, spelled: spelled, in: copy)
+            // The paragraph's other markers, collapsed exactly as the generic path in the main
+            // file would have collapsed them: this branch returns early, and a list item whose
+            // text is bold has to render both its bullet and its hidden `**` in the one
+            // paragraph the hook is allowed to hand back.
+            let markers = hiddenMarkers[range.location] ?? []
+            for other in Self.survivors(among: markers.filter { $0.kind != .list }, of: range, in: text) {
+                copy.addAttribute(.font, value: Self.collapsedFont, range: other.range)
+            }
         }
         if item.indent > 0 {
             copy.addAttribute(
                 .font, value: Self.collapsedFont,
                 range: NSRange(location: marker.range.location, length: item.indent)
             )
-        }
-        // The paragraph's other markers, collapsed exactly as the generic path in the main
-        // file would have collapsed them: this branch returns early, and a list item whose
-        // text is bold has to render both its bullet and its hidden `**` in the one
-        // paragraph the hook is allowed to hand back.
-        let markers = hiddenMarkers[range.location] ?? []
-        for other in Self.survivors(among: markers.filter { $0.kind != .list }, of: range, in: text) {
-            copy.addAttribute(.font, value: Self.collapsedFont, range: other.range)
         }
         copy.addAttribute(
             .paragraphStyle,
@@ -76,13 +87,36 @@ extension EditorDecorationDelegate {
                 // `lineHeightMultiple` on every character of the note, and this attribute is
                 // written over the whole displayed paragraph - so without handing it back in,
                 // a line's interline spacing would collapse the moment it became a list item.
-                basedOn: Self.bodyParagraphStyle(of: copy)
+                basedOn: Self.bodyParagraphStyle(of: copy),
+                // The page's gutter (zero in a card, which still hangs, ADR-0081 §D6) and the
+                // run actually displayed before the content, measured in the face it is drawn
+                // in: the content then starts on the column in both states (§D2).
+                gutter: gutter,
+                hanging: markerWidths.width(of: displayedRun, in: proseFont)
             ),
             // The whole displayed paragraph, not only the marker: an item that wrapped
             // would otherwise lose its indentation on its second line (R-05).
             range: NSRange(location: 0, length: copy.length)
         )
         return NSTextParagraph(attributedString: copy)
+    }
+
+    /// Draws a concealed bullet's glyph over its marker character in `copy` and answers the run
+    /// now displayed before the content (`• `), or the file's own digits for an ordered marker.
+    ///
+    /// A substitution, not an insertion: one character out, one in, the paragraph's own length
+    /// unmoved - `NSTextContentManager.h:120`'s constraint, the same one the embed branch in the
+    /// main file keeps. No glyph for an ordered marker, whose own digits are the rendered ordinal
+    /// and are therefore left exactly as the file spells them (ADR-0028 §D4).
+    private static func substituteGlyph(
+        for item: ListItem, marker: HiddenMarker, spelled: String, in copy: NSMutableAttributedString
+    ) -> String {
+        guard let glyph = ListMarkerRendering.glyph(for: item.kind) else { return spelled }
+        copy.replaceCharacters(
+            in: NSRange(location: marker.range.location + item.indent, length: 1),
+            with: String(glyph)
+        )
+        return String(glyph) + spelled.dropFirst()
     }
 
     /// The paragraph style the displayed paragraph already carries, read at its first
@@ -92,7 +126,10 @@ extension EditorDecorationDelegate {
     /// `nil` when the storage carries none, which is what an offscreen harness building a
     /// paragraph out of a bare string has; `ListMarkerRendering.paragraphStyle` then builds a
     /// fresh style exactly as it did before ADR-0030.
-    private static func bodyParagraphStyle(of paragraph: NSAttributedString) -> NSParagraphStyle? {
+    ///
+    /// Not `private` (ADR-0045): the quote and heading branches compose on it too, in
+    /// `EditorDecorationDelegate+QuoteRendering.swift` and `+HeadingRendering.swift`.
+    static func bodyParagraphStyle(of paragraph: NSAttributedString) -> NSParagraphStyle? {
         guard paragraph.length > 0 else { return nil }
         return paragraph.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
     }

@@ -114,15 +114,11 @@ final class TransclusionController {
         // makes.
         guard !occurrences.isEmpty || !lastRenditions.isEmpty else { return }
 
-        let containerWidth: CGFloat
-        if let container = textView.textContainer {
-            containerWidth = max(0, container.size.width - container.lineFragmentPadding * 2)
-        } else {
-            containerWidth = textView.bounds.width
-        }
-        let width = TranscludedRendition.bodyWidth(inContainerOf: containerWidth)
         var renditions: [Int: TranscludedRendition] = [:]
         for occurrence in occurrences {
+            let width = TranscludedRendition.bodyWidth(
+                inContainerOf: columnWidth(at: occurrence.lineOffset, in: textView, theme: theme)
+            )
             guard let rendition = rendition(for: occurrence, width: width, theme: theme) else { continue }
             renditions[occurrence.lineOffset] = rendition
         }
@@ -143,6 +139,26 @@ final class TransclusionController {
         if let manager = textView.textLayoutManager {
             manager.invalidateLayout(for: manager.documentRange)
         }
+    }
+
+    /// The width of the column `TranscludedLineFragment` draws the line at `offset` in (ADR-0081
+    /// §D7): the container less its padding and the indents of that line's own paragraph style,
+    /// read from the storage `applyStyling` has just written, so the reserved height is measured
+    /// at the width the fragment draws at. The page's base style only when the line carries no
+    /// style at all, built then and not on every pass.
+    private func columnWidth(at offset: Int, in textView: NSTextView, theme: Theme) -> CGFloat {
+        guard let container = textView.textContainer else { return textView.bounds.width }
+        let storage = textView.textStorage
+        let own = offset < (storage?.length ?? 0)
+            ? storage?.attribute(.paragraphStyle, at: offset, effectiveRange: nil) as? NSParagraphStyle
+            : nil
+        let style = own ?? {
+            let base = MarkdownAttributedText.base(theme: theme, gutter: theme.spacing(.gutter))
+            return base[.paragraphStyle] as? NSParagraphStyle
+        }()
+        return EditorGutter.columnSpan(
+            containerWidth: container.size.width, padding: container.lineFragmentPadding, style: style
+        ).width
     }
 
     /// The paragraph style that buys the height, set on the source line itself.

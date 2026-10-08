@@ -279,7 +279,11 @@ extension NoteTextView {
             // this loop, not `MarkdownAttributedText.attributed(_:theme:)`, is the actual hot
             // caller: it restyles the whole note on every keystroke (this function's own
             // header comment above).
-            var context = MarkdownAttributedText.StyleContext(theme: theme, links: true)
+            // The gutter (ADR-0081 §D1) arrives with the base style, so every paragraph of the
+            // page starts its content at it; the transcluded picture and the card keep 0.
+            var context = MarkdownAttributedText.StyleContext(
+                theme: theme, links: true, gutter: theme.spacing(.gutter)
+            )
             storage.beginEditing()
             storage.setAttributes(
                 context.base,
@@ -355,6 +359,11 @@ extension NoteTextView {
             // The checkbox glyph's face, 7pt over prose (`ProseTypography.checkbox(_:)`) - the
             // one character `checkboxParagraph(at:storage:)` sizes on its own.
             decorations.checkboxFont = ProseTypography.checkbox(theme)
+            // What a revealed list, quote or heading hangs its marker in (ADR-0081 §D2-§D4): the
+            // gutter the base style above starts every paragraph at, and the face a heading's
+            // `#` run takes there. The card pushes neither and stays at gutter 0 (§D6).
+            decorations.gutter = theme.spacing(.gutter)
+            decorations.markerFont = ProseTypography.gutterMarker(theme)
             // The table pass (ADR §D5), here beside `apply(hiddenMarkers:)` below - its own
             // guard, since `applyFolding`'s early return does not cover it, and its own
             // `apply(tableRows:)`/`apply(tableViews:)` calls. It adds the header line's own
@@ -601,11 +610,17 @@ extension NoteTextView {
         func applyReadableWidth(to textView: NSTextView) {
             let width = textView.enclosingScrollView?.contentView.bounds.width
                 ?? textView.frame.width
-            let inset = Self.horizontalInset(
-                viewWidth: width,
-                cap: parent.theme.spacing(.readable),
-                minimum: Self.minimumHorizontalInset,
-                isOn: parent.readableWidth
+            // Less the gutter every paragraph carries as its own indent (ADR-0081 §D1): the
+            // column stays where the readable inset puts it, and the gutter sits inside the
+            // container where a marker can hang into it.
+            let inset = EditorGutter.containerInset(
+                readableInset: Self.horizontalInset(
+                    viewWidth: width,
+                    cap: parent.theme.spacing(.readable),
+                    minimum: Self.minimumHorizontalInset,
+                    isOn: parent.readableWidth
+                ),
+                gutter: parent.theme.spacing(.gutter)
             )
             // Assigning an inset invalidates the layout, so an unchanged one is not assigned:
             // a resize drag posts a notification per frame and each would otherwise relayout

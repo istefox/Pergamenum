@@ -334,6 +334,9 @@ extension Theme {
             // `SpacingToken.paragraph` case: a case without this entry traps at
             // `theme.spacing(_:)` and takes the whole test process with it (PG-225).
             .paragraph: 8,
+            // The gutter (ADR-0081 §D1, G1 = 48), in the same edit as the `SpacingToken.gutter`
+            // case (PG-225).
+            .gutter: 48,
         ],
         radii: [.card: 10, .control: 6, .sticky: 4],
         shadows: [

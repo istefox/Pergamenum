@@ -28,8 +28,8 @@
 # It builds into its own DerivedData (`build/restyle-bench-dd`), never the default one the
 # Stop hook's unit build uses: two xcodebuilds on one `build.db` produce "database is locked"
 # reds that are nobody's defect (PG-183). It refuses to start beside another xcodebuild on this
-# project, as `scripts/uitests.sh` does: a measurement taken while another build holds the CPU
-# is not one to read.
+# project (the same refusal `scripts/uitests.sh` makes, with a narrower match, see below): a
+# measurement taken while another build holds the CPU is not one to read.
 #
 # bash 3.2 (macOS): no `mapfile`, no associative arrays.
 
@@ -60,8 +60,19 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-if other=$(pgrep -fl 'xcodebuild.*Pergamenum' 2>/dev/null) && [ -n "$other" ]; then
-    printf 'editor-restyle-bench: another xcodebuild is running:\n%s\n' "$other" >&2
+# Only a process whose name is `xcodebuild` counts, then only one whose arguments name this
+# project. `pgrep -f` on the pattern alone also matched a shell whose command text merely
+# mentions `xcodebuild ... Pergamenum` (another session polling for a run to finish) and
+# refused with nothing building.
+other=""
+for pid in $(pgrep -x xcodebuild 2>/dev/null || true); do
+    args=$(ps -o args= -p "$pid" 2>/dev/null || true)
+    case "$args" in
+        *Pergamenum*) other="${other}${pid} ${args}"$'\n' ;;
+    esac
+done
+if [ -n "$other" ]; then
+    printf 'editor-restyle-bench: another xcodebuild is running:\n%s' "$other" >&2
     echo "wait for it to finish and run again" >&2
     exit 2
 fi

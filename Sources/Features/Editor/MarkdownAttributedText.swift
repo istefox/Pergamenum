@@ -35,11 +35,24 @@ enum MarkdownAttributedText {
     /// the whole of what that chain set out to fix. The paragraph style is set here for the
     /// same reason — `applyStyling` rewrites every attribute on each keystroke, so the line
     /// height has to arrive with the base rather than be applied once and wiped (R-07).
-    static func base(theme: Theme) -> [NSAttributedString.Key: Any] {
-        [
+    ///
+    /// `gutter` (ADR-0081 §D1): when positive, the paragraph style also carries
+    /// `firstLineHeadIndent = headIndent = gutter` and `tailIndent = -gutter`, so every style
+    /// composed onto it later (headings, list items, the paragraph gap) inherits the column. Only
+    /// the note editor passes one; `ProseTypography.paragraphStyle` stays indent-free, since every
+    /// other surface shares it.
+    static func base(theme: Theme, gutter: CGFloat = 0) -> [NSAttributedString.Key: Any] {
+        var style = ProseTypography.paragraphStyle(theme)
+        if gutter > 0, let mutable = style.mutableCopy() as? NSMutableParagraphStyle {
+            mutable.firstLineHeadIndent = gutter
+            mutable.headIndent = gutter
+            mutable.tailIndent = -gutter
+            style = mutable
+        }
+        return [
             .font: ProseTypography.prose(theme),
             .foregroundColor: NSColor(theme.color(.textPrimary)),
-            .paragraphStyle: ProseTypography.paragraphStyle(theme),
+            .paragraphStyle: style,
         ]
     }
 
@@ -116,10 +129,12 @@ enum MarkdownAttributedText {
             .backgroundColor: NSColor(theme.color(.surfaceSunken)),
         ]
 
-        init(theme: Theme, links: Bool) {
+        /// `gutter` is handed on to `base(theme:gutter:)` (ADR-0081 §D1); the transcluded picture
+        /// and every direct caller keep the default `0`.
+        init(theme: Theme, links: Bool, gutter: CGFloat = 0) {
             self.theme = theme
             self.links = links
-            self.base = MarkdownAttributedText.base(theme: theme)
+            self.base = MarkdownAttributedText.base(theme: theme, gutter: gutter)
         }
 
         /// One styled range's attributes, read against the source it covers: the span's own

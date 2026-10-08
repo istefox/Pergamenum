@@ -4,6 +4,14 @@ import Testing
 
 // MARK: - The list marker (ADR-0028, plan 2026-08-29-wysiwyg-markdown-in-workspace)
 
+/// One concealed item for `MarkupHidingLists.aConcealedItemHangsItsDisplayedRunFromTheSameColumn`:
+/// the note, its marker, and the run the concealed line displays in the marker's place.
+private struct ConcealedListCase {
+    let note: String
+    let marker: HiddenMarker
+    let run: String
+}
+
 /// The third kind of marker this delegate draws, and the first one that *replaces* a
 /// character rather than only shrinking it: an unordered `- ` becomes a bullet, an ordered
 /// `1. ` stays exactly as the file spells it, and both hang at an indentation that grows
@@ -180,19 +188,124 @@ import Testing
         #expect(second == EditorDecorationDelegate.collapsedFont)
     }
 
-    /// R-03: the caret's paragraph shows its own raw prefix. Nil, so the raw source is laid
-    /// out - no substitution, no paragraph style, nothing shifting under the caret.
-    @Test func theHookReturnsNilForARevealedListParagraph() {
+    /// R-03, restated by ADR-0081 §D2/§D6 (plan `docs/plans/pg-385-n2-page.md`, Task 6). The caret's
+    /// paragraph still shows its own raw prefix, but it no longer shows it as `nil`: a revealed
+    /// list paragraph now carries its hanging style, so its content stays on the column its
+    /// concealed twin sits on instead of shifting by the difference. The string is the source
+    /// with no substitution, and the paragraph style hangs to `C(L)`. This replaces
+    /// `theHookReturnsNilForARevealedListParagraph`.
+    @Test func aRevealedListParagraphKeepsItsColumnAndShowsTheFileMarker() { // (n2-page R-13)
+        let font = EditorDecorationDelegate().proseFont
+        let top = MarkupHidingFixture.displayedParagraph(
+            Self.unordered, markers: [Self.unorderedMarker], revealed: [0]
+        )
+        let nested = MarkupHidingFixture.displayedParagraph(
+            Self.nested, markers: [Self.nestedMarker], at: Self.nestedOffset, revealed: [Self.nestedOffset]
+        )
+
+        // The hook returns the paragraph it was asked about, whose length must equal the stored
+        // paragraph's (NSTextContentManager.h:120): "- primo\n", not the whole note.
+        let topSource = (Self.unordered as NSString).substring(
+            with: (Self.unordered as NSString).paragraphRange(for: NSRange(location: 0, length: 0))
+        )
+        #expect(top != nil, "il paragrafo rivelato non porta uno stile")
+        #expect(top?.attributedString.string == topSource)
+        #expect(nested != nil, "il paragrafo annidato rivelato non porta uno stile")
+        let nestedSource = (Self.nested as NSString).substring(
+            with: (Self.nested as NSString).paragraphRange(for: NSRange(location: Self.nestedOffset, length: 0))
+        )
+        #expect(nested?.attributedString.string == nestedSource)
+        let topStyle = top?.attributedString
+            .attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        let nestedStyle = nested?.attributedString
+            .attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(topStyle?.headIndent == ListMarkerRendering.contentColumn(level: 1, font: font, gutter: 0))
+        #expect(nestedStyle?.headIndent == ListMarkerRendering.contentColumn(level: 2, font: font, gutter: 0))
+    }
+
+    /// ADR-0081 §D2: the first line of a revealed item starts `w` before the column, `w` being the
+    /// measured width of the run actually displayed, the file's `- ` here, and the leading
+    /// indentation stays collapsed in both states. Driven through a delegate with a gutter, so the
+    /// column is `G + 1.5 em * L + 0.75 em`.
+    @Test func aRevealedItemHangsItsFileMarkerFromTheColumnAtAGutter() { // (n2-page R-13)
+        let delegate = EditorDecorationDelegate()
+        delegate.gutter = 48
+        delegate.proseFont = .systemFont(ofSize: 20)
+        delegate.apply(hiddenMarkers: [Self.nestedOffset: [Self.nestedMarker]], hidingMarkup: true)
+        _ = delegate.apply(revealedParagraphs: [Self.nestedOffset])
+
+        let displayed = MarkupHidingFixture.substitutedParagraph(delegate, note: Self.nested, at: Self.nestedOffset)
+        let style = displayed?.attributedString
+            .attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        let column = ListMarkerRendering.contentColumn(level: 2, font: delegate.proseFont, gutter: 48)
+        let run = ("- " as NSString).size(withAttributes: [.font: delegate.proseFont]).width
+
+        #expect(displayed != nil)
         #expect(
-            MarkupHidingFixture.displayedParagraph(
-                Self.unordered, markers: [Self.unorderedMarker], revealed: [0]
-            ) == nil
+            abs((style?.headIndent ?? -1) - column) <= 0.5,
+            "headIndent \(style?.headIndent ?? -1) invece di \(column)"
         )
         #expect(
-            MarkupHidingFixture.displayedParagraph(
-                Self.nested, markers: [Self.nestedMarker], at: Self.nestedOffset, revealed: [Self.nestedOffset]
-            ) == nil
+            abs((style?.firstLineHeadIndent ?? -1) - max(0, column - run)) <= 0.5,
+            "firstLineHeadIndent \(style?.firstLineHeadIndent ?? -1) invece di \(max(0, column - run))"
         )
+        // The file's marker, as written: the dash, not the bullet.
+        #expect(displayed?.attributedString.string.contains("- annidato") == true)
+        // Two spaces of indentation, drawn collapsed in the revealed state too.
+        #expect(
+            (displayed?.attributedString.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+                == EditorDecorationDelegate.collapsedFont
+        )
+        #expect(
+            (displayed?.attributedString.attribute(.font, at: 1, effectiveRange: nil) as? NSFont)
+                == EditorDecorationDelegate.collapsedFont
+        )
+    }
+
+    /// The concealed twin: the bullet and its space measured in the same face, so the two states
+    /// put the content on the same column (§D2, R-13). An ordered item's run is the digits.
+    @Test func aConcealedItemHangsItsDisplayedRunFromTheSameColumn() { // (n2-page R-13)
+        let cases = [
+            ConcealedListCase(note: Self.unordered, marker: Self.unorderedMarker, run: "\u{2022} "),
+            ConcealedListCase(note: Self.ordered, marker: Self.orderedMarker, run: "1. ")
+        ]
+        let level = 1
+        for item in cases {
+            let note = item.note
+            let delegate = EditorDecorationDelegate()
+            delegate.gutter = 48
+            delegate.proseFont = .systemFont(ofSize: 20)
+            delegate.apply(hiddenMarkers: [0: [item.marker]], hidingMarkup: true)
+
+            let displayed = MarkupHidingFixture.substitutedParagraph(delegate, note: note)
+            let style = displayed?.attributedString
+                .attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+            let column = ListMarkerRendering.contentColumn(level: level, font: delegate.proseFont, gutter: 48)
+            let width = (item.run as NSString).size(withAttributes: [.font: delegate.proseFont]).width
+
+            let head = style?.headIndent ?? -1
+            let first = style?.firstLineHeadIndent ?? -1
+            let expected = max(0, column - width)
+            #expect(abs(head - column) <= 0.5, "«\(note)»: headIndent \(head)")
+            #expect(abs(first - expected) <= 0.5, "«\(note)»: firstLineHeadIndent \(first) invece di \(expected)")
+        }
+    }
+
+    /// A card hangs lists too and has no gutter (§D6): at gutter 0 the revealed item still
+    /// carries a style whose column is today's `C(L)` without the gutter.
+    @Test func aRevealedItemAtGutterZeroHangsFromTheColumnWithoutAGutter() { // (n2-page R-13)
+        let delegate = EditorDecorationDelegate()
+        delegate.proseFont = .systemFont(ofSize: 20)
+        delegate.apply(hiddenMarkers: [0: [Self.unorderedMarker]], hidingMarkup: true)
+        _ = delegate.apply(revealedParagraphs: [0])
+
+        let displayed = MarkupHidingFixture.substitutedParagraph(delegate, note: Self.unordered)
+        let style = displayed?.attributedString
+            .attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        let run = ("- " as NSString).size(withAttributes: [.font: delegate.proseFont]).width
+
+        #expect(abs((style?.headIndent ?? -1) - 45) <= 0.5, "headIndent \(style?.headIndent ?? -1)")
+        #expect(abs((style?.firstLineHeadIndent ?? -1) - (45 - run)) <= 0.5)
     }
 
     /// ADR-0028 §D10: the whole feature is behind `hidesMarkup`, and off means off,

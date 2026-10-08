@@ -13,15 +13,23 @@ extension EditorDecorationDelegate {
     /// marker sharing the same paragraph (a bold run inside a quote, the SPEC's coexistence
     /// case) - the same reuse `listParagraph(at:storage:)` already makes.
     ///
+    /// At a gutter (ADR-0081 §D3, the note editor only) the quote also hangs: its content sits
+    /// at `EditorGutter.quoteColumn`, and the run displayed before it - the bars concealed, the
+    /// file's `>` run revealed - hangs from that column, so the content does not move when the
+    /// caret enters the line. The revealed paragraph is then the source with that style and no
+    /// substitution. Without a gutter (a card, §D6) nothing changes: no style concealed, nil
+    /// revealed.
+    ///
     /// Nil - leaving the raw `>` source on screen exactly as today - whenever there is
     /// nothing to draw: no blockquote marker at this offset, the paragraph revealed because
-    /// the caret is in it (ADR-0018 §D2), the setting off, or the marker gone stale against
-    /// the real characters since the last styling pass.
+    /// the caret is in it (ADR-0018 §D2) with no gutter to hang in, the setting off, or the
+    /// marker gone stale against the real characters since the last styling pass.
     func quoteParagraph(at range: NSRange, storage: NSTextStorage) -> NSTextParagraph? {
         // Its own guard rather than the caller's: `textContentStorage(_:textParagraphWith:)`
         // already refuses at its first line without the setting, but this branch is reached
         // directly too, and ADR-0018 §D10's switch has to mean off wherever it is asked.
-        guard hidesMarkup, !revealedParagraphs.contains(range.location) else { return nil }
+        let revealed = revealedParagraphs.contains(range.location)
+        guard hidesMarkup, !revealed || gutter > 0 else { return nil }
         guard let marker = marker(of: .blockquote, at: range) else { return nil }
 
         let text = storage.string as NSString
@@ -29,6 +37,15 @@ extension EditorDecorationDelegate {
             location: range.location + marker.range.location, length: marker.range.length
         )
         guard let level = Self.stillSpellsABlockquoteMarker(text, at: markerRange) else { return nil }
+
+        if revealed {
+            // The generic path's copy, so an inline span inside a revealed quote follows
+            // ADR-0037's reveal exactly as it did when this paragraph fell through to it.
+            let copy = collapsedCopy(at: range, storage: storage)
+                ?? NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
+            hangQuote(copy, level: level, displayedRun: text.substring(with: markerRange))
+            return NSTextParagraph(attributedString: copy)
+        }
 
         let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
         // One bar per `>`, character for character: the substitution is the same length as
@@ -63,7 +80,24 @@ extension EditorDecorationDelegate {
         ) {
             copy.addAttribute(.toolTip, value: tooltip.target, range: tooltip.range)
         }
+        // The bars alone: the space after them is collapsed above and draws as nothing.
+        if gutter > 0 {
+            hangQuote(copy, level: level, displayedRun: String(repeating: Self.quoteBar, count: level))
+        }
         return NSTextParagraph(attributedString: copy)
+    }
+
+    /// Hangs `displayedRun` from the quote's column over the whole displayed paragraph (ADR-0081
+    /// §D3): wrapped lines at `quoteColumn`, the first line `w` before it, clamped at zero. Composed
+    /// on the style the paragraph already carries, so the page's line height, the gutter's tail
+    /// indent and the paragraph gap survive.
+    private func hangQuote(_ copy: NSMutableAttributedString, level: Int, displayedRun: String) {
+        let style = NSMutableParagraphStyle()
+        if let base = Self.bodyParagraphStyle(of: copy) { style.setParagraphStyle(base) }
+        let column = EditorGutter.quoteColumn(level: level, font: proseFont, gutter: gutter)
+        style.headIndent = column
+        style.firstLineHeadIndent = max(0, column - markerWidths.width(of: displayedRun, in: proseFont))
+        copy.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: copy.length))
     }
 
     /// U+258F LEFT ONE EIGHTH BLOCK - the bar a `>` is drawn as. One character wide, which
