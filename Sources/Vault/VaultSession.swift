@@ -148,6 +148,14 @@ final class VaultSession {
     /// (`VaultSession+Watching.swift`'s `reconcile`).
     var selfWrittenHashes: [String: [(sequence: UInt64, hash: String)]] = [:]
 
+    /// The hash of the text `planLinkMention` last returned for a `(path, lowercased title)`, so
+    /// `linkMention` can refuse to write a different one (ADR-0084 §D3, R-26). The caller's
+    /// `expecting:` hash covers only the note's bytes, while the mention chosen also depends on the
+    /// target's aliases, read from the index. One hash per key, replaced by the next plan for it,
+    /// consumed by the `linkMention` that follows and dropped by `forgetLinkMentionPlan`; see
+    /// `VaultSession+LinkWrites.swift`.
+    @ObservationIgnored var shownMentionPlans: [String: String] = [:]
+
     /// The `selfWrittenHashes` value that stands for «this session left nothing at this
     /// path» rather than for particular bytes (ADR-0064 §D6). Not a hex digit in it, so
     /// `NoteStore.hash` (SHA-256 hex) can never produce it, and not `""`, which

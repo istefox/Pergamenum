@@ -1,4 +1,4 @@
-**Requirement set:** `SPEC.md`
+**Requirement set:** `docs/archive/specs/pg-219-pointer-feedback.SPEC.md` (root `SPEC.md` while this was built)
 
 # Plan — PG-219: the pointer reaches the screen (#445)
 

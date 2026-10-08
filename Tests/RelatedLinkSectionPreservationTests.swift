@@ -55,7 +55,7 @@ private let fencedSection = "## Note correlate\n\n- [[A]] — a\n\n"
     await session.rescan()
 
     let (created, _) = await session.addStructuralLink(
-        from: "Origine.md", to: "Destinazione", reason: "usa", reverseReason: "fornisce"
+        from: "Origine.md", toNoteAt: "Destinazione.md", reason: "usa", reverseReason: "fornisce"
     )
 
     #expect(created)

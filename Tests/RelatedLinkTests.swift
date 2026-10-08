@@ -141,7 +141,7 @@ Corpo della nota.
     await controller.open(vault.root)
 
     #expect(await controller.addStructuralLink(
-        from: "Origine.md", to: "Destinazione",
+        from: "Origine.md", toNoteAt: "03 Risorse/Destinazione.md",
         reason: "usa i dati", reverseReason: "fornisce i dati"
     ))
 
@@ -170,7 +170,7 @@ Corpo della nota.
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     #expect(await !controller.addStructuralLink(
-        from: "Origine.md", to: "Pieno", reason: "a", reverseReason: "b"
+        from: "Origine.md", toNoteAt: "Pieno.md", reason: "a", reverseReason: "b"
     ))
 
     // Atomic: the source is untouched, so the vault is never left half-linked.
@@ -180,14 +180,14 @@ Corpo della nota.
 }
 
 @MainActor
-@Test func reportsATargetThatDoesNotExist() async throws {
+@Test func reportsAPathThatDoesNotExist() async throws {
     let vault = try TemporaryVault()
     try vault.write(note, to: "Origine.md")
 
     let controller = VaultController(recents: .volatile(), openTabs: .volatile())
     await controller.open(vault.root)
     #expect(await !controller.addStructuralLink(
-        from: "Origine.md", to: "Inesistente", reason: "a", reverseReason: "b"
+        from: "Origine.md", toNoteAt: "Inesistente.md", reason: "a", reverseReason: "b"
     ))
     #expect(controller.problems.contains { $0.contains("Inesistente") })
     controller.close()
