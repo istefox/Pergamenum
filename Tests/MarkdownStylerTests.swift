@@ -171,7 +171,8 @@ private func emphasisMarkers(_ text: String) -> [String] {
 /// the gap since the previous link (one pass over the note, not one walk per link). The
 /// positions must come out the same as when each was measured from the start: here with
 /// multi-byte and combined characters between the links, a frontmatter block that the slice
-/// skips, and a fence whose own link is left unstyled and does not break the walk.
+/// skips, and a fence whose own link is left unstyled and does not break the walk (the parser
+/// already drops that link itself, so the styler's own fence guard is not what this scene proves).
 @Test func everyWikilinkOfALongNoteLandsOnItsOwnText() {
     var text = "---\ntags: [a]\n---\n"
     var expected: [String] = []

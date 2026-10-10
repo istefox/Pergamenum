@@ -369,12 +369,12 @@ development Mac (model and macOS build named beside the table when filled).
 
 | Size | Variant | Before | After | Ceiling |
 | --- | --- | --- | --- | --- |
-| 50 KB | prose | 1469.68 | 1459.24 | proposed 4378 (current literal 4410) |
-| 50 KB | fences | 1421.30 | 1417.38 | proposed 4253 (current literal 4264) |
-| 200 KB | prose | 21556.50 | 20438.64 | proposed 61316 (current literal 64670) |
-| 200 KB | fences | 19969.66 | 19705.06 | proposed 59116 (current literal 59909) |
-| 1 MB | prose | 646462.33 (one cold run) | 537673.19 (one cold run) | proposed 1613020 (current literal 1939387) |
-| 1 MB | fences | 655081.13 (one cold run) | 520309.27 (one cold run) | proposed 1560928 (current literal 1965244) |
+| 50 KB | prose | 1469.68 | 198.43 | proposed 596 (current literal 4410) |
+| 50 KB | fences | 1421.30 | 225.34 | proposed 677 (current literal 4264) |
+| 200 KB | prose | 21556.50 | 911.37 | proposed 2735 (current literal 64670) |
+| 200 KB | fences | 19969.66 | 1066.64 | proposed 3200 (current literal 59909) |
+| 1 MB | prose | 646462.33 (one cold run) | 6308.79 | proposed 18927 (current literal 1939387) |
+| 1 MB | fences | 655081.13 (one cold run) | 11843.73 | proposed 35532 (current literal 1965244) |
 
 "Before" measured on 2026-10-06 by `scripts/editor-restyle-bench.sh` on the untouched tree (`3e5df0a6`
 plus only the red-phase stubs, which change no behaviour): Mac model `Mac17,7` (Apple M5 Max),
@@ -394,7 +394,19 @@ the two 200 KB rows. That second run, made while other builds were running on th
 prose: up to 1.7 times the first run's numbers, so the 3 times factor of the provisional ceilings is
 the least that holds against load on this machine.
 
-"After" measured on 2026-10-07 by `scripts/editor-restyle-bench.sh` on the finished tree (plan Tasks 1 to
+**The "after" column is the one taken on 2026-10-10, with the `wikilinkSpans` fix** (commit
+`b2c58d1c`): `scripts/editor-restyle-bench.sh --large`, the same Mac and build, the four rows up to
+200 KB the minimum of 5 runs after one warm-up and the two 1 MB rows the minimum of 3 runs after one
+warm-up (the 1 MB rows are no longer a half-hour job: 109 s for the whole script). The first "after",
+below, was taken on 2026-10-07 before the fix and is kept because it is what the two scopings alone
+did. The fix is not one of N2's tasks: a hand check on a 50 KB note on 2026-10-10 found the editor
+unusable (seconds of lag per key), a profile of the open pass and of a typed keystroke put nearly all
+of `MarkdownStyler.spans(in:)` in `wikilinkSpans`, which measured every link from the start of the note
+(four walks over the whole text per link, quadratic), and it now walks only the gap since the previous
+link. The ceiling column below is the proposal for G-ceiling on these final numbers.
+
+The first "after", measured on 2026-10-07 by `scripts/editor-restyle-bench.sh` on the tree
+with plan Tasks 1 to 8 and before the fix (plan Tasks 1 to
 8 in, branch `feat/pg-385-n2-gutter`), on the same Mac: `Mac17,7` (Apple M5 Max), macOS 27.0.1 (build
 26A434), Debug build. The four rows up to 200 KB are the minimum of 5 runs after one warm-up. The two
 1 MB rows are **one cold run with no warm-up** (`--large-only --runs 1 --no-warmup`), as the "before"
@@ -402,8 +414,8 @@ rows are: 520.3 s and 537.7 s of thread CPU time, 2,172 s of wall time for the p
 fixtures included. An earlier "after" taken on 2026-10-06 with Tasks 1 to 4 only gave 1594.41, 1538.71,
 25848.71 and 21648.63 ms for the four small rows; the 1 MB rows then were ended twice by a SIGTERM
 from outside the test (514 s and 336 s in) and gave no number. Both of those readings were taken
-while other sessions were building on the Mac; the finished-tree numbers above are the ones to read.
-The ceiling column is the proposal for G-ceiling: three times the finished-tree "after", rounded up to
+while other sessions were building on the Mac; the 2026-10-10 numbers are the ones to read.
+The ceiling column is the proposal for G-ceiling: three times the final "after" (2026-10-10), rounded up to
 a whole millisecond (the same rule as the provisional literals, which are three times "before").
 `RestyleBudget.ceilings` in `Tests/RestyleBudgetSupport.swift` still holds the provisional literals;
 changing them is the person's decision at G-ceiling.
@@ -415,27 +427,32 @@ with no build running; the numbers above were taken with a copy of the script wh
 `xcodebuild` executable only, after checking that none was running. The measurement lines and the
 `xcodebuild` invocation are the script's, unchanged. The script's own guard now does the same
 (`pgrep -x xcodebuild`, then a check that the process's arguments name `Pergamenum`), so a
-polling shell no longer blocks it. And a 1 MB keystroke costs about nine minutes
-of CPU, so the pair is a half-hour job: run it quiet.
+polling shell no longer blocks it. Before the `wikilinkSpans` fix a 1 MB keystroke cost about nine
+minutes of CPU and the pair was a half-hour job; it is about two minutes now, still worth running quiet.
 
-What the "after" says: the keystroke costs what it cost. Every row is at or under its "before"
-(50 KB -1% and -0.3%, 200 KB -5% and -1%, 1 MB -17% and -21% for one cold run each), inside the
-load noise the "before" paragraph measured (up to 1.7 times between two "before" runs): these are
-not a gain to claim, and the 1 MB difference in particular is one cold run against one. The two
-scopings did not move the number because the benchmark keystroke, a letter typed at the end of a
-paragraph, changes no ordered run (the whole-text renumber only scanned), and
-an unchanged number says `growToFitTheText`'s whole-document layout was not where this keystroke's
-cost lay either: the review measured `applyStyling` alone requesting layout for most of a long
-note's paragraphs on every key (§D7's note). The cost is the
-whole-document restyle. That is the alternative "restyle only the edited paragraph", deferred below
-until these numbers decided; they now say it is the change that would move these rows. My
-evaluation: worth its own chain, with §D3's corpus as its safety net, proposed as a ledger entry and
-not built in N2. §D6 and §D7 still stand on their own grounds: one undo step and the right caret for
-a renumber, and no `documentRange` layout from `growToFitTheText`.
+What the "after" says. The two scopings (§D6, §D7) did not move the number: the first "after"
+(2026-10-07) is at or under the "before" by 1% to 21%, inside the load noise the "before" paragraph
+measured (up to 1.7 times between two "before" runs), because the benchmark keystroke, a letter typed
+at the end of a paragraph, changes no ordered run and the whole-document layout was not where its cost
+lay. The cost was the whole-document restyle, and inside it one function: with `wikilinkSpans` made
+linear a keystroke costs 7.4 times less at 50 KB (1459 to 198 ms), 22 times less at 200 KB (20439 to
+911 ms) and 85 times less at 1 MB (537673 to 6309 ms). That is a real gain, and it is a fix of a
+quadratic walk, not of the design: the keystroke still re-tokenizes and restyles the whole note, so
+its cost is still proportional to the note, and 198 ms at 50 KB (Debug; the Release app is faster)
+is still too slow to type in at speed: a hand check of the Release build on 2026-10-10 found a 50 KB
+note barely usable after the fix. A keystroke has to cost under about 20 ms whatever the note's size,
+which only the alternative "restyle only the edited paragraph" can give: a profile of a typed
+keystroke in a 50 KB note puts 46% of `textDidChange` in the per-line inline parse, 15% in the
+wikilink parse, 13% in the block tokenizer and 10% in the transclusion scan, all over the whole
+text, plus a second styling pass in `runPasses`. My evaluation: it is worth its own chain, with §D3's
+corpus as its safety net and a property test (random edits, incremental equals full restyle); the
+person decided on 2026-10-10 to run it as a separate task started at once, not inside N2. §D6 and §D7
+still stand on their own grounds: one undo step and the right caret for a renumber, and no
+`documentRange` layout from `growToFitTheText`.
 
 **Which rows run every turn: a proposal for G-ceiling.** At these costs the six rows cannot all run
-in the per-turn suite: the four rows up to 200 KB added 397 s of wall time to one run of the budget
-suite (320 s and 426 s on the untouched code), nearly all of it the two 200 KB rows, and the Stop
+in the per-turn suite: on the untouched tree and on the first "after" the four rows up to 200 KB added 320 to 426 s of wall time to one run of the budget
+suite (397 s on the first "after"; about 15 s now with the fix), nearly all of it the two 200 KB rows, and the Stop
 hook kills the whole suite at 600 s. So, as built and proposed for the person to confirm or change
 at G-ceiling:
 
@@ -460,7 +477,8 @@ turn" and whose R-15 names the three sizes: the test still measures all three, b
 rows every turn. The SPEC needs the person's amendment for it; this record does not edit it.
 
 The ceilings in `Tests/RestyleBudgetSupport.swift` stay the provisional ones, three times the
-"before" column, rounded up. Every "after" number above is under its provisional ceiling. The final
+"before" column, rounded up. Every "after" number above is under its provisional ceiling, by 19 to
+307 times: until G-ceiling lowers them the guard would not catch a return to the old cost. The final
 six are the person's at G-ceiling (proposal, §D5: three times the "after" number, rounded up).
 
 ## Alternatives considered

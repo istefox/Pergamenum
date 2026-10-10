@@ -423,17 +423,15 @@ enum MarkdownStyler {
         outside fences: [CodeFence.Region]
     ) -> [StyledRange] {
         var result: [StyledRange] = []
-        // The slice and the base index are the same for every link in the note, and both
-        // are a walk over the whole text: built here once rather than four times per link.
+        // The slice is the same for every link in the note, and building it is a walk over the
+        // whole text: done here once, not per link.
         let slice = String(text[start...])
-        let offset = text.distance(from: text.startIndex, to: start)
-        let sliceStart = text.index(text.startIndex, offsetBy: offset)
         // Where the previous link ended, in the slice and in the full text. The parser returns
         // links in document order, so each shift below walks only the gap since the last link
         // and the whole loop is one pass over the note; measuring every link from the start of
         // the slice made a keystroke in a 50 KB note cost seconds (a walk per link, quadratic).
         var sliceCursor = slice.startIndex
-        var textCursor = sliceStart
+        var textCursor = start
         for link in WikilinkParser.links(in: slice) {
             // The parser worked on a slice; shift its indices back onto the full text.
             let lower = text.index(textCursor, offsetBy: slice.distance(
