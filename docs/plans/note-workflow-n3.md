@@ -853,54 +853,40 @@ No static check is declared that passes on `main`: SwiftLint fails there by desi
 the stop-gate red before the suite runs. The type check is the build inside the test command.
 `scripts/check-adr-references.py` is a documentation checker, run by hand in Task 8, not a code check.
 
-## Build result (2026-10-07)
+## Build result (2026-10-10)
 
 BUILD · DONE WITH WARNINGS
-Scope: Session A, Tasks 1 and 2 (Tasks 3 to 8 are gated on PR A, the mockup approval and PR C by the plan)
-Files: 58 changed files, Session A: new Sources/Core/Links/, UnresolvedTargets.swift, Connector/VaultLinkWrites.swift, Vault/VaultSession+LinkWrites.swift and +Appearances.swift, MCPServer NoteLinks files, 13 new test files; ADR-0083/0084, this plan, SPEC.md are planning artifacts
-Tests: PergamenumTests 5778 passed (5 known issues, pre-existing); perg and pergamenum-mcp build exit 0; scripts/mcp-smoke.py exit 0
+Scope: Session B, Tasks 3 and 4 (PR B: R-20..R-23, R-29, R-30)
+Files: 57 changed paths uncommitted: 30 modified, 27 untracked (14 new test files, 12 new sources incl. Sources/Core/Links/{LinkOpening,LinkAtCaret,LinkPreviewTrigger,LinkPreviewContent}.swift, this plan); ADR-0083 §D1 amended in place
+Tests: PergamenumTests 6034 passed in 366 suites (5 known issues, pre-existing, HostedViewSupport.swift:46), 14 (coverage) tests; perg and pergamenum-mcp build exit 0
 Review: sonnet, safe; opus, safe
-Coverage: 11 of 12 R-ids covered; R-30 UNCOVERED on tests (a gate requirement, verified by the runs above)
-Dropped: 17 (post-sweep 8, fix-hunk 4, unlocated 1, nit 4)
-Dispatch: Round 0 (red): tester — Task 1
-Dispatch: Round 1: debugger — BacklinkContext.swift:16 (reviewer: sonnet, opus), VaultSession+LinkWrites.swift:28 (reviewer: sonnet), VaultLinkWrites.swift:23 (reviewer: sonnet); coder — VaultLinkWrites.swift:21 (reviewer: sonnet)
-Dispatch: Round 2: debugger — VaultSession+Notes.swift:244 (reviewer: opus), VaultSession+LinkWrites.swift:69-72 (reviewer: opus); coder — VaultSession.swift:155 (reviewer: opus), VaultSession.swift:151 (reviewer: sonnet), VaultSession+LinkWrites.swift:25 (reviewer: opus), UnlinkedMentions.swift:105 (reviewer: opus), VaultLinkWrites.swift:23 (reviewer: sonnet, opus)
-Dispatch: Round 1 (sweep): debugger — VaultSession+LinkWrites.swift:60 (reviewer: opus), VaultSession+LinkWrites.swift:135-136 (reviewer: opus); coder — NoteRename.swift:33 (follow-up: debugger), UnlinkedMentions.swift:5-15, UnlinkedMentions.swift:39 (reviewer: opus), UnlinkedMentions.swift:302 (reviewer: sonnet), VaultSession+LinkWrites.swift:36 (reviewer: opus), VaultReads.swift:32-33 (reviewer: opus), VaultSession+LinkWrites.swift:163 (reviewer: opus), IndexSnapshot.swift:79, WriteCommands.swift:61, Wikilink.swift:357, main.swift:12 (follow-ups)
-Dispatch: Round 2 (sweep): debugger — UnlinkedMentions.swift:42-44 (reviewer: opus); coder — UnlinkedMentions.swift:104 (reviewer: sonnet), VaultSession+LinkWrites.swift:91-95 (reviewer: opus), VaultLinkWrites.swift:23-30 (reviewer: opus), Project.swift:229 and VaultControllerLandedChangeTests.swift:354 (follow-ups: coder)
-Dispatch: Round 3 (closing, beyond the review cap, not re-reviewed): coder — UnlinkedMentions.swift:45 (tag/annotation), UnlinkedMentions.swift:45 (early return), ADR-0084 §D3, VaultSession+LinkWrites.swift:103, MentionLinkTests.swift:228
-WARN: UNCOVERED R-30 tests: R-30 is a gate requirement (unit suite, builds, smoke, schemaVersion 7, no new GUI test); the runs verify it, no test names it
-WARN: the closing round (inline tag and annotation exclusion, early return in firstMention, ADR-0084 §D3, two NITs) ran beyond the four-review-round cap under Stefano's standing authorization and was not re-reviewed; the suite is green after it
-WARN: decision-bound, for Stefano: the agents amended ADR-0084 §D1, §D3, §D4 and the plan's Task 2 and Task 6 text; the connector refuses a title shared by several notes (link_mention, remove_structural_link) and any path that is not an indexed note, a behaviour beyond the SPEC wording
-WARN: git status carries a staged SPEC.md rename to docs/archive/specs/pg-219-pointer-feedback.SPEC.md and docs/plans/pg-219-pointer-feedback.md that pre-date this build; /ship weighs them
-INFO: review escalated, size: 58 changed files, threshold 20
+Coverage: R-20, R-21, R-22, R-23, R-29 covered; R-30 UNCOVERED on tests (a gate requirement, verified by the runs above)
+Deferred: none
+Dropped: 1 (post-sweep 1)
+Dispatch: Round 0 (red): tester — Task 3
+Dispatch: Round 1: coder — NoteTextView+LinkPreview.swift:275 (reviewer: sonnet, opus), VaultController+LinkOpening.swift:28 (reviewer: sonnet, opus); tester — LinkPreviewControllerTests.swift:123 (fixture); debugger — LinkPreviewTrigger.swift:61 (reviewer: sonnet, opus), NoteTextView+LinkPreview.swift:91 (reviewer: opus), NoteTextView+LinkPreview.swift:254 (reviewer: sonnet), NoteTextView+Coordinator.swift:170 (reviewer: sonnet)
+Dispatch: Round 2: re-review only (sonnet safe, opus safe), no FIX line
+Dispatch: Round 1 (sweep): coder — ShortcutSettings.swift:83 (reviewer: sonnet), LinkChoiceSheet.swift:107 (reviewer: sonnet), NoteTextView.swift:290 (reviewer: opus), LinkPreviewView.swift:75-79 (reviewer: opus), LinkPreviewControllerTests.swift:10 (follow-up: debugger), MenuCommands.swift:16 (follow-up: tester); debugger — LinkPreviewPopover.swift:71 (reviewer: opus)
+WARN: UNCOVERED R-30 tests: R-30 is a gate requirement (unit suite, three targets build); the runs verify it, no test names it
+WARN: by-hand check still owed (plan Task 4 "Done means"): popover and choice menu in light and dark on the Debug build, popover edge below the line (.maxY), first-show size; not doable by an agent
+WARN: decision-bound, for Stefano: the coder amended ADR-0083 §D1 (.otherColumn opens a stable tab via openNoteInNewTab, because openNote(at:) consumes the other column's preview tab); MockupGalleryView label flipped to «N3, approvato» on the strength of the 2026-10-08 approval
+WARN: Cmd+Opt+Return was measured against com.apple.symbolichotkeys by the coder (58 entries, none on key code 36), not re-run by the reviewers
+WARN: build ran on kepler/feature/note-workflow-n3-session-b, not feat/note-workflow-n3-session-b, which is checked out by the worktree adr-0083-0084-pg-386; /ship decides the branch name
+WARN: all of the work is uncommitted; the stop-gate collided twice with the tester's own xcodebuild (build database locked, no verdict, not a red test)
+INFO: review escalated, size: 54 changed files, threshold 20
+INFO: Task 3/4 line cites checked on da38099d: only NoteTextView.dismantleNSView moved (:280 to :284)
+Session A: Scope: Session A, Tasks 1 and 2 (Tasks 3 to 8 are gated on PR A, the mockup approval and PR C by the plan)
+Session A: Files: 58 changed files, Session A: new Sources/Core/Links/, UnresolvedTargets.swift, Connector/VaultLinkWrites.swift, Vault/VaultSession+LinkWrites.swift and +Appearances.swift, MCPServer NoteLinks files, 13 new test files; ADR-0083/0084, this plan, SPEC.md are planning artifacts
+Session A: Tests: PergamenumTests 5778 passed (5 known issues, pre-existing); perg and pergamenum-mcp build exit 0; scripts/mcp-smoke.py exit 0
+Session A: Review: sonnet, safe; opus, safe
 
 ```text
-DROP	unlocated	**MINOR** [other] Tests/VaultLinkWritesTests.swift (new file): -only-testing:PergamenumTests/VaultLinkWritesTests runs 0 tests because the tests are free functions, use the full PergamenumTests selection (follow-up: debugger)
-DROP	fix-hunk	**MINOR** [wrong-behaviour] Sources/Vault/VaultSession+LinkWrites.swift:22 — planLinkMention and linkMention skip linkEndRefusal, so a direct session caller can scan and rewrite the raw text of a .canvas or settings JSON; only VaultAPI.requireNote guards it. Fix: call linkEndRefusal(path) at the top of both doors and extend the non-note test to the session door. (reviewer: sonnet)
-DROP	fix-hunk	**MINOR** [other] Sources/Connector/VaultLinkWrites.swift:75 — requireNote duplica VaultSession.linkEndRefusal con frasi diverse per la stessa condizione, così app e connettore non rifiutano allo stesso modo. Fix: lanciare ConnectorError con la frase di session.linkEndRefusal(path). (reviewer: opus)
-DROP	fix-hunk	**MINOR** [wrong-behaviour] Sources/Vault/VaultSession+LinkWrites.swift:87 — mentionPlan drops the target's aliases when two notes share the title, but unlinkedMentions(for:) (VaultSession+Search.swift:140) still lists alias-only mentions, so the inspector shows rows «Collega» answers noMention for; ADR-0084 §D3 and the plan do not record the unique-carrier rule. Fix: one shared name-list helper used by both, then correct the comments and ADR §D3. (reviewer: sonnet)
-DROP	fix-hunk	**MINOR** [other] Sources/Vault/VaultSession+LinkWrites.swift:87-91 — Il commento afferma che gli alias sono letti come in unlinkedMentions(for:), che invece usa gli alias del soggetto senza condizioni: con un titolo condiviso l'inspector mostra una riga via alias che «Collega» rifiuta come .noMention. Fix: correggere il commento nominando la divergenza e filtrare le righe-alias omonime in sessione C. (reviewer: opus)
-DROP	post-sweep	**NIT** Sources/Core/Search/UnlinkedMentions.swift:302 — mentions(_:in:) and containsWholeWord are kept in the shared production sources with no production caller, only as a test oracle; move them into the test target if the oracle can live there. (reviewer: sonnet)
-DROP	post-sweep	**MINOR** [other] Sources/Index/IndexSnapshot.swift:79 — backlinks use link.target while ADR-0084 §D1 says resolvedTitle, they differ for [[**T**]] (follow-up: tester)
-DROP	post-sweep	**MINOR** [other] Sources/CLI/Commands/WriteCommands.swift:61 — the perg wiring (noteLinkMention, noteUnlinkRelated) has no automated test, only VaultAPI and the MCP smoke are covered (follow-up: tester)
-DROP	post-sweep	**MINOR** [other] Sources/CLI/main.swift:12 — SwiftLint cyclomatic_complexity 17 on the dispatcher, already there (follow-up: coder)
-DROP	post-sweep	**MINOR** [other] Sources/Core/Conventions/NoteRename.swift:33 — matches links by resolvedTitle, so a rename follows [[**T**]] while the index files it under **T**, different subsystem, not checked (follow-up: debugger)
-DROP	post-sweep	**MINOR** [other] Sources/Connector/VaultPraticheLinks.swift:67 — still check only session.exists before writing (also :235, :320 and Sources/Connector/VaultWrites.swift:93), old «non esiste» wording, may share the non-note hole (follow-up: debugger)
-DROP	post-sweep	**MINOR** [other] Project.swift:229 — line_length warning, the NSAppleEventsUsageDescription string, already there before this build (follow-up: coder)
-DROP	post-sweep	**MINOR** [other] Tests/VaultControllerLandedChangeTests.swift:354 — line_length warning, 122 characters, already there before this build (follow-up: coder)
-FIX	swept	**NIT** Sources/Core/Search/UnlinkedMentions.swift:105 — mentions(_:in:) and containsWholeWord only used as a test oracle (reviewer: sonnet)
-FIX	swept	**NIT** Sources/Core/Search/UnlinkedMentions.swift:3 — header omits the code narrowing (reviewer: sonnet)
-FIX	swept	**NIT** Sources/Core/Search/UnlinkedMentions.swift:5-15 — type doc omits the code narrowing (reviewer: opus)
-FIX	swept	**NIT** Sources/Core/Search/UnlinkedMentions.swift:37-39 — CodeFence.regions union unexplained (reviewer: opus)
-FIX	swept	**NIT** Sources/Vault/VaultSession+LinkWrites.swift:36 — refusal type spelled two ways (reviewer: opus)
-FIX	swept	**NIT** Sources/Connector/VaultReads.swift:32-33 — resolved resta il filtro scritto a mano mentre unresolved passa per UnresolvedTargets.of. Far passare anche resolved dalla derivazione condivisa. (reviewer: opus)
-FIX	swept	**MAJOR** [wrong-behaviour] Sources/Vault/VaultSession+LinkWrites.swift:60 — linkMention e planLinkMention non applicano linkEndRefusal, quindi un percorso che esiste ma non è una nota indicizzata (.canvas, .pergamenum/*.json) può essere riscritto da VaultController.linkMention: il controllo vive solo nel connettore. Fix: chiamare linkEndRefusal(path) in testa a entrambe e tornare nil / .failed(refusal). (reviewer: opus)
-FIX	swept	**MAJOR** [wrong-behaviour] Sources/Vault/VaultSession+LinkWrites.swift:135-136 — removeStructuralLink prende due percorsi ma rimuove per titolo, così con due note omonime cancella la voce related e il bullet che puntavano all'altra omonima e riporta removed == true (raggiungibile da perg note unlink-related e dal tool MCP). Fix: rifiutare con una frase nominata quando index.resolve(title:) dà più di un percorso per uno dei due titoli. (reviewer: opus)
-FIX	swept	**MINOR** [other] Sources/Core/Search/UnlinkedMentions.swift:39 — CodeFence.regions(in: body) è ridondante accanto a WikilinkParser.codeRanges(in: body): due autorità su cos'è codice e una scansione in più. Fix: togliere il termine CodeFence.regions o motivare entrambi. (reviewer: opus)
-FIX	swept	**MINOR** [style] Sources/Vault/VaultSession+LinkWrites.swift:163 — Riga di 122 caratteri, oltre il line_length warning 120 di .swiftlint.yml, su un file nuovo. Fix: spezzare la stringa della frase «legame strutturale tolto a metà». (reviewer: opus)
-FIX	swept	**MINOR** [other] Sources/Core/Conventions/Wikilink.swift:357 — SwiftLint vertical_whitespace, double blank line already there (follow-up: coder)
-FIX	swept	**MAJOR** [wrong-behaviour] Sources/Core/Search/UnlinkedMentions.swift:45 — A name inside an inline #tag (e.g. #client-rossi) counts as a mention because the excluded set has no tag/annotation ranges, so link-mention writes #client-[[Rossi|rossi]] and breaks the tag, with no diff on the perg and MCP dryRun:false doors. Fix: add the parser's .tag and .annotation token ranges to the excluded set and add a test. (reviewer: sonnet)
-FIX	swept	**MINOR** [other] Sources/Core/Search/UnlinkedMentions.swift:45 — firstMention builds the whole excluded set before checking that any name occurs in the body, which adds a full parse to every note in the vault-wide mention scan. Fix: return nil early when no name occurs in the body, or compute excluded lazily on the first hit. (reviewer: sonnet)
-FIX	swept	**MINOR** [plan-deviation] docs/adr/0084-backlinks-with-context-unresolved-per-note-mentions-that-link.md:135 — ADR-0084 section D3 records only the code narrowing, but UnlinkedMentions.urlRanges also excludes markdown links and bare URLs while citing D3; neither the SPEC decision nor the plan Task 2 mention it. Fix: record the URL/markdown-link narrowing in D3 and the connector refusals (shared title, non-note path), and the tag narrowing. (reviewer: sonnet, opus)
-FIX	swept	**NIT** Tests/MentionLinkTests.swift:228 — The oracle comment claims the two code entries are the only ones where old and new scan may disagree; the URL narrowing adds a second class of divergence. Fix: reword. (reviewer: opus)
+FIX	swept	**MINOR** [other] Sources/Features/Settings/ShortcutSettings.swift:83 — The reset button's help and accessibility label read "Torna a " with nothing after it for the two commands that ship unbound (reviewer: sonnet)
+FIX	swept	**MINOR** [wrong-behaviour] Sources/Features/Editor/LinkPreviewPopover.swift:71 — show() guards window.isVisible but not isKeyWindow (reviewer: opus)
+FIX	swept	**NIT** Sources/Features/Editor/LinkChoiceSheet.swift:107 — composer comment says "a sheet of its own" (reviewer: sonnet)
+FIX	swept	**NIT** Sources/Features/Editor/NoteTextView.swift:290 — dismantleNSView builds the lazy linkPreview unconditionally (reviewer: opus)
+FIX	swept	**NIT** Sources/Features/Editor/LinkPreviewView.swift:75-79 — no-op mask on non-fading lines (reviewer: opus)
+FIX	swept	**MINOR** [other] Tests/LinkPreviewControllerTests.swift:10 — LinkPreviewControllerLifecycle over type_body_length (follow-up: debugger)
+FIX	swept	**MINOR** [other] Sources/App/MenuCommands.swift:16 — the three Vista items have no test (follow-up: tester)
+DROP	post-sweep	**MINOR** [other] Sources/Features/Editor/NoteTextView+Coordinator.swift:420 — SwiftLint file_length, applyStyling length and cyclomatic complexity, already there before this build; no safe move removes them (follow-up: debugger)
 ```

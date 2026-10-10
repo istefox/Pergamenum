@@ -17,6 +17,10 @@ extension NoteTextView {
         textView.boardTitles = boardTitles
         textView.tagSuggestions = tagSuggestions
         textView.editorCommands = editorCommands
+        // The `[[` popup's «Crea «X»» row exists only where something can act on it (ADR-0083 §D6).
+        textView.offerCreation = links.offerCreation
+        // Attached once, and only where there is something to preview (ADR-0083 §D7).
+        if links.preview != nil { coordinator.linkPreview.attach(to: textView) }
         // Re-applied on every update rather than only at build time: turning the checker on
         // in Impostazioni has to reach the note already open, not the next one.
         apply(spellCheck, to: textView)
@@ -29,6 +33,8 @@ extension NoteTextView {
         // Compared and recorded on every update, read only inside the branch below. Claimed
         // ahead of the text sync rather than after it: nothing the sync triggers reads it.
         let isNoteSwitch = coordinator.requests.claimNotePath(vault.notePath)
+        // A preview of a link in the note that was there is a preview of nothing now (ADR-0083 §D7).
+        if isNoteSwitch, links.preview != nil { coordinator.linkPreview.noteChanged() }
         // Only touch the text when the model diverges from what is on screen:
         // reassigning it unconditionally would reset the cursor on every keystroke.
         if textView.string != text {

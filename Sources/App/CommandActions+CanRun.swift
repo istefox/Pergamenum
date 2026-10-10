@@ -45,6 +45,10 @@ extension CommandActions {
             vault.openNote.map { NoteFrontmatter.exists(in: $0.text) } ?? false
         case .goBack, .goForward:
             command == .goBack ? history.canGoBack : history.canGoForward
+        // ADR-0083 §D3: disabled, not a no-op, unless the Note pane is in front and the editor
+        // has reported a link at the caret of the focused tab.
+        case .followLink, .followLinkInNewTab, .followLinkInOtherColumn:
+            navigation.pane == .notes && vault.linkAtCaret != nil
         // Both act on the task the list has selected, and neither has anything to do
         // without one: «Aggiungi sotto-task» needs a parent to hang the `^parent` off
         // (ADR-0021 D2), not merely a note.

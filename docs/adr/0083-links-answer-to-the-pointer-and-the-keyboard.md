@@ -94,9 +94,17 @@ The how reaches the controller as `VaultController.openNote(at:how:)`:
 - `.newTab` is today's `openNoteInNewTab(at:)`.
 - `.otherColumn` is new, `openNoteInOtherColumn(at:)`: with one column it adds the second
   (`addColumn()`, the session-restore door, not `splitEditor()`, which would copy the source note
-  into the new column) and focuses it; with two it focuses the other; then it opens the note there
-  with `openNote(at:)`'s own dedupe. Two columns is still the ceiling (ADR-0012 §D4), so this
-  extends §D4 by one gesture and changes nothing about what a column is.
+  into the new column) and focuses it; with two it focuses the other; then it opens the note there:
+  a tab of that column already showing it is focused (`openNote(at:)`'s own dedupe), and otherwise
+  the note gets a tab of its own (`openNoteInNewTab(at:)`). Two columns is still the ceiling
+  (ADR-0012 §D4), so this extends §D4 by one gesture and changes nothing about what a column is.
+  *Amended 2026-10-10 (N3 session B review): the record first said `openNote(at:)` alone. Past its
+  dedupe, `openNote(at:)` goes through `show(_:)`, which puts the note over the column's preview
+  tab, so a follow into the other column replaced whatever note that column was showing in a preview
+  tab. Measured: with that form the `LinkOpeningControllerTests` case
+  `otherColumnWithTwoColumnsFocusesTheOtherAndShowsTheTargetInFront` goes red, the right column's
+  `Gamma.md` gone. The cost of the amended form: each follow of a different note into the other
+  column adds a stable tab there, as `.newTab` (Cmd+Shift+click) does in the focused one.*
 
 The three live in a new file, `VaultController+LinkOpening.swift`: `VaultController+Tabs.swift`,
 where `openNote(at:)` and `addColumn()` are, is at 412 lines, past the file-length warning.

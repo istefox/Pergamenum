@@ -117,3 +117,31 @@ import Testing
     // Second Cmd+Z, the regression's own count: a safe no-op on the fixed build.
     undoManager.undo()
 }
+
+/// ADR-0083 §D7 (PG-386, PG-258): the Cmd+hover preview's local event monitor, tracking area and
+/// window-key observation are released when the pane is left, by the same `dismantleNSView` that
+/// purges the undo actions. A monitor that outlived its view was PG-258.
+@MainActor
+@Test func dismantlingTheNoteEditorTearsDownTheLinkPreviewController() throws {
+    let view = NoteTextView(
+        text: .constant("ciao"), theme: .emergency, noteTitles: [], tagSuggestions: [],
+        hidesMarkup: true, onFollowLink: { _ in }
+    )
+    let coordinator = view.makeCoordinator()
+    let textView = CompletingTextView(usingTextLayoutManager: true)
+    textView.frame = CGRect(x: 0, y: 0, width: 600, height: 800)
+    coordinator.textView = textView
+    let scrollView = NSScrollView(frame: textView.frame)
+    scrollView.documentView = textView
+
+    coordinator.linkPreview.attach(to: textView)
+    coordinator.linkPreview.pointerEntered()
+    #expect(coordinator.linkPreview.hasTrackingArea, "premessa: il tracking area è installato")
+    #expect(coordinator.linkPreview.hasEventMonitor, "premessa: il monitor è installato")
+
+    NoteTextView.dismantleNSView(scrollView, coordinator: coordinator)
+
+    #expect(!coordinator.linkPreview.hasEventMonitor, "il monitor non doveva sopravvivere alla vista")
+    #expect(!coordinator.linkPreview.hasTrackingArea)
+    #expect(!coordinator.linkPreview.isObservingWindowKey)
+}

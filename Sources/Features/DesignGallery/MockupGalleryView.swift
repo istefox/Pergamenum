@@ -97,7 +97,7 @@ struct MockupGalleryView: View {
             case .workspace: Page("Workspace", "M2 e M3, realizzato", WorkspaceMockup())
             case .today: Page("Oggi", "M5, realizzato", TodayMockup())
             case .tasks: Page("Attività", "M4, realizzato", TasksMockup())
-            case .linkPreview: Page("Link", "N3, da approvare", LinkPreviewMockup())
+            case .linkPreview: Page("Link", "N3, approvato", LinkPreviewMockup())
             case .inspectorLinks: Page("Ispettore: link", "N3, da approvare", InspectorLinksMockup())
             }
         }

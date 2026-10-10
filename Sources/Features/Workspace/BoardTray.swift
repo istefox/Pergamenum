@@ -14,6 +14,9 @@ import SwiftUI
 struct BoardTray: View {
     @Environment(\.theme) private var theme
     @Environment(VaultController.self) private var vault
+    /// A title several notes share asks which one through the open-link door (ADR-0083 §D5).
+    /// Optional: the hosted Workspace tests draw the board with no `CommandActions` above it.
+    @Environment(CommandActions.self) private var commandActions: CommandActions?
     let workspace: WorkspaceController
 
     /// The tasks assigned to this board, and how many of them are still open.
@@ -168,32 +171,51 @@ struct BoardTray: View {
         // for every row - and this tray redraws on every observable change it reads, a
         // card dragged across the board included.
         let path = resolvedPath(for: reference)
+        let shared = path == nil ? sharedTitle(for: reference) : nil
+        let found = path != nil || shared != nil
         let name = displayName(for: reference, path: path)
         return Button {
-            if let path { vault.openNote(at: path) }
+            if let path {
+                vault.openNote(at: path)
+            } else if let shared {
+                commandActions?.open(link: shared)
+            }
         } label: {
             HStack(spacing: theme.spacing(.xs)) {
-                Image(systemName: path == nil ? "questionmark.square.dashed" : "doc.text")
-                    .foregroundStyle(theme.color(path == nil ? .textTertiary : .textSecondary))
+                Image(systemName: found ? "doc.text" : "questionmark.square.dashed")
+                    .foregroundStyle(theme.color(found ? .textSecondary : .textTertiary))
                 Text(name)
-                    .themedText(.caption, color: path == nil ? .textTertiary : .textPrimary)
+                    .themedText(.caption, color: found ? .textPrimary : .textTertiary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(path == nil)
-        .help(path ?? "nota non trovata nel vault")
+        .disabled(!found)
+        .help(path ?? (shared.map { "Più note si chiamano «\($0)»" } ?? "nota non trovata nel vault"))
         .accessibilityLabel("Nota \(name)")
         .accessibilityIdentifier("board-referenced-note-\(reference)")
     }
 
+    /// The note a reference names: its own path, or the one note its title resolves to. A title
+    /// several notes share names none of them here (ADR-0083 §D5): `sharedTitle(for:)` says so,
+    /// and the row asks which one through the open-link door rather than opening the first.
     private func resolvedPath(for reference: String) -> String? {
         if vault.index.notes[reference] != nil { return reference }
-        let title = ((reference as NSString).lastPathComponent as NSString)
-            .deletingPathExtension
-        return vault.index.resolve(title: title).first
+        let paths = vault.index.resolve(title: title(of: reference))
+        return paths.count == 1 ? paths[0] : nil
+    }
+
+    /// The title of a reference that several notes answer to, nil for any other.
+    private func sharedTitle(for reference: String) -> String? {
+        guard vault.index.notes[reference] == nil else { return nil }
+        let title = title(of: reference)
+        return vault.index.resolve(title: title).count > 1 ? title : nil
+    }
+
+    private func title(of reference: String) -> String {
+        ((reference as NSString).lastPathComponent as NSString).deletingPathExtension
     }
 
     private func displayName(for reference: String, path: String?) -> String {

@@ -277,8 +277,8 @@ final class CommandActions {
             vault.foldedEntries = []
         case .toggleFrontmatter:
             vault.toggleFrontmatter()
-        case .goBack, .goForward:
-            walkHistory(command)
+        case .goBack, .goForward, .followLink, .followLinkInNewTab, .followLinkInOtherColumn:
+            runLinkOrHistory(command)
         default:
             assertionFailure("«\(command.title)» is in the Vista section and is not handled")
         }

@@ -72,6 +72,9 @@ extension EditorColumnView {
             onRunCommand: commandActions.run,
             onFollowLink: follow(title:),
             vault: vaultInputs(for: note),
+            // ADR-0083: the click variants, the choice, the preview and the caret link, each
+            // focusing this column before it acts.
+            links: commandActions.linkInputs(from: note.relativePath, column: columnIndex),
             insertion: pendingInsertion,
             onInsertionApplied: { pendingInsertion = nil },
             find: findInputs(for: note),

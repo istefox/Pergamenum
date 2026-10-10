@@ -57,6 +57,8 @@ import Testing
     var seen: [KeyBinding: ShortcutCommand] = [:]
     for command in ShortcutCommand.allCases {
         let binding = command.defaultBinding
+        // No key cannot collide with no key: the two link variants ship unbound (ADR-0083 §D3).
+        if binding == KeyBinding("") { continue }
         if let other = seen[binding] {
             Issue.record("\(command.rawValue) e \(other.rawValue) hanno entrambi \(binding.displayString)")
         }
@@ -65,10 +67,51 @@ import Testing
 }
 
 @Test func everyShippedDefaultIsUsable() {
-    for command in ShortcutCommand.allCases {
+    // The commands in `shipsUnbound` carry the empty binding on purpose (ADR-0083 §D3); every
+    // other command ships a key.
+    for command in ShortcutCommand.allCases where !ShortcutCommand.shipsUnbound.contains(command) {
         #expect(command.defaultBinding.isValid, "\(command.rawValue) ha una scorciatoia non valida")
         #expect(command.defaultBinding.keyboardShortcut != nil)
     }
+}
+
+// MARK: - ADR-0083 §D3 (PG-386, N3 session B), R-22
+//
+// Three commands follow the link under the caret. One ships bound; two ship with no key, which is
+// why the two generic checks above skip an empty binding and the commands in `shipsUnbound`.
+
+@Test func onlyTheTwoLinkVariantsShipUnbound() {
+    #expect(ShortcutCommand.shipsUnbound == [.followLinkInNewTab, .followLinkInOtherColumn])
+    for command in ShortcutCommand.shipsUnbound {
+        #expect(command.defaultBinding == KeyBinding(""), "\(command.rawValue) deve uscire senza tasto")
+    }
+}
+
+@Test func everyCommandOutsideShipsUnboundShipsAValidUsableKey() {
+    for command in ShortcutCommand.allCases where !ShortcutCommand.shipsUnbound.contains(command) {
+        #expect(command.defaultBinding != KeyBinding(""), "\(command.rawValue) non ha un tasto")
+        #expect(command.defaultBinding.isValid, "\(command.rawValue) ha una scorciatoia non valida")
+        #expect(command.defaultBinding.keyboardShortcut != nil)
+    }
+}
+
+@Test func theThreeLinkCommandsLiveInTheViewSectionWithTheirTitles() {
+    #expect(ShortcutCommand.followLink.section == .view)
+    #expect(ShortcutCommand.followLinkInNewTab.section == .view)
+    #expect(ShortcutCommand.followLinkInOtherColumn.section == .view)
+    #expect(ShortcutCommand.followLink.title == "Segui il link")
+    #expect(ShortcutCommand.followLinkInNewTab.title == "Apri il link in una nuova tab")
+    #expect(ShortcutCommand.followLinkInOtherColumn.title == "Apri il link nell'altra colonna")
+}
+
+@Test func followLinkShipsOnCommandOptionReturn() {
+    #expect(ShortcutCommand.followLink.defaultBinding == KeyBinding("return", [.command, .option]))
+}
+
+@Test func theLinkCommandsAreAppendedAfterEveryExistingOne() {
+    // Raw values are persisted keys and the menu order follows `allCases`: appended, never inserted.
+    let all = ShortcutCommand.allCases
+    #expect(Array(all.suffix(3)) == [.followLink, .followLinkInNewTab, .followLinkInOtherColumn])
 }
 
 // MARK: - ADR-0021 (plan 2026-08-24-workspace-tasks-notes-integration), Task 9
