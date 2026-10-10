@@ -43,6 +43,9 @@ final class RequestLedger {
     /// The index entry the caret was last reported to be in. Kept so the callback
     /// fires when it *changes*, not on every arrow key.
     private(set) var lastOutlineEntry: Int??
+    /// The followable link at the caret last reported (ADR-0083 §D3), for the same reason. Nil
+    /// until the first report and again after a note switch, whose tab starts with no link.
+    private(set) var lastCaretLink: URL??
 
     init(parent: @escaping () -> NoteTextView?) {
         self.parent = parent
@@ -73,12 +76,19 @@ final class RequestLedger {
     func claimNotePath(_ path: String?) -> Bool {
         let isNew = path != lastNotePath
         lastNotePath = path
+        if isNew { lastCaretLink = nil }
         return isNew
     }
 
     func claimOutlineEntry(_ entry: Int?) -> Bool {
         guard lastOutlineEntry != .some(entry) else { return false }
         lastOutlineEntry = entry
+        return true
+    }
+
+    func claimCaretLink(_ url: URL?) -> Bool {
+        guard lastCaretLink != .some(url) else { return false }
+        lastCaretLink = url
         return true
     }
 

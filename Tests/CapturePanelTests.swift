@@ -29,7 +29,9 @@ import Testing
 @Test func theDefaultBindingOfEveryCommandCanBeTranslated() {
     // Not only the capture one: any of them may be assigned to global capture by the
     // user, and a binding the settings pane offers has to be one the system can take.
-    for command in ShortcutCommand.allCases {
+    // The commands in `shipsUnbound` have an empty binding, which has no Carbon key by
+    // construction (ADR-0083 §D3); every other one, `followLink` included, must translate.
+    for command in ShortcutCommand.allCases where !ShortcutCommand.shipsUnbound.contains(command) {
         #expect(
             CarbonKey.pair(for: command.defaultBinding) != nil,
             "«\(command.title)» non è traducibile"

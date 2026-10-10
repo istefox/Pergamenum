@@ -82,6 +82,13 @@ extension NoteTextView {
         /// The range the last change landed on, for the scoped renumber (ADR-0082 §D6,
         /// `NoteTextView+ListEditing.swift`).
         let renumbering = ListRenumberLedger()
+        /// Where the choice a click on a shared title puts up is shown (ADR-0083 §D5): the real
+        /// menu in production, a spy in a test, because the real one runs modal tracking.
+        var linkChoiceMenus: LinkChoiceMenuPresenting = LinkChoiceMenu()
+        /// The Cmd+hover preview's trigger, tracking area, monitor and popover (ADR-0083 §D7,
+        /// `NoteTextView+LinkPreview.swift`), once `linkPreview` below has built it: nil for a
+        /// text view that never previewed, so the teardown builds nothing just to tear it down.
+        private(set) var builtLinkPreview: LinkPreviewController?
         /// The observation that keeps the readable-width inset right as the pane is resized
         /// (ADR-0030 §D6). It has to exist because `updateNSView` does **not** run on a
         /// window resize - nothing in the SwiftUI graph changed - so without it a column
@@ -161,6 +168,7 @@ extension NoteTextView {
             if !isStyling, viewBlocks.selectionCrossedFence(in: textView) {
                 applyStyling(to: textView, theme: parent.theme)
             }
+            reportLinkAtCaret(in: textView)
             let caret = textView.selectedRange().location
             let entry = parent.outline.outlineRanges.lastIndex { $0.location <= caret }
             guard requests.claimOutlineEntry(entry) else { return }
@@ -192,6 +200,7 @@ extension NoteTextView {
             guard !isStyling, let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
             applyStyling(to: textView, theme: parent.theme)
+            linksDidChange(in: textView)
             applyEmbeds(to: textView)
             applyTransclusions(to: textView, theme: parent.theme)
             // After the styling and before the reveal, in that order and for both reasons:
@@ -242,8 +251,10 @@ extension NoteTextView {
         // AppKit's own default unclaimed-link handling, because AppKit never reaches this
         // method on an unclaimed link any more.
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
-            guard modifierFlags().contains(.command) else { return false }
-            return performLinkNavigation(link)
+            let flags = modifierFlags()
+            guard flags.contains(.command) else { return false }
+            let how = LinkOpening.forClick(shift: flags.contains(.shift), option: flags.contains(.option))
+            return performLinkNavigation(link, how: how, fromClick: true, in: textView)
         }
 
         /// Rewrites the whole attribute run. Notes are small enough that styling the
@@ -638,5 +649,16 @@ extension NoteTextView {
             guard isOn else { return minimum }
             return max(minimum, (viewWidth - cap) / 2)
         }
+    }
+}
+
+extension NoteTextView.Coordinator {
+    /// The Cmd+hover preview's controller, built on first use for `tables`' reason. In this file so
+    /// `builtLinkPreview` keeps its private setter.
+    var linkPreview: LinkPreviewController {
+        if let builtLinkPreview { return builtLinkPreview }
+        let made = LinkPreviewController.live(for: self)
+        builtLinkPreview = made
+        return made
     }
 }

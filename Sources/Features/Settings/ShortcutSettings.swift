@@ -52,6 +52,10 @@ struct ShortcutSettings: View {
 
     private func row(_ command: ShortcutCommand) -> some View {
         let conflicts = shortcuts.conflicts(with: command)
+        // A command that ships unbound has an invalid default, whose display string is empty.
+        let resetLabel: LocalizedStringKey = command.defaultBinding.isValid
+            ? "Torna a \(command.defaultBinding.displayString)"
+            : "Torna a nessun tasto"
         return LabeledContent {
             HStack(spacing: theme.spacing(.xs)) {
                 // The global shortcut is the one case where the row can be right and the
@@ -80,8 +84,8 @@ struct ShortcutSettings: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityIdentifier("reset-\(command.rawValue)")
-                .help("Torna a \(command.defaultBinding.displayString)")
-                .accessibilityLabel("Torna a \(command.defaultBinding.displayString)")
+                .help(resetLabel)
+                .accessibilityLabel(resetLabel)
                 .disabled(!shortcuts.isCustomised(command))
             }
         } label: {

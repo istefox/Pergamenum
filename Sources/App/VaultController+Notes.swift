@@ -186,6 +186,24 @@ extension VaultController {
         isComposingNote = true
     }
 
+    /// Offers a dangling link's note to the composer, prefilled with the title and the source
+    /// note's folder (ADR-0083 §D6), the way `beginNewNote` opens the composer. It never creates
+    /// a file: the composer is the one surface that names a note. A parked draft with a title is
+    /// kept rather than overwritten, the composer opens on it, and the offer says why it did not
+    /// take (SPEC edge case).
+    func offerNoteCreation(title: String, besideNoteAt sourcePath: String?) {
+        if parkedDraft != nil {
+            isComposingNote = true
+            recordProblem("Una nota è già in preparazione: completala o annullala, poi riprova")
+            return
+        }
+        var draft = NoteDraft()
+        draft.title = title
+        draft.folder = sourcePath.map { ($0 as NSString).deletingLastPathComponent } ?? ""
+        noteDraft = draft
+        isComposingNote = true
+    }
+
     /// The draft worth coming back to, nil when there is none.
     private var parkedDraft: NoteDraft? {
         guard let noteDraft, !noteDraft.title.trimmingCharacters(in: .whitespaces).isEmpty

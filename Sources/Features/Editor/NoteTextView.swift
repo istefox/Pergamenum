@@ -53,6 +53,8 @@ struct NoteTextView: NSViewRepresentable {
     /// (`NoteTextView+Inputs.swift`). Empty by default, so a text view with no vault behind
     /// it behaves exactly as before.
     var vault = VaultInputs()
+    /// How a link is followed, previewed and offered (`NoteTextView+Inputs.swift`, ADR-0083).
+    var links = LinkInputs()
     /// Text the Inserisci menu asked for, applied at the cursor and then reported as
     /// applied so it is not inserted twice on the next view update (SPEC §10). Carries
     /// `opensQueryBuilder` for the insert-view command (R-04, ADR-0034 §D10): true only
@@ -281,7 +283,12 @@ struct NoteTextView: NSViewRepresentable {
     /// (ADR-0026), and pressing Cmd+Z twice. Removing every action still targeting this view
     /// or its storage - where `NSTextView` actually registers typing undo - drops the
     /// now-meaningless "redo my typing" step instead of leaving it to crash on.
+    ///
+    /// The Cmd+hover preview goes with it (ADR-0083 §D7): a pane switch is a rebuild, not a hide,
+    /// and a popover, monitor or tracking area left behind here would be PG-258's orphan. A text
+    /// view that never previewed has no controller, and none is built here only to be torn down.
     static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
+        coordinator.builtLinkPreview?.tearDown()
         guard let textView = scrollView.documentView as? NSTextView else { return }
         coordinator.undoManager?.removeAllActions(withTarget: textView)
         if let textStorage = textView.textStorage {

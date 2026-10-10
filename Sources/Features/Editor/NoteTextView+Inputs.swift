@@ -59,6 +59,24 @@ extension NoteTextView {
         var onToggleFold: ((Int) -> Void)?
     }
 
+    /// What the editor needs to follow, preview and offer a link (ADR-0083 §D2, §D3, §D6, §D7),
+    /// grouped as `vault` and `find` are. Empty by default: with `follow` nil the Coordinator falls
+    /// back to `onFollowLink(title)` for `.replace` and ignores the click variants, so a text view
+    /// with no vault behind it behaves as it always did.
+    struct LinkInputs {
+        /// A request to follow a link, answered with `.done` or the choice to put in front of the
+        /// person (`CommandActions.follow`).
+        var follow: ((LinkRequest) -> LinkFollowOutcome)?
+        /// A row of that choice picked from the menu at the click, with the click's how.
+        var choose: ((LinkChoice, LinkOpening) -> Void)?
+        /// What the Cmd+hover preview shows for a note title and its optional section.
+        var preview: ((String, String?) -> LinkPreviewContent?)?
+        /// The followable link under the caret, reported when it changes.
+        var onCaretLinkChanged: ((URL?) -> Void)?
+        /// «Crea «X»» chosen from the `[[` popup: the title to offer to the composer.
+        var offerCreation: ((String) -> Void)?
+    }
+
     /// What the vault behind the editor provides. Nil or a no-op when no vault is open.
     struct VaultInputs {
         /// The vault an embed's target is resolved in (ADR-0018 slice 3). Nil where there is

@@ -57,7 +57,7 @@ struct MockupGalleryLayoutTests {
         #expect(all.contains(.linkPreview))
         #expect(all.contains(.inspectorLinks))
         #expect(MockupGalleryView.Screen.linkPreview.title == "Link")
-        #expect(MockupGalleryView.Screen.linkPreview.milestone == "N3, da approvare")
+        #expect(MockupGalleryView.Screen.linkPreview.milestone == "N3, approvato")
         #expect(MockupGalleryView.Screen.inspectorLinks.title == "Ispettore: link")
         #expect(MockupGalleryView.Screen.inspectorLinks.milestone == "N3, da approvare")
     }

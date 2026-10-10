@@ -24,6 +24,8 @@ final class CompletingTextView: NSTextView {
     var editorCommands: [EditorCommand] = []
     /// Runs a command the app owns. The text view never performs one itself.
     var onRunCommand: ((ShortcutCommand) -> Void)?
+    /// Offers a dangling `[[` title to the composer (ADR-0083 §D6); nil hides the «Crea «X»» row.
+    var offerCreation: ((String) -> Void)?
     /// The panel every completion is drawn in. Owned here because it lives and dies with
     /// the text view it opens over, and configured lazily so that choosing a row by mouse
     /// lands in the same place as choosing it by Return.
@@ -237,7 +239,7 @@ final class CompletingTextView: NSTextView {
             query = prefix
             // The candidate itself, not its string: the row reads its `label` (a note found
             // through an alias names it) and `apply` closes the link (n1-seams R-07, R-08).
-            items = wikilinkCandidates(matching: prefix).map(CompletionItem.wikilink)
+            items = wikilinkItems(matching: prefix)
         case .section(_, let prefix), .tag(let prefix):
             query = prefix
             let symbol = context.symbol
@@ -315,6 +317,9 @@ final class CompletingTextView: NSTextView {
         // and nothing shortcode-shaped is left in the file for Obsidian to read differently.
         case .emoji(let glyph, _):
             insertText(glyph, replacementRange: range)
+        // The link closed by the candidate's rule, then the title offered (ADR-0083 §D6).
+        case .createNote(let title):
+            createNote(title, replacing: range)
         case .command(let command):
             switch command.action {
             case .insert(let text, let cursorBack):
