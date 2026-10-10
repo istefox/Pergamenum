@@ -148,6 +148,11 @@ enum SpacingToken: String, TokenKey {
     // `theme.spacing(_:)` (PG-225).
     case paragraph = "spacing.paragraph"
 
+    // The band of the text column reserved for block markers (ADR-0081 §D1): 48, which is
+    // `spacing.xl` plus `spacing.s` (G1, 2026-10-07). Its `Theme.emergency` entry is load-bearing
+    // for the same reason `paragraph`'s is (PG-225).
+    case gutter = "spacing.gutter"
+
     var path: String { rawValue }
 }
 

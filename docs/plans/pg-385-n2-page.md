@@ -64,7 +64,9 @@
 - **Renumbering rewrites only the edited ordered run, in the keystroke's undo step.** The pinned
   caret moves from 49 to 48. The card keeps the whole-text path.
 - **Grow-to-fit lays out the caret's fragment plus the viewport.** The 1 MB hand check is the
-  acceptance, and the fallbacks are chosen at the gate.
+  acceptance, and the fallbacks are chosen at the gate. **Withdrawn 2026-10-10** (ADR-0082 §D7
+  amended): the G-grow hand check showed a click after Cmd+Down jumps and selects the whole
+  note, so grow-to-fit lays out the whole document again.
 - **`_` emphasis stays unconcealed.**
 - **Oggi and Diario share one query-source factory.** Cards gain quote and rule concealment;
   tables and view blocks stay out of cards.
@@ -256,7 +258,7 @@ Line numbers below were read on `9103768f`.
      and handed to `renumberLists(in:touching:)`.
    - The fallback keeps today's clamped caret (49).
    - `mapping(_:)` is exact per rewritten digit run.
-8. **§D7.** The two other callers (`:384`, `NoteTextView+Update.swift:71`) take the same scoped
+8. **§D7** (withdrawn 2026-10-10, see above). The two other callers (`:384`, `NoteTextView+Update.swift:71`) take the same scoped
    path. Add the restatement wording of Task 2.
 9. **§D8.**
    - `InlineSpanRevealFenceTests` moves from 7 to 9 and joins G-caret.
@@ -967,7 +969,7 @@ Red: no
    Merging needs zero C.
 4. **ADR corrections.** Apply every item of "ADR corrections" above to ADR-0081 and ADR-0082.
    Add implementation notes: the G1/G2/G3 answers, the corpus counts per class, the `runPasses`
-   follow-up, and the actual file names. Both stay `proposed`.
+   follow-up, and the actual file names. Both stay `planned`.
 5. **SPEC (app) §5, R-46.** Propose the wording in chat and apply it only after Stefano approves.
    The draft below sits in §5 after «Larghezza di lettura»; the date is the approval day.
    - *Emendato 2026-10-XX (ADR-0081, ADR-0082).* **I marcatori di blocco si rivelano nel
@@ -1216,33 +1218,53 @@ The project declares no static check that is green on the tree:
 
 Per-file SwiftLint on touched files stays a review step (standing rule 7).
 
-## Build result (2026-10-06)
+## Build result (2026-10-07)
 
 BUILD · DONE WITH WARNINGS
-Files: 46 changed or new (Session B, Tasks 1 to 4; Tasks 5 to 8 belong to Sessions A and C)
-Tests: PergamenumTests 5553 tests green; 3 hosted Pratiche tests flaked once in a full run (PG-331 shape) and passed on rerun; perg and pergamenum-mcp build; 0 (coverage) beyond the plan
+Files: 35 changed or new (Session C, Tasks 6 to 8; the gutter, the column sites, the tests, ADR-0081 and ADR-0082 corrections, ADR index, the bench guard)
+Tests: PergamenumTests 5700 tests in 349 suites green, 5 known issues; app, perg and pergamenum-mcp build, scripts/mcp-smoke.py green; 18 (coverage)
 Review: sonnet, safe; opus, safe
-Coverage: COVERED R-13, R-14, R-15, R-16, R-17, R-18, R-19, R-44, R-45, R-46 (10 declared, 10 covered, 0 uncovered)
-Deferred: 1 (needs-spec 1)
-Dropped: 1 (fix-hunk 1)
+Coverage: COVERED R-13, R-14, R-15, R-16, R-17, R-18, R-19, R-44, R-45, R-46 (10 declared, 10 covered, 0 uncovered; run against docs/specs-pending/pg-385-n2-page.SPEC.md)
+Dropped: 7 (fix-hunk 2, post-sweep 4, nit 1)
 Dispatch:
-Round 0 (red): tester — Task 1, tester — Task 2
-Round 0 (green): coder — Task 3, coder — Task 4
-Round 1: debugger — MarkdownTokens.swift:195 task marker, coder — nested strong, 200 KB rows, tableLines, tab trim, corpus split
-Round 2: debugger — MarkdownTokens.swift:98 U+2028 inline scan, coder — corpus split, table parse, delimiter, task level, bench script
-Round 3 (sweep): debugger — EditorDecorationDelegate.swift:870 C1, coder — MarkdownTokens.swift:86 lazy levels, ADR-0082 D1, ListNesting.swift:132
-Round 4 (sweep): coder — StylerGoldenCorpus.swift:216 S60 and negative rule test, ADR-0082 D4 delegate trim
-WARN: SPEC.md needs the human's amendment in three clauses: line 66 (one exporter change), line 21 (budget measured every turn), line 180 R-15 (six rows per turn)
-WARN: Stop hook test run timed out once at 600 s (attempt 1 of 3, fail-open); the restyle budget rows add 320-426 s to the per-turn suite
-WARN: the two 1 MB restyle budget rows are unmeasured (external SIGTERM during long runs); ceilings stay provisional until G-ceiling
-WARN: no re-review after the last sweep round (tests and ADR text only, suite green)
-INFO: review escalated, size: 41 changed files, threshold 20
+Round 0 (red): tester — Task 6
+Round 0 (green): coder — Task 7
+Round 1: debugger — HorizontalRuleFragment.swift:69 fragment origin, coder — hidesMarkup guards, memo cap, transclusion column width, table test, G0 item 10 note, line length, column-site tests
+Round 2: coder — ADR-0081 fragment-origin note, ADR re-wrap
+Round 3 (sweep): coder — C1 bench guard, C2 wide table grid (not closed), MarkupHidingListTests.swift:260, CardConcealmentTests.swift:21
+Round 4 (sweep): coder — MarkupHidingListTests.swift:286, CardConcealmentTests.swift:37, editor-restyle-bench.sh:30
+WARN: SPEC (app) §5 (docs/20260811_Pergamenum_SpecApp.md) is not amended: R-46 needs Stefano's approval of the drafted wording
+WARN: hand checks G-grow and G3 and the decisions G-ceiling, G-corpus and G-caret are open; RestyleBudget.ceilings literals are unchanged, and the two 1 MB rows are one cold run each
+WARN: a heading with no title (G0 item 10) cannot hang its run, the styler registers no marker for it; recorded in ADR-0081 notes
+WARN: the branch is behind origin/main (HEAD 931a89f3); merge origin/main before the PR
+WARN: scripts/uitests.sh --status has no verdict for HEAD; a full UI run is due
+WARN: Stop hook test run timed out once at 600 s (attempt 1 of 3, fail-open)
+INFO: review escalated, size: 34 changed files, threshold 20
+INFO: ADR-0081 and ADR-0082 stay planned (the repo's word); the long-form index entries went to docs/adr/INDEX.md, not CLAUDE.md
 
 ```text
-DEFER	needs-spec	**MINOR** [other] Tests/RestyleBudgetSupport.swift:176 — The ceilings stay 3x the before while ADR-0082 §D9 measures +19.9% at 200 KB prose, and the two 1 MB rows have no measured after. Fix: at G-ceiling set the six values on the measured after plus margin and fill the two empty cells with a --large-only run. (reviewer: opus)
-DROP	fix-hunk	**MINOR** [other] Sources/Features/Editor/MarkdownStyler.swift:378 — tableSpans now reads lineTokens, but no test pins its CRLF and fence-overlap (R-09) behaviour through MarkdownStyler.spans; the only tests of those rules call the now-unused GFMTable.runs and the golden corpus holds LF tables only. Fix: add golden or unit cases for a CRLF table, a table inside a fence and a pipe row that opens a fence, captured from 3e5df0a6. (reviewer: sonnet)
-FIX	swept	**MINOR** [wrong-behaviour] Sources/Features/Editor/EditorDecorationDelegate.swift:870 — S53's new .horizontalRule span over a tab-indented rule fails stillSpellsARule (isRule strips spaces only, the span includes the tab) so the generic path leaves the characters uncollapsed, while the HorizontalRuleFragment branch (:425-429) trims tabs and is still returned, so a rule line is drawn across raw `---`. Fix: trim .whitespaces in stillSpellsARule and test `\t---` in the editor. (reviewer: sonnet)
-FIX	swept	**MINOR** [other] Sources/Core/Markdown/MarkdownTokens.swift:86 — ListNesting.levels(in:) is computed unconditionally in lineTokens but read only for list/task lines, adding a whole-text pass to every blocks(in:) caller. Fix: fill it lazily on the first list or task line. (reviewer: opus)
-FIX	swept	**MINOR** [other] Tests/StylerGoldenCorpus.swift:216 — S53 covers only tab-indented rule and star forms, while the tab-indented spaced rule flipped from a drawn bullet to a collapsed rule with no corpus case or test. Fix: add the input to S53 plus a refused negative beside the MarkupHidingTests test. (reviewer: opus)
-FIX	swept	**MINOR** [other] docs/adr/0082-the-styler-classifies-through-the-shared-parsers.md:193 — The delegate layout-time stillSpellsARule trim leaves no corpus trace and is recorded only in a code comment. Fix: one sentence in ADR section D4. (reviewer: opus)
+FIX	swept	**MAJOR** [wrong-behaviour] Sources/Features/Editor/HorizontalRuleFragment.swift:69 — The rule and the transcluded picture now add columnSpan's leading to the fragment's own origin while MessageAnchorFragment.swift:65 still draws at point.x with none, and layoutFragmentFrame.minX is never measured (the new ink test rasterises at a hand-chosen x: 0, Tests/GutterRevealGeometryTests.swift:475), so either the envelope paints inside the gutter or the two new sites double-count padding+indent. Fix: pin layoutFragmentFrame.minX/leadingPadding in a hosted test (or rasterise at fragment.layoutFragmentFrame.origin) and give all three fragments one convention. (reviewer: opus)
+FIX	swept	**MINOR** [other] Sources/Features/Editor/EditorDecorationDelegate+HeadingRendering.swift:18 — headingParagraph has no hidesMarkup guard while quoteParagraph carries one with its reason stated (ADR-0018 §D10 must mean off wherever it is asked); only the hook reaches it today. Fix: add guard hidesMarkup, and to the list branch with it. (reviewer: opus)
+FIX	swept	**MINOR** [other] Sources/Features/Editor/EditorGutter.swift:55 — MarkerRunWidths never evicts and its keys are not the few runs its header claims (one per ordered-list ordinal, one per quote level), so a long note grows the memo for the view's lifetime. Fix: clear it when the face changes, or cap it. (reviewer: opus)
+FIX	swept	**MINOR** [other] Sources/Features/Editor/NoteTextView+Transclusion.swift:121 — The reserved width comes from a freshly built base(theme:gutter:) style while the fragment draws from the source line's own paragraph style, so a transclusion line inside a quote or an item is measured at a width it is not drawn at; it also rebuilds the whole attribute dictionary per pass. Fix: read the paragraph style from the storage at that line's offset, falling back to the base. (reviewer: opus)
+FIX	swept	**MINOR** [other] Tests/GutterRevealGeometryTests.swift:540 — The "table needs no change" claim rests on a 2-column table at 600 pt, and TableGridView is content-sized (TableGridView.swift:161), so the test cannot show a grid wider than the narrowed column. Fix: use a table or width whose intrinsic grid exceeds the column, or scope it out in ADR-0081 §D7. (reviewer: opus)
+FIX	swept	**MINOR** [plan-deviation] Tests/GutterRevealGeometryTests.swift:429 — The plan's G0 item 10 (a titleless heading hangs its run) is unimplementable because MarkdownStyler registers no marker, and the deviation lives only in a test comment, not in ADR-0081's implementation notes. Fix: add one sentence to those notes. (reviewer: opus)
+FIX	swept	**MINOR** [style] Tests/EditorGutterTests.swift:312 — 127 characters, over .swiftlint.yml's line_length warning of 120 on a code line. Fix: split the interpolated message. (reviewer: sonnet, opus)
+FIX	swept	**NIT** Tests/ReadableWidthTests.swift:84 — before > 0 replaces before > minimumHorizontalInset, which still holds at the fixture's width, losing the above-the-floor check. Fix: keep the floor comparison. (reviewer: opus)
+FIX	swept	**NIT** docs/plans/pg-385-n2-page.md:970 — Task 8 item 4 says the ADRs stay "proposed" while the files, the INDEX and README rule 2 use "planned"; the tree is correct, only the plan's word is stale. Fix: say planned. (reviewer: opus)
+FIX	swept	**NIT** Tests/EditorGutterTests.swift:11 — Red-phase header ("RED on arrival", "declared with stubs") is stale now that Task 7 landed; same in Tests/GutterRevealGeometryTests.swift:22 and Tests/DesignSystemTests.swift. Fix: reword or delete those paragraphs. (reviewer: sonnet)
+FIX	swept	**MINOR** [other] docs/adr/0081-block-markers-reveal-in-the-gutter.md:312 — The implementation notes never record the measured fragment-origin convention (point.x already is the column start, so the two fragment sites never add columnSpan.leading, which has no production reader), while §D7 reads as if the picture adds the leading offset. Fix: one sentence in "Where it landed" and a clause in columnSpan's doc comment saying leading is test-only. (reviewer: opus)
+FIX	swept	**NIT** docs/adr/0082-the-styler-classifies-through-the-shared-parsers.md:421 — Four added ADR prose lines run to 156, 137, 126 and 117 characters against the files' ~100-column wrap (also 0081:136 and :201). Fix: re-wrap them. (reviewer: opus)
+DROP	post-sweep	**NIT** Sources/Features/Editor/EditorDecorationDelegate.swift:174 — The file reaches 925 lines after +29, against SwiftLint's file_length error of 1000. Fix: keep the next branch in its own extension file, as the heading one is. (reviewer: opus)
+FIX	swept	**MINOR** [other] Tests/MarkupHidingListTests.swift:260 — large_tuple SwiftLint warning in a red-phase test (follow-up: tester)
+FIX	swept	**MINOR** [other] scripts/editor-restyle-bench.sh:63 — the guard pattern matches the command line of another session's polling shell, so it can refuse with nothing building (follow-up: tester)
+DROP	fix-hunk	**MINOR** [other] Sources/Features/Editor/HorizontalRuleFragment.swift:56 — renderingSurfaceBounds uses max(base.width, ruleWidth) from base.minX; if base.minX < 0 the surface could stop before the end of the line, not measured, the hosted ink test passes within 1 pt (follow-up: coder)
+DROP	fix-hunk	**MINOR** [other] Tests/GutterRevealGeometryTests.swift:461 — SwiftLint large_tuple violation on inkSpan (3-member tuple) (follow-up: coder)
+DROP	post-sweep	**MINOR** [other] Sources/Features/Editor/TableGridView.swift:161 — a table grid wider than the column enters the right gutter; limiting it or making it scrollable is a table decision, now recorded in ADR-0081 notes (follow-up: coder) [also Sources/Features/Editor/TableAttachment.swift:93]
+FIX	swept	**MINOR** [other] Tests/CardConcealmentTests.swift:21 — a stale RED on arrival paragraph, outside this build (follow-up: coder)
+FIX	swept	**MINOR** [style] Tests/MarkupHidingListTests.swift:286 — Lines 286 (121 chars) and 289 (122) exceed .swiftlint.yml's line_length warning of 120 with ignores_comments false. Fix: hoist the interpolated values into locals or split the two #expect messages. (reviewer: opus)
+FIX	swept	**MINOR** [other] Tests/CardConcealmentTests.swift:37-39 — displayed(paragraphAt:)'s doc comment still says nil covers "the paragraph revealed under the caret" and that any other answer has its markers collapsed, both contradicted by the file's own new assertions at :177-190 and :213-221. Fix: state ADR-0081 D6's split, lists hang on a card while heading and quote keep nil. (reviewer: opus)
+FIX	swept	**MINOR** [other] scripts/editor-restyle-bench.sh:30-32 — The header claims parity with scripts/uitests.sh, which still carries the pgrep -fl 'xcodebuild.*Pergamenum' guard this round replaced and so still refuses to start beside another session's polling shell. Fix: qualify the parity clause and file porting the pgrep -x plus args check to uitests.sh:1205. (reviewer: opus)
+DROP	post-sweep	**MINOR** [other] scripts/uitests.sh:1205 — still uses the old pgrep -fl 'xcodebuild.*Pergamenum' guard, which also matches a shell that only names the command (follow-up: coder)
+DROP	post-sweep	**MINOR** [other] Tests/MarkupHidingListTests.swift:434 — file_length warning, 434 lines against 400 (321 at HEAD), the growth comes from this build (follow-up: coder)
 ```

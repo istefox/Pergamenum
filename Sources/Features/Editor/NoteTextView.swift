@@ -102,9 +102,13 @@ struct NoteTextView: NSViewRepresentable {
         apply(spellCheck, to: textView)
         // The horizontal half is recomputed from the pane's width as soon as there is one
         // (ADR-0030 §D6); this is its floor, which is the value the editor has always had
-        // and the value it keeps when the setting is off or the pane is narrow.
+        // and the value it keeps when the setting is off or the pane is narrow, less the gutter
+        // every paragraph carries as its own indent (ADR-0081 §D1).
         textView.textContainerInset = NSSize(
-            width: Coordinator.minimumHorizontalInset, height: Coordinator.verticalInset
+            width: EditorGutter.containerInset(
+                readableInset: Coordinator.minimumHorizontalInset, gutter: theme.spacing(.gutter)
+            ),
+            height: Coordinator.verticalInset
         )
         textView.isVerticallyResizable = true
         textView.autoresizingMask = [.width]

@@ -64,22 +64,35 @@ struct TranscludedRendition: Equatable {
 final class TranscludedLineFragment: NSTextLayoutFragment {
     nonisolated(unsafe) var rendition: TranscludedRendition?
 
-    /// The text container's own width, minus the padding a line fragment hangs at on each
-    /// side - the same reasoning, and the same formula, as `HorizontalRuleFragment.ruleWidth`.
+    /// The column's width: the text container's own, minus the padding a line fragment hangs
+    /// at on each side and the source line's own indents (`EditorGutter.columnSpan`, ADR-0081
+    /// §D7) - the same reasoning, and the same formula, as `HorizontalRuleFragment.ruleWidth`.
     ///
     /// Never `layoutFragmentFrame.width`, which is the *source line's own text* width (a
     /// six-character `![[Nota]]` wikilink), not the column width. Laying the body out at that
     /// number wraps the transcluded note one word per line, and since
     /// `NoteTextView+Transclusion.swift`'s `reserveSpace` measures `reservedHeight` against
-    /// the container's width instead, the reserved space and the drawn content are computed
+    /// the same column instead, the reserved space and the drawn content are computed
     /// at two different widths and the note is clipped.
     ///
     /// Read at drawing time rather than pushed in, for the reason ADR-0019 §D2 gives for
     /// `attachmentBounds`: a number handed over from outside goes stale on the next window
     /// resize. Falls back to the fragment's own width only when there is no container to ask.
+    ///
+    /// Only the width: the fragment's own origin already is the column's start. TextKit places a
+    /// paragraph's fragment at `lineFragmentPadding + indent` from the container's edge (measured,
+    /// `Tests/GutterRevealGeometryTests.swift`, `aFragmentStartsAtTheColumnNotAtTheContainersEdge`), so
+    /// `draw(at:in:)`'s `point` is where the picture starts, and its own 16 pt band follows it.
+    /// Adding the span's leading offset to it counts the padding and the indent twice.
     var containerWidth: CGFloat {
         guard let container = textLayoutManager?.textContainer else { return layoutFragmentFrame.width }
-        return max(0, container.size.width - container.lineFragmentPadding * 2)
+        let source = (textElement as? NSTextParagraph)?.attributedString
+        let style = (source?.length ?? 0) > 0
+            ? source?.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+            : nil
+        return EditorGutter.columnSpan(
+            containerWidth: container.size.width, padding: container.lineFragmentPadding, style: style
+        ).width
     }
 
     /// Wide enough for the note drawn underneath, or the body is clipped at the source
@@ -88,13 +101,18 @@ final class TranscludedLineFragment: NSTextLayoutFragment {
     /// "larger than layoutFragmentFrame.size" whenever a decoration is drawn past the end of
     /// the text. Free until `containerWidth` became the layout width; before that the body
     /// wrapped narrow enough to fit inside the frame by accident.
+    ///
+    /// Out to `containerWidth` from the fragment's origin, where the drawn note ends, not
+    /// `containerWidth` wide from the surface's own left edge: that edge sits left of the origin
+    /// (measured, -3 pt for a `![[N]]` line, `GutterColumnSiteTests`), and a surface that wide
+    /// stopped that much short of the column and clipped the body's last points.
     override var renderingSurfaceBounds: CGRect {
         let base = super.renderingSurfaceBounds
         guard rendition != nil else { return base }
         return CGRect(
             x: base.minX,
             y: base.minY,
-            width: max(base.width, containerWidth),
+            width: max(base.maxX, containerWidth) - base.minX,
             height: base.height
         )
     }
@@ -149,8 +167,8 @@ final class TranscludedLineFragment: NSTextLayoutFragment {
     /// Width comes from `containerWidth`, not from `layoutFragmentFrame.width`, for the same
     /// reason `draw(at:in:)` does: the frame is only as wide as the short `![[Nota]]` line's
     /// own text, so a target sized from it would cover a sliver of the drawn note and leave
-    /// most of it unclickable. The origin still is the fragment's, because that is where the
-    /// drawing starts.
+    /// most of it unclickable. The origin is the column's, because that is where the drawing
+    /// starts.
     var renditionFrame: CGRect {
         guard rendition != nil, let line = textLineFragments.first else { return .null }
         let frame = layoutFragmentFrame

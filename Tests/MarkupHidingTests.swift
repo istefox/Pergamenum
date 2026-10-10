@@ -54,6 +54,98 @@ import Testing
         #expect(MarkupHidingFixture.substitutedParagraph(delegate, note: Self.note) == nil)
     }
 
+    // MARK: ADR-0081 §D4: a revealed heading hangs its `#` run in the gutter (n2-page R-14)
+
+    /// The displayed paragraph for `note`'s heading at offset 0, over a storage that carries the
+    /// base style the editor gives every paragraph at a gutter (`headIndent = G`, `tailIndent = -G`).
+    private static func gutteredHeading(
+        _ note: String, marker: HiddenMarker, revealed: Bool, gutter: CGFloat, markerFont: NSFont?
+    ) -> NSTextParagraph? {
+        let delegate = EditorDecorationDelegate()
+        delegate.gutter = gutter
+        delegate.markerFont = markerFont
+        delegate.apply(hiddenMarkers: [0: [marker]], hidingMarkup: true)
+        _ = delegate.apply(revealedParagraphs: revealed ? [0] : [])
+
+        let base = NSMutableParagraphStyle()
+        base.firstLineHeadIndent = gutter
+        base.headIndent = gutter
+        base.tailIndent = -gutter
+        let storage = NSTextContentStorage()
+        storage.textStorage?.setAttributedString(
+            NSAttributedString(string: note, attributes: [.paragraphStyle: base])
+        )
+        let range = (note as NSString).paragraphRange(for: NSRange(location: 0, length: 0))
+        return delegate.textContentStorage(storage, textParagraphWith: range)
+    }
+
+    /// The sibling of `theHookReturnsNilForARevealedParagraph` for `gutter > 0`, which stays as it is
+    /// at gutter 0 (§D6, a card keeps today's revealed shift). Revealed, the heading is no longer
+    /// the raw source with no style: the paragraph is returned with its string unchanged, its first
+    /// line starting `w` before the gutter (`w` = `## ` measured in the marker face), and the `#`
+    /// run, and only it, in the marker face. The length is the stored length.
+    @Test func aRevealedHeadingAtAGutterHangsItsHashRunInTheMarkerFace() {
+        let note = "## Titolo\ncorpo\n"
+        let marker = HiddenMarker(range: NSRange(location: 0, length: 3), kind: .heading)
+        let face = NSFont.systemFont(ofSize: 11)
+
+        let displayed = Self.gutteredHeading(note, marker: marker, revealed: true, gutter: 48, markerFont: face)
+        let style = displayed?.attributedString
+            .attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        let run = ("## " as NSString).size(withAttributes: [.font: face]).width
+
+        #expect(displayed != nil, "il titolo rivelato non porta uno stile")
+        #expect(displayed?.attributedString.string == "## Titolo\n")
+        #expect(displayed?.attributedString.length == MarkupHidingFixture.firstParagraphLength(of: note))
+        #expect(
+            abs((style?.firstLineHeadIndent ?? -1) - max(0, 48 - run)) <= 0.5,
+            "firstLineHeadIndent \(style?.firstLineHeadIndent ?? -1) invece di \(max(0, 48 - run))"
+        )
+        // The column and the tail are the base style's, untouched.
+        #expect(style?.headIndent == 48)
+        #expect(style?.tailIndent == -48)
+        for index in 0..<3 {
+            #expect(
+                (displayed?.attributedString.attribute(.font, at: index, effectiveRange: nil) as? NSFont) == face,
+                "il carattere \(index) del marcatore non ha la faccia del marcatore"
+            )
+        }
+        // The title keeps the face the styling pass gave it (none here), not the marker's.
+        #expect((displayed?.attributedString.attribute(.font, at: 4, effectiveRange: nil) as? NSFont) == nil)
+    }
+
+    /// A marker run wider than the gutter clamps the first line to zero (§D6 on overflow).
+    @Test func aRevealedHeadingWiderThanTheGutterClampsItsFirstLineToZero() {
+        let note = "###### Titolo\n"
+        let marker = HiddenMarker(range: NSRange(location: 0, length: 7), kind: .heading)
+        let displayed = Self.gutteredHeading(
+            note, marker: marker, revealed: true, gutter: 10, markerFont: .systemFont(ofSize: 20)
+        )
+        let style = displayed?.attributedString
+            .attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(displayed != nil)
+        #expect(style?.firstLineHeadIndent == 0)
+    }
+
+    /// Concealed, nothing hangs: the marker is collapsed, so the title already starts at the gutter
+    /// the base style gave it. The style is the storage's own and the marker is the collapsed font.
+    /// Green already, on purpose: the generic path is the concealed state.
+    @Test func aConcealedHeadingAtAGutterKeepsTheBaseStyleAndCollapsesTheMarker() {
+        let note = "## Titolo\ncorpo\n"
+        let marker = HiddenMarker(range: NSRange(location: 0, length: 3), kind: .heading)
+        let displayed = Self.gutteredHeading(
+            note, marker: marker, revealed: false, gutter: 48, markerFont: .systemFont(ofSize: 11)
+        )
+        let style = displayed?.attributedString
+            .attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(displayed != nil)
+        #expect(style?.firstLineHeadIndent == 48)
+        #expect(
+            (displayed?.attributedString.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+                == EditorDecorationDelegate.collapsedFont
+        )
+    }
+
     @Test func aStaleTableEntryDoesNotCollapseProse() {
         // The table still says a heading marker sits at offset 0, but the text there has
         // since become plain prose - the last styling pass has not caught up with this

@@ -423,20 +423,25 @@ enum MarkdownStyler {
         outside fences: [CodeFence.Region]
     ) -> [StyledRange] {
         var result: [StyledRange] = []
-        // The slice and the base index are the same for every link in the note, and both
-        // are a walk over the whole text: built here once rather than four times per link,
-        // which is what the shift below used to cost.
+        // The slice is the same for every link in the note, and building it is a walk over the
+        // whole text: done here once, not per link.
         let slice = String(text[start...])
-        let offset = text.distance(from: text.startIndex, to: start)
-        let sliceStart = text.index(text.startIndex, offsetBy: offset)
+        // Where the previous link ended, in the slice and in the full text. The parser returns
+        // links in document order, so each shift below walks only the gap since the last link
+        // and the whole loop is one pass over the note; measuring every link from the start of
+        // the slice made a keystroke in a 50 KB note cost seconds (a walk per link, quadratic).
+        var sliceCursor = slice.startIndex
+        var textCursor = start
         for link in WikilinkParser.links(in: slice) {
             // The parser worked on a slice; shift its indices back onto the full text.
-            let lower = text.index(sliceStart, offsetBy: slice.distance(
-                from: slice.startIndex, to: link.range.lowerBound
+            let lower = text.index(textCursor, offsetBy: slice.distance(
+                from: sliceCursor, to: link.range.lowerBound
             ))
-            let upper = text.index(sliceStart, offsetBy: slice.distance(
-                from: slice.startIndex, to: link.range.upperBound
+            let upper = text.index(lower, offsetBy: slice.distance(
+                from: link.range.lowerBound, to: link.range.upperBound
             ))
+            sliceCursor = link.range.upperBound
+            textCursor = upper
 
             // `[[Curva]]` written inside a code fence is a wikilink in an example, not a
             // link to follow: making it clickable would take a person out of the note.

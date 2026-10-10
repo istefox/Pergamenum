@@ -279,7 +279,11 @@ extension NoteTextView {
             // this loop, not `MarkdownAttributedText.attributed(_:theme:)`, is the actual hot
             // caller: it restyles the whole note on every keystroke (this function's own
             // header comment above).
-            var context = MarkdownAttributedText.StyleContext(theme: theme, links: true)
+            // The gutter (ADR-0081 §D1) arrives with the base style, so every paragraph of the
+            // page starts its content at it; the transcluded picture and the card keep 0.
+            var context = MarkdownAttributedText.StyleContext(
+                theme: theme, links: true, gutter: theme.spacing(.gutter)
+            )
             storage.beginEditing()
             storage.setAttributes(
                 context.base,
@@ -355,6 +359,11 @@ extension NoteTextView {
             // The checkbox glyph's face, 7pt over prose (`ProseTypography.checkbox(_:)`) - the
             // one character `checkboxParagraph(at:storage:)` sizes on its own.
             decorations.checkboxFont = ProseTypography.checkbox(theme)
+            // What a revealed list, quote or heading hangs its marker in (ADR-0081 §D2-§D4): the
+            // gutter the base style above starts every paragraph at, and the face a heading's
+            // `#` run takes there. The card pushes neither and stays at gutter 0 (§D6).
+            decorations.gutter = theme.spacing(.gutter)
+            decorations.markerFont = ProseTypography.gutterMarker(theme)
             // The table pass (ADR §D5), here beside `apply(hiddenMarkers:)` below - its own
             // guard, since `applyFolding`'s early return does not cover it, and its own
             // `apply(tableRows:)`/`apply(tableViews:)` calls. It adds the header line's own
@@ -521,22 +530,19 @@ extension NoteTextView {
         /// Asking the viewport layout controller to run leaves the resizing to AppKit, which
         /// is what makes it safe: nothing here sets a frame, so nothing here re-enters SwiftUI.
         ///
-        /// What is laid out first is the fragment holding the selection's end and the range the
-        /// viewport currently shows (ADR-0082 §D7, R-17), never the whole document: on a long
-        /// note a whole-document `ensureLayout` on every keystroke was the cost of typing. Those
-        /// two are what the caret and the screen need, and `usageBoundsForTextContainer` reads
-        /// them laid out plus TextKit 2's estimate for the rest. The rest is laid out as it is
-        /// approached - scrolling, Cmd+Down, a click low in the pane - by the viewport controller
-        /// `layoutViewport()` already relies on, so the end of a note stays reachable without the
-        /// whole of it being laid out on a keystroke. (When `layoutViewport()` resizes the view,
-        /// AppKit itself lays out the note's last fragment to size it; that one fragment is its
-        /// cost, not this method's.) Before the first layout pass the viewport has no range yet,
-        /// and the caret's fragment alone is laid out.
+        /// The whole document is laid out first, on purpose (ADR-0082 §D7 as amended 2026-10-10).
+        /// A first version of R-17 laid out only the caret's fragment and the viewport, to take the
+        /// whole-note layout out of the keystroke. It failed the G-grow hand check on a 50 KB note:
+        /// `applyStyling` rewrites every attribute and invalidates the layout of the whole note, so
+        /// everything above the viewport became an estimate again, shorter than the real height. After
+        /// Cmd+Down a click ran the passes, the same scroll offset showed text far above where the
+        /// person was, the mouse was still down over other text and the click turned into a selection
+        /// of the whole note, which the next key replaces. The estimate cannot be made right while
+        /// every update invalidates everything; the real fix is a restyle that stops invalidating the
+        /// note, which is the per-paragraph restyle task, and until then this stays as it was.
         func growToFitTheText(_ textView: NSTextView, revealingCaret: Bool = false) {
             guard let layout = textView.textLayoutManager else { return }
-            for range in Self.rangesToLayOut(for: textView, in: layout) {
-                layout.ensureLayout(for: range)
-            }
+            layout.ensureLayout(for: layout.documentRange)
             let needed = layout.usageBoundsForTextContainer.height
                 + textView.textContainerInset.height * 2
             if abs(textView.frame.height - needed) > 0.5 {
@@ -544,15 +550,7 @@ extension NoteTextView {
             }
             // After the resize, so the scroll is not clamped to the height the note had a
             // moment ago and left short of the end.
-            if revealingCaret {
-                textView.scrollRangeToVisible(textView.selectedRange())
-                // Once more after the viewport has laid out where the scroll landed: what lies
-                // between the old viewport and the caret was an estimate until now, and laying
-                // it out moves the caret. Measured on a 40-line note with the caret parked at its
-                // end: one pass left the caret 32 pt below the visible rect, the second settles it.
-                layout.textViewportLayoutController.layoutViewport()
-                textView.scrollRangeToVisible(textView.selectedRange())
-            }
+            if revealingCaret { textView.scrollRangeToVisible(textView.selectedRange()) }
         }
 
         /// The vertical `textContainerInset`, unchanged by ADR-0030 and named here only so
@@ -601,11 +599,17 @@ extension NoteTextView {
         func applyReadableWidth(to textView: NSTextView) {
             let width = textView.enclosingScrollView?.contentView.bounds.width
                 ?? textView.frame.width
-            let inset = Self.horizontalInset(
-                viewWidth: width,
-                cap: parent.theme.spacing(.readable),
-                minimum: Self.minimumHorizontalInset,
-                isOn: parent.readableWidth
+            // Less the gutter every paragraph carries as its own indent (ADR-0081 §D1): the
+            // column stays where the readable inset puts it, and the gutter sits inside the
+            // container where a marker can hang into it.
+            let inset = EditorGutter.containerInset(
+                readableInset: Self.horizontalInset(
+                    viewWidth: width,
+                    cap: parent.theme.spacing(.readable),
+                    minimum: Self.minimumHorizontalInset,
+                    isOn: parent.readableWidth
+                ),
+                gutter: parent.theme.spacing(.gutter)
             )
             // Assigning an inset invalidates the layout, so an unchanged one is not assigned:
             // a resize drag posts a notification per frame and each would otherwise relayout
@@ -634,25 +638,5 @@ extension NoteTextView {
             guard isOn else { return minimum }
             return max(minimum, (viewWidth - cap) / 2)
         }
-    }
-}
-
-// Beside the coordinator rather than in it: its class body is at SwiftLint's length limit.
-private extension NoteTextView.Coordinator {
-    /// The caret's own text range - the selection's end, as a zero-length range at that
-    /// location - and the viewport's, when it has one. `ensureLayout` over the caret's range
-    /// lays out the fragment holding it.
-    static func rangesToLayOut(for textView: NSTextView, in layout: NSTextLayoutManager) -> [NSTextRange] {
-        var ranges: [NSTextRange] = []
-        if let content = layout.textContentManager {
-            let caret = NSMaxRange(textView.selectedRange())
-            if let location = content.location(content.documentRange.location, offsetBy: caret) {
-                ranges.append(NSTextRange(location: location))
-            }
-        }
-        if let viewport = layout.textViewportLayoutController.viewportRange {
-            ranges.append(viewport)
-        }
-        return ranges
     }
 }

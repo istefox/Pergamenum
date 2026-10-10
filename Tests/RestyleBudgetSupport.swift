@@ -34,18 +34,18 @@ enum RestyleBudget {
         return c.bytes >= 1024 * kilobyte ? 3 : 5
     }
 
-    /// Whether the 1 MB cases run. A keystroke in a 1 MB note cost about eleven minutes of CPU on
-    /// the untouched code (ADR-0082 §D9), so the per-turn suite cannot afford them. They
-    /// run when `RESTYLE_BUDGET_1MB=1` (`scripts/editor-restyle-bench.sh --large`), or alone when
+    /// Whether the 1 MB cases run. A keystroke in a 1 MB note costs 6 to 12 s of CPU (about eleven
+    /// minutes before the `wikilinkSpans` fix, ADR-0082 §D9), so the per-turn suite leaves them
+    /// to the bench script. They run when `RESTYLE_BUDGET_1MB=1` (`scripts/editor-restyle-bench.sh --large`), or alone when
     /// it is `only` (`--large-only`).
     static var includesLargeNotes: Bool {
         ["1", "only"].contains(ProcessInfo.processInfo.environment["RESTYLE_BUDGET_1MB"])
     }
 
-    /// Whether the 200 KB cases run. One keystroke in a 200 KB note costs 20 to 26 s of CPU before
-    /// and after the N2 work, and with their warm-ups the two rows are most of the 397 s the four
-    /// rows added to the suite when measured, which the Stop hook's 600 s cannot carry beside the
-    /// rest of it (ADR-0082 §D9). They run when
+    /// Whether the 200 KB cases run. One keystroke in a 200 KB note costs about 1 s of CPU (20 to
+    /// 26 s before the `wikilinkSpans` fix, when the two rows added most of 397 s to the suite and
+    /// the Stop hook's 600 s could not carry them, ADR-0082 §D9). They stay on demand by the
+    /// person's decision at G-ceiling. They run when
     /// `RESTYLE_BUDGET_200KB=1`, which `scripts/editor-restyle-bench.sh` sets on every run but
     /// `--large-only`; the per-turn suite asserts the two 50 KB rows only.
     static var includesMediumNotes: Bool {
@@ -177,16 +177,16 @@ enum RestyleBudget {
         (ms * factor).rounded(.up)
     }
 
-    /// The six ceilings, in milliseconds of thread CPU time per keystroke. Provisional: three
-    /// times the "before" column of ADR-0082 §D9, written here after the first measured run on
-    /// untouched code. The person fixes the final six at G-ceiling.
+    /// The six ceilings, in milliseconds of thread CPU time per keystroke: three times the "after"
+    /// column of ADR-0082 §D9 (the 2026-10-10 run with the `wikilinkSpans` fix), rounded up to a
+    /// whole millisecond, as fixed by the person at G-ceiling on 2026-10-10.
     static let ceilings: [Case: Double] = [
-        Case(bytes: 50 * kilobyte, variant: .prose): 4_410,  // before 1469.68 ms
-        Case(bytes: 50 * kilobyte, variant: .fences): 4_264,  // before 1421.30 ms
-        Case(bytes: 200 * kilobyte, variant: .prose): 64_670,  // before 21556.50 ms
-        Case(bytes: 200 * kilobyte, variant: .fences): 59_909,  // before 19969.66 ms
-        Case(bytes: 1024 * kilobyte, variant: .prose): 1_939_387,  // before 646462.33 ms, one cold run
-        Case(bytes: 1024 * kilobyte, variant: .fences): 1_965_244,  // before 655081.13 ms, one cold run
+        Case(bytes: 50 * kilobyte, variant: .prose): 596,  // before 1469.68 ms, after 198.43 ms
+        Case(bytes: 50 * kilobyte, variant: .fences): 677,  // before 1421.30 ms, after 225.34 ms
+        Case(bytes: 200 * kilobyte, variant: .prose): 2_735,  // before 21556.50 ms, after 911.37 ms
+        Case(bytes: 200 * kilobyte, variant: .fences): 3_200,  // before 19969.66 ms, after 1066.64 ms
+        Case(bytes: 1024 * kilobyte, variant: .prose): 18_927,  // before 646462.33 ms (one cold run), after 6308.79 ms
+        Case(bytes: 1024 * kilobyte, variant: .fences): 35_532,  // before 655081.13 ms (one cold run), after 11843.73 ms
     ]
 
     /// `restyle-budget size=<bytes> variant=<prose|fences> cpu_ms=<min> wall_ms=<min> runs=<K>`,

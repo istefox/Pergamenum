@@ -23,14 +23,21 @@ private func quoteParagraph(
     markers: [HiddenMarker],
     at location: Int = 0,
     hidesMarkup: Bool = true,
-    revealed: Set<Int> = []
+    revealed: Set<Int> = [],
+    gutter: CGFloat = 0,
+    proseFont: NSFont? = nil,
+    baseStyle: NSParagraphStyle? = nil
 ) -> NSTextParagraph? {
     let delegate = EditorDecorationDelegate()
+    delegate.gutter = gutter
+    if let proseFont { delegate.proseFont = proseFont }
     delegate.apply(hiddenMarkers: [location: markers], hidingMarkup: hidesMarkup)
     _ = delegate.apply(revealedParagraphs: revealed)
 
     let content = NSTextContentStorage()
-    content.textStorage?.setAttributedString(NSAttributedString(string: note))
+    var attributes: [NSAttributedString.Key: Any] = [:]
+    if let baseStyle { attributes[.paragraphStyle] = baseStyle }
+    content.textStorage?.setAttributedString(NSAttributedString(string: note, attributes: attributes))
     guard let storage = content.textStorage else { return nil }
     let range = (note as NSString).paragraphRange(for: NSRange(location: location, length: 0))
     return delegate.quoteParagraph(at: range, storage: storage)
@@ -146,5 +153,85 @@ private func quoteParagraph(
             if let url = value as? String, url == "https://x.it" { found = true }
         }
         #expect(found, "nessun .toolTip \"https://x.it\" trovato nel paragrafo di citazione")
+    }
+
+    // MARK: - ADR-0081 §D3: a quote hangs its bars, and its revealed run, at a gutter (n2-page R-14)
+
+    private static let font = NSFont.systemFont(ofSize: 20)
+
+    private static func style(_ displayed: NSTextParagraph?) -> NSParagraphStyle? {
+        displayed?.attributedString.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+    }
+
+    /// The sibling of `theHookReturnsNilForARevealedBlockquoteParagraph` for `gutter > 0`: the caret's
+    /// quote is no longer the raw source with no style but a displayed paragraph, whose string is the
+    /// source, hanging its `>> ` run to `C_q(2)`. That test stays as it is, at gutter 0 (§D6).
+    @Test func aRevealedQuoteAtAGutterReturnsAHangingStyle() { // (n2-page R-14)
+        let displayed = quoteParagraph(
+            Self.twoLevels, markers: [Self.twoLevelMarker], revealed: [0], gutter: 48, proseFont: Self.font
+        )
+        let style = Self.style(displayed)
+        let column = EditorGutter.quoteColumn(level: 2, font: Self.font, gutter: 48)
+        let run = (">> " as NSString).size(withAttributes: [.font: Self.font]).width
+
+        #expect(displayed != nil, "la citazione rivelata non porta uno stile")
+        #expect(displayed?.attributedString.string == ">> due\n", "la citazione rivelata mostra il sorgente")
+        #expect(
+            abs((style?.headIndent ?? -1) - column) <= 0.5,
+            "headIndent \(style?.headIndent ?? -1) invece di \(column)"
+        )
+        #expect(
+            abs((style?.firstLineHeadIndent ?? -1) - max(0, column - run)) <= 0.5,
+            "firstLineHeadIndent \(style?.firstLineHeadIndent ?? -1) invece di \(max(0, column - run))"
+        )
+        #expect(displayed?.attributedString.length == firstParagraphLength(of: Self.twoLevels))
+    }
+
+    /// Concealed, the bars hang the same way: the column is the same, the run is the bars.
+    @Test func aConcealedQuoteAtAGutterHangsItsBarsFromTheSameColumn() { // (n2-page R-14)
+        let displayed = quoteParagraph(
+            Self.twoLevels, markers: [Self.twoLevelMarker], gutter: 48, proseFont: Self.font
+        )
+        let style = Self.style(displayed)
+        let column = EditorGutter.quoteColumn(level: 2, font: Self.font, gutter: 48)
+        let bars = ("\u{258F}\u{258F}" as NSString).size(withAttributes: [.font: Self.font]).width
+
+        #expect(displayed?.attributedString.string == "▏▏ due\n")
+        #expect(
+            abs((style?.headIndent ?? -1) - column) <= 0.5,
+            "headIndent \(style?.headIndent ?? -1) invece di \(column)"
+        )
+        #expect(
+            abs((style?.firstLineHeadIndent ?? -1) - max(0, column - bars)) <= 0.5,
+            "firstLineHeadIndent \(style?.firstLineHeadIndent ?? -1) invece di \(max(0, column - bars))"
+        )
+    }
+
+    /// The quote composes on the style the paragraph already carries (§D3, Task 7's "composes on
+    /// `bodyParagraphStyle(of:)`"): the page's line height and the gutter's tail indent survive.
+    @Test func aQuoteAtAGutterComposesOntoTheBaseStyle() { // (n2-page R-14)
+        let base = NSMutableParagraphStyle()
+        base.lineHeightMultiple = 1.4
+        base.firstLineHeadIndent = 48
+        base.headIndent = 48
+        base.tailIndent = -48
+
+        for revealed: Set<Int> in [[], [0]] {
+            let displayed = quoteParagraph(
+                Self.twoLevels, markers: [Self.twoLevelMarker], revealed: revealed,
+                gutter: 48, proseFont: Self.font, baseStyle: base
+            )
+            let style = Self.style(displayed)
+            #expect(style?.lineHeightMultiple == 1.4, "rivelato=\(!revealed.isEmpty): interlinea persa")
+            #expect(style?.tailIndent == -48, "rivelato=\(!revealed.isEmpty): tailIndent perso")
+        }
+    }
+
+    /// ADR-0081 §D6 and the plan's "Unchanged, at gutter 0": with no gutter the concealed quote sets
+    /// no paragraph style at all, so a card gains nothing it did not have. Green already.
+    @Test func aConcealedQuoteAtGutterZeroSetsNoParagraphStyle() { // (n2-page R-14)
+        let displayed = quoteParagraph(Self.twoLevels, markers: [Self.twoLevelMarker])
+        #expect(displayed != nil)
+        #expect(Self.style(displayed) == nil)
     }
 }

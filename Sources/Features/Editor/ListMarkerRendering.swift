@@ -53,7 +53,16 @@ enum ListMarkerRendering {
     /// an offscreen harness, or a paragraph the styling pass never reached - gets exactly the
     /// style this function built before ADR-0030, which is what keeps the indent arithmetic
     /// below the only thing that ever changed here.
-    static func paragraphStyle(level: Int, font: NSFont, basedOn: NSParagraphStyle? = nil) -> NSParagraphStyle {
+    ///
+    /// `gutter` and `hanging` (ADR-0081 §D2): the content column becomes `gutter + 1.5 em * depth +
+    /// 0.75 em`, wrapped lines sit at it, and when `hanging` (the measured width of the run
+    /// displayed before the content) is given the first line starts at `max(0, column - hanging)`,
+    /// so the content of the first line sits on the column too. Both defaulted, the arithmetic is
+    /// exactly the one this function had before ADR-0081, which the pinned tests read.
+    static func paragraphStyle(
+        level: Int, font: NSFont, basedOn: NSParagraphStyle? = nil,
+        gutter: CGFloat = 0, hanging: CGFloat? = nil
+    ) -> NSParagraphStyle {
         let em = max(font.pointSize, 1)
         let depth = CGFloat(min(max(level, 1), 6))
         let style = NSMutableParagraphStyle()
@@ -65,11 +74,23 @@ enum ListMarkerRendering {
         // A top-level item is already indented - `depth` starts at 1, never at 0 - because
         // the source's own indentation is drawn in `collapsedFont` and this style is the
         // only thing left holding the line off the margin (ADR-0028 §D4, R-05).
-        style.firstLineHeadIndent = em * Self.stepInEms * depth
+        let step = gutter + em * Self.stepInEms * depth
         // One bullet-width further, so a wrapped item aligns under its own text rather
         // than under its glyph (§D4).
-        style.headIndent = style.firstLineHeadIndent + em * Self.glyphInEms
+        let column = step + em * Self.glyphInEms
+        style.headIndent = column
+        // The measured run hangs from the column (ADR-0081 §D2), clamped because the SDK keeps
+        // head indents nonnegative: a run wider than the column moves the content by the
+        // overflow only (§D6). Without a measurement the glyph-width constant stays the default.
+        style.firstLineHeadIndent = hanging.map { max(0, column - $0) } ?? step
         return style
+    }
+
+    /// Where the content of a list item at `level` starts, first line and wrapped lines alike
+    /// (ADR-0081 §D2): `gutter + 1.5 em * depth + 0.75 em`, the `headIndent` `paragraphStyle`
+    /// hangs to.
+    static func contentColumn(level: Int, font: NSFont, gutter: CGFloat) -> CGFloat {
+        paragraphStyle(level: level, font: font, gutter: gutter).headIndent
     }
 
     /// How far one level of nesting steps in, as a multiple of the point size rather than
@@ -83,8 +104,8 @@ enum ListMarkerRendering {
     private static let stepInEms: CGFloat = 1.5
 
     /// The width the glyph and its trailing space are assumed to take. Three quarters of
-    /// an em covers `• ` in every face this app draws with and is deliberately not
-    /// measured: a measurement would have to happen at layout time, per paragraph, for a
-    /// hanging indent whose only job is to keep a wrapped line clear of the bullet.
+    /// an em covers `• ` in every face this app draws with. It fixes the column; the run
+    /// actually displayed is measured by the caller and handed in as `hanging` (ADR-0081 §D2),
+    /// and this constant is the first line's offset only when no measurement is given.
     private static let glyphInEms: CGFloat = 0.75
 }

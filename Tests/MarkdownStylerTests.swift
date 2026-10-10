@@ -167,6 +167,27 @@ private func emphasisMarkers(_ text: String) -> [String] {
     #expect(MarkdownStylerFixture.styled(text, .linkSyntax) == "[[Curva di trasmissibilità]]")
 }
 
+/// `wikilinkSpans` shifts each link from the parser's slice back onto the note by walking only
+/// the gap since the previous link (one pass over the note, not one walk per link). The
+/// positions must come out the same as when each was measured from the start: here with
+/// multi-byte and combined characters between the links, a frontmatter block that the slice
+/// skips, and a fence whose own link is left unstyled and does not break the walk (the parser
+/// already drops that link itself, so the styler's own fence guard is not what this scene proves).
+@Test func everyWikilinkOfALongNoteLandsOnItsOwnText() {
+    var text = "---\ntags: [a]\n---\n"
+    var expected: [String] = []
+    for n in 0..<300 {
+        text += "Riga \(n) à👨‍👩‍👧 con [[Nota \(n)|alias ✓]] e ![[file \(n).pdf]] fine.\n\n"
+        expected.append("[[Nota \(n)|alias ✓]]")
+        expected.append("![[file \(n).pdf]]")
+        if n == 150 { text += "```\n[[nel fence]]\n```\n\n" }
+    }
+    let styled = MarkdownStyler.spans(in: text)
+        .filter { $0.span == .linkSyntax }
+        .map { String(text[$0.range]) }
+    #expect(styled == expected)
+}
+
 /// An embed is styled like a link but is not one: it leads to a file, and clicking it
 /// used to ask the vault for a note named "schema.pdf" and, finding none, do nothing.
 @Test func stylesAnEmbedAsItsOwnKindOfLink() {

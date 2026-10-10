@@ -75,8 +75,13 @@ enum EmbedEditorFixtures {
         let textView = CompletingTextView(usingTextLayoutManager: true)
         textView.allowsUndo = true
         textView.textContainerInset = NSSize(width: 24, height: 20)
-        textView.frame = CGRect(x: 0, y: 0, width: 600, height: 800)
-        textView.textContainer?.size = CGSize(width: 552, height: CGFloat.greatestFiniteMagnitude)
+        // 696 / 648, not 600 / 552: ADR-0081 §D1 takes the gutter (48 pt, both sides) out of the
+        // column, so the embed column here would drop from 542 to 446 pt and clamp every drag
+        // number these suites compute. The app shrinks the container inset by the gutter to keep
+        // the column where it was; this fixture pins its inset, so it widens the container by 2G
+        // instead and the column stays 542 pt (n2-page R-13).
+        textView.frame = CGRect(x: 0, y: 0, width: 696, height: 800)
+        textView.textContainer?.size = CGSize(width: 648, height: CGFloat.greatestFiniteMagnitude)
         textView.textContentStorage?.delegate = coordinator.decorations
         textView.textLayoutManager?.delegate = coordinator.decorations
         textView.string = text

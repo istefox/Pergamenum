@@ -199,6 +199,16 @@ L'architettura harness vigente (ADR 20/07/2026, emendata 30/07/2026) assegna i t
   vista esattamente come prima. È un'impostazione della cartella note
   (`VaultSettings.readableWidth`, attiva di default) e vale su tutte e tre le superfici che
   disegnano l'editor: Nota, Diario e Oggi.
+- *Emendato 2026-10-10 (ADR-0081, ADR-0082).* **I marcatori di blocco si rivelano nel margine**:
+  quando il cursore entra in una voce d'elenco, in un titolo o in una citazione, il marcatore
+  (`- `, `1. `, `## `, `> `) compare nel margine a sinistra della colonna e il testo non si
+  sposta. Alla larghezza di lettura la colonna resta dov'era; sotto quella soglia si sposta una
+  volta verso destra. Nelle card del Workspace, che non hanno margine, solo gli elenchi restano
+  fermi.
+- **Il costo di un tasto è un numero misurato**: un test della suite misura in tempo CPU la
+  ristilizzazione di note sintetiche da 50 KB, 200 KB e 1 MB, con e senza blocchi di codice e
+  viste; le righe da 50 KB girano a ogni turno, le altre a richiesta, e il test fallisce sopra il
+  tetto registrato in ADR-0082 §D9.
 - **Il carattere della nota si sceglie in Impostazioni → Editor**: famiglia fra quelle
   installate più «Sistema», corpo da 12 a 24. La scelta è scritta come override dei token
   `font.prose` e `font.proseTitle` in `.pergamenum/themes/personalizzato.json`, attraverso lo
@@ -221,7 +231,7 @@ L'architettura harness vigente (ADR 20/07/2026, emendata 30/07/2026) assegna i t
 - Requisiti minimi:
   - CommonMark + tabelle GFM + task list `- [ ]`
   - Liste puntate e numerate rese con glifo/ordinale al posto del marcatore, nidificazione
-    inclusa (ADR-0028, 2026-09-01); Invio continua la lista e rinumera quelle ordinate; una
+    inclusa (ADR-0028, 2026-09-01); Invio continua la lista e rinumera l'elenco ordinato modificato; una
     riga `- [ ]` resta una checkbox, mai un elemento di lista
   - Wikilink con autocompletamento su `[[` (titoli esatti dal vault; gli alias F-07 servono la
     ricerca, mai il primo segmento del link, W-01)
