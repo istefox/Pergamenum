@@ -2,8 +2,8 @@
 
 - Status: **planned**. Written before the implementation, for `PG-385`/#887 (milestone N2 of the
   note-workflow chain); closes `PG-347`/#762. Flips to `accepted` with the merge of the N2 code PR
-  (`docs/adr/README.md` rule 2). §D9's table is measured (2026-10-07, finished tree);
-  its ceiling column is a proposal until the person decides it at G-ceiling.
+  (`docs/adr/README.md` rule 2). §D9's table is measured (2026-10-10, finished tree with the `wikilinkSpans` fix);
+  its six ceilings were decided by the person at G-ceiling on 2026-10-10.
 - Date: 2026-10-04. Written against `48a2d912` (`origin/main` at the same commit). Every line
   number below was read there. Re-read on `9103768f` (2026-10-06), after N1 (#897, #905); line
   numbers corrected there.
@@ -403,7 +403,7 @@ did. The fix is not one of N2's tasks: a hand check on a 50 KB note on 2026-10-1
 unusable (seconds of lag per key), a profile of the open pass and of a typed keystroke put nearly all
 of `MarkdownStyler.spans(in:)` in `wikilinkSpans`, which measured every link from the start of the note
 (four walks over the whole text per link, quadratic), and it now walks only the gap since the previous
-link. The ceiling column below is the proposal for G-ceiling on these final numbers.
+link. The ceiling column below is computed on these final numbers.
 
 The first "after", measured on 2026-10-07 by `scripts/editor-restyle-bench.sh` on the tree
 with plan Tasks 1 to 8 and before the fix (plan Tasks 1 to
@@ -415,10 +415,9 @@ fixtures included. An earlier "after" taken on 2026-10-06 with Tasks 1 to 4 only
 25848.71 and 21648.63 ms for the four small rows; the 1 MB rows then were ended twice by a SIGTERM
 from outside the test (514 s and 336 s in) and gave no number. Both of those readings were taken
 while other sessions were building on the Mac; the 2026-10-10 numbers are the ones to read.
-The ceiling column is the proposal for G-ceiling: three times the final "after" (2026-10-10), rounded up to
-a whole millisecond (the same rule as the provisional literals, which are three times "before").
-`RestyleBudget.ceilings` in `Tests/RestyleBudgetSupport.swift` still holds the provisional literals;
-changing them is the person's decision at G-ceiling.
+The ceiling column is three times the final "after" (2026-10-10), rounded up to a whole millisecond
+(the rule of the provisional literals, which were three times "before"), as approved at G-ceiling and
+now held by `RestyleBudget.ceilings` in `Tests/RestyleBudgetSupport.swift`.
 
 Two things about the bench itself, found while taking these numbers. The script's guard
 (`pgrep -fl 'xcodebuild.*Pergamenum'`) also matches the command line of a *waiting shell* that another
@@ -453,8 +452,7 @@ still stand on their own grounds: one undo step and the right caret for a renumb
 **Which rows run every turn: a proposal for G-ceiling.** At these costs the six rows cannot all run
 in the per-turn suite: on the untouched tree and on the first "after" the four rows up to 200 KB added 320 to 426 s of wall time to one run of the budget
 suite (397 s on the first "after"; about 15 s now with the fix), nearly all of it the two 200 KB rows, and the Stop
-hook kills the whole suite at 600 s. So, as built and proposed for the person to confirm or change
-at G-ceiling:
+hook kills the whole suite at 600 s. So, as built and approved by the person at G-ceiling on 2026-10-10:
 
 - **Every turn:** the two 50 KB rows, asserted against their ceilings: 14 s and 16 s of wall time
   in a full run of `PergamenumTests` on 2026-10-06 (5,550 tests, 250 s).
@@ -476,10 +474,13 @@ This departs from the letter of the root `SPEC.md`, whose summary says the cost 
 turn" and whose R-15 names the three sizes: the test still measures all three, but only the 50 KB
 rows every turn. The SPEC needs the person's amendment for it; this record does not edit it.
 
-The ceilings in `Tests/RestyleBudgetSupport.swift` stay the provisional ones, three times the
-"before" column, rounded up. Every "after" number above is under its provisional ceiling, by 19 to
-307 times: until G-ceiling lowers them the guard would not catch a return to the old cost. The final
-six are the person's at G-ceiling (proposal, §D5: three times the "after" number, rounded up).
+**Decided at G-ceiling, 2026-10-10.** The person approved the six ceilings as proposed in the table
+(three times the final "after", rounded up: 596, 677, 2735, 3200, 18927 and 35532 ms) and the split
+above (the two 50 KB rows every turn, the others on demand). `RestyleBudget.ceilings` in
+`Tests/RestyleBudgetSupport.swift` holds them, so a return to the old quadratic cost fails the
+per-turn suite at 50 KB (the provisional literals, three times "before", sat 19 to 307 times above
+the measured cost and would not have caught it). The SPEC amendment that goes with the split was
+approved the same day.
 
 ## Alternatives considered
 
@@ -516,10 +517,9 @@ The scoped renumber puts the caret where it belongs.
 
 - The styler rewrite touches what is concealed on every note; the corpus is the only thing that
   shows a regression before a person does, and it is only as good as its inputs.
-- The budget's large rows cost minutes, not seconds: as measured (§D9), only the 50 KB rows fit the
-  per-turn suite, and the 200 KB and 1 MB rows run on demand through the bench script. That is
-  proposed for G-ceiling, and the SPEC's summary and R-15 then need amending, which is a decision,
-  not a default.
+- The budget's large rows are slow (minutes before the `wikilinkSpans` fix, seconds after it): only
+  the 50 KB rows run every turn and the 200 KB and 1 MB rows run on demand through the bench script.
+  The person approved that at G-ceiling on 2026-10-10 and the SPEC's §5 was amended the same day.
 - R-17's change carries the risk the header documents; §D7's hand check is not optional.
 - The card's renumber keeps the one-character caret gap.
 
@@ -573,9 +573,9 @@ ends none), `S36` in the parser's `closingRange`. The reason for each of the 21 
 two inputs, as §D4 said it would: `E48` and the second half of `S36` (a strong run nested in an
 italic one). G-corpus is the person's to read.
 
-**The budget (§D9).** Measured on the finished tree: the keystroke costs what it cost, in every row
-(table above). The ceilings in `Tests/RestyleBudgetSupport.swift` are still the provisional ones;
-the proposal is in the table, for G-ceiling.
+**The budget (§D9).** Measured on the finished tree with the `wikilinkSpans` fix: 7 to 85 times
+cheaper than before, still proportional to the note (table above). The ceilings in
+`Tests/RestyleBudgetSupport.swift` are the six decided at G-ceiling on 2026-10-10.
 
 **Follow-ups, proposed as ledger entries and not built in N2.**
 
@@ -592,9 +592,10 @@ the proposal is in the table, for G-ceiling.
   restyle is where the cost lies, so it is the change that would move these rows. Evaluation: worth
   its own chain with §D3's corpus as the safety net.
 
-**Gates still open at the time of writing.** G-ceiling (the six ceilings), G-corpus (reading the
-classed diff), G-grow (§D7's 1 MB hand check on the Debug build), G-caret (the 49 to 48 caret
-assertion, the two `EditorHeightTests`, the arm count 7 to 9, each with its reason in the test).
+**Gates.** Decided on 2026-10-10: G-ceiling (the six ceilings), G-corpus (the classed diff, 21 A, 0 B,
+0 C) and G-caret (the 49 to 48 caret assertion, the two `EditorHeightTests`, the arm count 7 to 9,
+each with its reason in the test). Open: G-grow (§D7's hand check, which the editor's per-keystroke
+cost still blocks at 50 KB and above, see §D9) and ADR-0081's G3.
 
 ## References
 
