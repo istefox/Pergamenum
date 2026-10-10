@@ -287,6 +287,23 @@ An explicit no, recorded so the asymmetry is not read as an oversight.
 
 ### D7. Scoping change two: growing to fit lays out the caret's fragment and the viewport
 
+**Withdrawn 2026-10-10, at G-grow. `growToFitTheText` lays out the whole document again.** The
+hand check on a 50 KB note in the Release build found what the section's own risk paragraph feared:
+Cmd+Down, then a click on a line, scrolled the note to text far above the click (section 62 for
+section 104) and left the whole note selected, which the next key replaces. The cause is the pairing
+of this section with the editor's passes: `applyStyling` rewrites every attribute and invalidates the
+layout of the whole note on every update, and a click runs the passes, so everything above the
+viewport became an estimate again. The estimate is shorter than the real height, so the same scroll
+offset showed earlier text, and the mouse, still down, sat over other text and extended the
+selection. The same sequence on the tree before N2 (`3e5df0a6`, Release) places the caret on the
+clicked line. Two tests pin it, both red without the whole-document layout and green with it:
+`thePassesAClickRunsLeaveTheViewOnTheSameText` and
+`afterTheKeystrokePassesNoHeightInTheNoteIsAnEstimate`. The person chose, from the alternatives
+(restore, try a scroll anchor, merge and fix later), to restore. The text below is kept as the
+record of the design that was tried; the cost it was meant to remove goes to the per-paragraph
+restyle task, which stops invalidating the whole note and so makes an estimate harmless. The
+measured price of the restoration is the third "after" in §D9, inside the approved ceilings.
+
 `growToFitTheText(_:revealingCaret:)` keeps its signature and its three steps (ensure layout,
 compare the needed height, ask the viewport controller), but ensures layout only for the text
 range of the layout fragment holding the selection's end and the range the viewport currently
@@ -415,6 +432,13 @@ fixtures included. An earlier "after" taken on 2026-10-06 with Tasks 1 to 4 only
 25848.71 and 21648.63 ms for the four small rows; the 1 MB rows then were ended twice by a SIGTERM
 from outside the test (514 s and 336 s in) and gave no number. Both of those readings were taken
 while other sessions were building on the Mac; the 2026-10-10 numbers are the ones to read.
+**The third "after", 2026-10-10, with the whole-document layout restored** (§D7 withdrawn): the same
+script, Mac and build, `--large`. 50 KB prose 287.62 ms and fences 298.60 (were 198.43 and 225.34),
+200 KB prose 1166.25 and fences 1367.33 (were 911.37 and 1066.64), 1 MB prose 7960.66 and fences
+12725.48 (were 6308.79 and 11843.73): 26% to 45% more than with the scoped layout, every row under its
+approved ceiling (596, 677, 2735, 3200, 18927, 35532), so G-ceiling stands as decided. The ceiling
+column below is still three times the second "after".
+
 The ceiling column is three times the final "after" (2026-10-10), rounded up to a whole millisecond
 (the rule of the provisional literals, which were three times "before"), as approved at G-ceiling and
 now held by `RestyleBudget.ceilings` in `Tests/RestyleBudgetSupport.swift`.
@@ -445,9 +469,9 @@ keystroke in a 50 KB note puts 46% of `textDidChange` in the per-line inline par
 wikilink parse, 13% in the block tokenizer and 10% in the transclusion scan, all over the whole
 text, plus a second styling pass in `runPasses`. My evaluation: it is worth its own chain, with §D3's
 corpus as its safety net and a property test (random edits, incremental equals full restyle); the
-person decided on 2026-10-10 to run it as a separate task started at once, not inside N2. §D6 and §D7
-still stand on their own grounds: one undo step and the right caret for a renumber, and no
-`documentRange` layout from `growToFitTheText`.
+person decided on 2026-10-10 to run it as a separate task started at once, not inside N2. §D6 still
+stands on its own grounds (one undo step and the right caret for a renumber); §D7 was withdrawn at
+G-grow, its reason in the section itself.
 
 **Which rows run every turn: a proposal for G-ceiling.** At these costs the six rows cannot all run
 in the per-turn suite: on the untouched tree and on the first "after" the four rows up to 200 KB added 320 to 426 s of wall time to one run of the budget

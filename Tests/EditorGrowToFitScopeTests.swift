@@ -2,16 +2,18 @@ import AppKit
 import Testing
 @testable import Pergamenum
 
-// ADR-0082 §D7, plan docs/plans/pg-385-n2-page.md, Task 2 (PG-385, R-17).
+// ADR-0082 §D7 (amended 2026-10-10), plan docs/plans/pg-385-n2-page.md, Task 2 (PG-385, R-17).
 //
-// Growing the view to fit lays out up to the caret's fragment and the viewport, not the whole
-// document. The scope test is the one that was red on the old code (`growToFitTheText` ensured
-// layout for `documentRange`; its control proves the witness sees that); the others are the
-// three-part acceptance ADR-0082 §D7 names, kept green by the change: the caret stays visible
-// when typing at the end and in the middle of a long note, and the end of the note is reachable
-// when it is approached. Never `layoutSubtreeIfNeeded`
-// (the header of `NoteTextView+Coordinator.growToFitTheText`'s history warns against it): the
-// end is brought into view the app's way, `moveToEndOfDocument(nil)` and `layoutViewport()`.
+// Restated 2026-10-10, the reason first. This file first pinned that growing the view to fit lays out
+// the caret's fragment and the viewport, not the whole document. The G-grow hand check on a 50 KB
+// Release note showed that is wrong while every update invalidates the whole layout: after Cmd+Down
+// a click scrolled the note to text far above it and selected all of it. Growing to fit lays out the
+// whole document again (as before ADR-0082 §D7), the scope test says so, and a new test pins the
+// symptom: the view stays on the same text across the passes a click runs. The other tests, the
+// caret visible when typing at the end and in the middle and the end reachable when approached, are
+// unchanged. Never `layoutSubtreeIfNeeded` (the header of `NoteTextView+Coordinator.growToFitTheText`'s
+// history warns against it): the end is brought into view the app's way, `moveToEndOfDocument(nil)`
+// and `layoutViewport()`.
 
 /// About 2,000 lines: a heading, a blank line and three prose lines, four hundred times, ending
 /// in a line that names itself so a test can find the last fragment.
@@ -35,115 +37,70 @@ private func endOfLine(after marker: String, in text: String) -> Int {
     return nsText.lineRange(for: found).upperBound - 1
 }
 
-/// Which paragraphs TextKit has been asked to build a layout fragment for, recorded by standing
-/// between the layout manager and the editor's own delegate and forwarding every request to it. A
-/// fragment is requested when a paragraph is laid out, so this is a witness that reads nothing: the
-/// obvious probes (`NSTextLayoutFragment.state` through an enumeration, `textLayoutFragment(for:)`)
-/// lay out what they read, measured 2026-10-06, and a bare enumeration from a mid-document location
-/// reported `.layoutAvailable` on a note nothing had laid out.
-///
-/// Nonisolated and `@unchecked Sendable`, as `EditorDecorationDelegate` itself is: TextKit calls it
-/// on the main thread, where the tests read it.
-private final class FragmentRequestLog: NSObject, NSTextLayoutManagerDelegate, @unchecked Sendable {
-    private let inner: EditorDecorationDelegate
-    /// The character offset of the start of every paragraph a fragment was requested for since
-    /// the last `reset()`.
-    nonisolated(unsafe) private(set) var offsets: Set<Int> = []
-
-    init(forwardingTo inner: EditorDecorationDelegate) { self.inner = inner }
-
-    func reset() { offsets = [] }
-
-    func textLayoutManager(
-        _ textLayoutManager: NSTextLayoutManager, textLayoutFragmentFor location: NSTextLocation,
-        in textElement: NSTextElement
-    ) -> NSTextLayoutFragment {
-        if let content = textLayoutManager.textContentManager {
-            offsets.insert(content.offset(from: content.documentRange.location, to: location))
-        }
-        return inner.textLayoutManager(textLayoutManager, textLayoutFragmentFor: location, in: textElement)
-    }
-}
-
-/// The start of the line holding `marker` in `text`.
-private func lineStart(of marker: String, in text: String) -> Int {
-    let nsText = text as NSString
-    return nsText.lineRange(for: nsText.range(of: marker)).location
-}
-
 @MainActor
 @Suite(.serialized) struct EditorGrowToFitScope {
-    /// A fixture in the state the app is in when `textDidChange` reaches its last step: the note
-    /// open, the frame settled, and one character typed at the top with the passes that follow a
-    /// keystroke (`applyStyling` and the rest) not yet run, so what a test measures next is
-    /// `growToFitTheText` and nothing else. `applyStyling` rewrites every attribute and lays out
-    /// about 1,250 of this note's 2,000 paragraphs on its own (measured 2026-10-06), which would
-    /// drown the call this suite is about.
-    private func afterTheKeystrokeBeforeGrowing() throws -> (ScrolledEditorFixture, NSTextLayoutManager, FragmentRequestLog) {
-        let fixture = ScrolledEditorFixture(text: longNote)
-        let layout = try #require(fixture.textView.textLayoutManager)
-        let log = FragmentRequestLog(forwardingTo: fixture.coordinator.decorations)
-        layout.delegate = log
-        fixture.openLikeTheApp()
-        fixture.textView.delegate = nil
-        fixture.type("x", at: endOfLine(after: "Prima riga della sezione 1,", in: longNote))
-        log.reset()
-        return (fixture, layout, log)
-    }
-
-    /// The paragraphs a whole-document layout reaches and a scoped one must not: from the middle of
-    /// the note up to, and not including, its very last paragraph. AppKit lays out the last
-    /// fragment itself whenever it resizes the frame (see the test below), so that one says nothing.
-    private func requestsBetweenTheMiddleAndTheLastParagraph(_ log: FragmentRequestLog, in text: String) -> [Int] {
-        let middle = lineStart(of: "Seconda riga della sezione 200,", in: text)
-        let last = lineStart(of: "Ultima riga della nota lunga.", in: text)
-        return log.offsets.filter { $0 >= middle && $0 < last }.sorted()
-    }
-
-    // MARK: The probe itself
-
-    // (n2-page R-17) Control: the witness is sensitive. From the same state, a whole-document
-    // `ensureLayout` (what `growToFitTheText` did before ADR-0082 §D7) requests fragments for the
-    // paragraphs between the middle and the end (400 measured), so the test below goes red on the
-    // old behaviour and not by accident of the probe.
-    @Test func theWitnessSeesAWholeDocumentLayout() throws {
-        let (fixture, layout, log) = try afterTheKeystrokeBeforeGrowing()
-        defer { fixture.window.orderOut(nil) }
-
-        layout.ensureLayout(for: layout.documentRange)
-
-        let reached = requestsBetweenTheMiddleAndTheLastParagraph(log, in: fixture.textView.string)
-        #expect(reached.count > 300, "a whole-document layout reached only \(reached.count) paragraphs past the middle")
-    }
-
     // MARK: The scope
 
-    // (n2-page R-17) Red on the old code: growing to fit, right after a keystroke at the top of a
-    // 2,000-line note, lays out no paragraph from the middle to the one before the last, since it
-    // asks for the caret's fragment and the viewport only.
-    //
-    // Restated 2026-10-06, the reason first. The first version typed a whole keystroke into a
-    // fixture whose frame was still the 700 pt it was built with and asked whether the note's very
-    // last fragment was laid out. Three things were wrong. (1) The app's frame is already as tall
-    // as the note when a person types, because the open pass sized it, so the fixture is first
-    // brought there (`openLikeTheApp`). (2) Whenever the frame is resized, the open pass or a later
-    // grow-to-fit whose estimate moved by a few points once the viewport had laid out (59,260 pt
-    // against 58,920 here), AppKit lays out the note's last fragment to do it: that one fragment
-    // is laid out in the app too and says nothing about this method's scope (the 1 MB hand check,
-    // G-grow, prices it). (3) A whole keystroke runs `applyStyling` before this method, and
-    // that pass alone lays out about 1,250 of the 2,000 paragraphs, so a keystroke-level probe
-    // cannot say what `growToFitTheText` did. The test now measures that one call, from the state
-    // the keystroke leaves, over every paragraph between the middle and the last. R-17's words are
-    // "growing the view to fit lays out up to the caret's fragment plus the viewport, not the whole
-    // document", and that is what is asserted.
-    @Test func growingToFitAfterAKeystrokeAtTheTopDoesNotLayOutTheRestOfTheNote() throws {
-        let (fixture, _, log) = try afterTheKeystrokeBeforeGrowing()
+    // (n2-page R-17, restated 2026-10-10) After the passes a keystroke runs, no height in the note
+    // is an estimate any more: laying out the whole document again changes nothing. This replaces
+    // two tests that pinned the opposite design, growing to fit over the caret's fragment and the
+    // viewport only, and counted the fragments TextKit was asked for. That design failed the G-grow
+    // hand check (the test below, and the note in `NoteTextView+Coordinator.growToFitTheText`), and
+    // the counting probe cannot see the new one: once the layout has been invalidated TextKit reuses
+    // its fragments and requests none. The usage height is the direct witness, since an estimate is
+    // exactly a height that changes when the rest is laid out.
+    @Test func afterTheKeystrokePassesNoHeightInTheNoteIsAnEstimate() throws {
+        let fixture = ScrolledEditorFixture(text: longNote)
         defer { fixture.window.orderOut(nil) }
+        let layout = try #require(fixture.textView.textLayoutManager)
+        fixture.openLikeTheApp()
+        fixture.type("x", at: endOfLine(after: "Prima riga della sezione 1,", in: longNote))
 
+        fixture.coordinator.applyStyling(to: fixture.textView, theme: .emergency)
         fixture.coordinator.growToFitTheText(fixture.textView, revealingCaret: true)
+        let grown = layout.usageBoundsForTextContainer.height
+        layout.ensureLayout(for: layout.documentRange)
+        let complete = layout.usageBoundsForTextContainer.height
 
-        let reached = requestsBetweenTheMiddleAndTheLastParagraph(log, in: fixture.textView.string)
-        #expect(reached.isEmpty, "growing to fit laid out \(reached.count) paragraphs of the rest of the note, from \(reached.first ?? -1)")
+        #expect(abs(grown - complete) < 0.5, "the note measured \(grown) pt after growing to fit and \(complete) pt laid out whole")
+    }
+
+    // MARK: The view stays where the person put it
+
+    // Found by hand on 2026-10-10 (G-grow, 50 KB Release note): Cmd+Down, then a click on a line.
+    // The click's own update runs the passes, `applyStyling` rewrites every attribute and
+    // invalidates the layout of the whole note, and a grow-to-fit that lays out only the caret and
+    // the viewport leaves everything above as an estimate. The estimate is shorter than the real
+    // height, the same scroll offset then shows text far above where the person was (section 62 for
+    // 104 in the note that was tried), the mouse is still down and sits over other text, and the
+    // click became a selection of the whole note, which the next key replaces.
+    // (n2-page R-17) The paragraph at the top of the view is the same before and after the passes
+    // a click runs.
+    @Test func thePassesAClickRunsLeaveTheViewOnTheSameText() throws {
+        let fixture = ScrolledEditorFixture(text: longNote)
+        defer { fixture.window.orderOut(nil) }
+        let layout = try #require(fixture.textView.textLayoutManager)
+        fixture.openLikeTheApp()
+        fixture.textView.moveToEndOfDocument(nil)
+        layout.textViewportLayoutController.layoutViewport()
+        fixture.textView.scrollRangeToVisible(fixture.textView.selectedRange())
+        layout.textViewportLayoutController.layoutViewport()
+
+        func topOfTheView() -> Int {
+            let top = CGPoint(x: fixture.textView.bounds.midX, y: fixture.textView.visibleRect.minY + 4)
+            return fixture.textView.characterIndexForInsertion(at: top)
+        }
+        let before = topOfTheView()
+
+        fixture.coordinator.applyStyling(to: fixture.textView, theme: .emergency)
+        fixture.coordinator.growToFitTheText(fixture.textView)
+
+        let after = topOfTheView()
+        let text = fixture.textView.string as NSString
+        #expect(
+            abs(after - before) < 200,
+            "the view moved from \"\(text.substring(with: text.lineRange(for: NSRange(location: before, length: 0))))\" to \"\(text.substring(with: text.lineRange(for: NSRange(location: after, length: 0))))\""
+        )
     }
 
     // MARK: The caret stays visible

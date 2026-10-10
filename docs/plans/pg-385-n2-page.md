@@ -64,7 +64,9 @@
 - **Renumbering rewrites only the edited ordered run, in the keystroke's undo step.** The pinned
   caret moves from 49 to 48. The card keeps the whole-text path.
 - **Grow-to-fit lays out the caret's fragment plus the viewport.** The 1 MB hand check is the
-  acceptance, and the fallbacks are chosen at the gate.
+  acceptance, and the fallbacks are chosen at the gate. **Withdrawn 2026-10-10** (ADR-0082 §D7
+  amended): the G-grow hand check showed a click after Cmd+Down jumps and selects the whole
+  note, so grow-to-fit lays out the whole document again.
 - **`_` emphasis stays unconcealed.**
 - **Oggi and Diario share one query-source factory.** Cards gain quote and rule concealment;
   tables and view blocks stay out of cards.
@@ -256,7 +258,7 @@ Line numbers below were read on `9103768f`.
      and handed to `renumberLists(in:touching:)`.
    - The fallback keeps today's clamped caret (49).
    - `mapping(_:)` is exact per rewritten digit run.
-8. **§D7.** The two other callers (`:384`, `NoteTextView+Update.swift:71`) take the same scoped
+8. **§D7** (withdrawn 2026-10-10, see above). The two other callers (`:384`, `NoteTextView+Update.swift:71`) take the same scoped
    path. Add the restatement wording of Task 2.
 9. **§D8.**
    - `InlineSpanRevealFenceTests` moves from 7 to 9 and joins G-caret.

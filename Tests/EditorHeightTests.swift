@@ -12,12 +12,11 @@ import Testing
 /// went into the file without ever appearing. Found by looking at the screen on 2026-08-18
 /// and measured: 1431 points needed against 1244 given.
 ///
-/// **What these tests do not prove.** `growToFitTheText` no longer lays out the whole document
-/// on a keystroke (ADR-0082 §D7): it lays out the caret's fragment and the viewport, and the
-/// first two tests reach the end the app's way, Cmd+Down and `layoutViewport()`, before they
-/// measure. They hold the postcondition - once the end is approached the view is tall enough
-/// for what it draws - and that is worth holding, but the defect itself only shows in a real
-/// window. `CompletionPanelUITests`, `EditorGrowToFitScopeTests` and a look at the screen with a
+/// **What these tests do not prove.** The first two tests reach the end the app's way, Cmd+Down
+/// and `layoutViewport()`, before they measure (`growToFitTheText` lays out the whole document
+/// again since ADR-0082 §D7 was withdrawn on 2026-10-10). They hold the postcondition - once
+/// the end is approached the view is tall enough for what it draws - and that is worth holding,
+/// but the defect itself only shows in a real window. `CompletionPanelUITests`, `EditorGrowToFitScopeTests` and a look at the screen with a
 /// long note are what caught it and what would catch it again.
 
 @MainActor
@@ -74,17 +73,15 @@ private func typeAKeystroke(in textView: NSTextView) {
 }
 
 /// What a person does to reach the end of a note: Cmd+Down, and the viewport lays out what the
-/// scroll brought into view. The app's way (ADR-0082 §D7), and never `layoutSubtreeIfNeeded`.
+/// scroll brought into view. The app's way, and never `layoutSubtreeIfNeeded`.
 @MainActor
 private func bringTheEndIntoView(_ textView: NSTextView, _ layout: NSTextLayoutManager) {
     textView.moveToEndOfDocument(nil)
     layout.textViewportLayoutController.layoutViewport()
 }
 
-// (n2-page R-17) Restated: ADR-0082 §D7 removes the whole-document layout the old test relied on
-// (a test-side `ensureLayout(for: documentRange)` right after one keystroke), so the property is
-// now "after the keystroke, bring the end into view, then the view is tall enough for what
-// TextKit reports it draws".
+// (n2-page R-17) After the keystroke, bring the end into view, then the view is tall enough for
+// what TextKit reports it draws.
 @MainActor
 @Test func stylingLeavesTheTextViewTallEnoughForWhatItDraws() {
     let editor = editorInAWindow(noteEndingInAHeading)
