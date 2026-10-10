@@ -1,9 +1,10 @@
 # ADR-0082: The styler classifies through the shared parsers
 
-- Status: **planned**. Written before the implementation, for `PG-385`/#887 (milestone N2 of the
-  note-workflow chain); closes `PG-347`/#762. Flips to `accepted` with the merge of the N2 code PR
-  (`docs/adr/README.md` rule 2). §D9's table is measured (2026-10-10, finished tree with the `wikilinkSpans` fix);
-  its six ceilings were decided by the person at G-ceiling on 2026-10-10.
+- Status: **accepted**. Merged to `main` via PR #956 (`558db01c`, 2026-10-10), the N2 code PR for
+  `PG-385`/#887; closes `PG-347`/#762. §D9's table is measured (2026-10-10, finished tree with the
+  `wikilinkSpans` fix); its six ceilings were decided by the person at G-ceiling on 2026-10-10. §D7 was
+  withdrawn at G-grow on the same day (see §D7); the per-keystroke cost proportional to the note is left to
+  the per-paragraph restyle task.
 - Date: 2026-10-04. Written against `48a2d912` (`origin/main` at the same commit). Every line
   number below was read there. Re-read on `9103768f` (2026-10-06), after N1 (#897, #905); line
   numbers corrected there.
@@ -568,7 +569,7 @@ behave as before.
 
 Written at the code PRs (#921 for plan Tasks 1 to 5, the gutter PR for Tasks 6 to 8), 2026-10-07. The
 decision above is unchanged; this records what was built and where, the corpus result, and what the
-build left open. Status stays `planned` until the merge.
+build left open. Status flipped to `accepted` at the merge of PR #956.
 
 **Where it landed.**
 

@@ -1,8 +1,8 @@
 # ADR-0081: Block markers reveal in the gutter
 
-- Status: **planned**. Written before the implementation, for `PG-385`/#887 (milestone N2 of the
-  note-workflow chain). Flips to `accepted` with the merge of the N2 code PR, never with the mockup
-  PR (`docs/adr/README.md` rule 2).
+- Status: **accepted**. Merged to `main` via PR #956 (`558db01c`, 2026-10-10), the N2 code PR for
+  `PG-385`/#887. G3 (arrow-down through a nested list, text does not shift) was checked on 2026-10-10 by an
+  automated run on a wide window; the narrow width, Oggi and Diario were not run by hand and stay open.
 - Date: 2026-10-04. Written against `48a2d912` (`origin/main` at the same commit). Every line
   number below was read there. Re-read on `9103768f` (2026-10-06), after N1 (#897, #905); line
   numbers corrected there.
