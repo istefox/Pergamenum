@@ -1,4 +1,4 @@
-**Requirement set:** `SPEC.md`
+**Requirement set:** `docs/specs/note-workflow-n3.spec.md`
 
 # Note workflow N3, links: the mockup PR
 

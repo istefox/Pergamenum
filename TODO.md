@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=400 -->
+<!-- project-tasks: prefix=PG lastId=401 -->
 # PROJECT TASKS
 
-Updated: 2026-10-10 · Open: 46 (P1: 0) · In progress: 0
+Updated: 2026-10-10 · Open: 47 (P1: 1) · In progress: 0
 
 ## GitHub Issues
 - [ ] `PG-398` -> #960 **P2** [fix] The pratiche link doors accept a path that exists but is not an indexed note: `Sources/Connector/VaultPraticheLinks.swift:67`, `:235`, `:320` and `Sources/Connector/VaultWrites.swift:93` check only `session.exists` (old «non esiste» wording), so a `.canvas` or a settings JSON can be a link end there; route them through `VaultSession.linkEndRefusal` as the `link_mention` doors now do <!-- src:session kind:fix opened:2026-10-08 runs:3 promote:2026-10-08 -->
@@ -99,6 +99,7 @@ Their GitHub issues were closed 2026-09-12 as "not active work" — kept here as
 
 ## Backlog / To Add
 
+- [ ] `PG-401` **P1** Per-keystroke restyle cost in large notes: every keystroke restyles the whole note (Debug bench CPU ms per key after the `wikilinkSpans` fix: 50 KB 205, 200 KB 826, 1 MB 6965), unusable in Release at 50 KB; dirty-range restyle with a structural-signature fallback to the full restyle, offset-keyed state shifted not rebuilt, no second pass, no whole-text transclusion rescan, target under 20 ms CPU at 50 KB, 200 KB and 1 MB (ceilings fixed at a gate); follow-up of PG-385 (#887) and PR #956, ADR-0082 §D9 · `SPEC.md` · `Sources/Features/Editor/NoteTextView+Coordinator.swift` · ADRs: one new (extends ADR-0082, touches ADR-0077 §D1) · hand check G-grow on a Release 1 MB note · Phase: spec approved <!-- src:session kind:roadmap opened:2026-10-10 -->
 `scripts/uitests.sh` run by hand on 2026-09-10 (114 tests, 88-1400s runs depending on the pass): first
 pass was 113/114 green with one failure in the new `PraticheUITests.testRigeneraShowsADiffPreviewAndAnnullaLeavesTheFileOnDisk`
 (PG-116's UI coverage, added by the PG-116-119 follow-up plan). Root cause was a bug in the test
