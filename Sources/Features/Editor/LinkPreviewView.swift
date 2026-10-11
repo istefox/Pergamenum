@@ -35,7 +35,7 @@ struct LinkPreviewView: View {
             if let missingSection {
                 Text("Nessuna sezione «\(missingSection)»").themedText(.caption, color: .textTertiary)
             } else {
-                excerpt(lines)
+                excerpt(lines, isCut: content.isCut)
             }
         case .board(let name):
             HStack(spacing: theme.spacing(.xs)) {
@@ -62,16 +62,15 @@ struct LinkPreviewView: View {
         Text(text).themedText(.body, color: .textPrimary).fontWeight(.semibold).lineLimit(1)
     }
 
-    /// The opening lines, a heading line in the primary colour. When the cap was reached the last
-    /// line fades out, the way `TranscludedNoteView` masks a capped transclusion: the cut the
-    /// mockup's main scene draws.
-    private func excerpt(_ lines: [String]) -> some View {
-        let isCapped = lines.count >= LinkPreviewContent.lineLimit
+    /// The opening lines, a heading line in the primary colour. When the body was cut at the cap the
+    /// last line fades out, the way `TranscludedNoteView` masks a capped transclusion: the cut the
+    /// mockup's main scene draws. A body of exactly the cap's length was not cut and fades nothing.
+    private func excerpt(_ lines: [String], isCut: Bool) -> some View {
         return ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
             let text = Text(line)
                 .themedText(.caption, color: Self.isHeading(line) ? .textPrimary : .textSecondary)
                 .lineLimit(1)
-            if isCapped && index == lines.count - 1 {
+            if isCut && index == lines.count - 1 {
                 text.mask(Self.fadeOut)
             } else {
                 text

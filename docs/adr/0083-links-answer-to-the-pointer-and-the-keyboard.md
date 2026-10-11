@@ -279,6 +279,12 @@ lifecycle owned by one controller.** *Amended 2026-10-07: the record's first §D
 - no match: «Nessuna nota si chiama «X»», plus «Cmd+clic per crearla» when creatable;
 - an external URL or a file embed: nothing, no popover (SPEC edge case).
 
+A board target is named, not resolved: resolving it walks every board in the vault
+(`CanvasStore.allBoards()`), a disk-derived list ADR-0072 §D7 forbids keeping across hovers. The
+trade-off is accepted: a `.canvas` link to a board that does not exist previews as if it did, and
+only the follow says «board non trovata». The `.missingBoard` arm of `make(...)` is therefore
+unreachable from the app's caller and kept only so the switch over `LinkDestination` stays total.
+
 The section is not in the link's URL (`MarkdownAttributedText.noteURL(for:)` carries the title
 only), so the controller reads it off `WikilinkParser` at the hovered index, the parse `LinkAtCaret`
 already uses.
