@@ -49,12 +49,14 @@ final class EventKitStore: CalendarStore {
     private(set) var changeCount = 0
 
     /// Cancelled from `deinit`, which cannot touch main-actor state, so the handles are
-    /// held outside the isolation. `(unsafe)` is required, not just `nonisolated`: this
-    /// class is `@Observable`, and `@ObservationTracked`'s macro expansion rejects plain
-    /// `nonisolated` on a mutable stored property. Safe in practice regardless - the
-    /// array is only ever written in `init` and read in `deinit`, both single-threaded
-    /// entry points.
-    private nonisolated(unsafe) var observations: [Task<Void, Never>] = []
+    /// held outside the isolation - the `GlobalHotkey` shape. `@ObservationIgnored`
+    /// because the `@Observable` macro turns a tracked stored property into a computed
+    /// one, on which `nonisolated(unsafe)` has no effect (the compiler said so, PG-400);
+    /// no view redraws for these handles anyway. `(unsafe)` because plain `nonisolated`
+    /// is refused on a mutable stored property. Safe in practice regardless - the array
+    /// is only ever written in `init` and read in `deinit`, both single-threaded entry
+    /// points.
+    @ObservationIgnored private nonisolated(unsafe) var observations: [Task<Void, Never>] = []
 
     init() {
         refreshAccessStatus()
