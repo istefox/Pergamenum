@@ -77,6 +77,10 @@ extension NoteTextView {
         // already accounted for.
         coordinator.applyReveal(to: textView)
         coordinator.growToFitTheText(textView)
+        // After the restyle: a note switch puts the caret at 0 on text that is not styled yet, so
+        // the selection notification reported no link, and the styled one has the caret's link
+        // only now (ADR-0083 §D3). The ledger drops it when nothing changed.
+        coordinator.reportLinkAtCaret(in: textView)
     }
 
     /// Step 3: applies the Inserisci menu's text at the cursor, and opens the query builder

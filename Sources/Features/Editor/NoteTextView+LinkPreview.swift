@@ -182,6 +182,10 @@ final class LinkPreviewController {
         case .hide, .hideConsumingEscape:
             presenter.hide()
             stopObservingWindowKey()
+        case .hideAndSchedule(let delay):
+            presenter.hide()
+            stopObservingWindowKey()
+            apply(.schedule(after: delay))
         }
     }
 
