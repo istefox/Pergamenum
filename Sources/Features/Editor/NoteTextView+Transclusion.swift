@@ -87,6 +87,8 @@ final class TransclusionController {
     /// `vault.transclusions` per rendition, `onFollowLink` on the click.
     private let parent: () -> NoteTextView?
     private let decorations: EditorDecorationDelegate
+    /// The layout record; its door is the one way this pass invalidates the layout (ADR-0093 §D3).
+    private let layoutDebt: LayoutDebt
 
     /// The transcluded notes already drawn, so an unchanged set does not invalidate the
     /// layout on every view update.
@@ -110,9 +112,10 @@ final class TransclusionController {
     /// resolving (ADR-0091 §D7).
     private var unreserved: [Int: NSParagraphStyle] = [:]
 
-    init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate) {
+    init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate, layout: LayoutDebt) {
         self.parent = parent
         self.decorations = decorations
+        layoutDebt = layout
     }
 
     /// What the styling pass before this one restyled, and so what this one scans (ADR-0091 §D7).
@@ -192,9 +195,7 @@ final class TransclusionController {
         guard renditions != lastRenditions else { return }
         lastRenditions = renditions
         decorations.apply(renditions: renditions)
-        if let manager = textView.textLayoutManager {
-            manager.invalidateLayout(for: manager.documentRange)
-        }
+        layoutDebt.invalidateWholeDocument(of: textView)
     }
 
     /// Scans what `scan` names into the occurrence table and answers the occurrences to resolve,

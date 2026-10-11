@@ -505,6 +505,8 @@ property test: the incremental result equals the same styler's full result.
 
 ### D10. Layout and fence crossing stay as they are
 
+Its layout half is amended by ADR-0093 §D4.
+
 `growToFitTheText` still calls `ensureLayout(for: documentRange)`, because ADR-0082 §D7 stays
 withdrawn. With the attributes outside the dirty range untouched, TextKit has only the dirty
 paragraphs to lay out again. The bench will report what the whole-document call still costs.

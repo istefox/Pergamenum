@@ -145,3 +145,36 @@ import Testing
     #expect(!coordinator.linkPreview.hasTrackingArea)
     #expect(!coordinator.linkPreview.isObservingWindowKey)
 }
+
+/// A storage delegate that is not the coordinator, standing in for whatever else could hold the slot.
+private final class ForeignStorageDelegate: NSObject, NSTextStorageDelegate {}
+
+/// ADR-0093 §D5, plan docs/plans/scoped-layout-followup.md, Task 1 (R-01). The first styling installs
+/// the coordinator as the storage's delegate (ADR-0091 §D2), and `dismantleNSView` ran on every pane
+/// switch without taking it out again.
+@MainActor
+@Test func dismantlingTheNoteEditorClearsTheStorageDelegateItInstalled() throws {
+    let fixture = ScrolledEditorFixture(text: "Una riga di prosa.\n")
+    defer { fixture.window.orderOut(nil) }
+    let storage = try #require(fixture.textView.textStorage)
+    #expect(storage.delegate === fixture.coordinator, "premessa: la prima formattazione installa il coordinator")
+
+    NoteTextView.dismantleNSView(fixture.scrollView, coordinator: fixture.coordinator)
+
+    #expect(storage.delegate == nil, "il coordinator è rimasto delegate dello storage dopo lo smontaggio")
+}
+
+/// The same teardown leaves alone a delegate that is not this coordinator's: it clears its own
+/// installation and only that.
+@MainActor
+@Test func dismantlingTheNoteEditorLeavesAForeignStorageDelegateInPlace() throws {
+    let fixture = ScrolledEditorFixture(text: "Una riga di prosa.\n")
+    defer { fixture.window.orderOut(nil) }
+    let storage = try #require(fixture.textView.textStorage)
+    let foreign = ForeignStorageDelegate()
+    storage.delegate = foreign
+
+    NoteTextView.dismantleNSView(fixture.scrollView, coordinator: fixture.coordinator)
+
+    #expect(storage.delegate === foreign, "lo smontaggio ha tolto un delegate che non era del coordinator")
+}

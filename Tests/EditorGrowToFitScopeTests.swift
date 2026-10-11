@@ -14,6 +14,17 @@ import Testing
 // unchanged. Never `layoutSubtreeIfNeeded` (the header of `NoteTextView+Coordinator.growToFitTheText`'s
 // history warns against it): the end is brought into view the app's way, `moveToEndOfDocument(nil)`
 // and `layoutViewport()`.
+//
+// Restated 2026-10-11 (ADR-0093 §D4, plan docs/plans/scoped-layout-followup.md, Task 7), the reason
+// first. The comment above said grow-to-fit "lays out the whole document again"; since ADR-0093 it
+// lays out what the layout record owes (the whole note only for the reasons `LayoutDebt` names, and
+// otherwise the ranges the keystroke's edits re-created, widened by a character each side). No
+// assertion in this file depended on a whole-document layout per call: the two ADR-0082 §D7 pins
+// below (`afterTheKeystrokePassesNoHeightInTheNoteIsAnEstimate` and
+// `thePassesAClickRunsLeaveTheViewOnTheSameText`) hold the invariant, no estimate after a keystroke,
+// and are untouched. They now hold it for the ranged layout; `LayoutDebtHostedTests` holds the same
+// witness with `layoutDebt.log.ranged` asserted, so a regression to the whole-note layout is seen
+// there and not here.
 
 /// About 2,000 lines: a heading, a blank line and three prose lines, four hundred times, ending
 /// in a line that names itself so a test can find the last fragment.

@@ -288,6 +288,8 @@ An explicit no, recorded so the asymmetry is not read as an oversight.
 
 ### D7. Scoping change two: growing to fit lays out the caret's fragment and the viewport
 
+Reopened and scoped by ADR-0093 §D4.
+
 **Withdrawn 2026-10-10, at G-grow. `growToFitTheText` lays out the whole document again.** The
 hand check on a 50 KB note in the Release build found what the section's own risk paragraph feared:
 Cmd+Down, then a click on a line, scrolled the note to text far above the click (section 62 for

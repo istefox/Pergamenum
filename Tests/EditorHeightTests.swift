@@ -13,8 +13,9 @@ import Testing
 /// and measured: 1431 points needed against 1244 given.
 ///
 /// **What these tests do not prove.** The first two tests reach the end the app's way, Cmd+Down
-/// and `layoutViewport()`, before they measure (`growToFitTheText` lays out the whole document
-/// again since ADR-0082 §D7 was withdrawn on 2026-10-10). They hold the postcondition - once
+/// and `layoutViewport()`, before they measure (`growToFitTheText` lays out what the layout record
+/// owes since ADR-0093 §D4, restated 2026-10-11: no estimate stays in the note after a keystroke,
+/// ADR-0082 §D7 having been withdrawn on 2026-10-10 and reopened scoped). They hold the postcondition - once
 /// the end is approached the view is tall enough for what it draws - and that is worth holding,
 /// but the defect itself only shows in a real window. `CompletionPanelUITests`, `EditorGrowToFitScopeTests` and a look at the screen with a
 /// long note are what caught it and what would catch it again.

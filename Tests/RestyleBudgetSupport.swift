@@ -243,6 +243,38 @@ extension RestyleBudget {
     }
 }
 
+// MARK: - The structural rows (ADR-0093 §D9, R-13)
+
+extension RestyleBudget {
+    /// The four edits that change structure beyond their line, so the restyle falls back to a wide
+    /// one: printed, never asserted. Their raw values are what the bench script prints in its `path`
+    /// column.
+    enum StructuralPath: String, Sendable, CaseIterable {
+        case fenceOpenLast = "fence-open-last"
+        case fenceOpenAbove = "fence-open-above"
+        case wikilinkOpen = "wikilink-open"
+        case wikilinkCloseFar = "wikilink-close-far"
+    }
+
+    /// Whether the structural rows run. They do when `RESTYLE_BUDGET_STRUCTURAL=1`, which
+    /// `scripts/editor-restyle-bench.sh --structural` sets; the per-turn suite leaves them out.
+    static var includesStructuralRows: Bool {
+        ProcessInfo.processInfo.environment["RESTYLE_BUDGET_STRUCTURAL"] == "1"
+    }
+
+    /// `restyle-budget-structural size=<bytes> variant=<prose|fences> path=<fence-open-last|
+    /// fence-open-above|wikilink-open|wikilink-close-far> cpu_ms=<min> wall_ms=<min> dirty=<utf16 length>
+    /// runs=<K>`, the line `scripts/editor-restyle-bench.sh --structural` greps for its third table. It
+    /// starts `restyle-budget-structural`, so neither of the other two tables' patterns match it.
+    static func structuralLine(
+        _ c: Case, path: StructuralPath, cpuMs: Double, wallMs: Double, dirty: Int, runs: Int
+    ) -> String {
+        "restyle-budget-structural size=\(c.bytes) variant=\(c.variant.rawValue) path=\(path.rawValue) "
+            + "cpu_ms=\(String(format: "%.2f", cpuMs)) wall_ms=\(String(format: "%.2f", wallMs)) "
+            + "dirty=\(dirty) runs=\(runs)"
+    }
+}
+
 /// A hosted editor prepared for one fallback keystroke, which it types and takes back.
 ///
 /// Each path is prepared before any measurement, so the six rows' synthetic notes do not change:
