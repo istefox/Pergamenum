@@ -30,6 +30,11 @@ enum Help {
       note rename <percorso> <titolo>   rinomina, riscrivendo i link e le board che puntano
       note move <percorso> <cartella>   sposta; cartella vuota per portarla alla radice
       note trash <percorso>             al cestino; segnala chi resta senza link
+      note link-mention <percorso> <titolo>
+                                        la prima menzione non collegata di <titolo> diventa
+                                        [[Titolo]], o [[Titolo|testo]] se il testo è diverso
+      note unlink-related <percorso> <percorso-destinazione>
+                                        toglie il legame strutturale da entrambe le note
 
     CATTURA
       capture <testo>      [--dest note|task|today|note:PERCORSO]  (note)

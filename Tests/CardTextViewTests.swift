@@ -187,19 +187,25 @@ import Testing
 
     // MARK: - R-06 (issue #188): a card's links become clickable, reopening ADR-0027 §D1
 
-    @Test func linkTargetCarriesLinkAndCursorForAResolvableTarget() throws {
+    @Test func linkTargetCarriesLinkForAResolvableTarget() throws {
         let attributes = CardTextAttributes.attributes(for: .linkTarget("Nota"), theme: theme)
         let url = try #require(
             attributes[.editorLink] as? URL, ".linkTarget must now carry .editorLink (issue #191)"
         )
         #expect(MarkdownAttributedText.clickTarget(for: url) == .note(title: "Nota"))
-        #expect(attributes[.cursor] != nil, ".linkTarget must now carry .cursor (R-06)")
+        #expect(
+            attributes[.cursor] == nil,
+            ".linkTarget carries no .cursor: nothing reads it, AppKit draws it through EditorPointer (ADR-0090 §D7)"
+        )
     }
 
-    @Test func embedTargetCarriesLinkAndCursorForAFileReference() {
+    @Test func embedTargetCarriesLinkForAFileReference() {
         let attributes = CardTextAttributes.attributes(for: .embedTarget("foto.png"), theme: theme)
         #expect(attributes[.editorLink] as? URL == MarkdownAttributedText.embedURL(for: "foto.png"))
-        #expect(attributes[.cursor] != nil, ".embedTarget must now carry .cursor (R-06)")
+        #expect(
+            attributes[.cursor] == nil,
+            ".embedTarget carries no .cursor: nothing reads it, AppKit draws it through EditorPointer (ADR-0090 §D7)"
+        )
     }
 
     /// An empty CommonMark href (`[testo]()`) never reaches `.linkTarget` at all

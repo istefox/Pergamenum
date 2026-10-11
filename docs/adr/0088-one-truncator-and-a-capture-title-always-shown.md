@@ -1,9 +1,8 @@
 # ADR-0088: One word-boundary truncator, and a capture title the panel always shows
 
-- Status: **proposed**. Lands with the N1 delta PR, Tasks 1 and 2 of
-  `docs/plans/note-workflow-n1.md`. Flip to `accepted` as the first docs change after that PR
-  merges, naming the PR, its merge hash as `git log --first-parent main` shows it, and the date
-  (`docs/adr/README.md` rule 2).
+- Status: **accepted**. Merged to `main` via PR #924 (`63f743fb`, 2026-10-07), carrying Tasks 1 and 2
+  of `docs/plans/note-workflow-n1.md`: the one word-boundary truncator and the capture title the
+  panel always shows.
 - Date: 2026-10-05. Written against `origin/main` at `5056c61f`, which holds PR #897 (ADR-0080's
   implementation, session 1 of `docs/plans/pg-384-n1-seams.md`).
 - Number: `0088` was checked free on every local and remote-tracking ref on 2026-10-05. The
@@ -111,9 +110,10 @@ reverse. They are listed so a reader of the archived N1-only SPEC does not undo 
   Task 7) keeps the sheet open until the write ends. N4's composer in the board sheet keeps the
   confirmation (`docs/plans/note-workflow-n4.md`).
 - **The pointer (`PG-219`, R-09).** The N1-only SPEC left it out of scope. The note-workflow SPEC
-  takes it into N1. The delta tries SwiftUI's `.pointerStyle` on the text views' hosts, the
-  `TimelineBlockBox.swift:105` precedent. If that fails, the `.onContinuousHover` restructure the
-  ledger entry describes gets its own ADR.
+  takes it into N1. This ADR does not decide it: ADR-0090
+  (`docs/adr/0090-the-editor-pointer-is-drawn-by-appkit.md`) is its record. The SwiftUI
+  `.pointerStyle` route on the text views' hosts was built and dropped there; the pointer is
+  decided and drawn by AppKit, from two overrides.
 - **An event note opens with the caret in the editor (R-04).** A one-shot request in the shape of
   `closeRequest`.
 - **Every failure in the Workspace creation sheet is shown in the sheet and kept in the problem

@@ -216,39 +216,61 @@ struct QuickSwitcher: View {
 
     // MARK: Headings
 
+    /// The notes a heading query's note part names (ADR-0083 §D5): every note whose title matches
+    /// it exactly, so two notes of one title are two groups rather than whichever sorts first, or
+    /// the search's first when none does, as before.
+    static func headingTargets(
+        for notePart: String, exact: (String) -> [String], firstMatch: (String) -> String?
+    ) -> [String] {
+        let exactPaths = exact(notePart)
+        return exactPaths.isEmpty ? [firstMatch(notePart)].compactMap { $0 } : exactPaths
+    }
+
     /// `Nota#sez` splits into the note and the section. `#sez` on its own means the note that
     /// is open, which is how you jump inside a long one without naming it again.
-    private var headingQuery: (path: String, needle: String)? {
+    private var headingQuery: (paths: [String], needle: String)? {
         guard let hash = query.firstIndex(of: "#") else { return nil }
         let notePart = String(query[query.startIndex..<hash]).trimmingCharacters(in: .whitespaces)
         let needle = String(query[query.index(after: hash)...]).trimmingCharacters(in: .whitespaces)
-        let path = notePart.isEmpty
-            ? vault.openNote?.relativePath
-            : vault.index.search(notePart, limit: 1).first?.relativePath
-        return path.map { ($0, needle) }
+        let paths = notePart.isEmpty
+            ? [vault.openNote?.relativePath].compactMap { $0 }
+            : Self.headingTargets(
+                for: notePart,
+                exact: { vault.index.resolve(title: $0) },
+                firstMatch: { vault.index.search($0, limit: 1).first?.relativePath }
+            )
+        return paths.isEmpty ? nil : (paths, needle)
     }
 
-    private func headingGroups(_ heading: (path: String, needle: String)) -> [Group] {
-        guard let text = vault.noteText(at: heading.path) else { return [] }
-        let title = vault.index.note(at: heading.path)?.title ?? heading.path
+    private func headingGroups(_ heading: (paths: [String], needle: String)) -> [Group] {
+        // One group per note; a title several notes share is told apart by its folder.
+        let shared = heading.paths.count > 1
+        return heading.paths.compactMap { path in
+            headingGroup(path: path, needle: heading.needle, labelledByFolder: shared)
+        }
+    }
+
+    private func headingGroup(path: String, needle: String, labelledByFolder: Bool) -> Group? {
+        guard let text = vault.noteText(at: path) else { return nil }
+        let name = vault.index.note(at: path)?.title ?? path
+        let title = labelledByFolder ? "\(name) · \(LinkChoice.folderLabel(of: path))" : name
 
         // The ordinal is the entry's place in the whole index, embeds included: it is what
         // the reading view counts blocks by, and renumbering the filtered list would send it
         // to a different section than the editor.
         let rows = NoteOutline.entries(in: text).enumerated().compactMap { ordinal, entry -> Row? in
             guard case .heading = entry.kind else { return nil }
-            guard heading.needle.isEmpty
-                    || FuzzyMatch.score(query: heading.needle, candidate: entry.title) != nil
+            guard needle.isEmpty
+                    || FuzzyMatch.score(query: needle, candidate: entry.title) != nil
             else { return nil }
             // No detail: the section header above already names the note, and repeating it
             // on every row is a column that says the same thing as many times as there are
             // headings.
             return Row(
-                id: "heading:\(ordinal)", icon: "number", title: entry.title, detail: "",
-                choice: .heading(path: heading.path, range: NSRange(entry.range, in: text),
-                                 ordinal: ordinal)
+                id: "heading:\(path):\(ordinal)", icon: "number", title: entry.title, detail: "",
+                choice: .heading(path: path, range: NSRange(entry.range, in: text), ordinal: ordinal)
             )
         }
-        return [Group(id: "headings", header: title.uppercased(), rows: rows)]
+        return Group(id: "headings:\(path)", header: title.uppercased(), rows: rows)
     }
 }

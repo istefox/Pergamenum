@@ -320,7 +320,8 @@ extension ToolCatalogue {
         ),
     ]
 
-    private static let dryRunProperty: Value = [
+    /// Not `private` (ADR-0045 §D2): `ToolCatalogue+NoteLinks.swift`'s two write tools take it too.
+    static let dryRunProperty: Value = [
         "type": "boolean",
         "description": "true (il valore di default) calcola la scrittura e mostra il diff senza applicarla",
     ]

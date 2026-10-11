@@ -174,6 +174,18 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// size, exactly as before this property existed; an offscreen harness that never calls
     /// `applyStyling` gets that, not a crash.
     nonisolated(unsafe) var checkboxFont: NSFont?
+    /// The gutter the page's paragraphs start their content at (ADR-0081 §D1), pushed in from
+    /// `theme.spacing(.gutter)` by `applyStyling` beside `proseFont`. Zero - the default - is the
+    /// Workspace card and every offscreen harness: no gutter, and a heading or quote keeps today's
+    /// revealed shift (ADR-0081 §D6). Lists hang at any gutter, zero included.
+    nonisolated(unsafe) var gutter: CGFloat = 0
+    /// The face a revealed heading's `#` run is drawn in (ADR-0081 §D4), pushed in from
+    /// `ProseTypography.gutterMarker(_:)` the way `checkboxFont` is. Nil - the default - leaves a
+    /// heading as it is today.
+    nonisolated(unsafe) var markerFont: NSFont?
+    /// The measured widths the list, quote and heading branches hang their runs by (ADR-0081
+    /// §D2), memoised per (run, face) behind a lock.
+    let markerWidths = MarkerRunWidths()
     /// A transcluded note, by the UTF-16 offset of the line that names it. Measured and
     /// styled on the main actor and handed over as a value, because this object cannot be
     /// `@MainActor` - Swift 6 refuses both conformances if it is.
@@ -244,6 +256,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     nonisolated(unsafe) static let collapsedFont = NSFont.monospacedSystemFont(ofSize: 0.01, weight: .regular)
 
     var isFolding: Bool { !foldedHeadings.isEmpty }
+
     /// How many markers the last styling pass registered, heading, emphasis and embed
     /// alike - what a test reads to confirm `applyStyling` populated the table, the same
     /// way `isFolding` reads `foldedHeadings` for the folding half of this file.
@@ -513,6 +526,12 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
             return quote
         }
 
+        // The heading branch (ADR-0081 §D4), beside the quote one: only a revealed heading at a
+        // gutter, whose `#` run hangs in it. Everything else about a heading is the generic path.
+        if let heading = headingParagraph(at: range, storage: storage) {
+            return heading
+        }
+
         // The table branch, beside the quote one and under the same length rule (ADR-0029
         // §D4; plan `2026-09-02-editor-wysiwyg-unification`, Task 4): the header line's own
         // pipe syntax is *substituted* for a `TableAttachment`, never inserted or removed.
@@ -539,6 +558,15 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // inline construct (emphasis/strikethrough/link) can stay collapsed inside a
         // revealed paragraph while a block marker (heading/rule) is still governed by the
         // paragraph alone (ADR-0037 §D2/§D3).
+        return collapsedCopy(at: range, storage: storage).map { NSTextParagraph(attributedString: $0) }
+    }
+
+    /// The generic path's body: a copy of the paragraph with every marker the per-marker filter
+    /// keeps hidden drawn in `collapsedFont`, and its link tooltips, or nil when nothing in it
+    /// collapses. Also the starting copy of a revealed list, quote or heading paragraph (ADR-0081
+    /// §D2-§D4), so an inline span inside one still follows ADR-0037's reveal as it did when
+    /// those paragraphs fell through to this path.
+    func collapsedCopy(at range: NSRange, storage: NSTextStorage) -> NSMutableAttributedString? {
         guard let markers = hiddenMarkers[range.location], !markers.isEmpty else { return nil }
 
         let text = storage.string as NSString
@@ -587,7 +615,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         for tooltip in Self.linkTooltips(among: collapsing, of: range, in: text) {
             copy.addAttribute(.toolTip, value: tooltip.target, range: tooltip.range)
         }
-        return NSTextParagraph(attributedString: copy)
+        return copy
     }
 
     /// The markers of `paragraph` that may still be drawn - re-read from the real
@@ -866,10 +894,16 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     }
 
     /// Whether `range` still spells a whole thematic break - `MarkdownBlockParser.isRule`'s
-    /// grammar, asked of the live characters rather than restated (ADR-0029 §D1).
+    /// grammar, asked of the live characters rather than restated (ADR-0029 §D1). The line is
+    /// trimmed of surrounding blanks first, as the layout-fragment branch does before it asks
+    /// `isRule`: `isRule` strips spaces only, and the styler marks a tab-indented `\t---` as a
+    /// rule over the whole line (ADR-0082, corpus S53), so without the trim the line was drawn
+    /// as a rule but its characters were never collapsed.
     private static func stillSpellsARule(_ text: NSString, at range: NSRange) -> Bool {
         guard range.location >= 0, range.length > 0, NSMaxRange(range) <= text.length else { return false }
-        return MarkdownBlockParser.isRule(text.substring(with: range))
+        return MarkdownBlockParser.isRule(
+            text.substring(with: range).trimmingCharacters(in: .whitespaces)
+        )
     }
 
     /// Whether `range` still spells a whole Pratiche anchor line - `PraticaEntryAnchor`'s
@@ -884,9 +918,77 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     }
 }
 
+// MARK: - The incremental restyle (ADR-0091 §D6)
+//
+// In this file, not the class body, for SwiftLint's type-body length; here and not in a file of its
+// own because the stores are `private` to this file.
+extension EditorDecorationDelegate {
+    /// The offset-keyed stores as values, for `Coordinator.derivedStateSnapshot()`; keys are sorted
+    /// so two snapshots compare.
+    func offsetKeyedSnapshot() -> DecorationSnapshot {
+        DecorationSnapshot(
+            hiddenMarkerKeys: hiddenMarkers.keys.sorted(),
+            hiddenLineOffsets: hiddenLineOffsets,
+            foldedHeadings: foldedHeadings,
+            tableRowOffsets: tableRowOffsets,
+            viewBlockLineOffsets: viewBlockLineOffsets,
+            renditionKeys: renditions.keys.sorted(),
+            embedRenditionKeys: embedRenditions.keys.sorted(),
+            revealedParagraphs: revealedParagraphs,
+            revealedSpanKeys: revealedSpans.keys.sorted(),
+            tableViewKeys: tableViews.keys.sorted(),
+            viewBlockHostKeys: viewBlockHosts.keys.sorted()
+        )
+    }
+
+    /// Moves every offset-keyed store past `edit`: a key before the edit stays, one after it moves
+    /// by its delta, one inside it is dropped. Values ride along, so a table's grid and a view
+    /// block's host keep their identity at the new key. Nothing is invalidated: the storage edit
+    /// itself re-lays the paragraphs it touched, and the ones below it only moved.
+    func shift(by edit: StorageEdit) {
+        hiddenLineOffsets = edit.shiftedKeys(hiddenLineOffsets)
+        tableRowOffsets = edit.shiftedKeys(tableRowOffsets)
+        viewBlockLineOffsets = edit.shiftedKeys(viewBlockLineOffsets)
+        foldedHeadings = edit.shiftedKeys(foldedHeadings)
+        renditions = edit.shiftedKeys(renditions)
+        embedRenditions = edit.shiftedKeys(embedRenditions)
+        hiddenMarkers = edit.shiftedKeys(hiddenMarkers)
+        revealedParagraphs = edit.shiftedKeys(revealedParagraphs)
+        revealedSpans = edit.shiftedKeys(revealedSpans)
+        tableViews = edit.shiftedKeys(tableViews)
+        viewBlockHosts = edit.shiftedKeys(viewBlockHosts)
+    }
+
+    /// The ranged twin of `apply(hiddenMarkers:hidingMarkup:)`: the markers keyed inside `dirty`
+    /// are replaced by `markers`, every other key is left as the shift left it. `markers` are the
+    /// restyled range's own, keyed by paragraph start in the note.
+    func splice(hiddenMarkers markers: [Int: [HiddenMarker]], in dirty: NSRange, hidingMarkup hides: Bool) {
+        var spliced = hiddenMarkers.filter { !NSLocationInRange($0.key, dirty) }
+        spliced.merge(markers) { _, new in new }
+        hiddenMarkers = spliced
+        hidesMarkup = hides
+    }
+}
+
 extension Logger {
     /// One line per fold, at `notice` and not `info`: the default level is what is actually
     /// persisted to the log store, which cost a round of debugging to rediscover. This is a
     /// feature whose failure mode is "nothing happens", so it has to leave a trace.
     static let folding = Logger(subsystem: "it.stefer.pergamenum", category: "folding")
+}
+
+/// `EditorDecorationDelegate`'s offset-keyed stores as comparable values (ADR-0091 §D6), the part
+/// of `DerivedStateSnapshot` this file can read.
+struct DecorationSnapshot: Equatable {
+    var hiddenMarkerKeys: [Int]
+    var hiddenLineOffsets: Set<Int>
+    var foldedHeadings: [Int: Int]
+    var tableRowOffsets: Set<Int>
+    var viewBlockLineOffsets: Set<Int>
+    var renditionKeys: [Int]
+    var embedRenditionKeys: [Int]
+    var revealedParagraphs: Set<Int>
+    var revealedSpanKeys: [Int]
+    var tableViewKeys: [Int]
+    var viewBlockHostKeys: [Int]
 }

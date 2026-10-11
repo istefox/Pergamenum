@@ -144,6 +144,16 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     /// Hides or shows the open note's frontmatter block (a view of the note, never an edit).
     case toggleFrontmatter
 
+    /// "Segui il link" (ADR-0083 §D3, PG-386; appended last like the above): the link at the caret.
+    case followLink
+    /// "Apri il link in una nuova tab": the same, in a tab of its own. Ships with no key.
+    case followLinkInNewTab
+    /// "Apri il link nell'altra colonna": the same, in the other column. Ships with no key.
+    case followLinkInOtherColumn
+
+    /// Shipped with no key (`KeyBinding("")`, a cleared override's value), for Impostazioni (ADR-0083 §D3).
+    static let shipsUnbound: Set<ShortcutCommand> = [.followLinkInNewTab, .followLinkInOtherColumn]
+
     var id: String { rawValue }
 
     /// Which menu the command lives in, so the settings pane can group the list the
@@ -182,7 +192,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
              .paneDiary, .paneViews, .paneStarred, .toggleInspector,
              .foldSection, .unfoldAll, .goBack, .goForward,
              .paneRecordings, .refreshRecordings, .panePratiche, .paneContenitore,
-             .toggleFrontmatter:
+             .toggleFrontmatter, .followLink, .followLinkInNewTab, .followLinkInOtherColumn:
             .view
         case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek, .taskAddSubtask:
             .task
@@ -250,6 +260,9 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .addToPraticaFromMail: "Aggiungi a pratica da Mail…"
         case .paneContenitore: "Vai a Contenitore"
         case .toggleFrontmatter: "Mostra o nascondi il frontmatter"
+        case .followLink: "Segui il link"
+        case .followLinkInNewTab: "Apri il link in una nuova tab"
+        case .followLinkInOtherColumn: "Apri il link nell'altra colonna"
         }
     }
 
@@ -378,6 +391,10 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         // Cmd+Opt+Y: no other binding on "y" in this catalogue or in `Sources/`, and no
         // `com.apple.symbolichotkeys` entry on key code 16 on this machine (2026-10-01).
         case .toggleFrontmatter: KeyBinding("y", [.command, .option])
+        // Cmd+Opt+Return (ADR-0083 §D3): free on 2026-10-10 in `com.apple.symbolichotkeys` (58 entries,
+        // none on key code 36), in this catalogue (Cmd+Return, Cmd+Shift+Return are tasks) and `Sources/`.
+        case .followLink: KeyBinding("return", [.command, .option])
+        case .followLinkInNewTab, .followLinkInOtherColumn: KeyBinding("")
         }
     }
 }

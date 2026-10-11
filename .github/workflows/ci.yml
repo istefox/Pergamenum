@@ -115,6 +115,11 @@ jobs:
         run: tuist generate --no-open
 
       - name: Build all targets and run PergamenumTests
+        # TEST_RUNNER_ reaches the test process with the prefix stripped. The restyle
+        # budget's ceilings are absolute CPU times from the development machine and
+        # fail on this runner (PR #921), so its rows stay a local measure (ADR-0082 §D9).
+        env:
+          TEST_RUNNER_RESTYLE_BUDGET_50KB: "0"
         # Pergamenum-Workspace (not the Pergamenum scheme .claude/test-cmd
         # uses) is what builds perg and pergamenum-mcp too — ADR-0044 §D4.
         # CODE_SIGNING_ALLOWED=NO: the runner has no certificate for team

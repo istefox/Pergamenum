@@ -132,7 +132,8 @@ enum ListContinuation {
 
     // MARK: Edits
 
-    private struct Edit {
+    /// Internal, not private, for the run walk in `ListContinuation+Window.swift` (ADR-0045).
+    struct Edit {
         var range: NSRange
         var replacement: String
     }
@@ -140,7 +141,8 @@ enum ListContinuation {
     /// Applied back to front, so an earlier edit's length change cannot move a later edit's range
     /// out from under it. Sorted rather than assumed ordered: a nested run is discovered after the
     /// outer run it sits inside, whose remaining members are further down the text.
-    private static func apply(_ edits: [Edit], to text: String) -> String {
+    /// Internal for the run walk in `ListContinuation+Window.swift` (ADR-0045).
+    static func apply(_ edits: [Edit], to text: String) -> String {
         let rewritten = NSMutableString(string: text)
         for edit in edits.sorted(by: { $0.range.location > $1.range.location }) {
             rewritten.replaceCharacters(in: edit.range, with: edit.replacement)
@@ -150,7 +152,8 @@ enum ListContinuation {
 
     /// The edit that makes `line`'s ordinal `ordinal`, or nil when it already is - only the digits
     /// are rewritten, so the delimiter the line was written with (`.` or `)`) is preserved.
-    private static func renumberEdit(on line: LineScan.Line, to ordinal: Int, in haystack: NSString) -> Edit? {
+    /// Internal for the run walk in `ListContinuation+Window.swift` (ADR-0045).
+    static func renumberEdit(on line: LineScan.Line, to ordinal: Int, in haystack: NSString) -> Edit? {
         guard let ordered = ordered(on: line, in: haystack) else { return nil }
         let replacement = String(ordinal)
         guard haystack.substring(with: ordered.digits) != replacement else { return nil }
@@ -172,7 +175,8 @@ enum ListContinuation {
     ///
     /// Scanned in both directions, because a caret continuing the *last* item of a run needs the
     /// run's first ordinal, which is above it.
-    private static func orderedRun(
+    /// Internal for the run walk in `ListContinuation+Window.swift` (ADR-0045).
+    static func orderedRun(
         containing index: Int, level: Int, in all: [LineScan.Line], haystack: NSString, fenced: [Bool]
     ) -> [Int] {
         var above: [Int] = []
@@ -228,7 +232,8 @@ enum ListContinuation {
     /// A `- item` inside a fenced block is a character of somebody's shell script, not a list:
     /// continuing it would write a marker into their code, and renumbering would rewrite their
     /// digits.
-    private static func codeFenceFlags(in all: [LineScan.Line], haystack: NSString) -> [Bool] {
+    /// Internal for the scoped form in `ListContinuation+Window.swift` (ADR-0045).
+    static func codeFenceFlags(in all: [LineScan.Line], haystack: NSString) -> [Bool] {
         var flags = [Bool](repeating: false, count: all.count)
         var open = false
         for (index, line) in all.enumerated() {
@@ -242,7 +247,8 @@ enum ListContinuation {
         return flags
     }
 
-    private static func isFenceDelimiter(_ line: LineScan.Line, in haystack: NSString) -> Bool {
+    /// Internal for the windowed read and the line facts in `ListContinuation+Window.swift` (ADR-0045).
+    static func isFenceDelimiter(_ line: LineScan.Line, in haystack: NSString) -> Bool {
         let start = line.start + LineScan.indentLength(on: line, in: haystack)
         return LineScan.matches("```", in: haystack, at: start, limit: line.contentEnd)
             || LineScan.matches("~~~", in: haystack, at: start, limit: line.contentEnd)
@@ -250,7 +256,8 @@ enum ListContinuation {
 
     // MARK: Markers
 
-    private enum Kind {
+    /// Internal for the run walk in `ListContinuation+Window.swift` (ADR-0045).
+    enum Kind {
         /// `- `, `* `, `+ `.
         case bullet
         /// `- [ ] `, `* [x] ` and the other states `TaskParser.state(for:)` recognizes.
@@ -260,8 +267,9 @@ enum ListContinuation {
     }
 
     /// A line's list prefix: `start` is where the marker begins (past the indentation), `end`
-    /// where the item's own text begins.
-    private struct Marker {
+    /// where the item's own text begins. Internal for the run walk in `ListContinuation+Window.swift`
+    /// (ADR-0045).
+    struct Marker {
         var start: Int
         var end: Int
         var kind: Kind
@@ -269,14 +277,16 @@ enum ListContinuation {
 
     /// The ordered marker on a line: its number, the range of its digits (the only part a
     /// renumbering rewrites), the delimiter it was written with, and where the item's text begins.
-    private struct Ordered {
+    /// Internal for the run walk and the line facts in `ListContinuation+Window.swift` (ADR-0045).
+    struct Ordered {
         var number: Int
         var digits: NSRange
         var delimiter: String
         var end: Int
     }
 
-    private static func marker(on line: LineScan.Line, in haystack: NSString) -> Marker? {
+    /// Internal for the run walk in `ListContinuation+Window.swift` (ADR-0045).
+    static func marker(on line: LineScan.Line, in haystack: NSString) -> Marker? {
         let start = line.start + LineScan.indentLength(on: line, in: haystack)
         if let ordered = ordered(on: line, in: haystack) {
             return Marker(start: start, end: ordered.end, kind: .ordered(delimiter: ordered.delimiter))
@@ -298,7 +308,8 @@ enum ListContinuation {
 
     /// The ordered marker on `line`: its number, the range of its digits - the only part a
     /// renumbering rewrites - the delimiter it was written with, and where the item's text begins.
-    private static func ordered(
+    /// Internal for the run walk and the line facts in `ListContinuation+Window.swift` (ADR-0045).
+    static func ordered(
         on line: LineScan.Line, in haystack: NSString
     ) -> Ordered? {
         let start = line.start + LineScan.indentLength(on: line, in: haystack)

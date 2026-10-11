@@ -23,8 +23,11 @@ Corpo, con un [[Link che non esiste]].
 - [x] Gamma
 """
 
+// Internal rather than private: `ConnectorTests+NumericArguments.swift` opens the same vault.
+// Named apart from `CaptureTests.swift`'s private `openVault`, which an internal twin would
+// make ambiguous there.
 @MainActor
-private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
+func openConnectorVault(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
     try vault.write(note, to: "Nota.md")
     let session = VaultSession(root: vault.root, stateBase: vault.stateBase)
     await session.rescan()
@@ -68,7 +71,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 @MainActor
 @Test func aTaskIsFoundByTextAndExactlyByPathAndLine() async throws {
     let vault = try TemporaryVault()
-    let session = try await openVault(vault)
+    let session = try await openConnectorVault(vault)
 
     #expect(try VaultAPI.task(session, matching: "Alfa").text == "Alfa")
     // `percorso:riga` is one-based, as an editor counts and as every payload reports.
@@ -98,7 +101,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 @MainActor
 @Test func aTaskPayloadCountsItsLineTheWayAnEditorDoes() async throws {
     let vault = try TemporaryVault()
-    let session = try await openVault(vault)
+    let session = try await openConnectorVault(vault)
 
     let tasks = try VaultAPI.tasks(session, view: "all", on: nil, includingCompleted: true)
     let alfa = try #require(tasks.first { $0.text == "Alfa" })
@@ -119,7 +122,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 @MainActor
 @Test func completedTasksAreHiddenUnlessAskedFor() async throws {
     let vault = try TemporaryVault()
-    let session = try await openVault(vault)
+    let session = try await openConnectorVault(vault)
 
     let open = try VaultAPI.tasks(session, view: "all", on: nil, includingCompleted: false)
     #expect(!open.contains { $0.text == "Gamma" })
@@ -131,7 +134,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 @MainActor
 @Test func linksAreReportedWithTheDanglingOnesKeptApart() async throws {
     let vault = try TemporaryVault()
-    let session = try await openVault(vault)
+    let session = try await openConnectorVault(vault)
 
     let links = try VaultAPI.links(session, at: "Nota.md")
     #expect(links.resolved.isEmpty)
@@ -146,7 +149,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 @MainActor
 @Test func readingAMissingNoteIsARefusalAndNotAnEmptyAnswer() async throws {
     let vault = try TemporaryVault()
-    let session = try await openVault(vault)
+    let session = try await openConnectorVault(vault)
 
     #expect(throws: ConnectorError.self) { try VaultAPI.note(session, at: "Assente.md") }
     #expect(throws: ConnectorError.self) { try VaultAPI.links(session, at: "Assente.md") }
@@ -156,7 +159,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 @MainActor
 @Test func aVaultWithoutItsVocabulariesSaysSoInsteadOfPassing() async throws {
     let vault = try TemporaryVault()
-    let session = try await openVault(vault)
+    let session = try await openConnectorVault(vault)
 
     // No `.pergamenum/vocabolari.json`, so the tag rules had nothing to judge against.
     // A clean report here means less than it looks, and the payload admits it.
@@ -168,7 +171,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 @MainActor
 @Test func theEncoderIsTheOneBothConnectorsUse() async throws {
     let vault = try TemporaryVault()
-    let session = try await openVault(vault)
+    let session = try await openConnectorVault(vault)
 
     let json = try ConnectorJSON.encode(try VaultAPI.note(session, at: "Nota.md"))
     // Sorted keys, so two runs diff cleanly; slashes unescaped, so a path stays readable.
@@ -186,7 +189,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 @MainActor
 @Test func armingForARehearsalKeepsTheJournalOutOfIt() async throws {
     let vault = try TemporaryVault()
-    let session = try await openVault(vault)
+    let session = try await openConnectorVault(vault)
 
     VaultAPI.arm(session, command: "add_task", dryRun: true)
     // Nothing happened, and a journal entry saying otherwise would be a lie in the one
@@ -207,7 +210,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 @MainActor
 @Test func aRealWriteIsAppliedAndRecorded() async throws {
     let vault = try TemporaryVault()
-    let session = try await openVault(vault)
+    let session = try await openConnectorVault(vault)
 
     VaultAPI.arm(session, command: "add_task", dryRun: false)
     let summary = try await VaultAPI.addTask(
@@ -229,7 +232,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 @MainActor
 @Test func aWriteIsUndoneAndRefusedOnceTheFileHasMovedOn() async throws {
     let vault = try TemporaryVault()
-    let session = try await openVault(vault)
+    let session = try await openConnectorVault(vault)
 
     VaultAPI.arm(session, command: "append_to_note", dryRun: false)
     _ = try await VaultAPI.appendToNote(session, at: "Nota.md", text: "Aggiunta")
@@ -248,7 +251,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 @MainActor
 @Test func anUndoPutsTheFileBackWhenNobodyElseTouchedIt() async throws {
     let vault = try TemporaryVault()
-    let session = try await openVault(vault)
+    let session = try await openConnectorVault(vault)
     let before = try String(contentsOf: vault.root.appending(path: "Nota.md"), encoding: .utf8)
 
     VaultAPI.arm(session, command: "append_to_note", dryRun: false)
@@ -264,7 +267,7 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
 @MainActor
 @Test func undoingACreationIsDeclinedRatherThanDeletingTheFile() async throws {
     let vault = try TemporaryVault()
-    let session = try await openVault(vault)
+    let session = try await openConnectorVault(vault)
 
     VaultAPI.arm(session, command: "create_note", dryRun: false)
     _ = try await VaultAPI.createNote(session, title: "Nuova", folder: nil, topic: nil, date: nil)
@@ -276,79 +279,8 @@ private func openVault(_ vault: borrowing TemporaryVault) async throws -> VaultS
     #expect(FileManager.default.fileExists(atPath: vault.root.appending(path: "Nuova.md").path))
 }
 
-// MARK: - ADR-0063 §D1: a malformed `limit` is one usage sentence, and `0` answers empty
-
-/// The sentence a refused `limit` produces, read off the rule itself so every test
-/// below compares against the same words.
-private func limitSentence(_ attempt: () throws -> Any?) -> ConnectorError? {
-    do {
-        _ = try attempt()
-        return nil
-    } catch let error as ConnectorError {
-        return error
-    } catch {
-        return nil
-    }
-}
-
-@Test func aNegativeLimitIsOneUsageSentence() throws {
-    let error = try #require(limitSentence { try VaultAPI.checkedLimit(-1) })
-    #expect(error.isUsage)
-    #expect(error.description.contains("limit"))
-    #expect(error.description.contains("-1"))
-    // Absent and zero are both legal.
-    #expect(try VaultAPI.checkedLimit(nil) == nil)
-    #expect(try VaultAPI.checkedLimit(0) == 0)
-}
-
-@Test func unreadableLimitTextIsTheSameSentence() throws {
-    let unreadable = try #require(limitSentence { try VaultAPI.limit(parsing: "abc") })
-    #expect(unreadable.isUsage)
-    #expect(unreadable.description.contains("abc"))
-    // An empty value is not «no limit given»: the caller typed the option and left it blank.
-    let empty = try #require(limitSentence { try VaultAPI.limit(parsing: "") })
-    #expect(empty.isUsage)
-
-    // The same sentence as a negative number, apart from the raw value it quotes.
-    let negative = try #require(limitSentence { try VaultAPI.checkedLimit(-1) })
-    #expect(unreadable.description.replacingOccurrences(of: "abc", with: "-1") == negative.description)
-
-    // `-1` is a number: the text rule reads it and leaves the refusal to `checkedLimit`.
-    #expect(try VaultAPI.limit(parsing: "-1") == -1)
-    #expect(try VaultAPI.limit(parsing: nil) == nil)
-}
-
-@MainActor
-@Test func journalLogRefusesANegativeLimitBeforeAnyDiskWork() throws {
-    // A vault this process never opened: the state lookup would say «vault mai aperto».
-    // The usage error must win, because it is the caller's mistake whatever the vault.
-    let vault = try TemporaryVault()
-    let error = try #require(limitSentence {
-        try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: -1)
-    })
-    let expected = try #require(limitSentence { try VaultAPI.checkedLimit(-1) })
-    #expect(error.isUsage)
-    #expect(error.description == expected.description)
-}
-
-@MainActor
-@Test func searchRefusesANegativeLimit() async throws {
-    let vault = try TemporaryVault()
-    let session = try await openVault(vault)
-    let error = try #require(limitSentence { try VaultAPI.search(session, "Corpo", limit: -1) })
-    let expected = try #require(limitSentence { try VaultAPI.checkedLimit(-1) })
-    #expect(error.isUsage)
-    #expect(error.description == expected.description)
-}
-
-@MainActor
-@Test func searchWithLimitZeroAnswersEmpty() async throws {
-    let vault = try TemporaryVault()
-    let session = try await openVault(vault)
-    // The query matches: the positive control proves `0` is what empties the answer.
-    #expect(try VaultAPI.search(session, "Corpo", limit: nil).count == 1)
-    #expect(try VaultAPI.search(session, "Corpo", limit: 0).isEmpty)
-}
+// The numeric-argument refusals (ADR-0063 §D1's `limit`, ADR-0075 §D4's block duration, the
+// view ordinal) live in `ConnectorTests+NumericArguments.swift`.
 
 // MARK: - PG-260 R-12: the connector's search shares the views' tag rule
 
@@ -364,33 +296,6 @@ private func limitSentence(_ attempt: () throws -> Any?) -> ConnectorError? {
     #expect(try VaultAPI.search(session, "tag:client-acme", limit: nil).map(\.path) == ["Acme.md"])
     #expect(try Set(VaultAPI.search(session, "tag:client-*", limit: nil).map(\.path))
         == ["Acme.md", "Industriale.md"])
-}
-
-@MainActor
-@Test func journalLogWithLimitZeroAnswersEmpty() async throws {
-    let vault = try TemporaryVault()
-    let session = try await openVault(vault)
-    VaultAPI.arm(session, command: "append_to_note", dryRun: false)
-    _ = try await VaultAPI.appendToNote(session, at: "Nota.md", text: "Aggiunta")
-    #expect(try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: nil).count == 1)
-    #expect(try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: 0).isEmpty)
-}
-
-@MainActor
-@Test func journalLogRefusesANegativeLimitOnAnOpenedVault() async throws {
-    // Before ADR-0063 this reached `suffix(-1)` and trapped the process: written only
-    // together with the guard, so it can never take the test host down with it.
-    let vault = try TemporaryVault()
-    let session = try await openVault(vault)
-    VaultAPI.arm(session, command: "append_to_note", dryRun: false)
-    _ = try await VaultAPI.appendToNote(session, at: "Nota.md", text: "Aggiunta")
-
-    let error = try #require(limitSentence {
-        try VaultAPI.journalLog(at: vault.root, base: vault.stateBase, limit: -1)
-    })
-    let expected = try #require(limitSentence { try VaultAPI.checkedLimit(-1) })
-    #expect(error.isUsage)
-    #expect(error.description == expected.description)
 }
 
 // MARK: - Task 5 (R-02, R-05, R-06): a refusal folds into `failures`, with its own sentence
@@ -425,26 +330,27 @@ private func limitSentence(_ attempt: () throws -> Any?) -> ConnectorError? {
 @MainActor
 @Test func aTitleTheRulesRejectIsRefusedAndNotCorrected() async throws {
     let vault = try TemporaryVault()
-    let session = try await openVault(vault)
+    let session = try await openConnectorVault(vault)
     VaultAPI.arm(session, command: "create_note", dryRun: false)
 
     await #expect(throws: ConnectorError.self) {
         try await VaultAPI.createNote(session, title: "questo/non va", folder: nil, topic: nil, date: nil)
     }
     // And the sentence is one a person can read: interpolating the array of violations
-    // would put the module name in it.
+    // would put the module name in it, and interpolating each one its enum case name (PG-396).
     do {
         _ = try await VaultAPI.createNote(session, title: "questo/non va", folder: nil, topic: nil, date: nil)
     } catch let refusal as ConnectorError {
         #expect(!refusal.description.contains("Pergamenum.NoteName"))
-        #expect(refusal.description.contains("containsForbiddenCharacter"))
+        #expect(!refusal.description.contains("containsForbiddenCharacter"))
+        #expect(refusal.description.contains("Carattere vietato nel titolo: /"))
     }
 }
 
 @MainActor
 @Test func aTaskInANoteThatDoesNotExistIsRefused() async throws {
     let vault = try TemporaryVault()
-    let session = try await openVault(vault)
+    let session = try await openConnectorVault(vault)
     VaultAPI.arm(session, command: "add_task", dryRun: false)
 
     // Inventing a note from a task is how a vault fills with files nobody meant to make.
@@ -456,7 +362,7 @@ private func limitSentence(_ attempt: () throws -> Any?) -> ConnectorError? {
 @MainActor
 @Test func aBlockOnAnOccupiedHourMovesAndSaysSo() async throws {
     let vault = try TemporaryVault()
-    let session = try await openVault(vault)
+    let session = try await openConnectorVault(vault)
     VaultAPI.arm(session, command: "add_time_block", dryRun: false)
 
     _ = try await VaultAPI.addTimeBlock(
@@ -472,108 +378,4 @@ private func limitSentence(_ attempt: () throws -> Any?) -> ConnectorError? {
     let day = try VaultAPI.day(session, on: "2026-08-20")
     #expect(day.blocks.count == 2)
     #expect(day.blocks.map(\.start) == ["09:00", "10:00"])
-}
-
-// MARK: - A block's duration (ADR-0075 §D4)
-
-/// The refusal an `addTimeBlock` call threw, or nil when it did not throw one.
-@MainActor
-private func blockRefusal(
-    _ session: VaultSession, minutes: Int, on day: String = "2026-08-20"
-) async -> ConnectorError? {
-    do {
-        _ = try await VaultAPI.addTimeBlock(session, title: "Blocco", at: "09:00", minutes: minutes, on: day)
-        return nil
-    } catch let error as ConnectorError {
-        return error
-    } catch {
-        return nil
-    }
-}
-
-/// Refused, never clamped, and before anything is written: the daily note is not even
-/// created (R-08).
-@MainActor
-@Test(arguments: [0, 4, 481, -5])
-func aDurationOutsideTheRangeIsOneUsageSentence(_ minutes: Int) async throws {
-    let vault = try TemporaryVault()
-    let session = try await openVault(vault)
-    VaultAPI.arm(session, command: "add_time_block", dryRun: false)
-
-    let error = try #require(await blockRefusal(session, minutes: minutes))
-
-    #expect(error.isUsage)
-    #expect(error.description.contains("minutes"))
-    #expect(error.description.contains("«\(minutes)»"))
-    let note = vault.root.appending(path: "Calendar/20260820.md")
-    #expect(!FileManager.default.fileExists(atPath: note.path(percentEncoded: false)))
-}
-
-@MainActor
-@Test func aRehearsalRefusesAnOutOfRangeDurationToo() async throws {
-    let vault = try TemporaryVault()
-    let session = try await openVault(vault)
-    VaultAPI.arm(session, command: "add_time_block", dryRun: true)
-
-    let error = try #require(await blockRefusal(session, minutes: 481))
-    #expect(error.isUsage)
-}
-
-@MainActor
-@Test(arguments: [5, 480])
-func theRangeBoundsAreAccepted(_ minutes: Int) async throws {
-    let vault = try TemporaryVault()
-    let session = try await openVault(vault)
-    VaultAPI.arm(session, command: "add_time_block", dryRun: false)
-
-    #expect(await blockRefusal(session, minutes: minutes) == nil)
-    #expect(try VaultAPI.day(session, on: "2026-08-20").blocks.count == 1)
-}
-
-/// A block cut short at the next one is written shorter than asked, and the payload says
-/// so rather than leaving it to be found on the timeline later.
-@MainActor
-@Test func aShortenedBlockSaysSo() async throws {
-    let vault = try TemporaryVault()
-    let session = try await openVault(vault)
-    VaultAPI.arm(session, command: "add_time_block", dryRun: false)
-
-    _ = try await VaultAPI.addTimeBlock(session, title: "Riunione", at: "10:00", minutes: 60, on: "2026-08-20")
-    let summary = try await VaultAPI.addTimeBlock(
-        session, title: "Preparare", at: "09:45", minutes: 60, on: "2026-08-20"
-    )
-
-    #expect(summary.note?.contains("accorciato a 15 minuti") == true)
-    let block = try #require(try VaultAPI.day(session, on: "2026-08-20").blocks.first { $0.title == "Preparare" })
-    #expect(block.start == "09:45")
-    #expect(block.end == "10:00")
-}
-
-@Test func unreadableDurationTextIsTheSameSentence() throws {
-    let unreadable = try #require(limitSentence { try VaultAPI.blockMinutes(parsing: "abc") })
-    #expect(unreadable.isUsage)
-    #expect(unreadable.description.contains("minutes"))
-    #expect(unreadable.description.contains("«abc»"))
-    let empty = try #require(limitSentence { try VaultAPI.blockMinutes(parsing: "") })
-    #expect(empty.isUsage)
-    #expect(unreadable.description.replacingOccurrences(of: "abc", with: "481")
-        == VaultAPI.durationRefusal(raw: "481").description)
-
-    #expect(try VaultAPI.blockMinutes(parsing: nil) == nil)
-    #expect(try VaultAPI.blockMinutes(parsing: "45") == 45)
-}
-
-@Test func unreadableOrdinalTextIsRefusedNotIgnored() throws {
-    // PG-272: `--ordinal abc` read as «no ordinal», which on a note with one view ran that
-    // view as if the person had asked for it.
-    let unreadable = try #require(limitSentence { try VaultAPI.viewOrdinal(parsing: "abc") })
-    #expect(unreadable.isUsage)
-    #expect(unreadable.description.contains("ordinal"))
-    #expect(unreadable.description.contains("«abc»"))
-    #expect(try #require(limitSentence { try VaultAPI.viewOrdinal(parsing: "") }).isUsage)
-
-    #expect(try VaultAPI.viewOrdinal(parsing: nil) == nil)
-    #expect(try VaultAPI.viewOrdinal(parsing: "2") == 2)
-    // The range is `runView`'s question, asked once it knows how many views there are.
-    #expect(try VaultAPI.viewOrdinal(parsing: "-1") == -1)
 }

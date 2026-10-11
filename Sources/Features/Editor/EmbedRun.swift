@@ -7,9 +7,8 @@ import Foundation
 /// `NSAttachmentCharacter`, never touches the caret or a deletion. The probe that worked
 /// out how the drawn copy has to look (slice 3's Step 0) found that mechanism belongs on
 /// the drawing side - a *copy* of the paragraph being rendered, never the real storage -
-/// which is Step 3's problem, not this file's. `MarkdownStyler.spans(inLine:at:in:)` calls
-/// this the same way it already calls `taskMarker(in:)`, on a line that is not inside a
-/// fence, and reports what comes back as `.embedRun`.
+/// which is Step 3's problem, not this file's. `MarkdownStyler.spans(of:in:)` calls this on
+/// every line outside a fence that holds `![`, and reports what comes back as `.embedRun`.
 ///
 /// "Is this line a file, or a note?" is not decided here - it already has an owner.
 /// `Transclusion.target(ofLine:)` tells the two apart under ADR-0010 §D2: `![[nota]]`

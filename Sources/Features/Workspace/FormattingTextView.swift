@@ -20,13 +20,6 @@ final class FormattingTextView: NSTextView {
     /// live where the responder is, or Esc silently stops leaving the card.
     var onCancel: (() -> Void)?
 
-    /// `CompletingTextView`'s twin state for the same reason
-    /// (`FormattingTextView+CursorRects.swift`) - never shared, per this file's own header:
-    /// no fork, no common base.
-    var linkTrackingAreas: [NSTrackingArea] = []
-    /// The mirror of `CompletingTextView.hoveredLinkCount`.
-    var hoveredLinkCount = 0
-
     /// A click landed on a folded heading's badge, naming the entry ordinal it stands for
     /// (ADR-0028 §D8). Nil on a card whose board never asked to be told, which is a preview or a
     /// test - and nil is also what makes the click fall through to `super` untouched.

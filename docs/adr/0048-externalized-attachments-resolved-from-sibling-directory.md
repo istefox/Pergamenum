@@ -1,6 +1,7 @@
 # ADR-0048: An attachment part decoding to zero inline bytes is not always "not yet downloaded"
 
-- Status: accepted, implemented on this branch (`fix-pratiche-allegati`, on top of `ef8d28d`).
+- Status: accepted. Squash-merged to `main` via PR #304 (`9ebf69ed`, 2026-09-18), from branch
+  `fix-pratiche-allegati`.
 - Date: 2026-09-17. Written after reading every file it names, at the line, on this worktree.
   Independent of, and a follow-up to, the ledger-orphaning fix already committed on this branch
   (`ba09c06`, `ef8d28d`) - unrelated to it.

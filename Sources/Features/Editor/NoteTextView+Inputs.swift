@@ -42,11 +42,13 @@ extension NoteTextView {
         /// follows the same shape as the other three: consumed once, then reported as applied.
         var scrollRequest: Navigation.OutlineJump?
         var onScrollApplied: () -> Void = {}
-        /// The index entries whose sections are folded (M8). Held by each heading's own UTF-16
-        /// character offset, not by ordinal position: an edit elsewhere in the note can shift
-        /// which array position a heading sits at between one SwiftUI render pass and the next,
-        /// and a fold anchored to a position rather than to the heading itself would silently
-        /// re-target the wrong section (PG-021 follow-up, `FoldStateOrdinalIndexStalenessTests`).
+        /// The index entries whose sections are folded (M8), as indices into
+        /// `NoteOutline.entries(in:)` of the current text: the ordinals `NoteFolding.layout` and
+        /// `NoteFolding.sections` read. The tab keeps each fold by its heading's own UTF-16
+        /// offset (`NoteTab.foldedEntries`, PG-021 follow-up,
+        /// `FoldStateOrdinalIndexStalenessTests`) and `EditorColumn+Text.swift` converts those
+        /// offsets here through `foldedOrdinals(ofOffsets:in:)` on every render, so an edit that
+        /// moves a heading to another position cannot re-target the wrong section.
         var foldedEntries: Set<Int> = []
         /// Whether the frontmatter block is left out of the layout (`NoteTab.hidesFrontmatter`).
         /// Applied by the same pass as the folds, which is why it rides in this group.
@@ -57,6 +59,24 @@ extension NoteTextView {
         /// opened from the editor and one opened from the sidebar are one gesture with two doors,
         /// both handing it an offset.
         var onToggleFold: ((Int) -> Void)?
+    }
+
+    /// What the editor needs to follow, preview and offer a link (ADR-0083 §D2, §D3, §D6, §D7),
+    /// grouped as `vault` and `find` are. Empty by default: with `follow` nil the Coordinator falls
+    /// back to `onFollowLink(title)` for `.replace` and ignores the click variants, so a text view
+    /// with no vault behind it behaves as it always did.
+    struct LinkInputs {
+        /// A request to follow a link, answered with `.done` or the choice to put in front of the
+        /// person (`CommandActions.follow`).
+        var follow: ((LinkRequest) -> LinkFollowOutcome)?
+        /// A row of that choice picked from the menu at the click, with the click's how.
+        var choose: ((LinkChoice, LinkOpening) -> Void)?
+        /// What the Cmd+hover preview shows for a note title and its optional section.
+        var preview: ((String, String?) -> LinkPreviewContent?)?
+        /// The followable link under the caret, reported when it changes.
+        var onCaretLinkChanged: ((URL?) -> Void)?
+        /// «Crea «X»» chosen from the `[[` popup: the title to offer to the composer.
+        var offerCreation: ((String) -> Void)?
     }
 
     /// What the vault behind the editor provides. Nil or a no-op when no vault is open.
@@ -79,12 +99,11 @@ extension NoteTextView {
         var transclusions: TransclusionSource?
         /// Where a `pergamenum-view` fence's rows come from (ADR-0033 §D9, plan
         /// `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 7). Nil where there is no
-        /// vault behind the editor - the same permissive default `vaultRoot`/`thumbnails` take,
-        /// and deliberately what `DiaryView`/`TodayView` and every existing call site still get
-        /// without change, since neither passes this property (ADR Consequences).
+        /// vault behind the editor - the same permissive default `vaultRoot`/`thumbnails` take.
         ///
-        /// Handed in by `EditorColumn+Text.swift`'s `editing(_:)`, which owns the app's only
-        /// `ViewQuerySource`, and read by `NoteTextView+ViewBlocks.swift`'s
+        /// Handed in by the three editor hosts - `EditorColumn+Text.swift`'s `editing(_:)`,
+        /// `TodayView` and `DiaryView` - each as `ViewQuerySource.live(for:)`, the one factory
+        /// over a vault (ADR-0082 §D8), and read by `NoteTextView+ViewBlocks.swift`'s
         /// `ViewBlockController.refresh`, which passes it - with `notePath`/`vaultRoot`/`thumbnails`,
         /// `onFollowLink` as the block's `onOpenNote` and a caret-placing `onEditSource` - into
         /// `ViewBlockHostStore.rootView(...)` on every styling pass. That call is the whole of

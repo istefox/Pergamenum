@@ -47,7 +47,7 @@ enum EmbedResize {
     static let minimumSide: CGFloat = 80
 
     /// The column a drawn embed's width is clamped against: the live container's own
-    /// width minus twice its line-fragment padding (ADR-0019 §D3) - the same source
+    /// width minus twice its line-fragment padding (ADR-0019 §D3) and the gutter - the same source
     /// `applyTransclusions` already reads from `textView.textContainer?.size.width`, read
     /// fresh on every layout pass rather than pushed in and left to go stale across a
     /// window resize.
@@ -57,11 +57,25 @@ enum EmbedResize {
     /// never a narrow one: `attachmentBounds` is asked for a size during passes where
     /// the container is nil, and answering `0` there would draw every picture at the
     /// floor for one frame.
+    ///
+    /// Less the gutter on both sides (ADR-0081 §D7): a note editor's paragraph carries it as its
+    /// head and tail indents, so a picture as wide as the container would run past the column
+    /// into the margin. Read from the decoration delegate the container's content storage
+    /// reports to, which the styling pass hands the theme's value, rather than from one
+    /// paragraph's style: the drawing (`EmbedAttachment.attachmentBounds`) and the drag both
+    /// ask with the container alone, and must get the one same column.
     static func column(of textContainer: NSTextContainer?) -> CGFloat {
         guard let textContainer else { return .greatestFiniteMagnitude }
         let width = textContainer.size.width
         guard width.isFinite else { return .greatestFiniteMagnitude }
-        return width - 2 * textContainer.lineFragmentPadding
+        let storage = textContainer.textLayoutManager?.textContentManager as? NSTextContentStorage
+        let gutter = (storage?.delegate as? EditorDecorationDelegate)?.gutter ?? 0
+        let body = NSMutableParagraphStyle()
+        body.headIndent = gutter
+        body.tailIndent = -gutter
+        return EditorGutter.columnSpan(
+            containerWidth: width, padding: textContainer.lineFragmentPadding, style: body
+        ).width
     }
 
     /// Reads `|W` or `|WxH` off an embed's own run text (the marker substring

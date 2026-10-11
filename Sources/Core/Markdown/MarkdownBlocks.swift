@@ -77,31 +77,46 @@ enum MarkdownBlockParser {
     /// Splits a note body into blocks. Frontmatter is expected to be gone already:
     /// `NoteDocument.parse` owns that, and reading mode shows the note, not its
     /// metadata header.
+    ///
+    /// A projection of `lineTokens(in:)` (ADR-0082 §D1): the token layer decides what each line
+    /// is, and this only groups runs of lines into blocks. The line split is the token layer's,
+    /// `Character.isNewline`: a `"\r\n"` pair is one `Character` and ends one line, where a scalar
+    /// split made it two and gave a CRLF note a blank line after every line (PG-317).
     static func blocks(in body: String) -> [MarkdownBlock] {
         var state = Accumulator()
-        // `Character.isNewline` is `CharacterSet.newlines` one `Character` at a time, so every
-        // separator the old `components(separatedBy: .newlines)` split on still splits - but a
-        // `"\r\n"` pair is one `Character` and ends one line, where the scalar split made it two
-        // and gave a CRLF note a blank line after every line (PG-317).
-        var lines = body.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)[...]
+        let tokens = lineTokens(in: body)
+        var index = 0
 
-        while let line = lines.first {
-            lines = lines.dropFirst()
+        while index < tokens.count {
+            let token = tokens[index]
+            let line = body[token.range]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            // A fence swallows everything up to the closing one, verbatim: a heading
-            // or a dash inside a code block is code, not structure.
-            if CodeFence.marks(trimmed) {
+            switch token.kind {
+            case .fenceOpen(let language):
+                // A fence swallows everything up to the closing one, verbatim: a heading
+                // or a dash inside a code block is code, not structure. An unclosed fence
+                // ends at the end of the note rather than running off it, which would
+                // render the rest of the note as nothing.
                 state.flushAll()
-                state.blocks.append(Self.fence(opening: trimmed, consuming: &lines))
+                var content: [String] = []
+                index += 1
+                while index < tokens.count, tokens[index].kind == .fenceBody {
+                    content.append(String(body[tokens[index].range]))
+                    index += 1
+                }
+                if index < tokens.count, tokens[index].kind == .fenceClose { index += 1 }
+                state.blocks.append(.code(language: language, lines: content))
                 continue
-            }
-            // Needs the line after this one to decide, which is why it lives here and
-            // not in the accumulator: `| a | b |` is a table only when a delimiter row
-            // follows it, and an ordinary paragraph may well contain a pipe.
-            if let table = Self.table(header: trimmed, consuming: &lines) {
+            case .tableRow:
                 state.flushAll()
-                state.blocks.append(table)
+                var end = index + 1
+                while end < tokens.count, tokens[end].kind == .tableRow { end += 1 }
+                let rows = tokens[(index + 1)..<end].map { String(body[$0.range]) }
+                state.blocks.append(Self.table(header: trimmed, rows: rows))
+                index = end
                 continue
+            default:
+                break
             }
             // A remote target is deliberately left to the inline path, which renders it
             // as a link: this app fetches nothing over the network, so there is no
@@ -114,48 +129,30 @@ enum MarkdownBlockParser {
                 case .note(let reference, let section):
                     state.blocks.append(.transclusion(reference: reference, section: section))
                 }
-                continue
+            } else {
+                state.take(line, trimmed: trimmed, kind: token.kind)
             }
-            state.take(line, trimmed: trimmed)
+            index += 1
         }
 
         state.flushAll()
         return state.blocks
     }
 
-    private static func fence(
-        opening: String,
-        consuming lines: inout ArraySlice<String>
-    ) -> MarkdownBlock {
-        let language = CodeFence.language(declaredBy: opening)
-        var content: [String] = []
-        while let next = lines.first {
-            lines = lines.dropFirst()
-            if CodeFence.marks(next.trimmingCharacters(in: .whitespaces)) { break }
-            content.append(next)
-        }
-        // An unclosed fence ends at the end of the note rather than running off it,
-        // which would render the rest of the note as nothing.
-        return .code(language: language, lines: content)
-    }
-
     // MARK: Tables
 
-    /// A table starting at `header`, or nil when these lines are not one.
-    ///
-    /// Consumes nothing unless it returns a table, so a paragraph that happens to
-    /// contain a pipe is handed back untouched.
+    /// The table the token layer found at `header`, with the lines after it.
     ///
     /// The grammar itself moved to `GFMTable` (ADR-0029 §D10): the editor needs the same
     /// recognition *with ranges*, and a second recogniser is exactly what ADR-0018 §D1
     /// refused for the marker spans. `MarkdownBlock.Table`'s own shape is unchanged - only
-    /// the alignment enum is translated on the way out, one case for one case.
-    private static func table(
-        header: String,
-        consuming lines: inout ArraySlice<String>
-    ) -> MarkdownBlock? {
-        guard let parsed = GFMTable.parsed(header: header, rest: lines) else { return nil }
-        lines = lines.dropFirst(parsed.bodyLines)
+    /// the alignment enum is translated on the way out, one case for one case. The token
+    /// layer has already said these lines are one table, so the parse cannot fail; an empty
+    /// table is the answer if it ever did, never a lost line.
+    private static func table(header: String, rows: [String]) -> MarkdownBlock {
+        guard let parsed = GFMTable.parsed(header: header, rest: rows[...]) else {
+            return .table(MarkdownBlock.Table(header: [], alignments: [], rows: []))
+        }
         return .table(MarkdownBlock.Table(
             header: parsed.header,
             alignments: parsed.alignments.map(MarkdownBlock.Table.Column.init),
@@ -176,30 +173,39 @@ enum MarkdownBlockParser {
         private var tasks: [MarkdownBlock.TaskLine] = []
         private var quote: [String] = []
 
-        mutating func take(_ line: String, trimmed: String) {
-            if trimmed.isEmpty {
+        /// `line` is the token's own line; its marker ranges index the same string.
+        mutating func take(_ line: Substring, trimmed: String, kind: MarkdownLineToken.Kind) {
+            func after(_ marker: Range<String.Index>) -> String {
+                String(line[marker.upperBound...]).trimmingCharacters(in: .whitespaces)
+            }
+            switch kind {
+            case .blank:
                 flushAll()
-            } else if MarkdownBlockParser.isRule(trimmed) {
+            case .rule:
                 flushAll()
                 blocks.append(.rule)
-            } else if let heading = MarkdownBlockParser.heading(in: trimmed) {
+            // A heading or a list item with nothing after its marker yet is drawn as the text it
+            // is: the editor reads `## ` as a heading the moment it is typed, a reading view has
+            // nothing to draw for it.
+            case .heading(let level, let marker) where !after(marker).isEmpty:
                 flushAll()
-                blocks.append(heading)
-            } else if let task = MarkdownBlockParser.taskLine(in: trimmed) {
+                blocks.append(.heading(level: level, text: after(marker)))
+            case .task(_, let marker, _):
                 flushExcept(.tasks)
-                tasks.append(task)
-            } else if let item = MarkdownBlockParser.bulletItem(in: trimmed) {
+                let box = line[line.index(marker.upperBound, offsetBy: -2)]
+                tasks.append(MarkdownBlock.TaskLine(isDone: box == "x" || box == "X", marker: box, text: after(marker)))
+            case .listItem(false, _, let marker, _) where !after(marker).isEmpty:
                 flushExcept(.bullets)
-                bullets.append(item)
-            } else if let item = MarkdownBlockParser.numberedItem(in: trimmed) {
+                bullets.append(after(marker))
+            case .listItem(true, _, let marker, _) where !after(marker).isEmpty:
                 flushExcept(.numbers)
-                numbers.append(item)
-            } else if trimmed.hasPrefix(">") {
+                numbers.append(after(marker))
+            case .quote:
                 flushExcept(.quote)
                 quote.append(String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces))
-            } else {
+            default:
                 flushExcept(.paragraph)
-                paragraph.append(line)
+                paragraph.append(String(line))
             }
         }
 
@@ -245,64 +251,15 @@ enum MarkdownBlockParser {
     /// Whether a line is a thematic break: three or more of `-`, `*` or `_`, optionally
     /// space-separated.
     ///
-    /// Not `private`: `MarkdownStyler.spans(inLine:at:in:)` emits `.horizontalRule` from
-    /// this exact predicate (ADR-0029 §D1), and `EditorDecorationDelegate.stillSpellsARule`
-    /// re-asks it of the live characters at layout time. A second spelling of "this line is
-    /// a rule" is what would let the reading view and the editor disagree about a `- - -`,
-    /// the same argument `CodeFence.marks` was extracted on.
+    /// Not `private`: `lineTokens(in:)` classifies a `.rule` line by this exact predicate,
+    /// which `MarkdownStyler` maps onto `.horizontalRule` (ADR-0029 §D1, ADR-0082 §D2), and
+    /// `EditorDecorationDelegate.stillSpellsARule` re-asks it of the live characters at layout
+    /// time. A second spelling of "this line is a rule" is what would let the reading view and
+    /// the editor disagree about a `- - -`, the same argument `CodeFence.marks` was extracted on.
     static func isRule(_ line: some StringProtocol) -> Bool {
         let stripped = line.replacingOccurrences(of: " ", with: "")
         guard stripped.count >= 3 else { return false }
         return stripped.allSatisfy { $0 == "-" } || stripped.allSatisfy { $0 == "*" }
             || stripped.allSatisfy { $0 == "_" }
-    }
-
-    private static func heading(in line: String) -> MarkdownBlock? {
-        var level = 0
-        var index = line.startIndex
-        while index < line.endIndex, line[index] == "#", level < 6 {
-            level += 1
-            index = line.index(after: index)
-        }
-        // `#tag` is a tag, not a heading: the hash has to be followed by a space.
-        guard level > 0, index < line.endIndex, line[index] == " " else { return nil }
-        return .heading(level: level, text: String(line[index...]).trimmingCharacters(in: .whitespaces))
-    }
-
-    private static func taskLine(in line: String) -> MarkdownBlock.TaskLine? {
-        guard let rest = afterBullet(line), rest.hasPrefix("["), rest.count >= 3 else { return nil }
-        let marker = rest[rest.index(rest.startIndex, offsetBy: 1)]
-        let closing = rest.index(rest.startIndex, offsetBy: 2)
-        // The task index's own vocabulary, not a copy: `- [1] Rossi, 2020` is a bullet, and a
-        // reading view that drew a box for it would drop the `[1]` (ADR-0077 §D5).
-        guard rest[closing] == "]", TaskParser.state(for: marker) != nil else { return nil }
-        let text = String(rest[rest.index(after: closing)...]).trimmingCharacters(in: .whitespaces)
-        return MarkdownBlock.TaskLine(isDone: marker == "x" || marker == "X", marker: marker, text: text)
-    }
-
-    private static func bulletItem(in line: String) -> String? {
-        afterBullet(line)
-    }
-
-    /// The text after a `-`, `*` or `+` bullet, or nil when the line is not one.
-    private static func afterBullet(_ line: String) -> String? {
-        guard let first = line.first, first == "-" || first == "*" || first == "+" else { return nil }
-        let rest = line.dropFirst()
-        guard rest.first == " " else { return nil }
-        return String(rest.dropFirst()).trimmingCharacters(in: .whitespaces)
-    }
-
-    private static func numberedItem(in line: String) -> String? {
-        var digits = ""
-        var index = line.startIndex
-        while index < line.endIndex, line[index].isNumber {
-            digits.append(line[index])
-            index = line.index(after: index)
-        }
-        guard !digits.isEmpty, index < line.endIndex else { return nil }
-        guard line[index] == "." || line[index] == ")" else { return nil }
-        let afterMarker = line.index(after: index)
-        guard afterMarker < line.endIndex, line[afterMarker] == " " else { return nil }
-        return String(line[line.index(after: afterMarker)...]).trimmingCharacters(in: .whitespaces)
     }
 }

@@ -163,6 +163,13 @@ struct EditorColumnView: View {
             guard wasComposing, !isComposing, isFocused else { return }
             focusRequest += 1
         }
+        // Something outside the editor asked for the caret in it (an event note opened, «Apri»
+        // from the Workspace sheet; note-workflow R-04, R-05). `initial: true` for the same reason
+        // as `closeRequest` above: the request is usually made from another pane, before this
+        // column appears.
+        .onChange(of: vault.editorFocusRequest, initial: true) { _, _ in
+            if vault.takeEditorFocusRequest(forColumn: columnIndex) { focusRequest += 1 }
+        }
     }
 
     // MARK: What this column is showing

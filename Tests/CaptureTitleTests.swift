@@ -217,3 +217,23 @@ func everyDerivedTitleIsAcceptedByTheNameRule(typed: String) {
     #expect(ImportNaming.truncatedAtSpace(String(repeating: "z", count: 70), toFit: 60)
         == String(repeating: "z", count: 60))
 }
+
+// MARK: - truncatedAtWordBoundary with a separator (ADR-0088 §D1)
+
+// (note-workflow R-02) One cutting loop: the space-separated cut is the slug cut with a
+// different separator, so `truncatedAtSpace` can be a wrapper over it.
+@Test func theWordBoundaryTruncatorCutsAtTheGivenSeparator() {
+    #expect(ImportNaming.truncatedAtWordBoundary("uno due tre", toFit: 7, separator: " ") == "uno due")
+}
+
+// (note-workflow R-02) It never cuts inside a word: a first word over the budget gives "",
+// and `truncatedAtSpace` is what turns that into a hard cut.
+@Test func theWordBoundaryTruncatorReturnsNothingWhenTheFirstWordExceedsTheBudget() {
+    #expect(ImportNaming.truncatedAtWordBoundary("abcdefghij klm", toFit: 4, separator: " ") == "")
+}
+
+// (note-workflow R-02) The default separator is today's hyphen, which the two protected
+// names rely on.
+@Test func theWordBoundaryTruncatorStillSplitsOnHyphensByDefault() {
+    #expect(ImportNaming.truncatedAtWordBoundary("uno-due-tre", toFit: 7) == "uno-due")
+}

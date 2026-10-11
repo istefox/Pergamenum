@@ -48,6 +48,19 @@ struct Wikilink: Equatable, Hashable, Sendable {
         }
     }
 
+    /// Whether this link is one the index counts as a note link (ADR-0084 §D1): not an embed
+    /// unless it names a note, and never a `.canvas` target. `NoteStore.linkTargets(in:)` and
+    /// `BacklinkContext` both ask this, so "a link the index counts" and "a link a backlink row
+    /// counts" are one predicate.
+    ///
+    /// A board is not a note: a `.canvas` target - a task's `^[[Q4.canvas]]` marker, or a plain
+    /// `[[Q4.canvas]]` - is never a link target, so it is no backlink, unresolved link, graph
+    /// neighbour or `links` value (ADR-0065 §D9.5, R-20).
+    var isNoteLink: Bool {
+        (!isEmbed || Transclusion.isNoteReference(target))
+            && (target as NSString).pathExtension.lowercased() != "canvas"
+    }
+
     var rendered: String {
         var text = target
         if let section { text += "#\(section)" }
@@ -112,32 +125,7 @@ enum WikilinkParser {
     /// search for `"\n"` read a CRLF note as one line - no fence found past the first line,
     /// and backticks paired across the whole note (PG-316).
     static func codeRanges(in text: String) -> [Range<String.Index>] {
-        var ranges: [Range<String.Index>] = []
-
-        var fenceStart: String.Index?
-        var lineStart = text.startIndex
-        while lineStart < text.endIndex {
-            let lineEnd = text[lineStart...].firstIndex(where: LineBreak.isTerminator) ?? text.endIndex
-            let line = text[lineStart..<lineEnd].trimmingCharacters(in: .whitespaces)
-
-            if line.hasPrefix("```") || line.hasPrefix("~~~") {
-                if fenceStart != nil {
-                    // Only the opening fence may carry an info string (```bash);
-                    // a closing fence is the delimiter alone, so a line like
-                    // "``` e poi altro" does not end the block.
-                    let isBareDelimiter = line.allSatisfy { $0 == "`" || $0 == "~" }
-                    if isBareDelimiter {
-                        ranges.append(fenceStart!..<lineEnd)
-                        fenceStart = nil
-                    }
-                } else {
-                    fenceStart = lineStart
-                }
-            }
-            guard lineEnd < text.endIndex else { break }
-            lineStart = text.index(after: lineEnd)
-        }
-        if let start = fenceStart { ranges.append(start..<text.endIndex) }
+        var ranges = fencedCodeRanges(in: text[...])
 
         // Inline spans, paired within a single line and only outside the fences found
         // above. Pairing across the whole text would desynchronise on the three
@@ -150,17 +138,62 @@ enum WikilinkParser {
             defer { line = lineEnd < text.endIndex ? text.index(after: lineEnd) : text.endIndex }
 
             if ranges.contains(where: { $0.contains(line) }) { continue }
+            ranges.append(contentsOf: inlineCodeRanges(inLine: text[line..<lineEnd]))
+        }
+        return ranges
+    }
 
-            var cursor = line
-            while let open = text[cursor..<lineEnd].firstIndex(of: "`") {
-                let afterOpen = text.index(after: open)
-                guard afterOpen < lineEnd,
-                      let close = text[afterOpen..<lineEnd].firstIndex(of: "`")
-                else { break }
-                let span = open..<text.index(after: close)
-                ranges.append(span)
-                cursor = span.upperBound
+    /// Whether a trimmed line opens or closes a fence for this parser: three backticks or three
+    /// tildes. `MarkdownLineSignature` reads it too (ADR-0091 §D3, ADR-0045).
+    static func marksCodeFence(_ trimmedLine: some StringProtocol) -> Bool {
+        trimmedLine.hasPrefix("```") || trimmedLine.hasPrefix("~~~")
+    }
+
+    /// The fenced half of `codeRanges(in:)`, indices in `text`'s base string. `StructureMap` reads
+    /// it to keep a restyled range from cutting one of these fences (ADR-0091 §D3, ADR-0045).
+    static func fencedCodeRanges(in text: Substring) -> [Range<String.Index>] {
+        var ranges: [Range<String.Index>] = []
+
+        var fenceStart: String.Index?
+        var lineStart = text.startIndex
+        while lineStart < text.endIndex {
+            let lineEnd = text[lineStart...].firstIndex(where: LineBreak.isTerminator) ?? text.endIndex
+            let line = text[lineStart..<lineEnd].trimmingCharacters(in: .whitespaces)
+
+            if marksCodeFence(line) {
+                if let start = fenceStart {
+                    // Only the opening fence may carry an info string (```bash);
+                    // a closing fence is the delimiter alone, so a line like
+                    // "``` e poi altro" does not end the block.
+                    let isBareDelimiter = line.allSatisfy { $0 == "`" || $0 == "~" }
+                    if isBareDelimiter {
+                        ranges.append(start..<lineEnd)
+                        fenceStart = nil
+                    }
+                } else {
+                    fenceStart = lineStart
+                }
             }
+            guard lineEnd < text.endIndex else { break }
+            lineStart = text.index(after: lineEnd)
+        }
+        if let start = fenceStart { ranges.append(start..<text.endIndex) }
+        return ranges
+    }
+
+    /// The inline backtick spans of one line, paired within it. `MarkdownLineSignature` reads it to
+    /// mark a bracket that sits in code (ADR-0091 §D3, ADR-0045).
+    static func inlineCodeRanges(inLine line: Substring) -> [Range<String.Index>] {
+        var ranges: [Range<String.Index>] = []
+        var cursor = line.startIndex
+        while let open = line[cursor...].firstIndex(of: "`") {
+            let afterOpen = line.index(after: open)
+            guard afterOpen < line.endIndex,
+                  let close = line[afterOpen...].firstIndex(of: "`")
+            else { break }
+            let span = open..<line.index(after: close)
+            ranges.append(span)
+            cursor = span.upperBound
         }
         return ranges
     }
@@ -340,7 +373,6 @@ private extension String {
         return self
     }
 }
-
 
 /// Editor text transformations of SPEC §5.
 enum EditorEdits {

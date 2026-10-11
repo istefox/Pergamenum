@@ -20,6 +20,14 @@ struct ViewCommands: Commands {
                 .keyboardShortcut(shortcuts.shortcut(for: .goForward))
                 .disabled(!actions.canRun(.goForward))
             Divider()
+            // The link at the caret (ADR-0083 §D3): disabled, not a no-op, without one. The two
+            // variants ship with no key and show none until the person binds one.
+            ForEach([ShortcutCommand.followLink, .followLinkInNewTab, .followLinkInOtherColumn]) { command in
+                Button(command.title) { actions.run(command) }
+                    .keyboardShortcut(shortcuts.shortcut(for: command))
+                    .disabled(!actions.canRun(command))
+            }
+            Divider()
 
             ForEach(Navigation.Pane.allCases) { pane in
                 Button(pane.title) { actions.run(pane.shortcut) }

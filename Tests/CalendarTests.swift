@@ -1,4 +1,6 @@
+import EventKit
 import Foundation
+import os
 import Testing
 @testable import Pergamenum
 
@@ -453,6 +455,32 @@ private let beforeReminders = EventKitStore.date(CalendarDate(iso: "2026-08-10")
     // The day view reloads on a change; a store that claimed one at launch would make
     // it reload twice on every start.
     #expect(EventKitStore().changeCount == 0)
+}
+
+/// (coverage) PG-400 moved `observations` out of the `@Observable` macro's tracking. What
+/// that must not cost is the thing `changeCount` exists for: a change EventKit reports
+/// reaches the day view through observation. Pinned against the documented contract on
+/// `changeCount` ("bumped every time something outside this app moved: EventKit's store
+/// changed"), not against the implementation.
+@MainActor
+@Test func anEventKitStoreChangeBumpsTheCountAndReachesAnObserver() async {
+    let store = EventKitStore()
+    let observerFired = OSAllocatedUnfairLock(initialState: false)
+    withObservationTracking {
+        _ = store.changeCount
+    } onChange: {
+        observerFired.withLock { $0 = true }
+    }
+
+    // The store's listening task subscribes once the main actor is free, so a single post
+    // right after `init` could go to nobody: repost until it is heard, bounded.
+    for _ in 0..<250 where store.changeCount == 0 {
+        NotificationCenter.default.post(name: .EKEventStoreChanged, object: nil)
+        try? await Task.sleep(for: .milliseconds(20))
+    }
+
+    #expect(store.changeCount >= 1)
+    #expect(observerFired.withLock { $0 })
 }
 
 @Test func thePrivacyPaneURLNamesTheRightPane() {

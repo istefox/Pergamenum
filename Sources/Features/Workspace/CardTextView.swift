@@ -379,34 +379,14 @@ struct CardTextView: NSViewRepresentable {
             // it.
             case .strikethroughMarker: .strikethrough
             case .linkSyntax: .link
+            // ADR-0082 §D8 (R-19): a quote and a rule draw in a card as they do in a note. Both
+            // are a paragraph-level substitution with no live view, so a culled card loses
+            // nothing; the table and the view block stay out (`default: nil`, ADR-0029 §D17).
+            case .blockquoteMarker: .blockquote
+            case .horizontalRule: .rule
             default: nil
             }
             return kind
-        }
-
-        /// Puts the keyboard where the model says editing is happening.
-        ///
-        /// SwiftUI's `@FocusState` reaches a SwiftUI view; the first responder inside an
-        /// `NSViewRepresentable` is AppKit's to hand out, so the card asks for it here. Resigning
-        /// on the way out matters just as much: a text view left holding the keyboard after
-        /// editing ends swallows every board shortcut aimed past it.
-        func matchFocus(_ textView: FormattingTextView, editable: Bool) {
-            guard let window = textView.window else {
-                guard editable else { return }
-                // No window yet - the very first update after a card is created. Ask again once
-                // the view is in one, the retry `NoteTextView.takeFocus` makes for the same reason.
-                Task { @MainActor [weak textView] in
-                    guard let textView, textView.isEditable else { return }
-                    textView.window?.makeFirstResponder(textView)
-                }
-                return
-            }
-            let isFirstResponder = window.firstResponder === textView
-            if editable, !isFirstResponder {
-                window.makeFirstResponder(textView)
-            } else if !editable, isFirstResponder {
-                window.makeFirstResponder(nil)
-            }
         }
     }
 }

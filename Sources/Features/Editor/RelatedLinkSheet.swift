@@ -11,12 +11,16 @@ struct RelatedLinkSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var query = ""
-    @State private var selectedTitle: String?
+    /// The target is a path, never a title: two notes can share one (ADR-0084 §D4).
+    @State private var selectedPath: String?
     @State private var reason = ""
     @State private var reverseReason = ""
     @State private var error: String?
 
     private var sourceTitle: String { vault.openNote?.title ?? "" }
+    private var selectedTitle: String? {
+        selectedPath.flatMap { vault.index.note(at: $0)?.title }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.m)) {
@@ -27,14 +31,14 @@ struct RelatedLinkSheet: View {
             TextField("Cerca la nota da collegare…", text: $query)
                 .textFieldStyle(.roundedBorder)
 
-            List(candidates, id: \.relativePath, selection: $selectedTitle) { note in
+            List(candidates, id: \.relativePath, selection: $selectedPath) { note in
                 HStack {
                     Text(note.title).themedText(.body)
                     Spacer()
                     Text(note.folder).themedText(.caption, color: .textTertiary)
                 }
                 .contentShape(Rectangle())
-                .tag(note.title)
+                .tag(note.relativePath)
             }
             .frame(height: 150)
             .scrollContentBackground(.hidden)
@@ -76,17 +80,17 @@ struct RelatedLinkSheet: View {
     }
 
     private var isComplete: Bool {
-        selectedTitle != nil
+        selectedPath != nil
             && !reason.trimmingCharacters(in: .whitespaces).isEmpty
             && !reverseReason.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     private func create() {
-        guard let selectedTitle, let source = vault.openNote else { return }
+        guard let selectedPath, let source = vault.openNote else { return }
         Task { @MainActor in
             let created = await vault.addStructuralLink(
                 from: source.relativePath,
-                to: selectedTitle,
+                toNoteAt: selectedPath,
                 reason: reason,
                 reverseReason: reverseReason
             )

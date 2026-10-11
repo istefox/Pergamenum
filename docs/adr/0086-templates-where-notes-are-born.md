@@ -1,6 +1,6 @@
 # ADR-0086: Templates where notes are born
 
-- Status: **proposed**. Written before the implementation, for `PG-387`/#889 (N4 of the
+- Status: **planned**. Written before the implementation, for `PG-387`/#889 (N4 of the
   note-workflow chain).
 - Date: 2026-10-04. Written against `48a2d912`. Every line number below was read there.
 - Number: `0086` was reserved for this record by the chain's dispatch. It was checked free on every

@@ -88,17 +88,23 @@ final class CaptureController {
 
     var isEmpty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
-    /// «Titolo: …» for a «Nota nuova» whose derived title differs from the typed line,
-    /// nil otherwise (ADR-0080 §D3).
+    /// «Titolo: …» for a «Nota nuova» with text, nil for an empty one or another destination
+    /// (ADR-0080 §D3, amended by ADR-0088 §D2): shown even when the title is the typed line, so
+    /// the person sees which line becomes the title.
     ///
     /// Asks the same function the capture writes through, on the text trimmed the way
     /// `VaultAPI.capture` trims it, so the caption and the file name cannot disagree. The
     /// one named exception is a fallback title shown in one minute and sent in the next.
     func titleCaption(now: Date = Date(), calendar: Calendar = .current) -> String? {
         guard destination == .note, !isEmpty else { return nil }
+        return "Titolo: \(derivedTitle(now: now, calendar: calendar))"
+    }
+
+    /// The title a «Nota nuova» with this text is written under, shared by the caption and by
+    /// the panel's taken-title filter in `capture(into:)`.
+    private func derivedTitle(now: Date, calendar: Calendar) -> String {
         let typed = CaptureTitle.typedLine(of: text.trimmingCharacters(in: .whitespacesAndNewlines))
-        let derived = CaptureTitle.derive(fromTypedLine: typed, now: now, calendar: calendar)
-        return derived.differsFromTyped ? "Titolo: \(derived.title)" : nil
+        return CaptureTitle.derive(fromTypedLine: typed, now: now, calendar: calendar).title
     }
 
     // MARK: Opening and closing
@@ -138,7 +144,7 @@ final class CaptureController {
     /// text that was refused is still the only copy of it.
     @discardableResult
     func capture(into session: VaultSession?) async -> Bool {
-        // Deferred rather than written at each `return`: there are five ways out of this
+        // Deferred rather than written at each `return`: there are six ways out of this
         // function and the one that would get forgotten is a failure path.
         defer { log(outcome) }
 
@@ -147,6 +153,21 @@ final class CaptureController {
             return false
         }
         guard !isEmpty else { return false }
+
+        // A taken title is refused here in the composer's sentence and writes nothing
+        // (ADR-0088 §D2). A filter, not a guard (ADR-0043 §D7): `createNote`'s own check stays
+        // the guard, so a file appearing in between is still refused, in the connector's wording.
+        if destination == .note {
+            let folder = folder ?? session.inboxFolder
+            let fileName = NoteName.fileName(for: derivedTitle(now: Date(), calendar: .current))
+            let path = folder.isEmpty ? fileName : "\(folder)/\(fileName)"
+            if session.exists(path) {
+                outcome = .refused(
+                    ConformanceText.creationFailure(VaultSession.CreationError.alreadyExists(path))
+                )
+                return false
+            }
+        }
 
         do {
             let summary = try await VaultAPI.capture(

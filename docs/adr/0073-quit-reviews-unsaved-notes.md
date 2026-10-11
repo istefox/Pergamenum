@@ -111,7 +111,7 @@ progress.
   cancel, revealing the board first, then the notes, then the diary; only «Non salvare» lets them
   go, writing nothing. Neither decision above is reversed: the settle still never flushes over a
   conflict and a window close is still not refused over one. A board whose pane left the screen
-  before the quit is still lost; its ledger entry is to be filed (ADR-0089 §D7).
+  before the quit is still lost; it is ledger entry `PG-392` (ADR-0089 §D7).
 - **G-d.** Cmd+S over a banner that is still waiting writes the buffer over the other writer's
   bytes, because `saveOpenNote()` has no precondition (a blind write in ADR-0043 §D8's sense). That
   is existing behaviour and stays as it is here. §D5 only keeps the quit's own bulk answer from

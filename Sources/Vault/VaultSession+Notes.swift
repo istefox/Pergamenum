@@ -12,11 +12,11 @@ extension VaultSession {
 
         var description: String {
             switch self {
-            // Each violation described on its own rather than the array interpolated:
-            // interpolating a collection describes its elements the way a debugger
-            // would, module name and all, and this sentence is read by a person.
+            // Worded as `ConformanceText` words a note title, `FileOperationError.invalidTitle`'s
+            // twin: interpolating a violation names its enum case, not what is wrong, and this
+            // sentence reaches a person through both connectors.
             case .invalidTitle(let violations):
-                "titolo non conforme: " + violations.map { "\($0)" }.joined(separator: ", ")
+                ConformanceText.lines(NoteViolations(name: violations)).joined(separator: "; ")
             case .alreadyExists(let path): "esiste già: \(path)"
             }
         }
@@ -103,8 +103,13 @@ extension VaultSession {
         _ = try store.url(for: relativePath)
         guard !exists(relativePath) else { throw CreationError.alreadyExists(relativePath) }
 
+        // JSONSerialization emits UTF-8 only, so this cannot fail; said out loud rather
+        // than decoded lossily, as `ConnectorJSON` does.
+        guard let emptyBoard = String(bytes: try CanvasDocument.empty.encoded(), encoding: .utf8) else {
+            throw CocoaError(.fileWriteInapplicableStringEncoding)
+        }
         try await writeFile(
-            String(decoding: try CanvasDocument.empty.encoded(), as: UTF8.self),
+            emptyBoard,
             to: relativePath,
             expectingAbsent: true
         )
@@ -226,15 +231,20 @@ extension VaultSession {
     /// target not - named in the problem list, not rolled back, since the rollback would be
     /// one more guarded write that can itself be refused. `written` still holds whatever
     /// landed before the refusal, so the editor's tab catch-up sees it (ADR-0058 §D5).
+    ///
+    /// The target is a **path**, never a title (ADR-0084 §D4): two notes can share a title, and
+    /// resolving one here would pick the first match.
     @discardableResult
     func addStructuralLink(
         from sourcePath: String,
-        to targetTitle: String,
+        toNoteAt targetPath: String,
         reason: String,
         reverseReason: String
     ) async -> (created: Bool, written: [WriteResult]) {
-        guard let targetPath = index.resolve(title: targetTitle).first else {
-            recordProblem("nessuna nota si chiama «\(targetTitle)»")
+        // Both ends must be indexed notes: `exists` also accepts a folder, a `.canvas` or a
+        // `.pergamenum/*.json`, and the link writes frontmatter and a bullet into each end.
+        if let refusal = [sourcePath, targetPath].lazy.compactMap({ self.linkEndRefusal($0) }).first {
+            recordProblem(refusal)
             return (false, [])
         }
         guard targetPath != sourcePath else {

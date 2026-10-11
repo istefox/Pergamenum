@@ -11,7 +11,11 @@ enum FileOperationError: Error, CustomStringConvertible {
 
     var description: String {
         switch self {
-        case .invalidTitle(let violations): "titolo non conforme: \(violations)"
+        // Worded as `ConformanceText` words a note title, never the array interpolated: that
+        // reads as a debugger dump of `NoteName.Violation`, and this sentence reaches a person
+        // through every caller that prints the error.
+        case .invalidTitle(let violations):
+            ConformanceText.lines(NoteViolations(name: violations)).joined(separator: "; ")
         case .alreadyExists(let path): "esiste già: \(path)"
         case .missing(let path): "non esiste: \(path)"
         case .failed(let reason): reason

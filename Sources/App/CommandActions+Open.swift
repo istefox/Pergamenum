@@ -24,7 +24,8 @@ extension CommandActions {
 
     /// An event's note, created when missing, in the Note pane (n1-seams R-10). The pane
     /// changes only after the note is open, and only if it is still the one read before the
-    /// write, for `openTodayNote`'s reason.
+    /// write, for `openTodayNote`'s reason. With the pane switched, the editor is asked to take the
+    /// keyboard, so the person can write in the note at once (note-workflow R-04).
     @discardableResult
     func openEventNote(
         for eventTitle: String,
@@ -37,7 +38,10 @@ extension CommandActions {
         let path = await vault.openEventNote(
             for: eventTitle, on: day, start: start, end: end, attendees: attendees
         )
-        if path != nil, navigation.pane == paneBefore { navigation.pane = .notes }
+        if path != nil, navigation.pane == paneBefore {
+            navigation.pane = .notes
+            vault.requestEditorFocus()
+        }
         return path
     }
 

@@ -111,6 +111,14 @@ func rejectsMalformedHex(_ input: String) {
             !theme.inheritedTokens.contains("spacing.paragraph"), "\(id) should define spacing.paragraph"
         ) // (n1-seams R-14)
         #expect(theme.spacing(.paragraph) == 8, "\(id): spacing.paragraph should resolve to 8") // (n1-seams R-14)
+        // n2-page R-13 (ADR-0081 §D1, G1 2026-10-07): the gutter, 48 = spacing.xl + spacing.s. Named for
+        // the same reason, so a theme file that drops `spacing.gutter` says so here.
+        #expect(!theme.inheritedTokens.contains("spacing.gutter"), "\(id) should define spacing.gutter")
+        #expect(theme.spacing(.gutter) == 48, "\(id): spacing.gutter should resolve to 48") // (n2-page R-13)
+        #expect(
+            theme.spacing(.gutter) == theme.spacing(.xl) + theme.spacing(.s),
+            "\(id): spacing.gutter is spacing.xl plus spacing.s"
+        ) // (n2-page R-13)
         // PG-263: the SF Symbol glyph sizes, named here for the same reason.
         #expect(!theme.inheritedTokens.contains("font.icon.small"), "\(id) should define font.icon.small")
         #expect(!theme.inheritedTokens.contains("font.icon.badge"), "\(id) should define font.icon.badge")
@@ -143,6 +151,13 @@ func rejectsMalformedHex(_ input: String) {
 /// case exists, so a theme that lacks it falls back to 8 instead of trapping the process.
 @Test func emergencyThemeDefinesTheParagraphSpacing() { // (n1-seams R-14)
     #expect(Theme.emergency.spacing(.paragraph) == 8)
+}
+
+/// n2-page R-13 and PG-225: `spacing.gutter` is in the emergency dictionary from the moment the case
+/// exists, at the G1 value, so a theme that lacks it falls back to 48 instead of trapping.
+@Test func emergencyThemeDefinesTheGutter() { // (n2-page R-13)
+    #expect(Theme.emergency.spacing(.gutter) == 48)
+    #expect(Theme.emergency.spacing(.gutter) == Theme.emergency.spacing(.xl) + Theme.emergency.spacing(.s))
 }
 
 /// PG-225: the same fallback contract from the other side. `rawColor(_:)` force-unwraps

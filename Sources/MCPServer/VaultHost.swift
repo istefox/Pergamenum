@@ -33,7 +33,7 @@ final class VaultHost {
     var root: URL { session.root }
 
     var tools: [Tool] {
-        ToolCatalogue.reading + (allowsWriting ? ToolCatalogue.writing : [])
+        ToolCatalogue.reading + (allowsWriting ? ToolCatalogue.writing + ToolCatalogue.noteLinks : [])
     }
 
     // MARK: Calling
@@ -170,7 +170,7 @@ final class VaultHost {
     /// writing tools are absent from `tools/list` without `--allow-write`, and a client
     /// that calls one anyway is told no rather than obeyed.
     private func write(_ name: String, _ arguments: ToolArguments) async throws -> CallTool.Result? {
-        guard ToolCatalogue.writing.contains(where: { $0.name == name }) else { return nil }
+        guard (ToolCatalogue.writing + ToolCatalogue.noteLinks).contains(where: { $0.name == name }) else { return nil }
         guard allowsWriting else {
             throw ConnectorError(
                 """

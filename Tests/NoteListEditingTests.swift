@@ -240,45 +240,86 @@ private func ordinals(in text: String) -> [Int] {
         #expect(fixture.textView.string == text)
     }
 
-    // MARK: Pinning the documented digit-width-shrink caret boundary (accepted limitation, not a bug)
+    // MARK: The digit-width-shrink caret (ADR-0082 §D6, n2-page R-16)
 
-    /// `NoteTextView+ListEditing.renumberLists(in:)`'s own doc comment discloses that the
-    /// caret restore is exact "until a run reaches its tenth item" - past that boundary, a
-    /// member whose ordinal's digit width changes shifts everything after it, and the
-    /// restore does not compensate for that shift. This pins the *current* behaviour so a
-    /// future regression that makes it worse is caught; it is not a test that expects a
-    /// fix, and closing the gap should update this assertion deliberately rather than break
-    /// it by accident. The card's half of the same wiring is pinned the same way in
-    /// `Tests/CardFormattingTests.swift`'s
-    /// `renumberListsAfterARunsTrailingItemShrinksLeavesTheCaretOneCharacterAhead`.
+    /// Restated 2026-10-06 (plan docs/plans/pg-385-n2-page.md, Task 2). The reason, stated first:
+    /// this test pinned the documented gap that the whole-text `renumberLists(in:)` leaves the
+    /// caret one character ahead of the text once a run's trailing item shrinks (49), and its own
+    /// comment asked that closing the gap "should update this assertion deliberately rather than
+    /// break it by accident". The SPEC (N2, PG-385) decides that move on purpose: renumbering
+    /// rewrites only the edited run and maps the caret through the edit, so the caret lands at 48.
+    /// The 49 is not lost, it is the documented fallback and is pinned by the next test.
     ///
-    /// Text as it stands right after a manual delete of a run's ninth item ("9. i\n") from
-    /// a correctly numbered ten-item list: eight untouched items, then the former tenth
-    /// still carrying its two-digit "10." marker, then a plain trailing line the run does
-    /// not extend into. `ListContinuation.renumbered` shrinks that one marker from "10" to
-    /// "9" - the run's only edit, one character shorter - and the caret, parked well inside
-    /// the trailing line rather than at the edit itself, is where the missing compensation
-    /// shows.
-    @Test func renumberListsAfterARunsTrailingItemShrinksLeavesTheCaretOneCharacterAhead() throws {
+    /// Text as it stands right after a manual delete of a run's ninth item ("9. i\n") from a
+    /// correctly numbered ten-item list: eight untouched items, then the former tenth still
+    /// carrying its two-digit "10." marker, then a plain trailing line the run does not extend
+    /// into. The edit sits at "10." (location 40), `ListContinuation.renumbered(_:touching:)`
+    /// shrinks that one marker from "10" to "9", and the caret, parked inside the trailing line
+    /// after "pro", is carried back one character with it.
+    @Test func renumberingTheEditedRunMapsTheCaretThroughTheShrink() throws {
+        // (n2-page R-16)
         let text = "1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n7. g\n8. h\n10. j\nprosa"
-        // Right after "pro", inside the trailing plain line - well past "10."'s digits
-        // (which sit at 40..<42), so the one-character shrink there is a shift the caret
-        // has already crossed.
         let caret = 49
         let fixture = editor(text, caret: caret)
         defer { fixture.window.orderOut(nil) }
         // Derived, not hand-written, for the same reason the Return tests above derive from
-        // `ListContinuation.newline`: a hand-copied string would only assert this test's
-        // own arithmetic.
+        // `ListContinuation.newline`: a hand-copied string would only assert this test's own
+        // arithmetic.
+        let expected = try #require(ListContinuation.renumbered(text))
+
+        fixture.coordinator.renumberLists(in: fixture.textView, touching: NSRange(location: 40, length: 0))
+
+        #expect(fixture.textView.string == expected)
+        #expect(
+            fixture.textView.selectedRange() == NSRange(location: caret - 1, length: 0),
+            "il caret va mappato attraverso la modifica: 48, fra «pro» e «sa»"
+        )
+    }
+
+    /// (n2-page R-16) The fallback ADR-0082 §D6 keeps for an edit nobody recorded - an undo, a
+    /// programmatic replacement: the whole text is renumbered and the caret is clamped, unshifted,
+    /// exactly as before this chain. The one character it leaves the caret ahead is documented,
+    /// not ideal.
+    @Test func withNoEditedRangeTheWholeTextFallbackKeepsTheCaretClamped() throws {
+        let text = "1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n7. g\n8. h\n10. j\nprosa"
+        let caret = 49
+        let fixture = editor(text, caret: caret)
+        defer { fixture.window.orderOut(nil) }
         let expected = try #require(ListContinuation.renumbered(text))
 
         fixture.coordinator.renumberLists(in: fixture.textView)
 
         #expect(fixture.textView.string == expected)
-        // Documented, not ideal: the correct position would compensate for the
-        // one-character shrink and land at 48 (still between "pro" and "sa"). The restore
-        // instead reuses the pre-edit caret unshifted, landing at 49 - one character
-        // further into "prosa" than where the person's caret actually was.
         #expect(fixture.textView.selectedRange() == NSRange(location: caret, length: 0))
+    }
+
+    /// (n2-page R-16) The keystroke path records the edited range: a real delete through
+    /// `insertText("", replacementRange:)` with the delegate wired reaches `textDidChange` with the
+    /// range the delete touched, the scoped renumber rewrites the run, and one `undo()` takes the
+    /// deletion and the renumbering back together.
+    @Test func aRealDeleteRenumbersThroughTheRecordedRangeInOneUndoStep() throws {
+        let before = "1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n7. g\n8. h\n9. i\n10. j\nprosa"
+        let fixture = editor(before, caret: 54)
+        defer { fixture.window.orderOut(nil) }
+        let undo = try #require(fixture.textView.undoManager)
+        let victim = (before as NSString).range(of: "9. i\n")
+        #expect(victim == NSRange(location: 40, length: 5), "premessa: la riga da cancellare è dove ci si aspetta")
+        let afterDelete = (before as NSString).replacingCharacters(in: victim, with: "")
+        let expected = try #require(ListContinuation.renumbered(afterDelete))
+
+        fixture.textView.insertText("", replacementRange: victim)
+
+        #expect(fixture.textView.string == expected)
+        // The caret AppKit leaves after the delete is 49, one character into "prosa" after "pro"
+        // (the delete removed five characters before it); the scoped renumber maps it through the
+        // shrink of "10." to "9." and lands on 48.
+        #expect(
+            fixture.textView.selectedRange() == NSRange(location: 48, length: 0),
+            "il caret dopo la cancellazione e il renumber deve essere 48"
+        )
+
+        undo.undo()
+
+        #expect(fixture.textView.string == before, "un solo undo riporta il testo prima della cancellazione")
     }
 }

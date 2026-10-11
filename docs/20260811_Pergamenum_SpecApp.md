@@ -105,7 +105,7 @@ L'app non impone la struttura 00-03: la rispetta se esiste. Le uniche cartelle p
 
 ### 4.2 Nomi dei file (naming.md §4.6)
 
-- **Note**: il titolo è il nome file. Ammessi spazi e lettere accentate; vietati `/ \ : * ? " < > | # ^ [ ]`. Massimo 60 caratteri. Frase nominale. Niente `vN`, niente suffissi di stato.
+- **Note**: il titolo è il nome file. Ammessi spazi e lettere accentate; vietati `/ \ : * ? " < > | # ^ [ ]`. Massimo 60 caratteri. Frase nominale. Niente `vN`, niente suffissi di stato. *Emendato 2026-10-06 (ADR-0088).* Una nota creata dalla cattura «Nota nuova» con una prima riga che non è un nome valido riceve un titolo proposto: la regola è in §16.
 - **Note legate a un evento**: data in testa, formato `YYYYMMDD Titolo evento`.
 - **Daily note**: solo `YYYYMMDD` (es. `20260811.md`). NON `YYYY-MM-DD`.
 - **Canvas**: stessa grammatica dei titoli nota (4.6). Nota di governance: la categoria "canvas" non esiste ancora in naming.md; la sua introduzione formale richiede ADR + nuova sottosezione in naming.md §4 (procedura G-04). Fino ad allora l'app applica per analogia la grammatica delle note.
@@ -199,6 +199,16 @@ L'architettura harness vigente (ADR 20/07/2026, emendata 30/07/2026) assegna i t
   vista esattamente come prima. È un'impostazione della cartella note
   (`VaultSettings.readableWidth`, attiva di default) e vale su tutte e tre le superfici che
   disegnano l'editor: Nota, Diario e Oggi.
+- *Emendato 2026-10-10 (ADR-0081, ADR-0082).* **I marcatori di blocco si rivelano nel margine**:
+  quando il cursore entra in una voce d'elenco, in un titolo o in una citazione, il marcatore
+  (`- `, `1. `, `## `, `> `) compare nel margine a sinistra della colonna e il testo non si
+  sposta. Alla larghezza di lettura la colonna resta dov'era; sotto quella soglia si sposta una
+  volta verso destra. Nelle card del Workspace, che non hanno margine, solo gli elenchi restano
+  fermi.
+- **Il costo di un tasto è un numero misurato**: un test della suite misura in tempo CPU la
+  ristilizzazione di note sintetiche da 50 KB, 200 KB e 1 MB, con e senza blocchi di codice e
+  viste; le righe da 50 KB girano a ogni turno, le altre a richiesta, e il test fallisce sopra il
+  tetto registrato in ADR-0082 §D9.
 - **Il carattere della nota si sceglie in Impostazioni → Editor**: famiglia fra quelle
   installate più «Sistema», corpo da 12 a 24. La scelta è scritta come override dei token
   `font.prose` e `font.proseTitle` in `.pergamenum/themes/personalizzato.json`, attraverso lo
@@ -221,7 +231,7 @@ L'architettura harness vigente (ADR 20/07/2026, emendata 30/07/2026) assegna i t
 - Requisiti minimi:
   - CommonMark + tabelle GFM + task list `- [ ]`
   - Liste puntate e numerate rese con glifo/ordinale al posto del marcatore, nidificazione
-    inclusa (ADR-0028, 2026-09-01); Invio continua la lista e rinumera quelle ordinate; una
+    inclusa (ADR-0028, 2026-09-01); Invio continua la lista e rinumera l'elenco ordinato modificato; una
     riga `- [ ]` resta una checkbox, mai un elemento di lista
   - Wikilink con autocompletamento su `[[` (titoli esatti dal vault; gli alias F-07 servono la
     ricerca, mai il primo segmento del link, W-01)
@@ -576,8 +586,10 @@ chiamava "globale" una cattura in realtà legata alla finestra (Cmd+Shift+N).*
 - *Emendato 2026-10-04 (ADR-0080).* Una prima riga che non è un nome di nota valido produce
   un titolo proposto (caratteri vietati sostituiti da spazi, spazi compattati, suffisso di versione tolto,
   taglio a 60 caratteri a una parola); se diverso dalla riga, tutto il testo va nel corpo;
-  se non resta nulla, il titolo è `YYYYMMDD HHmm Cattura`. Il pannello mostra «Titolo: …»
-  prima dell'invio. Solo una cattura vuota è rifiutata.
+  se non resta nulla, il titolo è `YYYYMMDD HHmm Cattura`. *Emendato 2026-10-06 (ADR-0088).*
+  Il pannello mostra sempre «Titolo: …» prima dell'invio, anche quando coincide con la riga; un
+  titolo già preso è rifiutato con la frase del compositore e non scrive nulla. Oltre a questo,
+  solo una cattura vuota è rifiutata.
 - **Un'unica scrittura condivisa**: il pannello, la route `pergamenum://capture` (§9),
   `perg capture` e il tool MCP passano tutti per lo stesso punto in `Sources/Connector/`
   (ADR-0007 §D2/§D4) — stessa cartella di destinazione, stesso frontmatter, giornalata e

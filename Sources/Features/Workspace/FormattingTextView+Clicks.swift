@@ -42,7 +42,9 @@ extension FormattingTextView {
     /// otherwise nil - the card's own copy of `CompletingTextView.linkCharacterIndex(at:)`, for
     /// the reason `followLinkIfPresent(at:)` below gives. `rightMouseDown`, `followLinkIfPresent`
     /// and `menu(for:)` all resolve their point here, so the three cannot drift apart (PG-220).
-    private func linkCharacterIndex(at point: CGPoint) -> Int? {
+    /// Internal, not private: `FormattingTextView+CursorRects.swift`'s `pointer(at:)` reads it,
+    /// so hover and click resolve a point the same way (ADR-0090 §D2).
+    func linkCharacterIndex(at point: CGPoint) -> Int? {
         guard let storage = textStorage else { return nil }
         let index = characterIndexForInsertion(at: point)
         guard index < storage.length,

@@ -1,6 +1,6 @@
 # ADR-0087: The editor draws the remaining constructs
 
-- Status: **proposed**. Written before the implementation (milestone N5 of the note-workflow
+- Status: **planned**. Written before the implementation (milestone N5 of the note-workflow
   chain, issue #890). Flip to `accepted` with the merge commit of N5's code PR, per
   `docs/adr/README.md` rule 2.
 - Date: 2026-10-04. Written against `48a2d912` (`origin/main` at the same commit). Every line

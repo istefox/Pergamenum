@@ -19,24 +19,31 @@ import SwiftUI
 /// 1. **In the inspector, under BACKLINK.** The two answer the same question a step apart - who
 ///    points here, and who talks about this without pointing. Anywhere else and the comparison
 ///    costs a look somewhere else.
-/// 2. **A row is the note and the line the mention falls on**, with the mention itself in the
-///    accent. A list of titles would make you open each one to find out why it is there.
+/// 2. **A row is the note and the line the mention falls on**, with the mention itself in
+///    semibold. A list of titles would make you open each one to find out why it is there.
 /// 3. **A row opens the note and nothing else.** No «Collega» button that writes `[[…]]` into
 ///    the other note: that is a write into a note you are not looking at, and the one write
 ///    guardrail this app has is that you see what changes. It can be added later on its own
 ///    reasoning; it is not part of computing the mentions.
+///
+///    *Amended by ADR-0084 §D3 (N3):* a row gains «Collega», because the diff it opens is the
+///    guardrail the refusal asked for: nothing is written before the person has seen the exact
+///    bytes that will land, so the condition is met rather than waived. The row itself still
+///    opens the note. The N3 half is drawn at the bottom of the page.
 ///
 /// Everything here is literal. No controller, no index, no vault.
 struct UnlinkedMentionsMockup: View {
     @Environment(\.theme) private var theme
 
     /// The inspector at the width it actually has in `VaultBrowser` (ideal 230, max 320).
-    private static let inspectorWidth: CGFloat = 260
+    /// `InspectorLinksMockup` draws at this width too, so the two inspector pages cannot disagree.
+    static let inspectorWidth: CGFloat = 260
     var body: some View {
         MockupPage {
             inPlace
             states
             withResults
+            LinkMentionScenes()
         }
     }
 
@@ -156,7 +163,7 @@ struct UnlinkedMentionsMockup: View {
     private func row(_ title: String, before: String, mention: String, after: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title).themedText(.body, color: .accentPrimary).lineLimit(1)
-            (Text(before) + Text(mention).fontWeight(.semibold) + Text(after))
+            Text("\(before)\(Text(mention).fontWeight(.semibold))\(after)")
                 .themedText(.caption, color: .textSecondary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -181,5 +188,146 @@ struct UnlinkedMentionsMockup: View {
 
     private func link(_ title: String) -> some View {
         Text(title).themedText(.body, color: .accentPrimary).lineLimit(1)
+    }
+}
+
+// MARK: - «Collega» (N3)
+
+/// The N3 half of the page (ADR-0084 §D3, SPEC R-26): «Collega» on a row, and the sheet that shows
+/// the diff of the exact bytes before anything is written. The diff is the real `DiffView`, fed a
+/// literal unified diff in the shape `UnifiedDiff.between` produces.
+private struct LinkMentionScenes: View {
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: theme.spacing(.l)) { scenes }
+    }
+
+    @ViewBuilder
+    private var scenes: some View {
+        MockupScene(
+            "N3. Ogni riga guadagna «Collega»; la riga stessa apre ancora la nota. «Collega» non "
+                + "scrive: apre il confronto."
+        ) {
+            panel {
+                section {
+                    row("Prova banco", before: "", mention: "Curva di trasmissibilità", after: " misurata a 20 °C.")
+                    row("Scelta del supporto antivibrante",
+                        before: "Il criterio nasce dalla ", mention: "curva di trasmissibilità",
+                        after: ", non dalla rigidezza.")
+                    row("00 Inbox/Appunti fiera", before: "Chiedere la ", mention: "curva T", after: " a catalogo.")
+                }
+            }
+        }
+        MockupScene(
+            "Il foglio di conferma: il confronto dei byte che verranno scritti, «Collega» come "
+                + "pulsante predefinito. Il testo coincide col titolo, quindi «[[Curva di trasmissibilità]]»."
+        ) {
+            sheet(diff: [
+                " ## Misure",
+                "-Curva di trasmissibilità misurata a 20 °C.",
+                "+[[Curva di trasmissibilità]] misurata a 20 °C.",
+                " Da rifare a 60 °C con il carico reale.",
+            ], header: "@@ -3,3 +3,3 @@")
+        }
+        MockupScene(
+            "Una menzione trovata per alias: si scrive «[[Curva di trasmissibilità|curva T]]», così "
+                + "la frase si legge come prima e il link punta al titolo, che è ciò che l'indice "
+                + "risolve. Lo stesso per una menzione che differisce solo per maiuscole o accenti."
+        ) {
+            sheet(path: "00 Inbox/Appunti fiera.md", diff: [
+                " - Stand 4B, referente Bassi",
+                "-Chiedere la curva T a catalogo.",
+                "+Chiedere la [[Curva di trasmissibilità|curva T]] a catalogo.",
+            ], header: "@@ -7,2 +7,2 @@", title: "Collegare «Curva di trasmissibilità» in «Appunti fiera»?")
+        }
+        MockupScene(
+            "La nota è cambiata fra il confronto e il clic: la scrittura è rifiutata, il confronto "
+                + "si rifà sul testo nuovo e il foglio lo dice. Si conferma di nuovo."
+        ) {
+            sheet(diff: [
+                " ## Misure",
+                "-Curva di trasmissibilità misurata a 20 °C e a 40 °C.",
+                "+[[Curva di trasmissibilità]] misurata a 20 °C e a 40 °C.",
+                " Da rifare a 60 °C con il carico reale.",
+            ], header: "@@ -3,3 +3,3 @@", movedOn: true)
+        }
+        MockupScene(
+            "Niente da collegare: il nome non c'è più, o nel frattempo è arrivato un link. La riga "
+                + "lascia il posto a una frase e sparisce alla prossima ricerca."
+        ) {
+            panel {
+                section {
+                    Text("«Prova banco» non nomina più questa nota, o la linka già: niente da collegare.")
+                        .themedText(.caption, color: .textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.vertical, 2)
+                    row("Scelta del supporto antivibrante",
+                        before: "Il criterio nasce dalla ", mention: "curva di trasmissibilità",
+                        after: ", non dalla rigidezza.")
+                }
+            }
+        }
+    }
+
+    // MARK: The pieces
+
+    private func panel(@ViewBuilder _ content: () -> some View) -> some View {
+        content()
+            .padding(theme.spacing(.m))
+            .frame(width: UnlinkedMentionsMockup.inspectorWidth, alignment: .leading)
+            .background(theme.color(.backgroundSecondary))
+            .clipShape(RoundedRectangle(cornerRadius: theme.radius(.card), style: .continuous))
+    }
+
+    private func section(@ViewBuilder _ rows: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
+            HStack(spacing: theme.spacing(.xs)) {
+                Text("MENZIONI NON LINKATE").themedText(.caption, color: .textTertiary)
+                Spacer()
+                Text("3").themedText(.caption, color: .textTertiary)
+            }
+            rows()
+        }
+    }
+
+    /// The approved row (title, the line, the mention in semibold) with «Collega» trailing on its
+    /// title line.
+    private func row(_ title: String, before: String, mention: String, after: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: theme.spacing(.xs)) {
+                Text(title).themedText(.body, color: .accentPrimary).lineLimit(1)
+                Spacer(minLength: theme.spacing(.xs))
+                Text("Collega")
+                    .themedText(.caption, color: .accentPrimary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous)
+                            .fill(theme.color(.backgroundTertiary))
+                    )
+            }
+            Text("\(before)\(Text(mention).fontWeight(.semibold))\(after)")
+                .themedText(.caption, color: .textSecondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func sheet(
+        path: String = "Prova banco.md", diff: [String], header: String,
+        title: String = "Collegare «Curva di trasmissibilità» in «Prova banco»?", movedOn: Bool = false
+    ) -> some View {
+        // `RelatedLinkSheet`'s width, the other sheet that writes a link; wide enough for the
+        // diff's mono lines, which `DiffView` cuts at one line each.
+        LinkMockupSheet(width: InspectorLinksMockup.sheetWidth, title: title, confirm: "Collega") {
+            if movedOn {
+                Label("La nota è cambiata: il confronto è stato aggiornato", systemImage: "arrow.triangle.2.circlepath")
+                    .themedText(.caption, color: .textSecondary)
+            }
+            DiffView(path: path, diff: (["--- a/\(path)", "+++ b/\(path)", header] + diff).joined(separator: "\n"))
+        }
     }
 }

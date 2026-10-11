@@ -801,3 +801,29 @@ private enum StateBaseDoor: String {
     #expect(remembered(controller, rootB) == ["SoloB.md"])
     controller.close()
 }
+
+// A pending request to put the keyboard in the editor names a column of the folder being left
+// (note-workflow R-04): the switch clears it with the other vault-scoped state, so the first
+// column of the next folder does not take the caret nobody asked it for.
+@MainActor
+@Test func aSwitchClearsAPendingEditorFocusRequest() async throws {
+    let a = try TemporaryVault()
+    let b = try TemporaryVault()
+    let rootB = b.root
+    let controller = try await quitController(a)
+    try vaultB(b, rememberedIn: controller)
+    // The seam works at all: a request is taken once.
+    controller.requestEditorFocus()
+    #expect(controller.takeEditorFocusRequest(forColumn: controller.focusedColumnIndex)) // (note-workflow R-04)
+    controller.requestEditorFocus()
+
+    let switched = await controller.switchVault(to: rootB) { _ in
+        Issue.record("no dirty tab: nothing to ask")
+        return .cancel
+    }
+
+    #expect(switched)
+    #expect(!controller.takeEditorFocusRequest(forColumn: controller.focusedColumnIndex)) // (note-workflow R-04)
+    #expect(!controller.takeEditorFocusRequest(forColumn: 0)) // (note-workflow R-04)
+    controller.close()
+}

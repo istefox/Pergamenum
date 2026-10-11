@@ -5,15 +5,38 @@ struct NewCanvasItemSheet: View {
 
     @Environment(\.theme) private var theme
     let kind: Kind
+    /// Closes the sheet: «Annulla», and «Fine» on a document's confirmation.
     let onCancel: () -> Void
-    /// Makes the item and answers the sentence to show when it could not, nil when it was
-    /// made. Awaited, so the sheet stays open, with what was typed, until the write is done
-    /// (n1-seams R-18); the caller closes it on success.
-    let onConfirm: (String) async -> String?
+    /// Makes the item and answers what the sheet shows next. Awaited, so the sheet stays open,
+    /// with what was typed, until the write is done (n1-seams R-18); the caller closes it when
+    /// it answers `.editing` for a made folder or link.
+    let onConfirm: (String) async -> Confirmation
+    /// «Apri» on a document's confirmation, with the note's path (note-workflow R-05).
+    let onOpen: (String) -> Void
+
+    /// Where the sheet stands once the person has pressed «Crea» (note-workflow R-05): typing, the
+    /// write running, the document made (the sheet stays open to offer «Apri»), or a sentence.
+    enum Confirmation: Equatable {
+        case editing
+        case working
+        case created(path: String, title: String)
+        case failed(String)
+    }
+
+    /// What the sheet shows after `creation`: the document's confirmation, or its sentence.
+    static func confirmation(
+        after creation: WorkspaceController.DocumentCreation, title: String
+    ) -> Confirmation {
+        switch creation {
+        case .created(let path): .created(path: path, title: title)
+        case .failed(let sentence): .failed(sentence)
+        }
+    }
 
     @State private var value = ""
-    @State private var failure: String?
-    @State private var isCreating = false
+    @State private var phase: Confirmation = .editing
+
+    private var isCreating: Bool { phase == .working }
 
     private var title: String {
         switch kind {
@@ -32,12 +55,48 @@ struct NewCanvasItemSheet: View {
     }
 
     var body: some View {
+        Group {
+            if case .created(let path, let created) = phase {
+                confirmation(path: path, title: created)
+            } else {
+                form
+            }
+        }
+        .padding(theme.spacing(.l))
+        .frame(width: 460)
+        .background(theme.color(.surfaceCard))
+    }
+
+    /// The document is made and on the board: «Apri» shows it in the Note pane, «Fine» (Return
+    /// or Esc) closes the sheet (note-workflow R-05).
+    private func confirmation(path: String, title created: String) -> some View {
+        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
+            Text(title).themedText(.title)
+            Text("Documento «\(created)» creato e posizionato sulla board.")
+                .themedText(.body, color: .textSecondary)
+            HStack {
+                Spacer()
+                Button("Apri") { onOpen(path) }
+                Button("Fine", action: onCancel)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .onExitCommand(perform: onCancel)
+    }
+
+    private var failure: String? {
+        if case .failed(let sentence) = phase { sentence } else { nil }
+    }
+
+    private var form: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.m)) {
             Text(title).themedText(.title)
             TextField(prompt, text: $value)
                 .textFieldStyle(.roundedBorder)
                 // The sentence is about the value that failed: a new one is a new attempt.
-                .onChange(of: value) { _, _ in failure = nil }
+                .onChange(of: value) { _, _ in
+                    if failure != nil { phase = .editing }
+                }
             // In place, the way the Cmd+N composer reports a refused title.
             if let failure {
                 Text(failure).themedText(.caption, color: .taskOverdue)
@@ -54,17 +113,13 @@ struct NewCanvasItemSheet: View {
                     .disabled(value.trimmingCharacters(in: .whitespaces).isEmpty || isCreating)
             }
         }
-        .padding(theme.spacing(.l))
-        .frame(width: 460)
-        .background(theme.color(.surfaceCard))
     }
 
     private func confirm() {
         let trimmed = value.trimmingCharacters(in: .whitespaces)
-        isCreating = true
+        phase = .working
         Task { @MainActor in
-            failure = await onConfirm(trimmed)
-            isCreating = false
+            phase = await onConfirm(trimmed)
         }
     }
 }

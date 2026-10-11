@@ -25,6 +25,12 @@ trustworthy. Each one answers a defect found on 2026-09-26 (issue #581).
 - `proposed` is only for an ADR whose implementation is not on `main` yet. The merge hash exists
   only after the merge, so the flip to `accepted` is the first docs change after it, not
   something left for a later chain to notice.
+- `planned` is a `proposed` record that reaches `main` ahead of its implementation on purpose,
+  committed with the plan that will build it (`docs/plans/`), so the plan and the decision it
+  answers to travel together and the number is held. It flips to `accepted` exactly as `proposed`
+  does, with the merge of the PR that implements it. A record nobody means to land before its code
+  stays `proposed`. Introduced 2026-10-06, when PR #904 landed ADR-0081 to ADR-0088 with the
+  note-workflow plans.
 
 ## 3. A citation says where the ADR lives
 
@@ -60,16 +66,27 @@ runs both on every pull request and every push to `main`, as an advisory check, 
 one. The check is not in the pre-push hook, because a comment citation should not stop a push.
 
 It checks less of rule 2 than the rule says: a status line in the head with one of the words
-`accepted`, `proposed`, `superseded`, `deprecated` or `rejected`; no ADR on the base that reads
-`proposed`; and, as a warning only, a commit hash in a status line that is not on the base's
+`accepted`, `planned`, `proposed`, `superseded`, `deprecated` or `rejected`; no ADR on the base
+that reads `proposed` (`planned` is the one way to be on the base before the code); and, as a warning only, a commit hash in a status line that is not on the base's
 first-parent line. The PR, hash and date that `accepted` should name are not checked. A record that
 reaches `main` ahead of its implementation is reported while it reads `proposed` there, by the
 check on `main` itself (a push, or a local run with HEAD at the base): a pull request is judged only
 on the ADRs it touches, added, edited, renamed or removed since its merge-base, so a record it never
 opened does not turn it red (PG-340). The base's ADRs are matched by number, the identity rule 1
-counts, so an ADR whose slug the branch renamed is still checked. A number rule 1 reports, in the tree or against the base, is not checked for
-`proposed` until the collision is resolved: the collision is already a finding, and a file that
-never landed must not be told to flip to `accepted`.
+counts, so an ADR whose slug the branch renamed is still checked. A number rule 1 reports, in the
+tree or against the base, is not checked for `proposed` until the collision is resolved: the
+collision is already a finding, and a file that never landed must not be told to flip to
+`accepted`.
+
+`scripts/adr-index.py` keeps `CLAUDE.md`'s `## ADR index` in step with this directory (PG-397). With
+no option it prints the index, one `- ADR-NNNN — <title>` line per `NNNN-<slug>.md` in file name
+order, the title read from the file's first line in either heading shape, `# ADR-NNNN: <title>` or
+`# ADR-NNNN — <title>`. `--check` compares those lines with the bullets under the heading and names
+each stale or missing line and the first out-of-order one. Exit 0 is in step, 1 out of step, 2 an
+index it could not build or read: a first line in neither shape, a heading naming another number,
+no such section.
+`--self-test` runs its own scenarios in throwaway directories. It reads the working tree only, and
+no workflow or hook runs it.
 
 ## Renumbering register
 
@@ -82,3 +99,19 @@ never landed must not be told to flip to `accepted`.
 | 0071 (`0071-day-boundary-and-calendar-math.md`) | 0075 | 2026-09-30 | Written for `PG-259`/#573 and never committed under 0071: PR #691 landed the Contenitore ADR-0071 on `main`, which 0072, 0073 and 0074 followed, while this chain was in flight. Main's four keep their numbers; this record took the next free one before its first commit (`768ecd09`). |
 | 0074, then 0075 (`0075-pratiche-message-anchored-entries.md`) | 0076 | 2026-09-30 | Written for `PG-338` on `kepler/docs/spec-pg-338` and never committed under either number. PR #717 landed the editor-coordinator record (`0074-editor-coordinator-feature-controllers.md`) on `main` first, and `0075-day-boundary-and-calendar-math.md` holds 0075 on the unmerged branch `fix/pg-259-day-boundary-calendar-math` (`PG-259`, `768ecd09`), which rule 1 counts. Both keep their numbers; this record moved to the next number free on every ref, before its own PR. |
 | 0076 (`0076-html-exporter-renders-from-the-shared-parsers.md`) | 0077 | 2026-09-30 | Written for `PG-147`/#247 and never committed under 0076: PR #724 landed the Pratiche record `0076-pratiche-message-anchored-entries.md` on `main` while this chain was in flight. Main's 0076 keeps its number; this record took the next free one before its first commit. |
+
+## Where instruction content lives
+
+`CLAUDE.md` is loaded whole into every session, and Claude Code warns when the instruction files
+together pass 150k characters, so what goes where is a decision of its own (2026-10-07, when
+`CLAUDE.md` stood at 129k and the three ADR summary sections were 91k of it).
+
+- `CLAUDE.md`: what every session needs, plus `## ADR index`, one line per ADR file built from the
+  file's own `# ADR-NNNN` heading. **A new ADR needs no line written by hand there:** paste what
+  `scripts/adr-index.py` prints, and `scripts/adr-index.py --check` says when the index is behind.
+- `docs/adr/INDEX.md`: the long-form ADR summaries that used to sit in `CLAUDE.md`, moved verbatim.
+  A plan or spec that says to add a line to "CLAUDE.md's Chain decision index" means this file, at
+  the end of its "Chain decision index" section, and only when the ADR gets a long-form summary.
+- `.claude/rules/*.md`: working agreements keyed to a file type, each with a `paths:` frontmatter,
+  loaded only when a matching file is read. Basenames avoid `swift.md`, `shell.md` and `tools.md`,
+  which `~/.claude/rules/` already holds and which ADRs cite.

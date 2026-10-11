@@ -24,6 +24,8 @@ final class CompletingTextView: NSTextView {
     var editorCommands: [EditorCommand] = []
     /// Runs a command the app owns. The text view never performs one itself.
     var onRunCommand: ((ShortcutCommand) -> Void)?
+    /// Offers a dangling `[[` title to the composer (ADR-0083 §D6); nil hides the «Crea «X»» row.
+    var offerCreation: ((String) -> Void)?
     /// The panel every completion is drawn in. Owned here because it lives and dies with
     /// the text view it opens over, and configured lazily so that choosing a row by mouse
     /// lands in the same place as choosing it by Return.
@@ -48,16 +50,6 @@ final class CompletingTextView: NSTextView {
     /// offset - reused for exactly the reason the embed cache above is
     /// (`CompletingTextView+Accessibility.swift`).
     var linkAccessibilityElements: [Int: NSAccessibilityElement] = [:]
-    /// One `NSTrackingArea` per `.editorLink` span, rebuilt on every restyle
-    /// (`CompletingTextView+CursorRects.swift`) - `addCursorRect` never took effect in this
-    /// app's SwiftUI-hosted window (issue #191 follow-up), so the pointing-hand cursor is
-    /// driven by real `mouseEntered`/`mouseExited` events instead, the mechanism
-    /// `EditorColumns.swift`'s divider already proves works here.
-    var linkTrackingAreas: [NSTrackingArea] = []
-    /// How many of `linkTrackingAreas` the mouse is currently inside, so a push/pop pair only
-    /// fires on the 0→1/1→0 transition - moving straight from one link into an adjacent one
-    /// must not flicker the cursor back to the arrow in between.
-    var hoveredLinkCount = 0
     /// The link character index the first click of what might become a double-click resolved
     /// to, recorded by `CompletingTextView+Pasteboard.swift`'s `mouseDown` before `super`
     /// places the caret and reveal-on-caret runs (issue #191 follow-up). Revealing does not
@@ -115,6 +107,9 @@ final class CompletingTextView: NSTextView {
     /// `claimsCheckbox` in `Sources/Features/Workspace/FormattingTextView+Clicks.swift` were
     /// written against, on the Workspace card surface).
     var onToggleCheckbox: ((CGPoint) -> Bool)?
+
+    /// Called after every `setMarkedText` (ADR-0093 §D7, `CompletingTextView+Composition.swift`).
+    var onComposedTextChanged: (() -> Void)?
 
     /// Claims a keyboard command before the ordinary editing behaviour gets it, while the
     /// completion panel is closed - the panel's own keys in `doCommand(by:)` below still
@@ -247,7 +242,7 @@ final class CompletingTextView: NSTextView {
             query = prefix
             // The candidate itself, not its string: the row reads its `label` (a note found
             // through an alias names it) and `apply` closes the link (n1-seams R-07, R-08).
-            items = wikilinkCandidates(matching: prefix).map(CompletionItem.wikilink)
+            items = wikilinkItems(matching: prefix)
         case .section(_, let prefix), .tag(let prefix):
             query = prefix
             let symbol = context.symbol
@@ -325,6 +320,9 @@ final class CompletingTextView: NSTextView {
         // and nothing shortcode-shaped is left in the file for Obsidian to read differently.
         case .emoji(let glyph, _):
             insertText(glyph, replacementRange: range)
+        // The link closed by the candidate's rule, then the title offered (ADR-0083 §D6).
+        case .createNote(let title):
+            createNote(title, replacing: range)
         case .command(let command):
             switch command.action {
             case .insert(let text, let cursorBack):

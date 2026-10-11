@@ -65,6 +65,76 @@ final class QuitReviewUITests: PergamenumUITestCase {
         XCTAssertTrue(written.contains(typed), "«Salva» non ha scritto la nota")
     }
 
+    /// ADR-0089, PG-393 M1/M2: a diary day whose file moved on while it was being written asks at
+    /// quit too, and neither «Annulla» nor «Non salvare» writes it. The wording, the order and the
+    /// cancel's reveal are pinned in-process (`QuitReviewConflictTests`, `QuitCoordinatorTests`);
+    /// what only a real window shows is AppKit's terminate reaching the review with a conflicted
+    /// item and nothing else dirty. The day stands in for the board: both go through the same
+    /// `QuitReview.diary`/`.board` path and a board needs a drag to dirty it. Like the test
+    /// above, it ends with the app gone, so the teardown's `terminate()` meets no alert.
+    func testQuittingWithAConflictedDiaryDayAsksAndWritesNothing() throws {
+        openSidebarRow("pane-diary")
+        let container = element("diary-editor")
+        XCTAssertTrue(container.waitForExistence(timeout: 10), "l'editor del Diario non c'è")
+        let editor = container.elementType == .textView
+            ? container : container.descendants(matching: .textView).firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 5), "il Diario non contiene un editor")
+        // The diary replaces its text when it loads: a keystroke typed before that is overwritten.
+        XCTAssertTrue(
+            waitUntil { ((editor.value as? String) ?? "").contains("date:") },
+            "il Diario non ha caricato la giornata"
+        )
+        editor.click()
+        editor.typeKey(.downArrow, modifierFlags: .command)
+        editor.typeText("\nRiga del diario.")
+
+        // Another writer rewrites the day file before the diary's own save: the buffer is dirty
+        // and the file moved on, which is the conflict ADR-0057 names.
+        let outside = "---\ndate: 2026-01-01\n---\n\nScritto da fuori.\n"
+        try FileManager.default.createDirectory(at: dayFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try outside.write(to: dayFile, atomically: true, encoding: .utf8)
+        XCTAssertTrue(
+            element("diary-conflict-banner").waitForExistence(timeout: 10),
+            "il Diario non ha mostrato il conflitto di salvataggio"
+        )
+
+        // First quit: the question appears, and «Annulla» keeps the app, the banner and the file.
+        app.typeKey("q", modifierFlags: .command)
+        let cancel = alertButton(identifier: "quit-prompt-cancel")
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5), "uscire con un diario in conflitto non ha chiesto niente")
+        cancel.click()
+        XCTAssertEqual(app.state, .runningForeground, "«Annulla» ha chiuso l'app")
+        XCTAssertTrue(element("diary-conflict-banner").waitForExistence(timeout: 5), "dopo «Annulla» il banner è sparito")
+        XCTAssertEqual(try String(contentsOf: dayFile, encoding: .utf8), outside, "«Annulla» ha scritto il giorno")
+
+        // Second quit: «Non salvare» lets the day go, writes nothing, and the app exits.
+        app.typeKey("q", modifierFlags: .command)
+        let discard = alertButton(identifier: "quit-prompt-discard")
+        XCTAssertTrue(discard.waitForExistence(timeout: 5), "la seconda uscita non ha chiesto niente")
+        discard.click()
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 15), "dopo «Non salvare» l'app non è uscita")
+        XCTAssertEqual(try String(contentsOf: dayFile, encoding: .utf8), outside, "«Non salvare» ha scritto il giorno")
+    }
+
+    /// The day's own file, `Diario/<yyyyMMdd>.md` in the machine's zone (`CalendarDate.today` is).
+    private var dayFile: URL {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd"
+        formatter.timeZone = .current
+        return vault
+            .appending(path: "Diario", directoryHint: .isDirectory)
+            .appending(path: "\(formatter.string(from: Date())).md", directoryHint: .notDirectory)
+    }
+
+    private func waitUntil(timeout: TimeInterval = 6, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if condition() { return true }
+            Thread.sleep(forTimeInterval: 0.2)
+        } while Date() < deadline
+        return false
+    }
+
     /// A button of the quit alert, by the identifier `QuitReviewAlert.make` gives it
     /// (`quit-prompt-save`, `quit-prompt-cancel`, `quit-prompt-discard`): an app-modal `NSAlert`
     /// surfaces as a dialog, and a sheet is looked at too so the test does not depend on how

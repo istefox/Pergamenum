@@ -243,6 +243,10 @@ final class Navigation {
     /// every surface from.
     var praticaLinkRequest: PraticaLinkRequest?
 
+    /// The choice a shared title or a dangling link put in front of the person from a surface
+    /// with no live point to anchor a menu to (ADR-0083 §D5), hosted by `RootView`.
+    var linkChoice: LinkChoiceRequest?
+
     /// The task `TaskCommand.assignCategory` opened `CategoryPicker` for (ADR-0047 §D5),
     /// held the same way and for the same reason as `taskPickingBoard` above: the command
     /// is reachable from more than one surface, and `RootView` is the one place they all

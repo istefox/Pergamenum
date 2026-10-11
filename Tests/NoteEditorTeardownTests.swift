@@ -117,3 +117,64 @@ import Testing
     // Second Cmd+Z, the regression's own count: a safe no-op on the fixed build.
     undoManager.undo()
 }
+
+/// ADR-0083 §D7 (PG-386, PG-258): the Cmd+hover preview's local event monitor, tracking area and
+/// window-key observation are released when the pane is left, by the same `dismantleNSView` that
+/// purges the undo actions. A monitor that outlived its view was PG-258.
+@MainActor
+@Test func dismantlingTheNoteEditorTearsDownTheLinkPreviewController() throws {
+    let view = NoteTextView(
+        text: .constant("ciao"), theme: .emergency, noteTitles: [], tagSuggestions: [],
+        hidesMarkup: true, onFollowLink: { _ in }
+    )
+    let coordinator = view.makeCoordinator()
+    let textView = CompletingTextView(usingTextLayoutManager: true)
+    textView.frame = CGRect(x: 0, y: 0, width: 600, height: 800)
+    coordinator.textView = textView
+    let scrollView = NSScrollView(frame: textView.frame)
+    scrollView.documentView = textView
+
+    coordinator.linkPreview.attach(to: textView)
+    coordinator.linkPreview.pointerEntered()
+    #expect(coordinator.linkPreview.hasTrackingArea, "premessa: il tracking area è installato")
+    #expect(coordinator.linkPreview.hasEventMonitor, "premessa: il monitor è installato")
+
+    NoteTextView.dismantleNSView(scrollView, coordinator: coordinator)
+
+    #expect(!coordinator.linkPreview.hasEventMonitor, "il monitor non doveva sopravvivere alla vista")
+    #expect(!coordinator.linkPreview.hasTrackingArea)
+    #expect(!coordinator.linkPreview.isObservingWindowKey)
+}
+
+/// A storage delegate that is not the coordinator, standing in for whatever else could hold the slot.
+private final class ForeignStorageDelegate: NSObject, NSTextStorageDelegate {}
+
+/// ADR-0093 §D5, plan docs/plans/scoped-layout-followup.md, Task 1 (R-01). The first styling installs
+/// the coordinator as the storage's delegate (ADR-0091 §D2), and `dismantleNSView` ran on every pane
+/// switch without taking it out again.
+@MainActor
+@Test func dismantlingTheNoteEditorClearsTheStorageDelegateItInstalled() throws {
+    let fixture = ScrolledEditorFixture(text: "Una riga di prosa.\n")
+    defer { fixture.window.orderOut(nil) }
+    let storage = try #require(fixture.textView.textStorage)
+    #expect(storage.delegate === fixture.coordinator, "premessa: la prima formattazione installa il coordinator")
+
+    NoteTextView.dismantleNSView(fixture.scrollView, coordinator: fixture.coordinator)
+
+    #expect(storage.delegate == nil, "il coordinator è rimasto delegate dello storage dopo lo smontaggio")
+}
+
+/// The same teardown leaves alone a delegate that is not this coordinator's: it clears its own
+/// installation and only that.
+@MainActor
+@Test func dismantlingTheNoteEditorLeavesAForeignStorageDelegateInPlace() throws {
+    let fixture = ScrolledEditorFixture(text: "Una riga di prosa.\n")
+    defer { fixture.window.orderOut(nil) }
+    let storage = try #require(fixture.textView.textStorage)
+    let foreign = ForeignStorageDelegate()
+    storage.delegate = foreign
+
+    NoteTextView.dismantleNSView(fixture.scrollView, coordinator: fixture.coordinator)
+
+    #expect(storage.delegate === foreign, "lo smontaggio ha tolto un delegate che non era del coordinator")
+}

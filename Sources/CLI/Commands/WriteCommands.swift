@@ -58,6 +58,31 @@ enum WriteCommands {
         return Writing.finish(session)
     }
 
+    // MARK: note link-mention / unlink-related (ADR-0084 §D3, §D4)
+
+    @MainActor
+    static func noteLinkMention(_ arguments: Arguments) async throws -> ExitCode {
+        let path = try NoteCommands.requirePath(arguments, "note link-mention <percorso> <titolo>")
+        let session = try await Writing.session(arguments, command: "note link-mention")
+        let summary = try await VaultAPI.linkMention(session, in: path, title: arguments.rest(from: 3))
+        Writing.report(summary, arguments: arguments)
+        return Writing.finish(session)
+    }
+
+    /// One summary per note written: the two sides of the link, or the one that held it.
+    @MainActor
+    static func noteUnlinkRelated(_ arguments: Arguments) async throws -> ExitCode {
+        let path = try NoteCommands.requirePath(arguments, "note unlink-related <percorso> <percorso-destinazione>")
+        let session = try await Writing.session(arguments, command: "note unlink-related")
+        let summaries = try await VaultAPI.removeStructuralLink(session, from: path, to: arguments.rest(from: 3))
+        if arguments.has("json") {
+            Output.json(summaries)
+        } else {
+            for summary in summaries { Writing.report(summary, arguments: arguments) }
+        }
+        return Writing.finish(session)
+    }
+
     // MARK: capture
 
     /// `perg capture <testo> [--dest note|task|today|note:PERCORSO]`.

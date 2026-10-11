@@ -25,8 +25,11 @@ struct DrawnViewBlock {
 extension NoteTextView.Coordinator {
     /// `ViewBlockController.apply(to:runs:markers:)`, under the name `applyStyling` calls in its
     /// sequence (ADR-0074 §D5). The pass and its state are the controller's, below.
-    func applyViewBlocks(to textView: NSTextView, runs: [NSRange], markers: inout [Int: [HiddenMarker]]) {
-        viewBlocks.apply(to: textView, runs: runs, markers: &markers)
+    func applyViewBlocks(
+        to textView: NSTextView, runs: [NSRange], markers: inout [Int: [HiddenMarker]],
+        within dirty: NSRange? = nil, firstOrdinal: Int = 0
+    ) {
+        viewBlocks.apply(to: textView, runs: runs, markers: &markers, within: dirty, firstOrdinal: firstOrdinal)
     }
 }
 
@@ -51,6 +54,8 @@ final class ViewBlockController {
     /// Read when a pass runs, never captured earlier (ADR-0074 §D3).
     private let parent: () -> NoteTextView?
     private let decorations: EditorDecorationDelegate
+    /// The layout record; its door is the one way this pass invalidates the layout (ADR-0093 §D3).
+    private let layoutDebt: LayoutDebt
 
     /// The `NSHostingView` every view block on screen is drawn in, by the fence's own ordinal
     /// within the note (ADR-0033 §D3) - owned here for the reason `TableBlockController.grids`
@@ -84,16 +89,27 @@ final class ViewBlockController {
     private var lastRevealed: NSRange?
     /// `Coordinator.growToFitTheText` as `refresh` last handed it, for the deferred re-layout.
     private var growToFit: ((NSTextView) -> Void)?
+    /// Every closed view-block fence's range, read off the coordinator's structure map, or nil when
+    /// it keeps none that is current (ADR-0091 §D6): the kill switch is on, or nothing has been
+    /// styled yet. Set by the coordinator; nil falls back to a parse of the text.
+    var fenceRanges: (() -> [NSRange]?)?
 
-    init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate) {
+    init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate, layout: LayoutDebt) {
         self.parent = parent
         self.decorations = decorations
+        layoutDebt = layout
     }
 
     /// Whether the selection crossed into or out of a fence since last asked (ADR-0033 §D5),
-    /// recording the new answer when it did: `true` is what re-runs `applyStyling`.
+    /// recording the new answer when it did: `true` is what re-runs `applyStyling`. Asked on every
+    /// arrow key, so the fences come from the map when there is one rather than from a parse.
     func selectionCrossedFence(in textView: NSTextView) -> Bool {
-        let revealed = Self.revealedViewBlock(in: textView.string, selection: textView.selectedRange())
+        let selection = textView.selectedRange()
+        let revealed = if let ranges = fenceRanges?() {
+            ranges.first { Self.selectionReveals(selection, fence: $0) }
+        } else {
+            Self.revealedViewBlock(in: textView.string, selection: selection)
+        }
         guard revealed != lastRevealed else { return false }
         lastRevealed = revealed
         return true
@@ -117,7 +133,14 @@ final class ViewBlockController {
     /// own error card instead of a query result (ADR §D7 follow-up): a fence's ordinal must
     /// not depend on whether the fence *above* it happens to parse this keystroke, or fixing a
     /// typo in the first block would re-run the second block's query.
-    func apply(to textView: NSTextView, runs: [NSRange], markers: inout [Int: [HiddenMarker]]) {
+    ///
+    /// `dirty` is the incremental restyle's range (ADR-0091 §D4): `runs` are then the fences inside
+    /// it, `firstOrdinal` the ordinal of the first of them in the note, and every fence outside it
+    /// keeps its host, its lines and its entry as the shift left them.
+    func apply(
+        to textView: NSTextView, runs: [NSRange], markers: inout [Int: [HiddenMarker]],
+        within dirty: NSRange? = nil, firstOrdinal: Int = 0
+    ) {
         guard parent()?.hidesMarkup == true else {
             clear()
             return
@@ -129,10 +152,13 @@ final class ViewBlockController {
         // so it has to ask the question at the moment it decides (ADR §D4).
         let selection = textView.selectedRange()
         var found: [(opening: Int, ordinal: Int, source: String)] = []
-        var lines: Set<Int> = []
+        // Outside the restyled range, what the shift left: kept, not recomputed.
+        let kept = dirty.map { range in drawn.filter { !NSLocationInRange($0.key, range) } } ?? [:]
+        var lines: Set<Int> = dirty.map { range in hiddenLines.filter { !NSLocationInRange($0, range) } } ?? []
         var openingOfLine: [Int: Int] = [:]
 
-        for (ordinal, run) in runs.enumerated() {
+        for (index, run) in runs.enumerated() {
+            let ordinal = firstOrdinal + index
             // The third condition is the reveal (ADR §D4, R-05): the fence the selection is
             // inside is registered not at all this pass - no marker, so the opening line keeps
             // its backticks; no hidden lines, so the body and the closing fence come back into
@@ -173,9 +199,9 @@ final class ViewBlockController {
         // Pruned here and only here, `TableGridStore`'s own division of labour: a styling
         // pass is the one moment that knows every ordinal the note still spells, and a note
         // that loses a fence must not keep a live SwiftUI hierarchy over the index for it.
-        let vended = hosts.hosts(for: found.map(\.ordinal), in: textView)
-        var byOpening: [Int: NSView] = [:]
-        var drawn: [Int: DrawnViewBlock] = [:]
+        let vended = hosts.hosts(for: kept.values.map(\.ordinal) + found.map(\.ordinal), in: textView)
+        var byOpening: [Int: NSView] = kept.compactMapValues { vended[$0.ordinal] }
+        var drawn = kept
         for entry in found {
             guard let host = vended[entry.ordinal] else { continue }
             // Keyed by paragraph offset on the way out, by ordinal on the way in: the
@@ -294,18 +320,19 @@ final class ViewBlockController {
     /// One re-layout per turn, however many fences reported a height change in it - and never on
     /// the call stack that reported it: `onHeightChange` runs during SwiftUI's own layout of a
     /// view TextKit is laying out, so invalidating `NSTextLayoutManager` synchronously here would
-    /// re-enter it. `Task { @MainActor }` leaves that stack; `invalidateLayout` is the same call
-    /// `applyFolding`/`applyTransclusion` already make in production, and `growToFitTheText`
-    /// afterwards is the existing, already-safe resize path (never sets a frame directly - see
-    /// its own doc comment on why that matters here).
+    /// re-enter it. `Task { @MainActor }` leaves that stack; the invalidation goes through the
+    /// layout record's door, as folding's and the transclusion pass's do, so the record owes the
+    /// whole note (ADR-0093 §D3), and `growToFitTheText` afterwards lays out what it owes through the
+    /// existing, already-safe resize path (never sets a frame directly - see its own doc comment on
+    /// why that matters here).
     private func scheduleRelayout(in textView: NSTextView) {
         guard !pendingRelayout else { return }
         pendingRelayout = true
         Task { @MainActor [weak self, weak textView] in
             guard let self else { return }
             self.pendingRelayout = false
-            guard let textView, let manager = textView.textLayoutManager else { return }
-            manager.invalidateLayout(for: manager.documentRange)
+            guard let textView else { return }
+            self.layoutDebt.invalidateWholeDocument(of: textView)
             self.growToFit?(textView)
         }
     }
@@ -351,5 +378,18 @@ final class ViewBlockController {
         decorations.apply(viewBlockHosts: [:])
         hiddenLines = []
         decorations.apply(viewBlockLines: [])
+    }
+}
+
+extension ViewBlockController {
+    /// Re-keys the drawn view blocks and their hidden lines past `edit` (ADR-0091 §D6). The hosts
+    /// stay keyed by ordinal (ADR-0033 §D3), so none is rebuilt; the delegate's offset-keyed copy
+    /// of them moves with `EditorDecorationDelegate.shift(by:)`. The fence the selection was last
+    /// inside moves too, or stretches when the edit is inside it.
+    func shift(by edit: StorageEdit) {
+        drawn = edit.shiftedKeys(drawn)
+        hiddenLines = edit.shiftedKeys(hiddenLines)
+        pendingCaret = pendingCaret.flatMap(edit.shiftedKey)
+        lastRevealed = lastRevealed.flatMap(edit.shifted)
     }
 }
