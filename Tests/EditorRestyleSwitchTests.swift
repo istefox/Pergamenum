@@ -78,4 +78,71 @@ import Testing
         #expect(twin.incremental.coordinator.restyleLog.incremental > 0, "the control never took the incremental path")
         #expect(RestyleTwin.emptyFields(of: editor.coordinator.derivedStateSnapshot()).isEmpty)
     }
+
+    // MARK: The layout switch (ADR-0093 §D6, R-09)
+
+    // (R-09) The key is the one the ADR names.
+    @Test func theLayoutKeyIsEditorFullLayout() {
+        #expect(EditorRestyleSwitch.layoutKey == "editorFullLayout")
+    }
+
+    // (R-09) The launch argument turns it on.
+    @Test func theLayoutLaunchArgumentTurnsItOn() throws {
+        let (defaults, name) = try scratchDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        #expect(EditorRestyleSwitch.forcesFullLayout(arguments: ["-editorFullLayout", "YES"], defaults: defaults))
+        #expect(EditorRestyleSwitch.forcesFullLayout(
+            arguments: ["Pergamenum", "-disableCalendar", "YES", "-editorFullLayout", "YES"], defaults: defaults
+        ))
+    }
+
+    // (R-09) The key in the defaults turns it on.
+    @Test func theLayoutDefaultsKeyTurnsItOn() throws {
+        let (defaults, name) = try scratchDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        defaults.set(true, forKey: EditorRestyleSwitch.layoutKey)
+
+        #expect(EditorRestyleSwitch.forcesFullLayout(arguments: [], defaults: defaults))
+    }
+
+    // (R-09) Neither the argument nor the key: off, and an argument about something else is not it.
+    @Test func theLayoutSwitchAbsentIsOff() throws {
+        let (defaults, name) = try scratchDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        #expect(!EditorRestyleSwitch.forcesFullLayout(arguments: [], defaults: defaults))
+        #expect(!EditorRestyleSwitch.forcesFullLayout(arguments: ["-disableCalendar", "YES"], defaults: defaults))
+    }
+
+    // (R-09) The two switches are independent: neither argument nor key reads as the other.
+    @Test func theTwoSwitchesAreIndependent() throws {
+        let (defaults, name) = try scratchDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        #expect(!EditorRestyleSwitch.forcesFullRestyle(arguments: ["-editorFullLayout", "YES"], defaults: defaults))
+        #expect(!EditorRestyleSwitch.forcesFullLayout(arguments: ["-editorFullRestyle", "YES"], defaults: defaults))
+
+        defaults.set(true, forKey: EditorRestyleSwitch.key)
+        #expect(!EditorRestyleSwitch.forcesFullLayout(arguments: [], defaults: defaults))
+        defaults.removeObject(forKey: EditorRestyleSwitch.key)
+        defaults.set(true, forKey: EditorRestyleSwitch.layoutKey)
+        #expect(!EditorRestyleSwitch.forcesFullRestyle(arguments: [], defaults: defaults))
+    }
+
+    // (R-09) The coordinator reads the layout switch at `init`, and the fixture's explicit value wins.
+    @Test func theCoordinatorReadsTheLayoutSwitchAtInit() {
+        let read = EditorRestyleSwitch.forcesFullLayout(
+            arguments: ProcessInfo.processInfo.arguments, defaults: .standard
+        )
+        let left = ScrolledEditorFixture(text: "Una riga.\n", forcesFullLayout: nil)
+        let forced = ScrolledEditorFixture(text: "Una riga.\n", forcesFullLayout: true)
+        let off = ScrolledEditorFixture(text: "Una riga.\n")
+        defer { [left, forced, off].forEach { $0.window.orderOut(nil) } }
+
+        #expect(left.coordinator.forcesFullLayout == read)
+        #expect(forced.coordinator.forcesFullLayout)
+        #expect(!off.coordinator.forcesFullLayout)
+    }
 }

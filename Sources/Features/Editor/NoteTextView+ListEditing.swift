@@ -82,12 +82,24 @@ extension NoteTextView.Coordinator {
     /// `renumberLists(in:)`, caret clamped as before. The write's own `didChangeText()` re-enters
     /// `textDidChange` with the range this replacement recorded, and that pass answers nil: the
     /// run it reaches is already contiguous.
+    ///
+    /// With a structure map that is the text's own, the same answer is read from a window instead of
+    /// the whole note (ADR-0093 §D8): from the nearest line above the edit that no run crosses, over
+    /// the storage's own string, so no bridge of the note is made for it. Without one (the kill
+    /// switch, no styling yet, a wholesale replace waiting on its restyle) it is the scoped form.
     func renumberLists(in textView: NSTextView, touching edited: NSRange?) {
         guard let edited else {
             renumberLists(in: textView)
             return
         }
-        guard let rewrite = ListContinuation.renumbered(textView.string, touching: edited) else { return }
+        let rewrite: ListContinuation.Renumbering?
+        if let window = restyleScope?.renumberWindow(before: edited.location), let storage = textView.textStorage {
+            rewrite = ListContinuation.renumbered(storage.string as NSString, touching: edited, window: window)
+                .renumbering
+        } else {
+            rewrite = ListContinuation.renumbered(textView.string, touching: edited)
+        }
+        guard let rewrite else { return }
         let caret = textView.selectedRange().location
         guard Self.replaceAtomically(rewrite.range, with: rewrite.replacement, in: textView) else { return }
         textView.setSelectedRange(NSRange(

@@ -2,9 +2,11 @@
 #
 # Runs the keystroke budget alone and prints its six measurements as a table (ADR-0082 §D5,
 # plan docs/plans/pg-385-n2-page.md, PG-385 R-15), then the fallback rows as a second table
-# (ADR-0091 §D11, plan docs/plans/per-paragraph-restyle.md Task 6, R-12).
+# (ADR-0091 §D11, plan docs/plans/per-paragraph-restyle.md Task 6, R-12), and with `--structural` a
+# third table of the structural rows (ADR-0093 §D9, plan docs/plans/scoped-layout-followup.md Task 7,
+# R-13).
 #
-#   scripts/editor-restyle-bench.sh [--large|--large-only] [--runs N] [--no-warmup]
+#   scripts/editor-restyle-bench.sh [--large|--large-only] [--runs N] [--no-warmup] [--structural]
 #
 # It runs only `PergamenumTests/EditorRestyleBudgetTests`, greps the `restyle-budget` lines
 # the test prints (one per size and variant: `size=<bytes> variant=<prose|fences>
@@ -17,6 +19,13 @@
 # a keystroke that opens a fence, one in a table, Return in a list, each for the same cases as the
 # first table. They are printed and never asserted on time; the test only asserts that each
 # keystroke took the path it names.
+#
+# The third table (only with `--structural`) comes from the lines that start `restyle-budget-structural`
+# (`size=<bytes> variant=<prose|fences> path=<fence-open-last|fence-open-above|wikilink-open|
+# wikilink-close-far> cpu_ms=<min> wall_ms=<min> dirty=<utf16 length> runs=<K>`): a fence opened with no
+# fence below, a fence opened above later fences, `[[` typed with no `]]` below, `]]` typed with the last
+# `]]` far above. `dirty` is the length the restyle covered, the note's length for a full restyle. Printed
+# and never asserted; the test only asserts that each keystroke took the path it names.
 #
 # The exit status is `xcodebuild`'s own: a red assertion (a measurement above its ceiling) is
 # exit 65 and still prints the table, because the numbers are the point of running it.
@@ -33,6 +42,8 @@
 #   RESTYLE_BUDGET_50KB=0        no 50 KB rows; the CI workflow sets it (the ceilings are this machine's).
 #   RESTYLE_BUDGET_FALLBACK=1    the three fallback rows for every case that runs; set on every run
 #                                here. The per-turn suite leaves it unset and measures none of them.
+#   RESTYLE_BUDGET_STRUCTURAL=1  the four structural rows for every case that runs; set by --structural
+#                                only. The per-turn suite measures none of them.
 #
 # It builds into its own DerivedData (`build/restyle-bench-dd`), never the default one the
 # Stop hook's unit build uses: two xcodebuilds on one `build.db` produce "database is locked"
@@ -52,6 +63,7 @@ cd "$root" || exit 2
 # --large-only  only the two 1 MB cases
 # --runs N      N measured runs per case instead of 5 (3 at 1 MB)
 # --no-warmup   skip the warm-up keystroke (only for a case where one keystroke takes minutes)
+# --structural  also measure the four structural rows (a third table)
 export TEST_RUNNER_RESTYLE_BUDGET_200KB=1
 export TEST_RUNNER_RESTYLE_BUDGET_FALLBACK=1
 while [ $# -gt 0 ]; do
@@ -65,6 +77,7 @@ while [ $# -gt 0 ]; do
             esac
             export TEST_RUNNER_RESTYLE_BUDGET_RUNS="$1" ;;
         --no-warmup) export TEST_RUNNER_RESTYLE_BUDGET_NO_WARMUP=1 ;;
+        --structural) export TEST_RUNNER_RESTYLE_BUDGET_STRUCTURAL=1 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -129,6 +142,20 @@ if [ -n "$fallback" ]; then
         size=$(field size "$line")
         printf '%-10s %-8s %-11s %10s %10s %5s\n' "$((size / 1024)) KB" "$(field variant "$line")" \
             "$(field path "$line")" "$(field cpu_ms "$line")" "$(field wall_ms "$line")" "$(field runs "$line")"
+    done
+    echo
+fi
+
+structural=$(grep -E '^restyle-budget-structural size=' "$log" || true)
+if [ -n "$structural" ]; then
+    echo "structural paths (printed, never asserted):"
+    printf '%-10s %-8s %-18s %10s %10s %9s %5s\n' "size" "variant" "path" "cpu_ms" "wall_ms" "dirty" "runs"
+    printf '%-10s %-8s %-18s %10s %10s %9s %5s\n' "----------" "--------" "------------------" "----------" "----------" "---------" "-----"
+    printf '%s\n' "$structural" | while IFS= read -r line; do
+        size=$(field size "$line")
+        printf '%-10s %-8s %-18s %10s %10s %9s %5s\n' "$((size / 1024)) KB" "$(field variant "$line")" \
+            "$(field path "$line")" "$(field cpu_ms "$line")" "$(field wall_ms "$line")" \
+            "$(field dirty "$line")" "$(field runs "$line")"
     done
     echo
 fi

@@ -470,3 +470,50 @@ private let tableNote = "intro\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\noutro"
     #expect(outcome.scope.map == expected)
     #expect(expected.tableRuns == [nsRange(of: "| a | b |\n| - | - |", in: outcome.text)])
 }
+
+// MARK: - renumberWindow(before:) (ADR-0093 §D8)
+//
+// Plan docs/plans/scoped-layout-followup.md, Task 5 (R-10). The window a scope hands the windowed list
+// renumbering: where its read starts, and whether a fence is open there. The cases by name are in
+// `ListRenumberWindowTests`; here the scope's own life: kept through an edit, and stale after a
+// wholesale replace.
+
+// (R-10) A scope kept through an edit gives the window a scope built from the new text gives.
+@Test func aScopeKeptThroughAnEditGivesTheWindowAFreshOneGives() {
+    let old = "```\ncode\n\n1. a\n2. b\n\n3. c\n4. d\n"
+    let outcome = decide(old, inserting: "x", after: "2. b")
+    let fresh = RestyleScope(text: outcome.text)
+    let offsets = [0, nsRange(of: "2. bx", in: outcome.text).location, nsRange(of: "4. d", in: outcome.text).location]
+
+    for offset in offsets {
+        #expect(outcome.scope.renumberWindow(before: offset) == fresh.renumberWindow(before: offset), "at \(offset)")
+    }
+    // Non-vacuity: the fence above the second run is open at its start, and the window is not the top.
+    let window = fresh.renumberWindow(before: offsets[2])
+    #expect(window?.fenceOpen == true)
+    #expect((window?.start ?? 0) > 0)
+}
+
+// (R-10) An edit that turns a line into a fence delimiter moves the parity below it.
+@Test func aDelimiterTypedAboveFlipsTheParityBelow() {
+    let old = "intro\n\n1. a\n2. b\n"
+    // Test correction: the insert was "```" glued to "intro" ("intro```"), which is not a delimiter line
+    // (it must start with the fence after its indent), so the implementation rightly answered false.
+    // The intent is a delimiter typed on a line of its own above the list: "\n```" after "intro".
+    let outcome = decide(old, inserting: "\n```", after: "intro")
+    let offset = nsRange(of: "2. b", in: outcome.text).location
+
+    #expect(outcome.scope.renumberWindow(before: offset)?.fenceOpen == true)
+    #expect(RestyleScope(text: old).renumberWindow(before: nsRange(of: "2. b", in: old).location)?.fenceOpen == false)
+}
+
+// (R-10) A scope made stale by a wholesale replace answers no window, whatever the offset.
+@Test func aStaleScopeGivesNoWindowAtAnyOffset() {
+    let old = "1. a\n2. b\n"
+    // Non-vacuity: before the replace the same scope answers.
+    #expect(RestyleScope(text: old).renumberWindow(before: 3) != nil, "a fresh scope gave no window")
+    let outcome = decide(old, replacing: NSRange(location: 0, length: (old as NSString).length), with: "9. x\n8. y\n")
+
+    #expect(outcome.decision == .full(.wholesale))
+    for offset in [0, 3, 8] { #expect(outcome.scope.renumberWindow(before: offset) == nil, "at \(offset)") }
+}

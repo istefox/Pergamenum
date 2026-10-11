@@ -350,3 +350,85 @@ private func spliced(_ text: String, replacing old: NSRange, with replacement: S
     #expect(expected.tableRuns.count == 1)
     #expect(expected.viewBlockRuns.count == 1)
 }
+
+// MARK: - list facts (ADR-0093 §D8)
+//
+// Plan docs/plans/scoped-layout-followup.md, Task 5 (R-10). Each styler line carries the facts the
+// windowed list renumbering reads (`ListContinuation.facts(ofLine:in:)` of its own range, terminator
+// included), so `renumberWindow(before:)` never reads the text. A kept map has to give the facts a
+// fresh one does, including for a line the edit turned into a fence delimiter or a blank.
+
+/// The facts `ListContinuation` gives for each of the map's lines, by their ranges in `text`.
+private func factsByRange(_ map: StructureMap, in text: String) -> [ListContinuation.LineFacts] {
+    let nsText = text as NSString
+    return map.lines.indices.map { index in
+        let start = map.lines[index].start
+        return ListContinuation.facts(ofLine: NSRange(location: start, length: map.lineEnd(index) - start), in: nsText)
+    }
+}
+
+// (R-10) Every line of a fresh map carries the facts of its own range, and the facts are not all empty.
+@Test(arguments: [sampleNote, sampleNote.replacingOccurrences(of: "\n", with: "\r\n")])
+func eachLineOfAFreshMapCarriesTheFactsOfItsRange(_ text: String) {
+    let map = StructureMap(text: text)
+
+    #expect(map.lines.map(\.listFacts) == factsByRange(map, in: text))
+    // Non-vacuity, independent of `facts`: the sample has two closed fences (four delimiter lines)
+    // and blank lines, and a blank line ends every run.
+    #expect(map.lines.map(\.listFacts.fenceDelimiters).reduce(0, +) == 4)
+    let blanks = lineContents(text).indices.filter { lineContents(text)[$0].isEmpty }
+    #expect(blanks.count >= 4)
+    for blank in blanks { #expect(map.lines[blank].listFacts.endsEveryRun, "line \(blank) is blank") }
+    let items = lineContents(text).indices.filter { lineContents(text)[$0].hasPrefix("  - ") }
+    #expect(!items.isEmpty)
+    for item in items { #expect(!map.lines[item].listFacts.endsEveryRun, "line \(item) is indented") }
+}
+
+/// Edits that change the facts of the line they touch: a prose line becomes a fence delimiter, a
+/// delimiter is spoilt, a blank line is filled, a bullet is indented.
+private let factChangingEdits: [(name: String, old: NSRange, replacement: String)] = [
+    ("a prose line becomes a fence delimiter", NSRange(location: range(of: "intro", in: sampleNote).location, length: 0), "```"),
+    ("a delimiter is spoilt", range(of: "```swift", in: sampleNote), "``swift"),
+    ("a line break is typed into a heading", NSRange(location: 4, length: 0), "\n```\n"),
+    ("a blank line is filled", NSRange(location: range(of: "# Titolo\n", in: sampleNote).upperBound, length: 0), "testo"),
+    ("a bullet is indented", NSRange(location: range(of: "- uno", in: sampleNote).location, length: 0), "  "),
+]
+
+// (R-10) After `apply`, the lines a kept map holds are the lines of a fresh map, facts included.
+@Test(arguments: factChangingEdits.indices)
+func applyKeepsTheFactsEqualToOnesBuiltFromTheNewText(_ index: Int) {
+    let item = factChangingEdits[index]
+    var map = StructureMap(text: sampleNote)
+    let result = edited(sampleNote, replacing: item.old, with: item.replacement)
+    map.apply(result.edit, in: result.text as NSString)
+
+    let expected = StructureMap(text: result.text)
+    #expect(map.lines == expected.lines, "\(item.name)")
+    #expect(map.lines.map(\.listFacts) == factsByRange(map, in: result.text), "\(item.name)")
+    #expect(expected.lines.map(\.listFacts.fenceDelimiters).reduce(0, +) > 0, "\(item.name): no delimiter anywhere")
+}
+
+// (R-10) The line an edit turned into a delimiter says so.
+@Test func aLineTurnedIntoAFenceDelimiterCountsOne() {
+    var map = StructureMap(text: sampleNote)
+    let result = edited(sampleNote, replacing: NSRange(location: range(of: "intro", in: sampleNote).location, length: 0), with: "```")
+    map.apply(result.edit, in: result.text as NSString)
+
+    let line = map.lineIndex(containing: range(of: "```intro", in: result.text).location)
+    #expect(map.lines[line].listFacts.fenceDelimiters == 1)
+    #expect(map.lines.map(\.listFacts.fenceDelimiters).reduce(0, +) == 5)
+}
+
+// (R-10) `splice` takes the fragment's lines with their facts, offset and all.
+@Test func spliceBringsTheFactsOfTheLinesTheEditCreated() {
+    let text = "intro\nriga\nfine\n"
+    let result = spliced(text, replacing: range(of: "riga", in: text), with: "```") { new in
+        range(of: "```\n", in: new)
+    }
+
+    let expected = StructureMap(text: result.text)
+    #expect(result.map.lines == expected.lines)
+    let line = expected.lineIndex(containing: range(of: "```", in: result.text).location)
+    #expect(expected.lines[line].listFacts.fenceDelimiters == 1, "the sample has no delimiter where it should")
+    #expect(result.map.lines[line].listFacts.fenceDelimiters == 1)
+}

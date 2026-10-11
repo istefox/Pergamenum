@@ -108,6 +108,9 @@ final class CompletingTextView: NSTextView {
     /// written against, on the Workspace card surface).
     var onToggleCheckbox: ((CGPoint) -> Bool)?
 
+    /// Called after every `setMarkedText` (ADR-0093 §D7, `CompletingTextView+Composition.swift`).
+    var onComposedTextChanged: (() -> Void)?
+
     /// Claims a keyboard command before the ordinary editing behaviour gets it, while the
     /// completion panel is closed - the panel's own keys in `doCommand(by:)` below still
     /// win when it is open, since choosing a suggestion outranks crossing an embed the

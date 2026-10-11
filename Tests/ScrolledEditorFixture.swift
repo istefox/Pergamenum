@@ -1,4 +1,6 @@
 import AppKit
+import SwiftUI
+import Testing
 @testable import Pergamenum
 
 // ADR-0082 §D5/§D7 and ADR-0081, plan docs/plans/pg-385-n2-page.md, Task 1 (PG-385).
@@ -10,22 +12,44 @@ import AppKit
 // `EditorHeightTests`' window shape and adds what that fixture lacks: `textView.delegate`, so a
 // keystroke reaches `shouldChangeText` and `textDidChange` the way it does in the app.
 
+/// A binding that remembers what was written to it, for a test that has to see the app's own binding
+/// write (`textDidChange`'s `parent.text = …`). `.constant` swallows it, so nothing could tell a
+/// keystroke that reached `textDidChange` from one that did not (ADR-0093 §D7, plan Task 1).
+@MainActor
+final class BoundText {
+    private(set) var value: String
+    /// How many times the binding was written, whatever the value.
+    private(set) var writes = 0
+
+    init(_ value: String) { self.value = value }
+
+    var binding: Binding<String> {
+        Binding(
+            get: { MainActor.assumeIsolated { self.value } },
+            set: { newValue in MainActor.assumeIsolated { self.value = newValue; self.writes += 1 } }
+        )
+    }
+}
+
 @MainActor
 struct ScrolledEditorFixture {
     let textView: CompletingTextView
     let coordinator: NoteTextView.Coordinator
     let scrollView: NSScrollView
     let window: NSWindow
+    /// The recording binding the editor was built over, when the test asked for one.
+    let bound: BoundText?
 
     init(
         text: String, width: CGFloat = 900, height: CGFloat = 700,
         hidesMarkup: Bool = true, readableWidth: Bool = true, theme: Theme = .emergency,
         queries: ViewQuerySource? = nil,
         vault: NoteTextView.VaultInputs? = nil, revealsInlineSpans: Bool = false,
-        forcesFullRestyle: Bool? = false
+        forcesFullRestyle: Bool? = false, forcesFullLayout: Bool? = false,
+        bound: BoundText? = nil
     ) {
         let view = NoteTextView(
-            text: .constant(text), theme: theme, noteTitles: [], tagSuggestions: [],
+            text: bound?.binding ?? .constant(text), theme: theme, noteTitles: [], tagSuggestions: [],
             hidesMarkup: hidesMarkup, revealsInlineSpans: revealsInlineSpans, readableWidth: readableWidth,
             onFollowLink: { _ in }, vault: vault ?? .init(transclusions: nil, queries: queries)
         )
@@ -34,6 +58,9 @@ struct ScrolledEditorFixture {
         // path for even one edit (ADR-0091 §D8, per-paragraph-restyle plan Task 3). Nil leaves what
         // the coordinator read from `EditorRestyleSwitch` at `init`, as a host that sets nothing does.
         if let forcesFullRestyle { coordinator.forcesFullRestyle = forcesFullRestyle }
+        // The same for the layout switch (ADR-0093 §D6): off unless the test asks, whatever the
+        // process was launched with. Nil leaves what the coordinator read at `init`.
+        if let forcesFullLayout { coordinator.forcesFullLayout = forcesFullLayout }
         let textView = CompletingTextView(usingTextLayoutManager: true)
         textView.delegate = coordinator
         textView.isRichText = false
@@ -64,6 +91,9 @@ struct ScrolledEditorFixture {
         )
         window.contentView = scrollView
         window.layoutIfNeeded()
+        // The one line `pushInputs` runs in the app (`NoteTextView+Update.swift:14`): the window's
+        // undo manager, which is what `textView.undoManager` resolves to once the view is in the window.
+        coordinator.undoManager = textView.undoManager
 
         coordinator.applyReadableWidth(to: textView)
         textView.textContentStorage?.delegate = coordinator.decorations
@@ -78,6 +108,7 @@ struct ScrolledEditorFixture {
         self.coordinator = coordinator
         self.scrollView = scrollView
         self.window = window
+        self.bound = bound
     }
 
     /// The state the app's text view is in by the time a person types: the note open and the
@@ -303,7 +334,11 @@ struct RestyleTwin {
     /// Two editors on the rich note: a table, a view block, an embed, a transclusion, a fold, hidden
     /// markers and the spell checker's skipped ranges, all below the prose the tests edit. The
     /// picture is rendered before this returns, so its rendition is part of the state from the start.
-    static func rich(text: String = RichNote.text) async throws -> RestyleTwin {
+    ///
+    /// `bindsIncremental` gives the incremental editor a recording binding (`BoundText`), which is what
+    /// `realEdit`, `realUndo` and `realRedo` read to decide whether SwiftUI would have run an update
+    /// (ADR-0093 §D7). The default keeps every existing caller on `.constant`.
+    static func rich(text: String = RichNote.text, bindsIncremental: Bool = false) async throws -> RestyleTwin {
         let root = try EmbedEditorFixtures.makeTempVaultRoot(prefix: "pergamenum-restyle-")
         try EmbedEditorFixtures.writeImage(named: "foto.png", in: root)
         func editor(forcing: Bool) -> ScrolledEditorFixture {
@@ -316,7 +351,8 @@ struct RestyleTwin {
                     vaultRoot: root, notePath: "Nota.md", thumbnails: thumbnails,
                     transclusions: RichNote.transclusions(), queries: RichNote.queries()
                 ),
-                revealsInlineSpans: true, forcesFullRestyle: forcing
+                revealsInlineSpans: true, forcesFullRestyle: forcing,
+                bound: bindsIncremental && !forcing ? BoundText(text) : nil
             )
         }
         let twin = RestyleTwin(
@@ -442,5 +478,189 @@ struct RestyleTwin {
         if snapshot.foldLayout.hiddenLineOffsets.isEmpty { empty.append("foldLayout.hiddenLineOffsets") }
         if snapshot.revealed.isEmpty { empty.append("revealed") }
         return empty
+    }
+}
+
+// MARK: - The real edit path (ADR-0093 §D7, R-03, R-04)
+//
+// `edit`, `undo` and `redo` above call the update pass by hand after every operation, which hides an
+// operation that never reaches `textDidChange`: the hand call styles what the notification would have.
+// These three do the same for the full twin (the oracle) and give the incremental editor only what
+// SwiftUI would run: nothing, unless the operation wrote the binding (`textDidChange`'s
+// `parent.text = …`), and then the `updateNSView` that write schedules.
+
+/// R-04's probe: one printed line per operation, the fields the ADR records.
+enum RealEditProbe {
+    static func line(op: String, didChange: Bool, undoNotice: Bool, storageEdits: Int, styled: String) -> String {
+        "real-edit-path op=\(op) did_change=\(didChange ? 1 : 0) undo_notice=\(undoNotice ? 1 : 0) "
+            + "storage_edits=\(storageEdits) styled=\(styled)"
+    }
+}
+
+/// What an operation did to the incremental editor before any pass ran, and what the probe saw.
+struct RealEditOutcome {
+    /// `NSText.didChangeNotification` posted by the incremental text view.
+    var didChange: Bool
+    /// The undo manager's did-undo or did-redo notification.
+    var undoNotice: Bool
+    /// Character edits the storage reported (`didProcessEditingNotification` with `.editedCharacters`).
+    var storageEdits: Int
+    /// `incremental`, `full`, `skipped` or `none`: which counter of the restyle log moved.
+    var styled: String
+    /// The binding was written, so SwiftUI would have run an update, and `ran` did.
+    var wroteBinding: Bool
+    // The state before any pass, which is where R-03 starts.
+    var boundValue: String?
+    var text: String
+    var hasUnstyledEdits: Bool
+
+    func line(op: String) -> String {
+        RealEditProbe.line(op: op, didChange: didChange, undoNotice: undoNotice, storageEdits: storageEdits, styled: styled)
+    }
+}
+
+/// Counts what one editor posts while an operation runs. Notifications are delivered synchronously
+/// on the posting thread (no queue), which is the main thread here.
+@MainActor
+private final class RealEditObserver {
+    private final class Counts: @unchecked Sendable {
+        var didChange = 0
+        var undo = 0
+        var edits = 0
+    }
+
+    private let counts = Counts()
+    private var tokens: [NSObjectProtocol] = []
+
+    init(_ fixture: ScrolledEditorFixture) {
+        let center = NotificationCenter.default
+        let counts = counts
+        tokens.append(center.addObserver(forName: NSText.didChangeNotification, object: fixture.textView, queue: nil) { _ in
+            counts.didChange += 1
+        })
+        // A notification, not a delegate: the storage's delegate slot is the coordinator's.
+        tokens.append(center.addObserver(forName: NSTextStorage.didProcessEditingNotification, object: fixture.textView.textStorage, queue: nil) { note in
+            if let storage = note.object as? NSTextStorage, storage.editedMask.contains(.editedCharacters) { counts.edits += 1 }
+        })
+        for name in [Notification.Name.NSUndoManagerDidUndoChange, Notification.Name.NSUndoManagerDidRedoChange] {
+            tokens.append(center.addObserver(forName: name, object: fixture.undoManager, queue: nil) { _ in
+                counts.undo += 1
+            })
+        }
+    }
+
+    func finish() -> (didChange: Bool, undoNotice: Bool, edits: Int) {
+        for token in tokens { NotificationCenter.default.removeObserver(token) }
+        tokens = []
+        return (counts.didChange > 0, counts.undo > 0, counts.edits)
+    }
+}
+
+extension RestyleTwin {
+    /// The incremental editor's side of a real operation: observed, then given the one pass SwiftUI
+    /// would run if the binding moved.
+    private func observeIncremental(_ operation: () -> Void) -> RealEditOutcome {
+        let editor = incremental
+        let observer = RealEditObserver(editor)
+        let logBefore = editor.coordinator.restyleLog
+        let writesBefore = editor.bound?.writes ?? 0
+        operation()
+        let logAfter = editor.coordinator.restyleLog
+        let seen = observer.finish()
+        if editor.bound == nil { Issue.record("realEdit, realUndo and realRedo need `rich(bindsIncremental: true)`") }
+        let wrote = editor.bound.map { $0.writes > writesBefore } ?? true
+        let styled: String
+        if logAfter.full > logBefore.full { styled = "full" }
+        else if logAfter.incremental > logBefore.incremental { styled = "incremental" }
+        else if logAfter.skipped > logBefore.skipped { styled = "skipped" }
+        else { styled = "none" }
+        let outcome = RealEditOutcome(
+            didChange: seen.didChange, undoNotice: seen.undoNotice, storageEdits: seen.edits, styled: styled,
+            wroteBinding: wrote, boundValue: editor.bound?.value, text: editor.textView.string,
+            hasUnstyledEdits: editor.coordinator.hasUnstyledEdits
+        )
+        if wrote {
+            editor.fold(heading: foldedHeading)
+            editor.runPasses()
+        }
+        return outcome
+    }
+
+    /// Any change, given to the full twin with the passes by hand (the oracle) and to the incremental
+    /// editor with nothing but what SwiftUI would run. One undo group per call, as `edit`.
+    @discardableResult
+    func realEdit(_ body: (ScrolledEditorFixture) -> Void) -> RealEditOutcome {
+        full.undoManager?.beginUndoGrouping()
+        body(full)
+        full.undoManager?.endUndoGrouping()
+        full.fold(heading: foldedHeading)
+        full.runPasses()
+        return observeIncremental {
+            incremental.undoManager?.beginUndoGrouping()
+            body(incremental)
+            incremental.undoManager?.endUndoGrouping()
+        }
+    }
+
+    /// The undo manager's `undo()`, as Cmd+Z reaches it.
+    @discardableResult
+    func realUndo() -> RealEditOutcome {
+        full.undoManager?.undo()
+        full.fold(heading: foldedHeading)
+        full.runPasses()
+        return observeIncremental { incremental.undoManager?.undo() }
+    }
+
+    /// The undo manager's `redo()`, as Cmd+Shift+Z reaches it.
+    @discardableResult
+    func realRedo() -> RealEditOutcome {
+        full.undoManager?.redo()
+        full.fold(heading: foldedHeading)
+        full.runPasses()
+        return observeIncremental { incremental.undoManager?.redo() }
+    }
+}
+
+// MARK: - The layout witness (ADR-0093 §D4)
+
+extension ScrolledEditorFixture {
+    /// What an estimate would move: the usage height of the text container, and where the last
+    /// laid-out fragment starts. A fragment-counting probe cannot see reuse (TextKit requests no
+    /// fragment for a layout it kept); these two numbers can, since an estimate is exactly a height
+    /// that changes when the rest of the document is laid out (`EditorGrowToFitScopeTests`).
+    struct LayoutExtent: Equatable {
+        var height: CGFloat
+        var lastFragmentY: CGFloat
+    }
+
+    func layoutExtent() -> LayoutExtent? {
+        guard let layout = textView.textLayoutManager else { return nil }
+        var lastY: CGFloat = -1
+        layout.enumerateTextLayoutFragments(from: layout.documentRange.endLocation, options: [.reverse]) { fragment in
+            lastY = fragment.layoutFragmentFrame.minY
+            return false
+        }
+        return LayoutExtent(height: layout.usageBoundsForTextContainer.height, lastFragmentY: lastY)
+    }
+
+    /// After the passes a keystroke runs, laying out the whole document changes neither number: no
+    /// height in the note was an estimate. Leaves the whole document laid out.
+    func expectNoEstimate(_ place: String, sourceLocation: SourceLocation = #_sourceLocation) {
+        guard let layout = textView.textLayoutManager, let grown = layoutExtent() else {
+            Issue.record("\(place): no layout manager", sourceLocation: sourceLocation)
+            return
+        }
+        layout.ensureLayout(for: layout.documentRange)
+        guard let complete = layoutExtent() else { return }
+        #expect(
+            abs(grown.height - complete.height) < 0.5,
+            "\(place): the note measured \(grown.height) pt before laying out the whole document and \(complete.height) pt after",
+            sourceLocation: sourceLocation
+        )
+        #expect(
+            abs(grown.lastFragmentY - complete.lastFragmentY) < 0.5,
+            "\(place): the last fragment started at \(grown.lastFragmentY) and then at \(complete.lastFragmentY)",
+            sourceLocation: sourceLocation
+        )
     }
 }

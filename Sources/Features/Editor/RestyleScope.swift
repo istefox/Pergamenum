@@ -76,6 +76,20 @@ struct RestyleScope: Sendable {
         stack(before: map.lineIndex(containing: offset))
     }
 
+    /// Where a windowed list renumbering may start reading for an edit at `offset`, or nil while the map
+    /// describes a text that is gone (ADR-0093 §D8). From the line before the one holding `offset`
+    /// (the scoped form widens by that line), back to the nearest line whose previous line ends every
+    /// run, or the first line; no ordered run crosses that start. The fence parity there is the sum of
+    /// the delimiters above it, an array walk over integers that reads no text.
+    func renumberWindow(before offset: Int) -> ListContinuation.Window? {
+        guard !isStale, !map.lines.isEmpty else { return nil }
+        let lines = map.lines
+        var start = max(0, map.lineIndex(containing: offset) - 1)
+        while start > 0, !lines[start - 1].listFacts.endsEveryRun { start -= 1 }
+        let delimiters = lines[..<start].reduce(0) { $0 + $1.listFacts.fenceDelimiters }
+        return ListContinuation.Window(start: lines[start].start, fenceOpen: delimiters % 2 == 1)
+    }
+
     /// Hands the fragment's own map back after a restyle (`StructureMap.splice`).
     mutating func absorb(_ fragment: StructureMap, at offset: Int, replacing dirty: NSRange) {
         map.splice(fragment, at: offset, replacing: dirty)

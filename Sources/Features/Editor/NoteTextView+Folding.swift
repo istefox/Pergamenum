@@ -15,6 +15,8 @@ final class FoldController {
     /// of use.
     private let parent: () -> NoteTextView?
     private let decorations: EditorDecorationDelegate
+    /// The layout record; its door is the one way this pass invalidates the layout (ADR-0093 §D3).
+    private let layoutDebt: LayoutDebt
 
     /// The fold already applied, so an unchanged one does not invalidate the layout on every
     /// view update.
@@ -23,9 +25,10 @@ final class FoldController {
     /// nothing-is-folded guard in `apply`, which reads and clears it.
     private var shiftedSinceApply = false
 
-    init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate) {
+    init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate, layout: LayoutDebt) {
         self.parent = parent
         self.decorations = decorations
+        layoutDebt = layout
     }
 
     /// Recomputes the fold and makes the layout read it again.
@@ -65,9 +68,7 @@ final class FoldController {
         textView.textContentStorage?.textStorage?.edited(
             .editedAttributes, range: NSRange(location: 0, length: length), changeInLength: 0
         )
-        if let manager = textView.textLayoutManager {
-            manager.invalidateLayout(for: manager.documentRange)
-        }
+        layoutDebt.invalidateWholeDocument(of: textView)
         rescueCaret(in: textView, from: layout, frontmatter: frontmatter)
     }
 

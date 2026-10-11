@@ -23,13 +23,9 @@ enum LineScan {
         var found: [Line] = []
         var index = 0
         while index < haystack.length {
-            var start = 0, end = 0, contentEnd = 0
-            haystack.getLineStart(
-                &start, end: &end, contentsEnd: &contentEnd,
-                for: NSRange(location: index, length: 0)
-            )
-            found.append(Line(start: start, contentEnd: contentEnd, end: end))
-            index = end
+            let next = line(at: index, in: haystack)
+            found.append(next)
+            index = next.end
         }
         // Text ending in a terminator has one more line - empty, and the one a caret parked at
         // the very end sits on. Empty text is that same line and nothing else.
@@ -43,6 +39,15 @@ enum LineScan {
             found.append(Line(start: 0, contentEnd: 0, end: 0))
         }
         return found
+    }
+
+    /// The line holding `index`, read on its own: what `lines(in:)` reads at each step, and what a
+    /// reader of a few lines of a long text reads instead of all of them (ADR-0093 §D8). `index` must be
+    /// below `haystack.length`; the empty line after a final terminator is `lines(in:)`'s to append.
+    static func line(at index: Int, in haystack: NSString) -> Line {
+        var start = 0, end = 0, contentEnd = 0
+        haystack.getLineStart(&start, end: &end, contentsEnd: &contentEnd, for: NSRange(location: index, length: 0))
+        return Line(start: start, contentEnd: contentEnd, end: end)
     }
 
     static func indentLength(on line: Line, in haystack: NSString) -> Int {

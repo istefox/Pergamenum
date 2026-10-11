@@ -15,6 +15,10 @@ struct StructureMap: Equatable, Sendable {
         /// The UTF-16 offset of the line's first character.
         var start: Int
         var signature: MarkdownLineSignature
+        /// What the windowed list renumbering needs of the line, read off its own range, terminator
+        /// included (ADR-0093 §D8). Computed wherever the signature is; the default is for a line
+        /// nothing has read yet.
+        var listFacts: ListContinuation.LineFacts = .init(fenceDelimiters: 0, endsEveryRun: false)
     }
 
     struct Fence: Equatable, Sendable {
@@ -141,7 +145,7 @@ struct StructureMap: Equatable, Sendable {
         let high = lines[low...].firstIndex { $0.start >= end } ?? lines.count
         let fresh = fragment.lines
             .filter { $0.start < dirty.length }
-            .map { Line(start: $0.start + offset, signature: $0.signature) }
+            .map { Line(start: $0.start + offset, signature: $0.signature, listFacts: $0.listFacts) }
         lines.replaceSubrange(low..<high, with: fresh)
 
         func moved(_ range: NSRange) -> NSRange { NSRange(location: range.location + offset, length: range.length) }
@@ -174,9 +178,14 @@ struct StructureMap: Equatable, Sendable {
     // MARK: Building
 
     /// The styler lines of `text`, `base` added to every start: a line ends at "\n" or "\r\n", found
-    /// by a scan of the UTF-16 for U+000A (ADR-0091 C3), and its signature reads it without them.
+    /// by a scan of the UTF-16 for U+000A (ADR-0091 C3), and its signature reads it without them. Its
+    /// list facts read it with them (ADR-0093 §D8).
     private static func lines(of text: String, base: Int) -> [Line] {
         var result: [Line] = []
+        let nsText = text as NSString
+        func facts(from start: Int, to end: Int) -> ListContinuation.LineFacts {
+            ListContinuation.facts(ofLine: NSRange(location: start - base, length: end - start), in: nsText)
+        }
         let units = text.utf16
         var lineStart = units.startIndex
         var lineStartOffset = base
@@ -189,14 +198,20 @@ struct StructureMap: Equatable, Sendable {
             offset += 1
             if unit == 10 {
                 let contentEnd = previous == 13 && index > lineStart ? units.index(before: index) : index
-                result.append(Line(start: lineStartOffset, signature: .of(text[lineStart..<contentEnd])))
+                result.append(Line(
+                    start: lineStartOffset, signature: .of(text[lineStart..<contentEnd]),
+                    listFacts: facts(from: lineStartOffset, to: offset)
+                ))
                 lineStart = next
                 lineStartOffset = offset
             }
             previous = unit
             index = next
         }
-        result.append(Line(start: lineStartOffset, signature: .of(text[lineStart..<units.endIndex])))
+        result.append(Line(
+            start: lineStartOffset, signature: .of(text[lineStart..<units.endIndex]),
+            listFacts: facts(from: lineStartOffset, to: offset)
+        ))
         return result
     }
 
