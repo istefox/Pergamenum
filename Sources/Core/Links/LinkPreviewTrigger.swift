@@ -44,6 +44,9 @@ struct LinkPreviewTrigger: Equatable, Sendable {
         case show(run: NSRange)
         case hide
         case hideConsumingEscape
+        /// The pointer went from the shown run onto another: the preview goes and the dwell for the
+        /// new run starts in the same step, so a pointer that rests there still gets its preview.
+        case hideAndSchedule(after: TimeInterval)
     }
 
     mutating func handle(_ event: Event) -> Effect {
@@ -87,7 +90,12 @@ struct LinkPreviewTrigger: Equatable, Sendable {
         commandDown = isDown
         if let shown = shownRun {
             if run == shown && isDown { return .none }
-            return close()
+            // The conditions hold for the new run since now, not since the old one (ADR-0083 §D7):
+            // hiding alone would leave nothing to show it, as no further event is guaranteed.
+            guard isDown, run != nil else { return close() }
+            shownRun = nil
+            dwellStart = time
+            return .hideAndSchedule(after: Self.dwell)
         }
         guard isDown, run != nil, !keyPressed else {
             dwellStart = nil

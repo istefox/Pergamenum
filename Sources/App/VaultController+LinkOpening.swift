@@ -73,8 +73,13 @@ extension VaultController {
            case .external = MarkdownAttributedText.clickTarget(for: url) {
             return nil
         }
+        // A board is named, not resolved: resolving walks every board in the vault, a disk-derived
+        // list ADR-0072 §D7 forbids keeping across hovers (ADR-0083 §D7).
+        let destination = LinkDestination.resolve(
+            target, notePaths: { index.resolve(title: $0) }, board: { $0 }
+        )
         return LinkPreviewContent.make(
-            for: linkDestination(for: target), section: section,
+            for: destination, section: section,
             noteText: { path in try? session?.read(path).text }
         )
     }
