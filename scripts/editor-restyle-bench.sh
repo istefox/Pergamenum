@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Runs the keystroke budget alone and prints its six measurements as a table (ADR-0082 §D5,
-# plan docs/plans/pg-385-n2-page.md, PG-385 R-15).
+# plan docs/plans/pg-385-n2-page.md, PG-385 R-15), then the fallback rows as a second table
+# (ADR-0091 §D11, plan docs/plans/per-paragraph-restyle.md Task 6, R-12).
 #
 #   scripts/editor-restyle-bench.sh [--large|--large-only] [--runs N] [--no-warmup]
 #
@@ -10,6 +11,12 @@
 # cpu_ms=<min> wall_ms=<min> runs=<K>`), and prints them as a table. Milliseconds of the main
 # thread's CPU time per keystroke, the minimum of K runs after a warm-up; wall time is shown
 # for reading and is never what the test asserts.
+#
+# The second table comes from the lines that start `restyle-budget-fallback` (`size=<bytes>
+# variant=<prose|fences> path=<fence-open|table|list-enter> cpu_ms=<min> wall_ms=<min> runs=<K>`):
+# a keystroke that opens a fence, one in a table, Return in a list, each for the same cases as the
+# first table. They are printed and never asserted on time; the test only asserts that each
+# keystroke took the path it names.
 #
 # The exit status is `xcodebuild`'s own: a red assertion (a measurement above its ceiling) is
 # exit 65 and still prints the table, because the numbers are the point of running it.
@@ -24,6 +31,8 @@
 #   RESTYLE_BUDGET_RUNS=N        N measured runs per case instead of 5 (3 at 1 MB).
 #   RESTYLE_BUDGET_NO_WARMUP=1   no warm-up keystroke.
 #   RESTYLE_BUDGET_50KB=0        no 50 KB rows; the CI workflow sets it (the ceilings are this machine's).
+#   RESTYLE_BUDGET_FALLBACK=1    the three fallback rows for every case that runs; set on every run
+#                                here. The per-turn suite leaves it unset and measures none of them.
 #
 # It builds into its own DerivedData (`build/restyle-bench-dd`), never the default one the
 # Stop hook's unit build uses: two xcodebuilds on one `build.db` produce "database is locked"
@@ -44,6 +53,7 @@ cd "$root" || exit 2
 # --runs N      N measured runs per case instead of 5 (3 at 1 MB)
 # --no-warmup   skip the warm-up keystroke (only for a case where one keystroke takes minutes)
 export TEST_RUNNER_RESTYLE_BUDGET_200KB=1
+export TEST_RUNNER_RESTYLE_BUDGET_FALLBACK=1
 while [ $# -gt 0 ]; do
     case "$1" in
         --large) export TEST_RUNNER_RESTYLE_BUDGET_1MB=1 ;;
@@ -108,6 +118,20 @@ printf '%s\n' "$lines" | while IFS= read -r line; do
     runs=$(field runs "$line")
     printf '%-10s %-8s %10s %10s %5s\n' "$((size / 1024)) KB" "$variant" "$cpu" "$wall" "$runs"
 done
+
+fallback=$(grep -E '^restyle-budget-fallback size=' "$log" || true)
+if [ -n "$fallback" ]; then
+    echo
+    echo "fallback paths (printed, never asserted):"
+    printf '%-10s %-8s %-11s %10s %10s %5s\n' "size" "variant" "path" "cpu_ms" "wall_ms" "runs"
+    printf '%-10s %-8s %-11s %10s %10s %5s\n' "----------" "--------" "-----------" "----------" "----------" "-----"
+    printf '%s\n' "$fallback" | while IFS= read -r line; do
+        size=$(field size "$line")
+        printf '%-10s %-8s %-11s %10s %10s %5s\n' "$((size / 1024)) KB" "$(field variant "$line")" \
+            "$(field path "$line")" "$(field cpu_ms "$line")" "$(field wall_ms "$line")" "$(field runs "$line")"
+    done
+    echo
+fi
 
 total=$( { grep -E '^restyle-budget-total ' "$log" || true; } | sed -n 's/.*total_wall_ms=\([0-9]*\).*/\1/p' | awk '{ s += $1 } END { if (NR) printf "%.1f", s / 1000 }')
 if [ -n "$total" ]; then

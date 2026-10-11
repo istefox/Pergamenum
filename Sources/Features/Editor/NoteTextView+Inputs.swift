@@ -42,11 +42,13 @@ extension NoteTextView {
         /// follows the same shape as the other three: consumed once, then reported as applied.
         var scrollRequest: Navigation.OutlineJump?
         var onScrollApplied: () -> Void = {}
-        /// The index entries whose sections are folded (M8). Held by each heading's own UTF-16
-        /// character offset, not by ordinal position: an edit elsewhere in the note can shift
-        /// which array position a heading sits at between one SwiftUI render pass and the next,
-        /// and a fold anchored to a position rather than to the heading itself would silently
-        /// re-target the wrong section (PG-021 follow-up, `FoldStateOrdinalIndexStalenessTests`).
+        /// The index entries whose sections are folded (M8), as indices into
+        /// `NoteOutline.entries(in:)` of the current text: the ordinals `NoteFolding.layout` and
+        /// `NoteFolding.sections` read. The tab keeps each fold by its heading's own UTF-16
+        /// offset (`NoteTab.foldedEntries`, PG-021 follow-up,
+        /// `FoldStateOrdinalIndexStalenessTests`) and `EditorColumn+Text.swift` converts those
+        /// offsets here through `foldedOrdinals(ofOffsets:in:)` on every render, so an edit that
+        /// moves a heading to another position cannot re-target the wrong section.
         var foldedEntries: Set<Int> = []
         /// Whether the frontmatter block is left out of the layout (`NoteTab.hidesFrontmatter`).
         /// Applied by the same pass as the folds, which is why it rides in this group.

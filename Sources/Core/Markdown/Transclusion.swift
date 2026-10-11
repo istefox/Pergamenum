@@ -134,10 +134,21 @@ enum Transclusion {
     /// uses. This is the third feature that would get the fence rule wrong if it wrote the
     /// rule for itself.
     static func occurrences(in text: String) -> [Occurrence] {
+        occurrences(in: text, from: bodyStart(of: text), offset: 0)
+    }
+
+    /// The occurrences of a fragment of a note, `offset` UTF-16 units into it, in the note's
+    /// coordinates (ADR-0091 §D7). The fragment's own fences are the note's there, because a
+    /// restyled range never cuts a fence; it reads frontmatter only when it starts the note.
+    static func occurrences(inFragment fragment: String, offset: Int) -> [Occurrence] {
+        occurrences(in: fragment, from: offset == 0 ? bodyStart(of: fragment) : fragment.startIndex, offset: offset)
+    }
+
+    private static func occurrences(in text: String, from start: String.Index, offset: Int) -> [Occurrence] {
         let fences = CodeFence.regions(in: text)
         var result: [Occurrence] = []
 
-        var lineStart = bodyStart(of: text)
+        var lineStart = start
         while lineStart < text.endIndex {
             let lineEnd = text[lineStart...].firstIndex(where: LineBreak.isTerminator) ?? text.endIndex
             defer { lineStart = lineEnd < text.endIndex ? text.index(after: lineEnd) : text.endIndex }
@@ -148,7 +159,7 @@ enum Transclusion {
             else { continue }
 
             result.append(Occurrence(
-                lineOffset: text.utf16.distance(from: text.startIndex, to: lineStart),
+                lineOffset: offset + text.utf16.distance(from: text.startIndex, to: lineStart),
                 reference: reference,
                 section: section
             ))

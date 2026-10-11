@@ -58,3 +58,18 @@ final class TableGridStore {
         return kept
     }
 }
+
+extension TableGridStore {
+    /// The identity of each grid kept, by the table's header offset: what a test compares to see
+    /// that a table below an edit kept the same view, moved to its new offset (ADR-0091 §D6).
+    /// In this file because `grids` is `private` here.
+    func identities() -> [Int: ObjectIdentifier] {
+        grids.mapValues { ObjectIdentifier($0) }
+    }
+
+    /// Re-keys the grids past `edit`, keeping each view (ADR-0091 §D6): a table below an edit is
+    /// the same table at a new offset, and rebuilding its grid would take first responder from it.
+    func shift(by edit: StorageEdit) {
+        grids = edit.shiftedKeys(grids)
+    }
+}

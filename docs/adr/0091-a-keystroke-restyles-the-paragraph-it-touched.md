@@ -1,8 +1,10 @@
 # ADR-0091: A keystroke restyles the paragraph it touched, and a structural change restyles the note
 
-- Status: **proposed**. Written on `docs/spec-per-paragraph-restyle`, not yet committed. If it reaches
-  `main` together with its plan (`docs/plans/per-paragraph-restyle.md`) before the code, it becomes
-  `planned` (`docs/adr/README.md` rule 2). It flips to `accepted` when the PR that implements it merges.
+- Status: **planned**. It reached `main` with its plan (`docs/plans/per-paragraph-restyle.md`) ahead
+  of the code, in PR #966 (merge `86f1cb49`, 2026-10-11), where it still read `proposed`
+  (`docs/adr/README.md` rule 2). The implementation is on `feature/per-paragraph-restyle`; the record
+  flips to `accepted`, naming that PR, its merge commit and the date, in the first docs change after
+  the merge.
 - Date: 2026-10-10. Written against `da38099d` (`origin/main` at the same commit). Every line number
   below was read there.
 - Number: `0091` is the highest number on `origin/main` (0090) plus one. No local or remote-tracking
@@ -113,10 +115,18 @@ There is no setext heading: a `---` under prose is a `.rule`.
 
 **C4. What the platform allows.** Read in the MacOSX27.0 SDK on 2026-10-10.
 
-- **Order.** `NSTextStorage` sends `textStorage(_:didProcessEditing:range:changeInLength:)` "inside
-  processEditing right before notifying text storage observer" (`NSTextStorage.h:138-141`), and
-  `processEditing` notifies the observer only after it (`:84-87`). Here that observer is
+- **Order.** `processEditing` "Sends `-textStorage:willProcessEditing`, fixes the attributes, sends
+  `-textStorage:didProcessEditing`, and notifies the text storage observer" (`NSTextStorage.h:84-88`);
+  `textStorage(_:willProcessEditing:range:changeInLength:)` is "Sent inside `processEditing` right
+  before fixing attributes" (`:133-136`). Both callbacks run before the observer, which here is
   `NSTextContentStorage`.
+- **Why `willProcessEditing`.** Attribute fixing, between the two callbacks, widens the reported
+  range: a character typed at offset 10 of a one-paragraph note arrives as `{10, 1}` at
+  `willProcessEditing` and as `{10, 27}`, to the end of its paragraph, at `didProcessEditing`
+  (measured 2026-10-11 in the hosted fixture). The old range read from the widened one would be
+  wrong, so the edit is recorded at `willProcessEditing`. A deletion reports the same `{10, 0}`,
+  delta -3, at both. `IncrementalRestyleHosted.theStorageReportsAKeystrokeAsItsRangeAndDelta` pins
+  the raw range.
 - **Range semantics.** `editedRange` is "the range of text that contains changes", in the text as
   it now is, and `changeInLength` is the difference (`:54-60`). A test in the plan's Task 3 pins
   those semantics, rather than this sentence.
@@ -190,8 +200,8 @@ ever moves into the shared sources, these files move with it unchanged.
 ### D2. The edit, the dirty range and the structure map
 
 **Recording.** The coordinator becomes the text storage's delegate the first time it runs a full
-restyle on that storage. It records every `textStorage(_:didProcessEditing:range:changeInLength:)`
-whose mask contains `.editedCharacters`, as a `StorageEdit(range:delta:)`:
+restyle on that storage. It records every `textStorage(_:willProcessEditing:range:changeInLength:)`
+(not `didProcessEditing`, whose range attribute fixing has already widened, C4) whose mask contains `.editedCharacters`, as a `StorageEdit(range:delta:)`:
 
 - `range` is in the text as it now is;
 - `delta` is the change in length;
@@ -225,7 +235,7 @@ for the whole note. It holds:
 **How the map stays current:**
 
 - `StructureMap(text:)` builds it at every full restyle.
-- At `didProcessEditing`, the map is shifted, and then the signatures of the lines the edit
+- At `willProcessEditing`, the map is shifted, and then the signatures of the lines the edit
   touched are recomputed from the new text:
   - a line or run after the old range moves by `delta`;
   - one before it stays;
@@ -291,7 +301,7 @@ The rules apply in this order:
 | Fence lines | Any old or new line in the range has `fenceMark`. | Full restyle. |
 | Fence bodies | The range intersects a fence region. | Widen to the whole region; an unclosed region runs to the end of the note. |
 | View blocks | A view block is a fence, so the two fence rules above cover it. | Full on a fence line, the whole fence otherwise. |
-| Tables | A line in the range is `tableCapable` in the old or new text, or the line just before `S` or just after `E` is. | Widen over every maximal run of consecutive `tableCapable` lines it touches or adjoins. A table is a contiguous part of such a run, and nothing outside the run decides it. |
+| Tables | A line in the range is `tableCapable` in the old or new text, or the line just before `S` or just after `E` is. | Widen over every maximal run of consecutive `tableCapable` lines it touches or adjoins. A table is a contiguous part of such a run, and nothing outside the run decides it. A run that holds a `fenceMark` line is a full restyle (`tableFence`): the block tokenizer reads that line as a row or as a fence depending on the table above it. |
 | Lists | Fold the map's roles, with no text read: from the last `.reset` line before `S` up to `S`, then the old lines' roles for the stack at `E_old` and the new lines' roles for the stack at `E`. | Equal stacks: no widening. Different stacks: move `E` down one line at a time, folding both over the same following lines, until they are equal. A `.reset` line clears both, so it stops the walk at the latest. |
 | Wikilinks: tokens | The old lines' bracket tokens differ in order from the new lines'. | Full restyle. |
 | Wikilinks: pending | The nearest bracket token before `S`, or before `E` in the new text, is an opener outside code with a `]]` somewhere after it. Openers in code are ignored, as the parser ignores them. | Full restyle. |
@@ -384,7 +394,7 @@ ranged entry that takes a fragment and an offset.
 
 ### D6. Offset-keyed state is shifted where it lives
 
-Each holder gets one `shift(by:)`, applied at `didProcessEditing` with the D2 rule. Its writes at
+Each holder gets one `shift(by:)`, applied at `willProcessEditing` with the D2 rule. Its writes at
 restyle time become splices over the dirty range, so nothing outside the range is ever rebuilt.
 
 The holders:
@@ -412,7 +422,9 @@ The holders:
   `viewBlockRanges(in: textView.string)`.
 - **`EmbedTable`** (`renditions`, `pending`).
 - **`TransclusionController`** (`lastRenditions`).
-- **`FoldController`** (`lastFoldLayout`).
+- **`FoldController`** (`lastFoldLayout`). After an edit whose shift changed the layout, a fold
+  pass that finds the new layout equal to the shifted one still rescues the caret, because the
+  unshifted comparison would have differed: the full path's rescue is kept.
 - **`RevealController`** (`lastRevealed`, `lastRevealedSpans`).
 - **`StructureMap`** (D2).
 
@@ -453,6 +465,13 @@ its last completed styling:
 - the theme (`Theme` is `Equatable`);
 - `hidesMarkup`;
 - `revealsInlineSpans`.
+
+**This extends the plan's fingerprint by four inputs**, stated here so that nobody trims it back
+to the five above. `StylingInputs` also keeps the note path, the vault root and the thumbnail
+store's identity, which an embed is resolved through, and the text container's width, which a
+transcluded note is measured at. The passes after the styling read these off the whole note, and a
+skipped styling hands them no scan: if one of them changed and the styling were skipped, the embeds
+and transclusions would keep what they resolved against the old value until the next full restyle.
 
 `runPasses` calls `applyStylingIfNeeded(to:theme:)`:
 
@@ -535,6 +554,35 @@ The full unit suite, run with the incremental path on, settles the rest. If it t
 that test's reason is written into this section first, in a commit before the one that changes the
 test.
 
+**Proved by the run of 2026-10-11** (`xcodebuild ... -only-testing:PergamenumTests test`, the default
+settings, the kill switch off): 6185 tests in 372 suites, none red, and the five known issues are
+`HostedViewPrototypeTests.theHarnessWindowRefusesFocusAndEveryCallThatWouldShowIt`'s, which this change
+does not touch. No test that existed before this change was red, so none is restated, and the line
+above stays «none». The suite also holds the 32 files that call `applyStyling(to:theme:)` directly and
+still get the full restyle.
+
+**Tests this change wrote and then corrected are not restated tests**, and are listed so that nothing
+passes unsaid. They were red in the coder's first full run for reasons that lay in the test, never in
+the production code, and each reason is in the file beside the line it changed:
+
+- `OffsetShiftTests.shiftingByTheRecordedEditEqualsARestyleOfTheNewText`: the raw `replaceCharacters`
+  moves the caret, and the selection change already reruns `applyReveal` over the new text, so the test's
+  own hand call to `shiftDerivedState` shifted the two paragraph-offset reveal sets a second time. They
+  are left out of the comparison; every other field, `revealedSpans` and `revealedSpanKeys` included,
+  is still compared. The same test also drew its «edited paragraph» too narrowly for an insert that ends
+  in a newline: the remainder of the split line is a line of the dirty range, so it is not the shift's to
+  produce, and the boundary now includes the paragraph the edit's end lands in.
+- `TransclusionScopeTests.aFenceLineKeystrokeScansTheWholeNote`: moving the caret onto the fence is a
+  view-block crossing, a full restyle of its own by §D10, so the test counted two. The caret is put on
+  the fence before the count is taken.
+- `IncrementalStylerPropertyTests.randomLineLocalEditsAreRestyledByLines`: the failing expectation was
+  the shared one, «most texts held no span», not the 95% share of `.lines`. The prose run started from an
+  empty text and drifted to 40 to 100 bytes of plain letters. It now starts from a prose note with a
+  heading, emphasis, a tag, nested lists and a quote (`EditGenerator.proseStart`). The shared floor is
+  unchanged (at least half of the restyles compare a text that holds a span) and now holds with room:
+  171 to 200 of 200 per seed, against fewer than 100 on five seeds before. The 95% share of line-local
+  edits restyled by lines never failed and is unchanged; it reads 200 of 200 on each of the ten seeds.
+
 ### D13. Merge coordination
 
 The SPEC asks for coordination with PG-219 (branch `docs/spec-pg-219-cursor-feedback`) through
@@ -552,7 +600,7 @@ flight.
 ## Alternatives considered
 
 - **A shadow copy of the previous text, instead of a stored signature per line.** By
-  `didProcessEditing` the old lines of an edit are gone. Keeping the last text (the binding write
+  `willProcessEditing` the old lines of an edit are gone. Keeping the last text (the binding write
   already makes that copy) and reading the old lines from it would avoid the per-line table.
   **Rejected:** the decision also needs the list stack at the edit and the nearest bracket token
   before it. Against the text, both are walks bounded only by the note: a note with no `[[` above
@@ -613,10 +661,74 @@ path with the card.
 - No span changes meaning, and the golden corpus is untouched (R-03).
 - No on-disk format, schema, protected interface or connector changes, and no GUI test is added.
 
+## Measured after
+
+Taken on 2026-10-11 by `scripts/editor-restyle-bench.sh` on the uncommitted tree of
+`feature/per-paragraph-restyle` (on `48af9815`), Mac `Mac17,7` (Apple M5 Max), macOS 27.0.1 (build 26A434),
+Xcode 27.0, Debug build: milliseconds of main-thread CPU per keystroke, the minimum of K runs after one
+warm-up. The first run is `--large` (K = 5, and 3 at 1 MB); the second is `--large --runs 9`, started
+after a quiet window of the Mac: another session's bench, run from a sibling worktree, was on the machine
+around the first run (the script's guard looks once, at the start). The two agree within 7% on every row,
+so the first run was not visibly disturbed. The ceilings in `RestyleBudget.ceilings` are ADR-0082 §D9's and are **not**
+changed here: the person fixes the new ones at G-ceiling-2.
+
+The six rows, against ADR-0082 §D9's "after" (the full restyle with the `wikilinkSpans` fix):
+
+| Size | Variant | Before this change | After, K = 5 (3) | After, K = 9 | Under 20 ms |
+| --- | --- | --- | --- | --- | --- |
+| 50 KB | prose | 198.43 | 6.05 | 5.81 | yes |
+| 50 KB | fences | 225.34 | 7.90 | 7.35 | yes |
+| 200 KB | prose | 911.37 | 22.57 | 22.55 | no, by 2.6 ms |
+| 200 KB | fences | 1066.64 | 39.54 | 37.59 | no, by 17.6 ms |
+| 1 MB | prose | 6308.79 | 124.19 | 121.96 | no |
+| 1 MB | fences | 11843.73 | 536.49 | 522.68 | no |
+
+That is 28 to 34 times less at 50 KB, 27 to 40 times at 200 KB and 22 to 51 times at 1 MB, and the six rows
+pass ADR-0082 §D9's ceilings with room (596, 677, 2735, 3200, 18927 and 35532 ms). The proposal of 20 ms
+holds at 50 KB only, in a Debug build; the Release app is faster, and G-type (R-15) is the hand check of
+that.
+
+**The rows that miss 20 ms, and where the time goes.** A profile (`sample`, 1 ms, of the 1 MB fences row
+while it ran; the process was sampled for the whole of a `--runs 60` measurement) puts a keystroke's
+10,220 main-thread samples in four places, none of them the restyle of the paragraph:
+
+| Where | Share | Which of the plan's hints |
+| --- | --- | --- |
+| `NSTextView.insertText` → `NSTextStorage.processEditing` → `NSTextContentStorage.updateRangesForTextElement:locationDelta:` over every cached element (32%), plus `synchronizeTextLayoutManagers:` (7%) | 39% | none: TextKit's own range update, proportional to the number of paragraphs in the note |
+| `growToFitTheText` → `NSTextLayoutManager.ensureLayoutForRange:` over the document range (`enumerateTextLayoutFragmentsFromLocation:`, `__NSTextLayoutManagerFillSoftInvalidationToLocation`) | 25% | `ensureLayout(for: documentRange)` |
+| `willProcessEditing` → `recordStorageEdit` → `shiftDerivedState`: `shiftStyledRanges` (the unspellable and embed ranges, 9.5%) and `EditorDecorationDelegate.shift` (4.7%) | 15% | the linear shift of §D6, as designed |
+| `textDidChange` → `renumberLists(in:touching:)` → `ListContinuation.renumbered(_:touching:)` (`codeFenceFlags`, `LineScan.lines`, 10.6%), and the incremental restyle itself (8.8%) | 19% | **not in the plan's hints** |
+
+The `renumberLists(in:touching:)` term is new: it walks the whole text on every keystroke
+(`LineScan.lines` and the code-fence flags), whatever it renumbers, and so it is the one that this design
+could still remove without touching the layout. It is reported, not changed here. The `parent.text` copy
+and `NoteFolding.layout` do not appear among the heavy frames of this profile (no fold is active in the
+bench note). Re-scoping the layout stays out of scope (D10) and is a new decision with its own G-grow.
+
+**The fallback rows** (printed, never asserted; the two runs agree within 13%; K = 9 below, ms of CPU):
+
+| Size | Variant | `fence-open` | `table` | `list-enter` |
+| --- | --- | --- | --- | --- |
+| 50 KB | prose | 227.64 | 7.06 | 322.11 |
+| 50 KB | fences | 255.09 | 8.28 | 334.01 |
+| 200 KB | prose | 934.07 | 27.88 | 1376.05 |
+| 200 KB | fences | 1215.37 | 43.70 | 1549.27 |
+| 1 MB | prose | 5268.33 | 147.68 | 9033.04 |
+| 1 MB | fences | 11688.01 | 504.31 | 13605.01 |
+
+`fence-open` and `list-enter` cost what a full restyle costs, as the SPEC says they must (the "before"
+column above is 198 to 11,844 ms for the same sizes), and `list-enter` more, because the Return also
+rewrites the whole text and renumbers. A keystroke in a table cell restyles the table run only and costs
+about what the plain keystroke costs. In the same profile the structure map's build pass is about 16% of
+a full restyle (`RestyleScope.init(text:)` against `MarkdownStyler.spans(in:)` and the attribute writes):
+the "full restyle gains the map's build pass" of the Consequences, measured.
+
 ## Gates
 
 - **G-ceiling-2** (the person): look at the six "after" measurements and the three fallback rows,
-  then fix the six ceilings (the SPEC proposes 20 ms CPU).
+  then fix the six ceilings (the SPEC proposes 20 ms CPU). The numbers are in "Measured after"
+  (2026-10-11), and four of the six rows miss 20 ms in a Debug build; until the gate answers,
+  `RestyleBudget.ceilings` holds ADR-0082 §D9's.
 - **G-grow** (the person, R-14): on a Release build with a 1 MB note, type at the end and in the
   middle, press Cmd+Down, scroll to the end, and click low in the pane.
 - **G-type** (the person, R-15): on a Release build with a 50 KB note, a typed sentence shows no
@@ -631,5 +743,5 @@ path with the card.
 - ADR-0082 §D2 and §D5 to §D9; ADR-0077 §D1 and §D7; ADR-0074; ADR-0081 §D4; ADR-0033 §D3;
   ADR-0037 §D7; ADR-0001 §D1; ADR-0090.
 - `PG-385`/#887 and PR #956 (`558db01c`).
-- MacOSX27.0 SDK: `NSTextStorage.h:54-60`, `:84-87`, `:124`, `:129-142` and `:138-141`;
+- MacOSX27.0 SDK: `NSTextStorage.h:54-60`, `:84-88`, `:124`, `:129-142`, `:133-136` and `:138-141`;
   `NSTextContentManager.h:282-283`.
