@@ -116,12 +116,16 @@ final class EmbedTable {
     /// Never blocks: a cache miss leaves that offset out of the table for this pass -
     /// the "pending" state `EmbedRendition` has no case for - and the table updates
     /// itself later, from `requestRender`'s own completion, once the render lands.
+    ///
+    /// `dirty` is the incremental restyle's range (ADR-0091 §D4): only the runs inside it are
+    /// resolved, and every rendition outside it is kept as the shift left it.
     func apply(
         runs: [NSRange],
         notePath: String,
         root: URL?,
         thumbnails: ThumbnailStore?,
-        in textView: NSTextView
+        in textView: NSTextView,
+        within dirty: NSRange? = nil
     ) {
         self.textView = textView
         let text = textView.string as NSString
@@ -130,8 +134,9 @@ final class EmbedTable {
             return
         }
 
-        var next: [Int: EmbedRendition] = [:]
-        for range in runs where NSMaxRange(range) <= text.length {
+        var next = dirty.map { range in renditions.filter { !NSLocationInRange($0.key, range) } } ?? [:]
+        for range in runs where NSMaxRange(range) <= text.length
+            && dirty.map({ NSLocationInRange(range.location, $0) }) ?? true {
             let offset = text.paragraphRange(for: NSRange(location: range.location, length: 0)).location
             guard let rendition = rendition(
                 forSyntax: text.substring(with: range),
@@ -279,13 +284,30 @@ extension NoteTextView.Coordinator {
     /// second parse of the note: `embedRuns` is exactly what the same
     /// `MarkdownStyler.spans(in:)` walk `applyStyling` already made found, and this only
     /// walks it.
+    ///
+    /// Scoped like the transclusion pass (ADR-0091 §D7): after an incremental restyle only the
+    /// embeds inside its range are resolved, after a skipped one none is, and a call with no
+    /// styling before it resolves them all.
     func applyEmbeds(to textView: NSTextView) {
+        let scan = takeEmbedScan()
+        if case .none = scan { return }
+        let dirty: NSRange? = if case .range(let range) = scan { range } else { nil }
         embeds.apply(
             runs: embedRuns,
             notePath: parent.vault.notePath,
             root: parent.vault.vaultRoot,
             thumbnails: parent.vault.thumbnails,
-            in: textView
+            in: textView,
+            within: dirty
         )
+    }
+}
+
+extension EmbedTable {
+    /// Re-keys the renditions past `edit`, and the paragraphs a pending render will fill
+    /// (ADR-0091 §D6). The delegate's copy moves with `EditorDecorationDelegate.shift(by:)`.
+    func shift(by edit: StorageEdit) {
+        renditions = edit.shiftedKeys(renditions)
+        pending = pending.mapValues { edit.shiftedKeys($0) }
     }
 }

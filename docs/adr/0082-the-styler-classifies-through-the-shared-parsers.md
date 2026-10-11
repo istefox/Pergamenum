@@ -507,6 +507,9 @@ per-turn suite at 50 KB (the provisional literals, three times "before", sat 19 
 the measured cost and would not have caught it). The SPEC amendment that goes with the split was
 approved the same day.
 
+**New ceilings, ADR-0091 §D11.** The per-paragraph restyle measures these six rows again and fixes
+their ceilings at G-ceiling-2; until the person does, the six above stay in force.
+
 ## Alternatives considered
 
 - **Port the flanking rule into the styler's own scanner.** Closes `PG-347` in an afternoon and

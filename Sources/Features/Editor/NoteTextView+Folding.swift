@@ -19,6 +19,9 @@ final class FoldController {
     /// The fold already applied, so an unchanged one does not invalidate the layout on every
     /// view update.
     private(set) var lastFoldLayout = NoteFolding.Layout()
+    /// Set when `shift(by:)` changes `lastFoldLayout`, and kept until a pass gets past the
+    /// nothing-is-folded guard in `apply`, which reads and clears it.
+    private var shiftedSinceApply = false
 
     init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate) {
         self.parent = parent
@@ -43,7 +46,15 @@ final class FoldController {
         var layout = NoteFolding.layout(in: textView.string, foldedEntries: folded)
         let frontmatter = hidesFrontmatter ? NoteFolding.hiddenFrontmatter(in: textView.string) : nil
         if let frontmatter { layout.hiddenLineOffsets.formUnion(frontmatter.lineOffsets) }
-        guard layout != lastFoldLayout else { return }
+        let shifted = shiftedSinceApply
+        shiftedSinceApply = false
+        guard layout != lastFoldLayout else {
+            // A shifted layout equals the new one where an unshifted one would not, and the full
+            // restyle re-applies the fold after such an edit, rescuing a caret left in a hidden
+            // line. The rescue is the part a person sees, so it runs here too (ADR-0091 §D6).
+            if shifted { rescueCaret(in: textView, from: layout, frontmatter: frontmatter) }
+            return
+        }
         lastFoldLayout = layout
 
         decorations.badgeColor = NSColor(theme.color(.textTertiary))
@@ -80,5 +91,19 @@ final class FoldController {
             return layout.foldedHeadings.keys.filter { $0 <= selection.location }.max() ?? 0
         }
         CaretRescue.place(heading, in: textView)
+    }
+}
+
+extension FoldController {
+    /// Moves the last fold layout past `edit` (ADR-0091 §D6), so the folding pass compares the
+    /// fold it computes with the one on screen at the offsets they now have. The delegate's copy
+    /// moves with `EditorDecorationDelegate.shift(by:)`.
+    func shift(by edit: StorageEdit) {
+        let unshifted = lastFoldLayout
+        lastFoldLayout.hiddenLineOffsets = edit.shiftedKeys(lastFoldLayout.hiddenLineOffsets)
+        lastFoldLayout.foldedHeadings = edit.shiftedKeys(lastFoldLayout.foldedHeadings)
+        // Only a shift that moved the layout: an unmoved one is what the full path compares
+        // against too, and it rescues nothing then.
+        if lastFoldLayout != unshifted { shiftedSinceApply = true }
     }
 }

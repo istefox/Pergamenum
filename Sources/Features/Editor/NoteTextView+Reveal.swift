@@ -227,3 +227,13 @@ final class RevealController {
         storage.endEditing()
     }
 }
+
+extension RevealController {
+    /// Moves the revealed paragraphs and spans past `edit` (ADR-0091 §D6), so the next reveal pass
+    /// invalidates what changed and not every paragraph below the edit. The delegate's copy moves
+    /// with `EditorDecorationDelegate.shift(by:)`.
+    func shift(by edit: StorageEdit) {
+        lastRevealed = edit.shiftedKeys(lastRevealed)
+        lastRevealedSpans = edit.shiftedKeys(lastRevealedSpans)
+    }
+}

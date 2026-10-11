@@ -58,14 +58,16 @@ extension NoteTextView {
 
     /// Step 2: the passes, in the order each depends on the one before.
     func runPasses(on textView: CompletingTextView, coordinator: Coordinator) {
-        coordinator.applyStyling(to: textView, theme: theme)
+        // The dirty range, nothing, or the whole note (ADR-0091 §D8): the second pass of a
+        // keystroke `textDidChange` already styled finds nothing to do.
+        coordinator.applyStylingIfNeeded(to: textView, theme: theme)
         coordinator.applyEmbeds(to: textView)
         coordinator.applyTransclusions(to: textView, theme: theme)
         coordinator.applyFolding(
             to: textView, folded: outline.foldedEntries, hidesFrontmatter: outline.hidesFrontmatter, theme: theme
         )
-        // After the styling, always: `applyStyling` rewrites every attribute in the storage
-        // and invalidates the layout with them, so a highlight painted before it would be
+        // After the styling, always: a styling rewrites the attributes it covers and
+        // invalidates the layout with them, so a highlight painted before it would be
         // gone by the time anything was drawn.
         coordinator.applyMatches(
             to: textView, matches: find.matches, current: find.currentMatch, theme: theme

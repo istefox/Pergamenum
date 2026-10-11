@@ -48,6 +48,16 @@ enum ProseParagraphSpacing {
         return ranges
     }
 
+    /// `paragraphRanges(in:spans:)` over a fragment of the note, `offset` UTF-16 units into it
+    /// (ADR-0091 §D5). `spans` carry the fragment's own indices; the ranges come back in the note's
+    /// coordinates. A fragment starts and ends at line boundaries and no span crosses its edges, so
+    /// each of its lines gets the answer the whole note gives it.
+    static func paragraphRanges(
+        inFragment fragment: String, offset: Int, spans: [MarkdownStyler.StyledRange]
+    ) -> [NSRange] {
+        paragraphRanges(in: fragment, spans: spans).map { NSRange(location: $0.location + offset, length: $0.length) }
+    }
+
     /// The styling pass's one call: `spacing` onto every prose and heading line of `text`. A
     /// zero gap is what every line already carries, so the per-line walk is skipped outright.
     static func apply(

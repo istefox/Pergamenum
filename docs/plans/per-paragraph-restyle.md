@@ -748,3 +748,38 @@ CHECK-CMD CANDIDATE: NONE
   fails by design on seven types today, `MarkdownStyler` among them, and the repository declares
   no `.claude/check-cmd`. A read-only check that is red before any change cannot gate anything.
 - Adopting `swiftlint lint --strict --baseline <file>` is a separate decision.
+
+## Build result (2026-10-11)
+
+BUILD · DONE WITH WARNINGS
+Files: 49 changed (29 modified, 20 new), 1833 insertions and 232 deletions on tracked files
+Tests: 6189 passed, 0 failed (5 known issues, all HostedViewPrototypeTests, unrelated), 1 (coverage)
+Review: sonnet, safe; opus, safe
+Coverage: not run, the plan's requirement set is not SPEC.md
+Dropped: 7 (nit 1, fix-hunk 4, post-sweep 2)
+Dispatch: Round 0 (red): tester — Task 1, tester — Task 3
+Dispatch: Round 1: coder — hosted twin zones MAJOR, coder — surfaces behavioural test, coder — ADR citations, coder — RestyleScope.swift:129
+Dispatch: Round 2: coder — FoldController flag MINOR, coder — ADR section 6 rescue rule MINOR, coder — Transclusion citations MINOR
+Dispatch: Round 3 (sweep): coder — 4 NITs, coder — follow-ups Embeds:126, RestyleScope:83, ListNesting:137
+Dispatch: Round 4 (sweep): coder — thumbnails pin test MINOR, coder — ADR section 8 fingerprint MINOR
+INFO: review escalated, size: 46 changed files, threshold 20
+INFO: parallel Kepler worktree kepler/fix/incremental-note-restyling (da38099d) holds uncommitted edits to the same files; not read, not touched
+WARN: R-01 open at the G-ceiling-2 gate: in Debug 4 of 6 bench rows are above 20 ms CPU per keystroke (200 KB prose 22.6, 200 KB fences 37.6, 1 MB prose 122, 1 MB fences 523 at K=9), ceilings not written, ADR-0082 section D9 ceilings still apply
+WARN: R-14 and R-15 are hand checks on a Release build (G-grow, G-type), not done
+
+```text
+DROP\tnit\t**NIT** Sources/Features/Editor/NoteTextView+Folding.swift:22-23 shiftedSinceApply doc wording (reviewer: opus), fixed in the sweep anyway
+DROP\tfix-hunk\t**MINOR** [other] Sources/Features/Editor/NoteTextView+Transclusion.swift:146 TransclusionController.apply complexity 11 over the SwiftLint limit (follow-up: coder)
+DROP\tfix-hunk\t**MINOR** [other] Sources/Features/Editor/NoteTextView+Folding.swift:108 two edits that cancel out before a pass still rescue the caret where the full path would not, not reproduced (follow-up: coder)
+DROP\tfix-hunk\t**MINOR** [other] docs/adr/0091-a-keystroke-restyles-the-paragraph-it-touched.md:471-474 section D8 implies a full restyle re-resolves cached embeds against a new store or root; renderCache and resolutionCache are not invalidated (reviewer: opus)
+DROP\tfix-hunk\t**MINOR** [other] Tests/NoteTextViewUpdatePinsTests.swift:368-370 doc comment claims the embed pass resolves through the new store (reviewer: opus)
+DROP\tpost-sweep\t**MINOR** [other] Sources/Features/Editor/NoteTextView+Coordinator.swift:337 addAttributes takes 6 parameters, one over the SwiftLint limit, no clean grouping (follow-up: coder)
+DROP\tpost-sweep\t**MINOR** [other] Sources/Features/Editor/StructureMap.swift:40 StructureMap(text:) re-tokenizes every line on each full restyle, no safe saving (follow-up: coder)
+FIX\tswept\t**NIT** Tests/IncrementalRestyleHostedTests.swift:12 stale Red-until headers (reviewer: sonnet, opus)
+FIX\tswept\t**NIT** Tests/OffsetShiftTests.swift:47 doc comment placement (reviewer: sonnet)
+FIX\tswept\t**NIT** Sources/Features/Editor/RestyleScope.swift:109 tableFence reason (reviewer: opus)
+FIX\tswept\t**NIT** Tests/ScrolledEditorFixture.swift:384 unused comparable (reviewer: opus)
+FIX\tswept\t**MINOR** [other] Sources/Features/Editor/NoteTextView+Embeds.swift:126 thumbnails in the styling inputs (follow-up: coder)
+FIX\tswept\t**MINOR** [other] Sources/Features/Editor/RestyleScope.swift:83 decide split into helpers (follow-up: coder)
+FIX\tswept\t**MINOR** [other] Sources/Core/Editor/ListNesting.swift:137 line over 120 characters (follow-up: coder)
+```

@@ -67,8 +67,12 @@ extension MarkdownBlockParser {
     /// swallows everything to its closing line, a pipe line followed by a delimiter row opens a
     /// table, and only then is a line a blank, a rule, a heading, a task, a list item, a quote, a
     /// Pratiche anchor or prose.
+    ///
+    /// `listSeed` is the stack of open list items above `text` when `text` is a fragment of a note
+    /// (ADR-0091 §D4): the list levels start from it. Empty, the default, is a whole note.
     static func lineTokens(
-        in text: String, readsFrontmatter: Bool = false, endsLine: (Character) -> Bool = \.isNewline
+        in text: String, readsFrontmatter: Bool = false, endsLine: (Character) -> Bool = \.isNewline,
+        listSeed: [Int] = []
     ) -> [MarkdownLineToken] {
         let ranges = lineRanges(in: text, endsLine: endsLine)
         var tokens: [MarkdownLineToken] = []
@@ -87,7 +91,7 @@ extension MarkdownBlockParser {
         var cachedLevels: [String.Index: Int]?
         func levels() -> [String.Index: Int] {
             if let cachedLevels { return cachedLevels }
-            let computed = ListNesting.levels(in: text)
+            let computed = ListNesting.levels(in: text, seed: listSeed)
             cachedLevels = computed
             return computed
         }
@@ -118,7 +122,7 @@ extension MarkdownBlockParser {
             }
 
             tokens.append(MarkdownLineToken(
-                range: range, kind: kind(of: line, trimmed: trimmed, in: text, levels: levels)
+                range: range, kind: kind(of: line, trimmed: trimmed, in: text, levels: levels, listSeed: listSeed)
             ))
             index += 1
         }
@@ -179,7 +183,7 @@ extension MarkdownBlockParser {
     /// typed. A reading view has nothing to draw for an empty one, so `blocks(in:)` keeps such a
     /// line as the text it is.
     private static func kind(
-        of line: Substring, trimmed: String, in text: String, levels: () -> [String.Index: Int]
+        of line: Substring, trimmed: String, in text: String, levels: () -> [String.Index: Int], listSeed: [Int]
     ) -> MarkdownLineToken.Kind {
         if trimmed.isEmpty { return .blank }
         if isRule(trimmed) { return .rule }
@@ -193,7 +197,8 @@ extension MarkdownBlockParser {
         // only for a line it does not key (an indentation of other blanks than spaces and tabs).
         func level() -> Int {
             let columns = line[..<content].reduce(0) { $0 + ($1 == "\t" ? 4 : 1) }
-            return levels()[line.startIndex] ?? ListNesting.level(in: text, lineStart: line.startIndex, indent: columns)
+            return levels()[line.startIndex]
+                ?? ListNesting.level(in: text, lineStart: line.startIndex, indent: columns, seed: listSeed)
         }
         if let task = taskMarker(in: body) { return .task(state: task.state, marker: task.marker, level: level()) }
         if let marker = listMarker(in: body) {
