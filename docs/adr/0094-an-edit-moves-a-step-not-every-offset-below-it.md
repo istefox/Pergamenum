@@ -570,7 +570,19 @@ run on the dirty fragment; this profile cannot say whether it grows with the not
 - **G-hand-405 (the person, R-13), on a Release build with a 1 MB note.** Type at the end and in the
   middle, Enter, a wrapping sentence, Cmd+Down, scroll to the end, click low in the pane, undo and redo, and
   an IME composition. Added for D1's step: type near the top, then at the end, three times over.
-  `-editorFullRestyle YES` isolates this record's change without a rebuild. **Not done yet.**
+  `-editorFullRestyle YES` isolates this record's change without a rebuild. **Not passed (2026-10-12,
+  Release build of `main` at `2871b6bc`, fences note of 1 MB in a throwaway vault).** Typing did not
+  register: the main thread was blocked for seconds per edit, in SwiftUI's layout, not in the editor.
+  A `sample` of the busy process (`build/pg405-hand-sample-opennote.txt`, 3,214 main-thread samples) puts
+  2,393 (75%) in `AGGraphSetOutputValue` comparing the previous and the new value of a view input, and 1,602
+  (50%) of those in the derived `==` of `VaultController.OpenNote` (`NoteTab.swift:98`): `text` is compared
+  as a whole through `_stringCompareSlow` (NFC normalisation), and the text the editor wrote back is a
+  foreign string (`NSString` bridged from `textView.string`), which that compare walks scalar by scalar
+  (`foreignIndex`, `characterAtIndex:`). The cost is linear in the note, runs on every binding write, and
+  is outside everything the bench measures: it never goes through SwiftUI. The write itself is unchanged by
+  this record (`parent.text = textView.string` predates it), but no build from before #982 was run to
+  confirm the cost was already there. The other steps of the checklist were not reached. The gate stays
+  open until a keystroke in a 1 MB note on a Release build is usable; the ledger carries the fix.
 
 ## Ledger entries
 
