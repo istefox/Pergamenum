@@ -60,7 +60,22 @@ extension NoteTextView.Coordinator: NSTextStorageDelegate {
         let edit = StorageEdit(range: editedRange, delta: delta)
         nonisolated(unsafe) let storage = textStorage
         MainActor.assumeIsolated {
+            modelSync.heardEdit()
             recordStorageEdit(edit, in: storage)
+        }
+    }
+
+    /// The second callback (ADR-0093 §D2): the layout record hears every processed edit, characters or
+    /// attributes, in the range attribute fixing has widened (a typed character at 10 arrives as
+    /// `{10, 27}`), which is what TextKit re-creates. Pinned by `IncrementalRestyleHosted`'s platform pin.
+    nonisolated func textStorage(
+        _ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
+        range editedRange: NSRange, changeInLength delta: Int
+    ) {
+        let edit = StorageEdit(range: editedRange, delta: delta)
+        nonisolated(unsafe) let storage = textStorage
+        MainActor.assumeIsolated {
+            layoutDebt.hear(edit, in: storage)
         }
     }
 }

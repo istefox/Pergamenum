@@ -320,6 +320,52 @@ private let blockKeystrokes = [
         #expect(fixture.coordinator.lastRecordedEdit == StorageEdit(range: NSRange(location: 10, length: 0), delta: -3))
     }
 
+    /// Records what the storage's `didProcessEditing` is handed, as the coordinator's callback will be.
+    private final class ProcessedEditProbe: NSObject, NSTextStorageDelegate {
+        nonisolated(unsafe) var edits: [(mask: NSTextStorageEditActions, range: NSRange, delta: Int)] = []
+
+        func textStorage(
+            _ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
+            range editedRange: NSRange, changeInLength delta: Int
+        ) {
+            edits.append((editedMask, editedRange, delta))
+        }
+    }
+
+    // (R-02, platform pin, ADR-0093 §D2) `didProcessEditing` is handed a typed character as
+    // the range from the edit to the end of its paragraph, after the attribute fixing widened it
+    // (ADR-0091 C4's `{10, 27}` shape), and a deletion as an empty range at the edit. The record rests on both.
+    @Test func didProcessEditingReportsAKeystrokeAsItsParagraphAndADeletionAsAnEmptyRange() throws {
+        let text = "Prima.\n\nUna riga di prosa abbastanza lunga.\n\nUltima.\n"
+        let textView = CompletingTextView(usingTextLayoutManager: true)
+        textView.frame = CGRect(x: 0, y: 0, width: 600, height: 400)
+        textView.string = text
+        let storage = try #require(textView.textStorage)
+        let probe = ProcessedEditProbe()
+        storage.delegate = probe
+        let line = (text as NSString).range(of: "Una riga")
+        let location = line.location + 3
+
+        textView.setSelectedRange(NSRange(location: location, length: 0))
+        textView.insertText("x", replacementRange: NSRange(location: NSNotFound, length: 0))
+
+        let typed = probe.edits.last { $0.mask.contains(.editedCharacters) }
+        let paragraph = (storage.string as NSString).paragraphRange(for: NSRange(location: location, length: 0))
+        #expect(typed?.delta == 1, "\(String(describing: typed))")
+        // From the edit to the end of its paragraph: the fixing widens the range forward, not back.
+        #expect(typed?.range.location == location, "typed: \(String(describing: typed?.range)), the edit is at \(location)")
+        #expect(typed.map { NSMaxRange($0.range) } == NSMaxRange(paragraph), "typed: \(String(describing: typed?.range)), the paragraph is \(paragraph)")
+
+        probe.edits.removeAll()
+        if textView.shouldChangeText(in: NSRange(location: location, length: 3), replacementString: "") {
+            storage.replaceCharacters(in: NSRange(location: location, length: 3), with: "")
+            textView.didChangeText()
+        }
+        let deleted = probe.edits.last { $0.mask.contains(.editedCharacters) }
+        #expect(deleted?.delta == -3, "\(String(describing: deleted))")
+        #expect(deleted?.range.length == 0, "a deletion was reported as \(String(describing: deleted?.range)), not as an empty range")
+    }
+
     // (R-06, platform pin) The storage's delegate slot is free on a fresh fixture, before the first
     // full restyle, so installing the coordinator displaces nothing.
     @Test func theStorageDelegateIsNilOnAFreshFixture() {

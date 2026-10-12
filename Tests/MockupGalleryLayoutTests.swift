@@ -59,12 +59,12 @@ struct MockupGalleryLayoutTests {
         #expect(MockupGalleryView.Screen.linkPreview.title == "Link")
         #expect(MockupGalleryView.Screen.linkPreview.milestone == "N3, approvato")
         #expect(MockupGalleryView.Screen.inspectorLinks.title == "Ispettore: link")
-        #expect(MockupGalleryView.Screen.inspectorLinks.milestone == "N3, da approvare")
+        #expect(MockupGalleryView.Screen.inspectorLinks.milestone == "N3, approvato")
     }
 
     // (note-workflow-n3-mockup Task 3) The «Menzioni» page gained its N3 half and its label says so.
     @Test func theMentionsPageCarriesTheN3Milestone() {
-        #expect(MockupGalleryView.Screen.mentions.milestone == "M10, N3 da approvare")
+        #expect(MockupGalleryView.Screen.mentions.milestone == "M10, N3 approvato")
     }
 
     // (note-workflow-n3-mockup Task 1) The preview is drawn at the proposed 360 pt (ADR-0083 §D7)

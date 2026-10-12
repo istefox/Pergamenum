@@ -124,4 +124,40 @@ private enum DailyPane: String, CaseIterable, Sendable, CustomTestStringConverti
         #expect(!editor.coordinator.viewBlocks.drawn.isEmpty, "the fence stopped being drawn")
         #expect(twin.differences().isEmpty, "\(twin.differences())")
     }
+
+    // (R-05, ADR-0093 §D4) The same editor, read for its layout: a prose keystroke in Oggi and in Diario
+    // is laid out by ranges, no height in the note is an estimate afterwards, and the kill switch is not
+    // set by either pane.
+    @Test(arguments: DailyPane.allCases)
+    fileprivate func aDailyPaneKeystrokeTakesTheRangedLayoutAndLeavesNoEstimate(_ pane: DailyPane) async throws {
+        let vault = try TemporaryVault()
+        try vault.write(note, to: "Note/N.md")
+        let controller = VaultController(recents: .volatile(), openTabs: .volatile())
+        await controller.open(vault.root)
+        defer { controller.close() }
+        let inputs = NoteTextView.VaultInputs(
+            vaultRoot: controller.root, notePath: pane.notePath, thumbnails: controller.thumbnails,
+            queries: .live(for: controller), onOpenTag: { _ in }, onOpenDay: { _ in }
+        )
+
+        let editor = ScrolledEditorFixture(text: pane.text, vault: inputs, forcesFullRestyle: nil, forcesFullLayout: nil)
+        defer { editor.window.orderOut(nil) }
+        let read = EditorRestyleSwitch.forcesFullLayout(
+            arguments: ProcessInfo.processInfo.arguments, defaults: .standard
+        )
+        #expect(editor.coordinator.forcesFullLayout == read)
+        try #require(!editor.coordinator.forcesFullLayout, "the layout kill switch is on in this test process")
+        editor.runPasses()
+        editor.openLikeTheApp()
+        let before = editor.coordinator.layoutDebt.log
+
+        let prose = (pane.text as NSString).range(of: "prima riga")
+        try #require(prose.location != NSNotFound)
+        editor.type("x", at: prose.location + 5)
+
+        let after = editor.coordinator.layoutDebt.log
+        #expect(after.ranged > before.ranged, "a prose keystroke was not laid out by ranges: \(before) then \(after)")
+        #expect(after.whole == before.whole, "a prose keystroke laid out the whole note: \(before) then \(after)")
+        editor.expectNoEstimate("\(pane.rawValue) after a keystroke")
+    }
 }

@@ -416,3 +416,5 @@ Every ADR is `docs/adr/NNNN-<slug>.md`; the title below is that file's own headi
 - ADR-0089 — A conflicted board or diary is asked about at quit
 - ADR-0090 — The editor's pointer is decided and drawn by AppKit, from two overrides
 - ADR-0091 — A keystroke restyles the paragraph it touched, and a structural change restyles the note
+- ADR-0093 — A keystroke lays out what it changed, and renumbers from a line the map vouches for
+- ADR-0094 — An edit moves a step, not every offset below it

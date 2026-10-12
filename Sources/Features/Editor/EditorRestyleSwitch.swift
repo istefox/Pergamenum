@@ -18,6 +18,19 @@ enum EditorRestyleSwitch {
         return defaults.bool(forKey: key)
     }
 
+    /// The sibling switch for the layout (ADR-0093 §D6): `-editorFullLayout YES`, or the same key in
+    /// the defaults, makes every grow-to-fit lay out the whole note.
+    static let layoutKey = "editorFullLayout"
+
+    /// Whether the layout switch is on: the argument pair first, then the defaults, read the way
+    /// `forcesFullRestyle` reads its own key. Independent of it.
+    static func forcesFullLayout(arguments: [String], defaults: UserDefaults) -> Bool {
+        if let flag = arguments.firstIndex(of: "-\(layoutKey)"), flag + 1 < arguments.count {
+            return isOn(arguments[flag + 1])
+        }
+        return defaults.bool(forKey: layoutKey)
+    }
+
     /// The spellings the arguments domain reads as true.
     private static func isOn(_ value: String) -> Bool {
         ["yes", "true", "1"].contains(value.lowercased())

@@ -76,6 +76,19 @@ struct RestyleScope: Sendable {
         stack(before: map.lineIndex(containing: offset))
     }
 
+    /// Where a windowed list renumbering may start reading for an edit at `offset`, or nil while the map
+    /// describes a text that is gone (ADR-0093 §D8). From the line before the one holding `offset`
+    /// (the scoped form widens by that line), back to the nearest line whose previous line ends every
+    /// run, or the first line; no ordered run crosses that start. The fence parity there is the parity
+    /// of the delimiters above it, a rank in the map's odd-delimiter lines (ADR-0094 §D6).
+    func renumberWindow(before offset: Int) -> ListContinuation.Window? {
+        guard !isStale, !map.lines.isEmpty else { return nil }
+        let lines = map.lines
+        var start = max(0, map.lineIndex(containing: offset) - 1)
+        while start > 0, !lines[start - 1].listFacts.endsEveryRun { start -= 1 }
+        return ListContinuation.Window(start: lines[start].start, fenceOpen: map.fenceParity(before: start))
+    }
+
     /// Hands the fragment's own map back after a restyle (`StructureMap.splice`).
     mutating func absorb(_ fragment: StructureMap, at offset: Int, replacing dirty: NSRange) {
         map.splice(fragment, at: offset, replacing: dirty)
@@ -148,13 +161,15 @@ struct RestyleScope: Sendable {
     /// False when a cut run holds a fence mark, as `extendOverTableRuns` answers.
     private func widenOverRegions(_ low: inout Int, _ high: inout Int) -> Bool {
         let lines = map.lines
-        // The map does not change inside the loop, so the regions are gathered once.
-        let regions = map.fences.map(\.range) + map.codeBlocks
         var moved = true
         while moved {
             moved = false
             let rangeStart = lines[low].start
             let rangeEnd = map.lineEnd(high)
+            // The fences the pass's range reaches, by search (ADR-0094 §D6), then the other readers'
+            // fences. The range is fixed for the pass, so the order the regions are visited in is not.
+            let span = NSRange(location: rangeStart, length: rangeEnd - rangeStart)
+            let regions = map.fences.indices(intersecting: span).map { map.fences[$0].range } + map.codeBlocks
             for region in regions where region.location < rangeEnd && NSMaxRange(region) > rangeStart {
                 let regionLow = map.lineIndex(containing: region.location)
                 let regionHigh = map.lineIndex(containing: max(region.location, NSMaxRange(region) - 1))
@@ -206,12 +221,11 @@ struct RestyleScope: Sendable {
 
     /// Whether the last bracket token above line `index` is an opener outside code with a `]]`
     /// somewhere after it: the link parser would pair it across the line boundary.
+    /// Both questions are searches in the map's mark sets (ADR-0094 §D6).
     private func pendingOpener(before index: Int) -> Bool {
-        let lines = map.lines
-        var line = index - 1
-        while line >= 0, lines[line].signature.brackets.isEmpty { line -= 1 }
-        guard line >= 0, case .open(_, inCode: false)? = lines[line].signature.brackets.last else { return false }
-        return lines[(line + 1)...].contains { $0.signature.brackets.contains(.close) }
+        guard let line = map.nearestBracketLine(before: index),
+              case .open(_, inCode: false)? = map.lines[line].signature.brackets.last else { return false }
+        return map.hasClosingBracket(after: line)
     }
 
     /// Line `index` of `text` without its terminator.
@@ -269,5 +283,14 @@ struct RestyleScope: Sendable {
     private static func hull(_ lhs: NSRange, _ rhs: NSRange) -> NSRange {
         let start = min(lhs.location, rhs.location)
         return NSRange(location: start, length: max(NSMaxRange(lhs), NSMaxRange(rhs)) - start)
+    }
+}
+
+// MARK: - Tallies (ADR-0094 §D5)
+
+extension RestyleScope {
+    /// Zeroes the tallies of the map the scope keeps.
+    mutating func resetTallies() {
+        map.resetTallies()
     }
 }

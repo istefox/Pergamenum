@@ -4,7 +4,9 @@ import Testing
 
 // ADR-0072 §D4, plan docs/plans/pg-138-pg-141-pg-142-performance-debt.md, Task 2 - R-05.
 //
-// The inspector shows the first ten unresolved links. `unresolvedLinks(limit:)` builds source
+// The inspector no longer reads this list: since ADR-0084 §D2 it shows only the open note's own
+// unresolved links, and `perg note unresolved` and the MCP `unresolved_links` tool read the whole
+// list. The limit stays part of the contract: `unresolvedLinks(limit:)` builds source
 // lists only for the entries it keeps, and must equal the prefix of the full sort for every
 // limit: targets and source paths alike, with numeric, accented and case-variant targets.
 

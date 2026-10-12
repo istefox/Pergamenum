@@ -431,6 +431,9 @@ The holders:
 A holder added later that keys by offset must get the same method, or it is a defect. The hosted
 R-05 test compares every holder named here with a twin that was fully restyled.
 
+`hiddenMarkers`, the coordinator's two range lists and `StructureMap` move a step since
+ADR-0094 §D1; the other holders keep this section's tables, with ADR-0094 §D8's bounds.
+
 ### D7. The passes after the styling
 
 **Transclusions (R-09).** The styling pass hands `applyTransclusions` a one-shot token that names the
@@ -504,6 +507,8 @@ The card (`CardTextView`, `CardTextView+Styling.swift:35`) stays on its whole-te
 property test: the incremental result equals the same styler's full result.
 
 ### D10. Layout and fence crossing stay as they are
+
+Its layout half is amended by ADR-0093 §D4.
 
 `growToFitTheText` still calls `ensureLayout(for: documentRange)`, because ADR-0082 §D7 stays
 withdrawn. With the attributes outside the dirty range untouched, TextKit has only the dirty

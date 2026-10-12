@@ -23,6 +23,12 @@ import Testing
 // `RESTYLE_BUDGET_FALLBACK=1`, print `restyle-budget-fallback ...` lines and never assert a time; they
 // assert that the keystroke took the path it names. The six rows carry the ceilings the person fixed
 // at G-ceiling-2 on 2026-10-11.
+//
+// ADR-0093 §D9 (scoped-layout-followup plan, Task 7, R-13) adds four structural rows: a fence opened
+// with no fence below, a fence opened above later fences, `[[` typed with no `]]` below, and `]]`
+// typed with the last `]]` far above. They run behind `RESTYLE_BUDGET_STRUCTURAL=1`
+// (`scripts/editor-restyle-bench.sh --structural`), print `restyle-budget-structural ...` lines with
+// the length the restyle covered, and never assert a time.
 
 @MainActor
 @Suite(.serialized) struct EditorRestyleBudgetTests {
@@ -71,6 +77,35 @@ import Testing
     // (per-paragraph-restyle R-12) The three paths of the SPEC, spelled as the script's `path` column.
     @Test func thereAreThreeFallbackPathsNamedAsTheTableColumnPrintsThem() {
         #expect(RestyleBudget.FallbackPath.allCases.map(\.rawValue) == ["fence-open", "table", "list-enter"])
+    }
+
+    // (R-13) The bench script greps this exact shape for its third table, and neither of the other two
+    // tables' patterns may match it.
+    @Test func theStructuralLineHasTheSevenFieldsTheBenchScriptGreps() {
+        let c = RestyleBudget.Case(bytes: 51_200, variant: .fences)
+        let line = RestyleBudget.structuralLine(
+            c, path: .fenceOpenLast, cpuMs: 12.345, wallMs: 15.5, dirty: 123, runs: 5
+        )
+        #expect(
+            line == "restyle-budget-structural size=51200 variant=fences path=fence-open-last "
+                + "cpu_ms=12.35 wall_ms=15.50 dirty=123 runs=5"
+        )
+        #expect(
+            RestyleBudget.structuralLine(
+                .init(bytes: 1_048_576, variant: .prose), path: .wikilinkCloseFar, cpuMs: 0.004, wallMs: 1,
+                dirty: 1_048_576, runs: 3
+            ) == "restyle-budget-structural size=1048576 variant=prose path=wikilink-close-far "
+                + "cpu_ms=0.00 wall_ms=1.00 dirty=1048576 runs=3"
+        )
+        #expect(!line.hasPrefix("restyle-budget size=") && !line.hasPrefix("restyle-budget-fallback size="))
+    }
+
+    // (R-13) The four paths of the SPEC, spelled as the script's `path` column.
+    @Test func thereAreFourStructuralPathsNamedAsTheTableColumnPrintsThem() {
+        #expect(
+            RestyleBudget.StructuralPath.allCases.map(\.rawValue)
+                == ["fence-open-last", "fence-open-above", "wikilink-open", "wikilink-close-far"]
+        )
     }
 
     // (n2-page R-15) Size within 1% of the target, in UTF-8 bytes, for every case.
@@ -247,5 +282,108 @@ import Testing
 
         print(RestyleBudget.fallbackLine(c, path: path, cpuMs: measured.cpuMs, wallMs: measured.wallMs, runs: runs))
         expectThePath(scenario, scenario.outcome(), "\(c) \(path.rawValue)")
+    }
+
+    // MARK: Structural rows (scoped-layout-followup R-13)
+
+    /// The reason a path must fall back for, said once for the always-on check: both fence paths are
+    /// `.fenceLine`; the two link paths are the wikilink decisions (ADR-0091 §D3), whichever of the two
+    /// the token comparison or the pending opener answers first.
+    private func expectTheStructuralPath(
+        _ scenario: StructuralScenario, _ outcome: StructuralScenario.Outcome, _ label: String
+    ) {
+        switch scenario.path {
+        case .fenceOpenLast, .fenceOpenAbove:
+            #expect(scenario.expectedDecision == .full(.fenceLine), "\(label): \(String(describing: scenario.expectedDecision))")
+        case .wikilinkOpen, .wikilinkCloseFar:
+            let linkReasons: [RestyleScope.Decision?] = [.full(.wikilinkTokens), .full(.wikilinkPending)]
+            #expect(linkReasons.contains(scenario.expectedDecision), "\(label): \(String(describing: scenario.expectedDecision))")
+        }
+        #expect(outcome.fulls >= 1, "\(label): the keystroke was not a full restyle: \(outcome.before) then \(outcome.after)")
+        #expect(outcome.incrementals == 0, "\(label): a ranged restyle ran: \(outcome.before) then \(outcome.after)")
+        #expect(outcome.dirty == outcome.textLength, "\(label): the restyle covered \(outcome.dirty) of \(outcome.textLength)")
+    }
+
+    // (R-13) Each scenario prepares the note it describes and takes the path it names, at the size the
+    // per-turn suite can afford, so a row printed by the bench never measures the wrong keystroke.
+    // Always on.
+    @Test(arguments: RestyleBudget.StructuralPath.allCases, RestyleBudget.Variant.allCases)
+    func eachStructuralScenarioTakesThePathItNames(
+        _ path: RestyleBudget.StructuralPath, _ variant: RestyleBudget.Variant
+    ) {
+        let scenario = StructuralScenario(.init(bytes: 50 * 1024, variant: variant), path: path)
+        defer { scenario.fixture.window.orderOut(nil) }
+        let lengthBefore = (scenario.fixture.textView.string as NSString).length
+
+        let outcome = scenario.outcome()
+
+        expectTheStructuralPath(scenario, outcome, "\(path.rawValue) \(variant.rawValue)")
+        #expect((scenario.fixture.textView.string as NSString).length == lengthBefore, "the keystroke was not taken back")
+        #expect(scenario.fixture.textView.string == scenario.prepared, "the note is not as it was prepared")
+        // And it is repeatable: the second keystroke takes the same path from the restored note.
+        expectTheStructuralPath(scenario, scenario.outcome(), "\(path.rawValue) \(variant.rawValue), second time")
+    }
+
+    // (R-13) The notes are what the plan says: the fence rows hold two backticks before the keystroke,
+    // with the fences below or not; the link rows hold the bracket the keystroke completes, and the
+    // last `]]` above the closing edit is half a note away.
+    @Test func theStructuralScenariosPrepareTheNoteTheyDescribe() {
+        let size = RestyleBudget.Case(bytes: 50 * 1024, variant: .fences)
+
+        let last = StructuralScenario(size, path: .fenceOpenLast)
+        defer { last.fixture.window.orderOut(nil) }
+        let lastText = last.prepared as NSString
+        #expect(lastText.substring(from: last.location - 2) == "``", "the line holds two backticks and ends the note")
+        #expect(lastText.substring(to: last.location - 2).hasSuffix("\n\n"))
+        #expect(last.location == lastText.length, "the keystroke is not at the end of the note, so lines are below it")
+
+        let above = StructuralScenario(size, path: .fenceOpenAbove)
+        defer { above.fixture.window.orderOut(nil) }
+        let aboveText = above.prepared as NSString
+        #expect(aboveText.substring(with: NSRange(location: above.location, length: 3)) == "``\n", "the keystroke goes before the two backticks")
+        #expect(aboveText.substring(from: above.location).contains("```swift"), "no fence is below the keystroke")
+        #expect(above.location < aboveText.length / 10, "the keystroke is not near the top")
+
+        let open = StructuralScenario(size, path: .wikilinkOpen)
+        defer { open.fixture.window.orderOut(nil) }
+        let openText = open.prepared as NSString
+        #expect(openText.substring(from: open.location - 2) == "\n[")
+        #expect(open.typed == "[")
+
+        let close = StructuralScenario(size, path: .wikilinkCloseFar)
+        defer { close.fixture.window.orderOut(nil) }
+        let closeText = close.prepared as NSString
+        #expect(closeText.substring(from: close.location - 7) == "\n[[abc]")
+        #expect(close.typed == "]")
+        let lastClosers = closeText.range(of: "]]", options: .backwards, range: NSRange(location: 0, length: close.location - 7))
+        #expect(lastClosers.location != NSNotFound)
+        #expect(close.location - lastClosers.location > closeText.length / 3, "the last `]]` above is not far")
+        // The rewrite kept the note's length and its lines.
+        let original = RestyleBudget.syntheticNote(bytes: size.bytes, variant: size.variant)
+        #expect((original as NSString).length + 7 == closeText.length)
+    }
+
+    // (R-13) One printed row per case and path: size, variant, path, the CPU and wall minima and the
+    // length the restyle covered. Never asserted on the times, by decision; it asserts the keystroke
+    // took the path it names. Opt-in with `RESTYLE_BUDGET_STRUCTURAL=1`, which
+    // `scripts/editor-restyle-bench.sh --structural` sets.
+    @Test(
+        .enabled(if: RestyleBudget.includesStructuralRows),
+        arguments: RestyleBudget.activeCases, RestyleBudget.StructuralPath.allCases
+    )
+    func aStructuralKeystrokeIsPrintedBesideTheOtherRows(_ c: RestyleBudget.Case, _ path: RestyleBudget.StructuralPath) {
+        let scenario = StructuralScenario(c, path: path)
+        defer { scenario.fixture.window.orderOut(nil) }
+        let runs = RestyleBudget.runs(for: c)
+
+        let measured = RestyleBudget.minimum(
+            runs: runs, warmUp: RestyleBudget.warmsUp, prepare: { scenario.restore() }
+        ) { scenario.keystroke() }
+
+        let outcome = scenario.outcome()
+        print(RestyleBudget.structuralLine(
+            c, path: path, cpuMs: measured.cpuMs, wallMs: measured.wallMs, dirty: outcome.dirty, runs: runs
+        ))
+        expectTheStructuralPath(scenario, outcome, "\(c) \(path.rawValue)")
     }
 }

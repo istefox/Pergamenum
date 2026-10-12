@@ -20,8 +20,14 @@ extension NoteTextView {
         /// The window's `undoManager` as of the last update, captured here because
         /// `dismantleNSView` runs after SwiftUI has already detached the text view from
         /// its window - `textView.undoManager` resolves through the responder chain and
-        /// is nil by then, which would make the cleanup it performs a no-op.
-        weak var undoManager: UndoManager?
+        /// is nil by then, which would make the cleanup it performs a no-op. Its did-undo and did-redo
+        /// notifications replay the edit path (ADR-0093 §D7), moved here when the manager changes.
+        weak var undoManager: UndoManager? {
+            didSet { if undoManager !== oldValue { observeUndoNotifications(of: undoManager) } }
+        }
+        /// The two undo observations; `nonisolated(unsafe)` for `frameObserver`'s reason below.
+        /// Written by `NoteTextView+EditReplay.swift` (ADR-0045).
+        nonisolated(unsafe) var undoObservers: [NSObjectProtocol] = []
         /// Guards the delegate callback from re-entering while styling rewrites
         /// attributes.
         private var isStyling = false
@@ -30,9 +36,16 @@ extension NoteTextView {
         /// The kill switch (ADR-0091 §D8): true makes every styling a full restyle and shifts
         /// nothing by itself. Read from `EditorRestyleSwitch` at `init`; a test sets it directly.
         var forcesFullRestyle: Bool
+        /// What the layout still owes, heard from the storage (ADR-0093 §D1).
+        let layoutDebt = LayoutDebt()
+        /// The layout kill switch (ADR-0093 §D6): true lays out the whole note on every grow-to-fit.
+        var forcesFullLayout: Bool
         /// The last character edit the text storage reported, in the text as it now is. Recorded
         /// with the kill switch on too: it is a report, and nothing reads it to decide anything.
         private(set) var lastRecordedEdit: StorageEdit?
+        /// What the last binding write handed over, so the next update need not compare the whole
+        /// note with the model (ADR-0094 §D9).
+        var modelSync = ModelSync()
         /// The structure map and the decision pending on the edits since the last styling
         /// (ADR-0091 §D2/§D3). Nil with the kill switch on, and until the first full restyle.
         private(set) var restyleScope: RestyleScope?
@@ -53,13 +66,13 @@ extension NoteTextView {
         let decorations = EditorDecorationDelegate()
         /// The ranges the spell checker must leave alone: markdown syntax, not prose (M8).
         /// Filled by `applyStyling`, which already knows what every range of the note is,
-        /// so recognising them costs no second parse.
-        private(set) var unspellableRanges: [NSRange] = []
+        /// so recognising them costs no second parse. On a step (ADR-0094 §D7).
+        private(set) var unspellableRanges = OffsetRanges<NSRange>()
         /// Every `![[file.est]]`/`![alt](file.est)` line's own syntax range, found by the
         /// same `applyStyling` walk over `MarkdownStyler.spans(in:)` that already
         /// recognises `.embedRun` (ADR-0018 slice 3, Step 2). `NoteTextView+Embeds.swift`
-        /// reads this rather than parsing the note a second time.
-        private(set) var embedRuns: [NSRange] = []
+        /// reads this rather than parsing the note a second time. On a step (ADR-0094 §D7).
+        private(set) var embedRuns = OffsetRanges<NSRange>()
         /// Where each embed resolves to, once resolved - the render table
         /// `EditorDecorationDelegate` reads from, via `decorations.apply(embeds:)`, to
         /// actually draw one (ADR-0018 slice 3, Step 3). Owned here rather than resolved
@@ -75,10 +88,12 @@ extension NoteTextView {
         /// The view-block hosts, their hidden lines, the reveal crossing and the view-block
         /// pass (ADR-0074 §D2, `NoteTextView+ViewBlocks.swift`). `lazy` for `tables`' reason.
         private(set) lazy var viewBlocks: ViewBlockController = {
-            let controller = ViewBlockController(parent: { [weak self] in self?.parent }, decorations: decorations)
+            let controller = ViewBlockController(
+                parent: { [weak self] in self?.parent }, decorations: decorations, layout: layoutDebt
+            )
             // The fences an arrow key is tested against come from the map when it is current
             // (ADR-0091 §D6), not from a parse of the note per key.
-            controller.fenceRanges = { [weak self] in self?.currentViewBlockFences() }
+            controller.fenceRanges = { [weak self] selection in self?.currentViewBlockFences(touching: selection) }
             return controller
         }()
         /// The embed resize drag and its three phases (ADR-0074 §D2, ADR-0019 §D6,
@@ -89,12 +104,12 @@ extension NoteTextView {
         /// The transcluded renditions, their cache and the click that opens one (ADR-0074
         /// §D2, `NoteTextView+Transclusion.swift`). `lazy` for `tables`' reason.
         private(set) lazy var transclusion = TransclusionController(
-            parent: { [weak self] in self?.parent }, decorations: decorations
+            parent: { [weak self] in self?.parent }, decorations: decorations, layout: layoutDebt
         )
         /// The last fold layout and the folding pass (ADR-0074 §D2,
         /// `NoteTextView+Folding.swift`). `lazy` for `tables`' reason.
         private(set) lazy var folding = FoldController(
-            parent: { [weak self] in self?.parent }, decorations: decorations
+            parent: { [weak self] in self?.parent }, decorations: decorations, layout: layoutDebt
         )
         /// The revealed paragraphs and spans and the reveal pass (ADR-0074 §D2, ADR-0018 §D2,
         /// `NoteTextView+Reveal.swift`). `lazy` for `tables`' reason.
@@ -132,12 +147,16 @@ extension NoteTextView {
             forcesFullRestyle = EditorRestyleSwitch.forcesFullRestyle(
                 arguments: ProcessInfo.processInfo.arguments, defaults: .standard
             )
+            forcesFullLayout = EditorRestyleSwitch.forcesFullLayout(
+                arguments: ProcessInfo.processInfo.arguments, defaults: .standard
+            )
             super.init()
             embeds.attach(decorations: decorations)
         }
 
         deinit {
             if let frameObserver { NotificationCenter.default.removeObserver(frameObserver) }
+            for observer in undoObservers { NotificationCenter.default.removeObserver(observer) }
         }
 
         /// Takes the caret to a line the index pointed at, or to a match the find bar
@@ -173,6 +192,12 @@ extension NoteTextView {
         /// the caret does.
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
+            // Same guard as `textDidChange`, for the same reason: a registration that outlived its
+            // view is met by a new view at the same address, and a stale coordinator that once
+            // revealed a view block read the new view's caret as a fence crossing, restyled it with
+            // its own note's styling (dropping every `.editorLink`) and took its storage's delegate
+            // slot (PG-331, reproduced in the unit suite).
+            guard textView.delegate === self else { return }
             // The format bar first, and entirely inside AppKit: it is a child window this view
             // owns, so showing it needs no SwiftUI update at all. That matters here more than
             // anywhere - this method runs on every arrow key.
@@ -229,12 +254,14 @@ extension NoteTextView {
         /// The styling the update path asks for (ADR-0091 §D8): the dirty range when every edit
         /// since the last styling was line-local, nothing when there was none and no input moved,
         /// and a full restyle otherwise - the kill switch, no baseline (a storage this coordinator
-        /// never styled, or a direct `textDidChange` before any styling), a changed input, or a
+        /// never styled, or a direct `textDidChange` before any styling), a storage whose delegate is
+        /// not this coordinator, so nothing was recorded (ADR-0093 §D5), a changed input, or a
         /// decision that asked for one.
         func applyStylingIfNeeded(to textView: NSTextView, theme: Theme) {
             guard let storage = textView.textStorage else { return }
             let inputs = StylingInputs(storage: storage, textView: textView, theme: theme, parent: parent)
-            guard !forcesFullRestyle, restyleScope != nil, let baseline = stylingBaseline, baseline.inputs == inputs
+            guard !forcesFullRestyle, restyleScope != nil, storage.delegate === self,
+                  let baseline = stylingBaseline, baseline.inputs == inputs
             else {
                 applyStyling(to: textView, theme: theme)
                 return
@@ -251,40 +278,15 @@ extension NoteTextView {
 
         func textDidChange(_ notification: Notification) {
             guard !isStyling, let textView = notification.object as? NSTextView else { return }
-            parent.text = textView.string
-            applyStylingIfNeeded(to: textView, theme: parent.theme)
-            linksDidChange(in: textView)
-            applyEmbeds(to: textView)
-            applyTransclusions(to: textView, theme: parent.theme)
-            // After the styling and before the reveal, in that order and for both reasons:
-            // this is a text change of its own, so the attributes it needs are the ones the
-            // pass it triggers writes, and the offsets the reveal works in are the ones it
-            // leaves behind (ADR-0028 §D6, R-08). Scoped to the run the change landed on when
-            // `shouldChangeTextInRanges` recorded it (ADR-0082 §D6).
-            renumberLists(in: textView, touching: renumbering.take())
-            // After the passes above: a keystroke shifts every offset below it, and
-            // the revealed set has to be recomputed against the new text (ADR-0018 §D2).
-            applyReveal(to: textView)
-
-            // Typing has to keep the caret on screen, and under TextKit 2 it does not do so
-            // by itself once the note has just grown taller: the two `apply` passes above
-            // change the height on this very keystroke, and the scroll view is still showing
-            // what fitted before. Only on a real edit - never when a note is merely being
-            // opened or restyled - so the index's jumps and the user's own scrolling are
-            // left alone.
-            growToFitTheText(textView, revealingCaret: true)
-
-            guard let completing = textView as? CompletingTextView else { return }
-            // Unconditionally, and once for all four triggers: the panel has to close when
-            // the context stops being one, not only open when it starts.
-            //
-            // It cannot recur, and that is worth saying because the call it replaced could.
-            // AppKit's `complete(nil)` put the first candidate into the text as it opened
-            // the list, that edit called `textDidChange` straight back, the context was
-            // still a completion one - `#area-training` is a tag prefix like `#a` was - and
-            // the app died on a stack overflow from typing `#` at the start of a line. The
-            // panel writes nothing until a row is chosen, so there is no edit to come back.
-            completing.refreshCompletion(theme: parent.theme)
+            // Only the notification of a view this coordinator is the delegate of: AppKit keys a delegate's
+            // registration by the view's address, and a registration that outlives its view can be
+            // met by a new view allocated at the same address. A coordinator whose view is gone then
+            // styled the new one with its own baseline, took the storage's delegate slot from the
+            // live coordinator, and made every keystroke a full restyle (measured in the full unit
+            // suite: 50 KB prose at 700 ms against 6 ms alone).
+            guard textView.delegate === self else { return }
+            // The passes live beside the two hooks that replay them (`NoteTextView+EditReplay.swift`).
+            runEditPasses(in: textView, renumbering: true)
         }
 
         // AppKit can no longer invoke this method on its own (issue #191): clickable spans
@@ -427,8 +429,8 @@ extension NoteTextView {
             // `applyStyling` runs on every `updateNSView` whose inputs moved.
             decorations.apply(revealsInlineSpans: parent.revealsInlineSpans)
             storage.endEditing()
-            unspellableRanges = MarkdownStyler.merged(collected.unspellable)
-            self.embedRuns = collected.embedRuns
+            unspellableRanges = OffsetRanges(sorted: MarkdownStyler.merged(collected.unspellable))
+            self.embedRuns = OffsetRanges(sorted: collected.embedRuns)
             settleBaseline(storage: storage, textView: textView, text: text, theme: theme)
             restyleLog.full += 1
             // After the transaction, deliberately: a grid resizes itself and a caret rescue
@@ -582,7 +584,7 @@ extension NoteTextView {
             shouldSetSpellingState value: Int,
             range affectedCharRange: NSRange
         ) -> Int {
-            let isSyntax = unspellableRanges.contains { NSIntersectionRange($0, affectedCharRange).length > 0 }
+            let isSyntax = unspellableRanges.intersects(affectedCharRange)
             return isSyntax ? 0 : value
         }
 
@@ -614,19 +616,21 @@ extension NoteTextView {
         /// Asking the viewport layout controller to run leaves the resizing to AppKit, which
         /// is what makes it safe: nothing here sets a frame, so nothing here re-enters SwiftUI.
         ///
-        /// The whole document is laid out first, on purpose (ADR-0082 §D7 as amended 2026-10-10).
-        /// A first version of R-17 laid out only the caret's fragment and the viewport, to take the
-        /// whole-note layout out of the keystroke. It failed the G-grow hand check on a 50 KB note:
-        /// `applyStyling` rewrites every attribute and invalidates the layout of the whole note, so
-        /// everything above the viewport became an estimate again, shorter than the real height. After
-        /// Cmd+Down a click ran the passes, the same scroll offset showed text far above where the
-        /// person was, the mouse was still down over other text and the click turned into a selection
-        /// of the whole note, which the next key replaces. The estimate cannot be made right while
-        /// every update invalidates everything; the real fix is a restyle that stops invalidating the
-        /// note, which is the per-paragraph restyle task, and until then this stays as it was.
+        /// What was invalidated is laid out first, and only that (ADR-0093 §D4, which reopens and scopes
+        /// ADR-0082 §D7). Every way a fragment loses its layout reaches `layoutDebt`: a processed
+        /// storage edit is heard, a whole-document invalidation goes through its door, a new container
+        /// width is compared, so a fragment outside what is owed keeps a layout that is still valid and
+        /// no height is an estimate. The document range is laid out when everything is owed, the width
+        /// moved, the storage's delegate is not this coordinator (the record then vouches for nothing),
+        /// the length moved unheard, or `forcesFullLayout` is on (§D6). What failed G-grow on 2026-10-10
+        /// was the other shape: the caret's fragment and the viewport, laid out by position while every
+        /// update invalidated the whole note, so everything above the viewport became an estimate and a
+        /// click after Cmd+Down landed on other text.
         func growToFitTheText(_ textView: NSTextView, revealingCaret: Bool = false) {
             guard let layout = textView.textLayoutManager else { return }
-            layout.ensureLayout(for: layout.documentRange)
+            layoutDebt.settle(
+                textView, delegateIsCoordinator: textView.textStorage?.delegate === self, forcesWhole: forcesFullLayout
+            )
             let needed = layout.usageBoundsForTextContainer.height
                 + textView.textContainerInset.height * 2
             if abs(textView.frame.height - needed) > 0.5 {
@@ -756,7 +760,12 @@ extension NoteTextView.Coordinator {
     /// text just styled, none with the kill switch on; the inputs it read; and a whole-note scan for
     /// the two passes that follow.
     func settleBaseline(storage: NSTextStorage, textView: NSTextView, text: String, theme: Theme) {
-        if storage.delegate !== self { storage.delegate = self }
+        // Installing the delegate owes the layout everything (ADR-0093 §D2): the full restyle's own
+        // edit was heard by whoever held the slot before.
+        if storage.delegate !== self {
+            storage.delegate = self
+            layoutDebt.oweEverything()
+        }
         restyleScope = forcesFullRestyle ? nil : RestyleScope(text: text)
         let inputs = StylingInputs(storage: storage, textView: textView, theme: theme, parent: parent)
         stylingBaseline = (inputs, recordedEdits)
@@ -770,7 +779,16 @@ extension NoteTextView.Coordinator {
     /// own map handed back to the scope. Everything outside `dirty` is what the shift left at each
     /// edit.
     func applyIncrementalStyling(to textView: NSTextView, theme: Theme, dirty: NSRange) {
-        guard let storage = textView.textStorage, let scope = restyleScope else { return }
+        // No binding of the scope: one alive across `absorb` below shares the map's storage, and the
+        // mutation would copy every store whole (ADR-0094 §D4). What is needed of it is read into locals.
+        // A fence's ordinal counts every fence above it in the note (ADR-0033 §D3); the map's runs
+        // above `dirty` are the note's own, shifted.
+        guard let storage = textView.textStorage,
+              let listSeed = restyleScope?.listSeed(at: dirty.location),
+              let firstOrdinal = restyleScope?.map.viewBlockRuns.count(endingAtOrBefore: dirty.location)
+        else {
+            return
+        }
         isStyling = true
         defer { isStyling = false }
 
@@ -778,7 +796,7 @@ extension NoteTextView.Coordinator {
         let fragment = note.substring(with: dirty)
         let spans = MarkdownStyler.spans(
             inFragment: fragment,
-            context: .init(listSeed: scope.listSeed(at: dirty.location), readsFrontmatter: dirty.location == 0)
+            context: .init(listSeed: listSeed, readsFrontmatter: dirty.location == 0)
         )
         var context = MarkdownAttributedText.StyleContext(theme: theme, links: true, gutter: theme.spacing(.gutter))
         storage.beginEditing()
@@ -794,9 +812,6 @@ extension NoteTextView.Coordinator {
         }
         pushFaces(theme)
         applyTables(to: textView, runs: collected.tableRuns, markers: &collected.hiddenMarkers, within: dirty)
-        // A fence's ordinal counts every fence above it in the note (ADR-0033 §D3); the map's runs
-        // above `dirty` are the note's own, shifted.
-        let firstOrdinal = scope.map.viewBlockRuns.filter { NSMaxRange($0) <= dirty.location }.count
         applyViewBlocks(
             to: textView, runs: collected.viewBlockRuns, markers: &collected.hiddenMarkers,
             within: dirty, firstOrdinal: firstOrdinal
@@ -805,12 +820,8 @@ extension NoteTextView.Coordinator {
         decorations.apply(revealsInlineSpans: parent.revealsInlineSpans)
         storage.endEditing()
 
-        unspellableRanges = MarkdownStyler.spliced(
-            unspellableRanges, replacing: dirty, with: MarkdownStyler.merged(collected.unspellable)
-        )
-        embedRuns = embedRuns.filter { NSMaxRange($0) <= dirty.location }
-            + collected.embedRuns
-            + embedRuns.filter { $0.location >= NSMaxRange(dirty) }
+        unspellableRanges.spliceMerging(MarkdownStyler.merged(collected.unspellable), replacing: dirty)
+        embedRuns.splice(collected.embedRuns, replacing: dirty)
         restyleScope?.absorb(StructureMap(text: fragment), at: dirty.location, replacing: dirty)
         stylingBaseline?.edits = recordedEdits
         owe(.range(dirty))
@@ -868,10 +879,14 @@ extension NoteTextView.Coordinator {
         stylingBaseline.map { $0.edits != recordedEdits } ?? false
     }
 
-    /// The closed view-block fences of the map, when the map is the text's own (ADR-0091 §D6).
-    func currentViewBlockFences() -> [NSRange]? {
+    /// The closed view-block fences of the map that touch `selection`, in order, when the map is the
+    /// text's own (ADR-0091 §D6). Found by search, the shape of `selectionReveals` (ADR-0094 §D6).
+    func currentViewBlockFences(touching selection: NSRange) -> [NSRange]? {
         guard let scope = restyleScope, scope.fencesAreCurrent else { return nil }
-        return scope.map.fences
+        guard selection.location != NSNotFound else { return [] }
+        let fences = scope.map.fences
+        return fences.indices(touching: selection)
+            .map { fences[$0] }
             .filter { $0.language == ViewBlock.language && $0.isClosed }
             .map(\.range)
     }
@@ -880,7 +895,29 @@ extension NoteTextView.Coordinator {
     /// called from `shiftDerivedState(by:)` (ADR-0091 §D6). Here because both are `private(set)` to
     /// this file.
     func shiftStyledRanges(by edit: StorageEdit) {
-        unspellableRanges = unspellableRanges.flatMap { edit.clipped($0) }
-        embedRuns = embedRuns.compactMap { edit.shifted($0) }
+        unspellableRanges.apply(edit, partial: .clip)
+        embedRuns.apply(edit, partial: .drop)
+    }
+
+    /// The step tallies of the stores that grow with the note, by name (ADR-0094 §D5): `hiddenMarkers`,
+    /// `unspellable` and `embedRuns`, and the structure map's seven `map.*` stores while a scope is kept.
+    /// A test seam; the counting compiles only under `#if DEBUG`, and a Release build reads zeros.
+    ///
+    /// In the trailing extension, not the class body, because the stores it resets are `private(set)` to
+    /// this file.
+    func offsetStoreTallies() -> [String: StepTally] {
+        var tallies = restyleScope?.map.tallies ?? [:]
+        tallies["hiddenMarkers"] = decorations.hiddenMarkers.tally
+        tallies["unspellable"] = unspellableRanges.tally
+        tallies["embedRuns"] = embedRuns.tally
+        return tallies
+    }
+
+    /// Zeroes every tally `offsetStoreTallies()` answers, so a test reads what one keystroke cost.
+    func resetOffsetStoreTallies() {
+        decorations.hiddenMarkers.resetTally()
+        unspellableRanges.resetTally()
+        embedRuns.resetTally()
+        restyleScope?.resetTallies()
     }
 }

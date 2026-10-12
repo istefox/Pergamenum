@@ -88,7 +88,7 @@ struct MockupGalleryView: View {
             case .template: Page("Template", "M9, da approvare", TemplateMockup())
             case .tabs: Page("Tab", "M10, da approvare", TabBarMockup())
             case .tagBrowser: Page("Tag e preferiti", "M10, da approvare", TagBrowserMockup())
-            case .mentions: Page("Menzioni", "M10, N3 da approvare", UnlinkedMentionsMockup())
+            case .mentions: Page("Menzioni", "M10, N3 approvato", UnlinkedMentionsMockup())
             case .views: Page("Viste", "M11, da approvare", ViewMockup())
             case .week: Page("Settimana", "M12, da approvare", WeekMockup())
             case .taskControls: Page("Attività e rollover", "M12, da approvare", TaskControlsMockup())
@@ -98,7 +98,7 @@ struct MockupGalleryView: View {
             case .today: Page("Oggi", "M5, realizzato", TodayMockup())
             case .tasks: Page("Attività", "M4, realizzato", TasksMockup())
             case .linkPreview: Page("Link", "N3, approvato", LinkPreviewMockup())
-            case .inspectorLinks: Page("Ispettore: link", "N3, da approvare", InspectorLinksMockup())
+            case .inspectorLinks: Page("Ispettore: link", "N3, approvato", InspectorLinksMockup())
             }
         }
     }

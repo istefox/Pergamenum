@@ -260,16 +260,20 @@ private func swapped(
         textView.textContentStorage?.delegate = coordinator.decorations
         textView.textLayoutManager?.delegate = coordinator.decorations
         textView.string = Self.note
+        // `makeNSView`'s own wiring: the coordinator answers only the selection changes of a
+        // view it is the delegate of (PG-331).
+        textView.delegate = coordinator
         return (textView, coordinator)
     }
 
     private final class Log { var entries: [Int?] = [] }
 
     private func move(_ caret: Int, in textView: NSTextView, _ coordinator: NoteTextView.Coordinator) {
-        textView.setSelectedRange(NSRange(location: caret, length: 0))
-        coordinator.textViewDidChangeSelection(
-            Notification(name: NSTextView.didChangeSelectionNotification, object: textView)
-        )
+        // The selection change reaches `coordinator` as the view's delegate; that reference is weak,
+        // so the coordinator is held here rather than called a second time by hand.
+        withExtendedLifetime(coordinator) {
+            textView.setSelectedRange(NSRange(location: caret, length: 0))
+        }
     }
 
     @Test func theCallbackFiresOnAChangeAndNotOnARepeat() {
@@ -287,6 +291,29 @@ private func swapped(
         #expect(log.entries == [0, 1])
         move(due + 4, in: textView, coordinator)
         #expect(log.entries == [0, 1])
+    }
+
+    // (coverage) The delegate guard of `textViewDidChangeSelection` (PG-331): the notification of a view
+    // this coordinator is not the delegate of reports no outline entry and does not consume the
+    // change, and the same coordinator still reports once the notification is its own view's.
+    @Test func aSelectionChangeOfAnotherViewReportsNoEntryAndLeavesTheClaimUnspent() {
+        let log = Log()
+        let (mine, coordinator) = editor(log)
+        // Held alive across the call: `delegate` is weak, and a released coordinator would leave
+        // `other` with no delegate at all instead of another live one.
+        let (other, otherCoordinator) = editor(Log())
+        let uno = (Self.note as NSString).range(of: "# Uno").location
+        withExtendedLifetime(otherCoordinator) {
+            other.setSelectedRange(NSRange(location: uno + 1, length: 0))
+            coordinator.textViewDidChangeSelection(
+                Notification(name: NSTextView.didChangeSelectionNotification, object: other)
+            )
+            #expect(other.delegate === otherCoordinator, "the foreign view has a live delegate of its own")
+        }
+        #expect(log.entries.isEmpty, "a view this coordinator does not drive reported an outline entry")
+
+        move(uno + 1, in: mine, coordinator)
+        #expect(log.entries == [0], "the foreign notification spent the claim, or the own one no longer reports")
     }
 
     @Test func aCaretBeforeTheFirstEntryReportsNilOnceAndThenReportsTheEntry() {

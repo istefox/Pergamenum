@@ -686,9 +686,9 @@ rows only, SPEC Constraint).
   from `BacklinkCommand.available(for:)` (ADR-0023 §D1); `open` and `openInOtherColumn` through
   `commandActions.open(notePath:how:)`; `makeStructural` through
   `vault.beginStructuralLink(preselecting:)`; `unlink` through `.confirmationDialog(_:isPresented:
-  presenting:)` («Scollegare «A» e «B»?», «Scollega» destructive), whose closure receives the row,
-  never re-read from `@State` inside the `Task` (`.claude/rules/swiftui-views.md`), then
-  `vault.removeStructuralLink(from:toNoteAt:)`.
+  presenting:)` («Scollegare il legame strutturale?», the two names in its message, «Scollega»
+  destructive), whose closure receives the row, never re-read from `@State` inside the `Task`
+  (`.claude/rules/swiftui-views.md`), then `vault.removeStructuralLink(from:toNoteAt:)`.
 - **`UnresolvedLinksSection`** (ADR-0084 §D2): `vault.unresolvedLinkRows(ofNoteAt:)`; «Crea nota»
   (only when creatable) → `commandActions.choose(.create)` with this note as the source; «Vai al
   link» → `commandActions.goToLink(target:)`; the empty state «nessun link non risolto in questa
@@ -853,40 +853,26 @@ No static check is declared that passes on `main`: SwiftLint fails there by desi
 the stop-gate red before the suite runs. The type check is the build inside the test command.
 `scripts/check-adr-references.py` is a documentation checker, run by hand in Task 8, not a code check.
 
-## Build result (2026-10-10)
+## Build result (2026-10-12)
 
 BUILD · DONE WITH WARNINGS
-Scope: Session B, Tasks 3 and 4 (PR B: R-20..R-23, R-29, R-30)
-Files: 57 changed paths uncommitted: 30 modified, 27 untracked (14 new test files, 12 new sources incl. Sources/Core/Links/{LinkOpening,LinkAtCaret,LinkPreviewTrigger,LinkPreviewContent}.swift, this plan); ADR-0083 §D1 amended in place
-Tests: PergamenumTests 6034 passed in 366 suites (5 known issues, pre-existing, HostedViewSupport.swift:46), 14 (coverage) tests; perg and pergamenum-mcp build exit 0
-Review: sonnet, safe; opus, safe
-Coverage: R-20, R-21, R-22, R-23, R-29 covered; R-30 UNCOVERED on tests (a gate requirement, verified by the runs above)
+Files: docs/adr/0083-links-answer-to-the-pointer-and-the-keyboard.md, docs/adr/0084-backlinks-with-context-unresolved-per-note-mentions-that-link.md, docs/adr/INDEX.md, docs/plans/note-workflow-n3.md, docs/plans/note-workflow-n3-mockup.md (Task 8 only, docs, uncommitted on docs/n3-adrs-accepted)
+Tests: PergamenumTests green, 6332 passed, 5 known issues pre-existing; 0 (coverage) tests labelled; adr-index.py --check and check-adr-references.py exit 0
+Review: sonnet, safe
+Coverage: not run, the plan's requirement set is not SPEC.md
 Deferred: none
-Dropped: 1 (post-sweep 1)
-Dispatch: Round 0 (red): tester — Task 3
-Dispatch: Round 1: coder — NoteTextView+LinkPreview.swift:275 (reviewer: sonnet, opus), VaultController+LinkOpening.swift:28 (reviewer: sonnet, opus); tester — LinkPreviewControllerTests.swift:123 (fixture); debugger — LinkPreviewTrigger.swift:61 (reviewer: sonnet, opus), NoteTextView+LinkPreview.swift:91 (reviewer: opus), NoteTextView+LinkPreview.swift:254 (reviewer: sonnet), NoteTextView+Coordinator.swift:170 (reviewer: sonnet)
-Dispatch: Round 2: re-review only (sonnet safe, opus safe), no FIX line
-Dispatch: Round 1 (sweep): coder — ShortcutSettings.swift:83 (reviewer: sonnet), LinkChoiceSheet.swift:107 (reviewer: sonnet), NoteTextView.swift:290 (reviewer: opus), LinkPreviewView.swift:75-79 (reviewer: opus), LinkPreviewControllerTests.swift:10 (follow-up: debugger), MenuCommands.swift:16 (follow-up: tester); debugger — LinkPreviewPopover.swift:71 (reviewer: opus)
-WARN: UNCOVERED R-30 tests: R-30 is a gate requirement (unit suite, three targets build); the runs verify it, no test names it
-WARN: by-hand check still owed (plan Task 4 "Done means"): popover and choice menu in light and dark on the Debug build, popover edge below the line (.maxY), first-show size; not doable by an agent
-WARN: decision-bound, for Stefano: the coder amended ADR-0083 §D1 (.otherColumn opens a stable tab via openNoteInNewTab, because openNote(at:) consumes the other column's preview tab); MockupGalleryView label flipped to «N3, approvato» on the strength of the 2026-10-08 approval
-WARN: Cmd+Opt+Return was measured against com.apple.symbolichotkeys by the coder (58 entries, none on key code 36), not re-run by the reviewers
-WARN: build ran on kepler/feature/note-workflow-n3-session-b, not feat/note-workflow-n3-session-b, which is checked out by the worktree adr-0083-0084-pg-386; /ship decides the branch name
-WARN: all of the work is uncommitted; the stop-gate collided twice with the tester's own xcodebuild (build database locked, no verdict, not a red test)
-INFO: review escalated, size: 54 changed files, threshold 20
-INFO: Task 3/4 line cites checked on da38099d: only NoteTextView.dismantleNSView moved (:280 to :284)
-Session A: Scope: Session A, Tasks 1 and 2 (Tasks 3 to 8 are gated on PR A, the mockup approval and PR C by the plan)
-Session A: Files: 58 changed files, Session A: new Sources/Core/Links/, UnresolvedTargets.swift, Connector/VaultLinkWrites.swift, Vault/VaultSession+LinkWrites.swift and +Appearances.swift, MCPServer NoteLinks files, 13 new test files; ADR-0083/0084, this plan, SPEC.md are planning artifacts
-Session A: Tests: PergamenumTests 5778 passed (5 known issues, pre-existing); perg and pergamenum-mcp build exit 0; scripts/mcp-smoke.py exit 0
-Session A: Review: sonnet, safe; opus, safe
+Dropped: 2 (fix-hunk 1, post-sweep 1)
+Dispatch: Round 1: coder — docs/adr/0083-links-answer-to-the-pointer-and-the-keyboard.md:4 (reviewer: sonnet)
+Dispatch: Round 1 (sweep): coder — 3 in-diff candidates, C1, C2
+WARN: Tests/WikilinkClickNavigationTests.swift:180 aDoubleClickSelectsTheWordAtTheIndexTheFirstClickStored was red once in the full suite (stop-gate exit 65), green alone, in two full runs and in 300 isolated runs; it failed a second time at 11:48 (`#expect(selected)` false, `.editorLink` at index 4 not a URL), then did not recur in four further full runs with probes; no root cause found, no test changed
+INFO: ADR-0083 and ADR-0084 flipped to accepted with the §D7, §D3 and §D4 records corrected to the built code; PR #973 (92b0dcef) credited beside #964; by-hand checks and the two GUI tests owed by the Session C build stay owed
+INFO: ADR-0084 older lines over 100 columns (78, 81, 82, 214, 339, 357, 371) not rewrapped, outside this change
 
 ```text
-FIX	swept	**MINOR** [other] Sources/Features/Settings/ShortcutSettings.swift:83 — The reset button's help and accessibility label read "Torna a " with nothing after it for the two commands that ship unbound (reviewer: sonnet)
-FIX	swept	**MINOR** [wrong-behaviour] Sources/Features/Editor/LinkPreviewPopover.swift:71 — show() guards window.isVisible but not isKeyWindow (reviewer: opus)
-FIX	swept	**NIT** Sources/Features/Editor/LinkChoiceSheet.swift:107 — composer comment says "a sheet of its own" (reviewer: sonnet)
-FIX	swept	**NIT** Sources/Features/Editor/NoteTextView.swift:290 — dismantleNSView builds the lazy linkPreview unconditionally (reviewer: opus)
-FIX	swept	**NIT** Sources/Features/Editor/LinkPreviewView.swift:75-79 — no-op mask on non-fading lines (reviewer: opus)
-FIX	swept	**MINOR** [other] Tests/LinkPreviewControllerTests.swift:10 — LinkPreviewControllerLifecycle over type_body_length (follow-up: debugger)
-FIX	swept	**MINOR** [other] Sources/App/MenuCommands.swift:16 — the three Vista items have no test (follow-up: tester)
-DROP	post-sweep	**MINOR** [other] Sources/Features/Editor/NoteTextView+Coordinator.swift:420 — SwiftLint file_length, applyStyling length and cyclomatic complexity, already there before this build; no safe move removes them (follow-up: debugger)
+DROP	fix-hunk	**MINOR** [other] docs/adr/INDEX.md:115 — ADR-0081 entry still says planned, the file is accepted (PR #956) (follow-up: coder)
+DROP	post-sweep	**MINOR** [other] Tests/WikilinkClickNavigationTests.swift:180 — aDoubleClickSelectsTheWordAtTheIndexTheFirstClickStored red once in the full suite, green alone (follow-up: coder)
+FIX	swept	**MINOR** [other] docs/plans/note-workflow-n3-mockup.md:109 — old unlink dialog title replaced (follow-up: coder)
+FIX	swept	**MINOR** [other] docs/plans/note-workflow-n3.md:689 — Task 6 cites the built dialog title (follow-up: coder)
+FIX	swept	**MINOR** [other] Sources/Vault/VaultSession+LinkWrites.swift:63 — no code change, the record in ADR-0084 §D3 says the refusal is not at the session door (follow-up: coder)
+FIX	swept	**NIT** docs/adr/0084-backlinks-with-context-unresolved-per-note-mentions-that-link.md:192 — §D4 amendment rewrapped (reviewer: sonnet)
 ```

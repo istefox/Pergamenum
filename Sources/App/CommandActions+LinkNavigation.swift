@@ -14,6 +14,23 @@ extension CommandActions {
     func open(link target: String, how: LinkOpening = .replace, from sourcePath: String? = nil) {
         _ = follow(LinkRequest(target: target, how: how, sourcePath: sourcePath, fromClick: false))
     }
+
+    /// «Vai al link» (ADR-0084 §D2): the caret on the first line of the open note holding
+    /// `[[target]]`, through the outline's own jump. The line is read off the buffer on screen,
+    /// not the file, so an unsaved edit above it does not send the caret to the wrong line.
+    ///
+    /// A target the index still lists but the buffer no longer holds (an unsaved edit took the
+    /// link out) does nothing, on purpose: the saved text's line number would land on whatever the
+    /// buffer now has there, and the row leaves the list with the next save.
+    func goToLink(target: String) {
+        guard let text = vault.openNote?.text,
+              let line = UnresolvedTargets.firstLine(linking: target, in: text),
+              let range = NoteJump.lineRange(line, in: text)
+        else { return }
+        navigation.jumpToLine(
+            range: NSRange(range, in: text), ordinal: NoteJump.ordinal(of: range.lowerBound, in: text)
+        )
+    }
 }
 
 // MARK: - ADR-0083 §D1, §D3, §D5, §D6 (PG-386, N3 session B)

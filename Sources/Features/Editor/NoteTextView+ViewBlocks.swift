@@ -54,6 +54,8 @@ final class ViewBlockController {
     /// Read when a pass runs, never captured earlier (ADR-0074 §D3).
     private let parent: () -> NoteTextView?
     private let decorations: EditorDecorationDelegate
+    /// The layout record; its door is the one way this pass invalidates the layout (ADR-0093 §D3).
+    private let layoutDebt: LayoutDebt
 
     /// The `NSHostingView` every view block on screen is drawn in, by the fence's own ordinal
     /// within the note (ADR-0033 §D3) - owned here for the reason `TableBlockController.grids`
@@ -87,14 +89,16 @@ final class ViewBlockController {
     private var lastRevealed: NSRange?
     /// `Coordinator.growToFitTheText` as `refresh` last handed it, for the deferred re-layout.
     private var growToFit: ((NSTextView) -> Void)?
-    /// Every closed view-block fence's range, read off the coordinator's structure map, or nil when
-    /// it keeps none that is current (ADR-0091 §D6): the kill switch is on, or nothing has been
-    /// styled yet. Set by the coordinator; nil falls back to a parse of the text.
-    var fenceRanges: (() -> [NSRange]?)?
+    /// The closed view-block fences touching the selection it is handed, read off the coordinator's
+    /// structure map (ADR-0094 §D6), or nil when it keeps none that is current (ADR-0091 §D6): the
+    /// kill switch is on, or nothing has been styled yet. Set by the coordinator; nil falls back to a
+    /// parse of the text.
+    var fenceRanges: ((NSRange) -> [NSRange]?)?
 
-    init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate) {
+    init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate, layout: LayoutDebt) {
         self.parent = parent
         self.decorations = decorations
+        layoutDebt = layout
     }
 
     /// Whether the selection crossed into or out of a fence since last asked (ADR-0033 §D5),
@@ -102,7 +106,7 @@ final class ViewBlockController {
     /// arrow key, so the fences come from the map when there is one rather than from a parse.
     func selectionCrossedFence(in textView: NSTextView) -> Bool {
         let selection = textView.selectedRange()
-        let revealed = if let ranges = fenceRanges?() {
+        let revealed = if let ranges = fenceRanges?(selection) {
             ranges.first { Self.selectionReveals(selection, fence: $0) }
         } else {
             Self.revealedViewBlock(in: textView.string, selection: selection)
@@ -317,18 +321,19 @@ final class ViewBlockController {
     /// One re-layout per turn, however many fences reported a height change in it - and never on
     /// the call stack that reported it: `onHeightChange` runs during SwiftUI's own layout of a
     /// view TextKit is laying out, so invalidating `NSTextLayoutManager` synchronously here would
-    /// re-enter it. `Task { @MainActor }` leaves that stack; `invalidateLayout` is the same call
-    /// `applyFolding`/`applyTransclusion` already make in production, and `growToFitTheText`
-    /// afterwards is the existing, already-safe resize path (never sets a frame directly - see
-    /// its own doc comment on why that matters here).
+    /// re-enter it. `Task { @MainActor }` leaves that stack; the invalidation goes through the
+    /// layout record's door, as folding's and the transclusion pass's do, so the record owes the
+    /// whole note (ADR-0093 §D3), and `growToFitTheText` afterwards lays out what it owes through the
+    /// existing, already-safe resize path (never sets a frame directly - see its own doc comment on
+    /// why that matters here).
     private func scheduleRelayout(in textView: NSTextView) {
         guard !pendingRelayout else { return }
         pendingRelayout = true
         Task { @MainActor [weak self, weak textView] in
             guard let self else { return }
             self.pendingRelayout = false
-            guard let textView, let manager = textView.textLayoutManager else { return }
-            manager.invalidateLayout(for: manager.documentRange)
+            guard let textView else { return }
+            self.layoutDebt.invalidateWholeDocument(of: textView)
             self.growToFit?(textView)
         }
     }

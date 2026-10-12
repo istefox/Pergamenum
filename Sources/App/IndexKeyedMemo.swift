@@ -7,6 +7,11 @@ import Foundation
 /// render. Synchronous on purpose, so the first frame draws the same entries it drew before this
 /// type existed. Correctness comes from the key alone - SwiftUI may drop the `@State` storage
 /// whenever it likes, and that costs one recomputation, never a stale answer.
+///
+/// One instance lives outside a view: `VaultController.backlinkRowsMemo` is a `let` on the
+/// controller, because `backlinkRows(toTitle:)` is a controller method with no view under it. It
+/// schedules no render either: `@Observable` tracks only the controller's stored `var`s, the `let` reference
+/// never changes, and this class is not observable, so writing its slot is invisible to SwiftUI.
 @MainActor
 final class IndexKeyedMemo<Input: Equatable, Value> {
     private struct Slot {

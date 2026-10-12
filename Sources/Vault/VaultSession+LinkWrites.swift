@@ -110,6 +110,12 @@ extension VaultSession {
         return nil
     }
 
+    /// Why «Collega» is not offered for a title several notes share: a wikilink names a title, so
+    /// there is no "which" to write. One sentence for the inspector and both connectors.
+    static func sharedTitleLinkRefusal(_ title: String) -> String {
+        "il titolo «\(title)» è di più note, e il link si scrive per titolo: rinomina una delle omonime"
+    }
+
     /// «Scollega»: both notes lose the structural link, in two guarded writes (ADR-0084 §D4).
     ///
     /// `addStructuralLink`'s shape inverted (ADR-0057 §D8, ADR-0058 §D5): both removals are

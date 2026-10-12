@@ -255,6 +255,12 @@ struct NoteTextView: NSViewRepresentable {
             guard let textView else { return false }
             return coordinator.toggleCheckbox(at: point, in: textView)
         }
+        // A composition step changes the text and posts no `textDidChange` (ADR-0093 §D7): the
+        // edit path is replayed for it, and only while something it wrote is still unstyled.
+        textView.onComposedTextChanged = { [weak textView] in
+            guard let textView else { return }
+            coordinator.replayEditIfUnstyled(in: textView, composing: true)
+        }
     }
 
     /// Four steps, in this order and no other (`NoteTextView+Update.swift`): the text sync
@@ -287,12 +293,18 @@ struct NoteTextView: NSViewRepresentable {
     /// The Cmd+hover preview goes with it (ADR-0083 §D7): a pane switch is a rebuild, not a hide,
     /// and a popover, monitor or tracking area left behind here would be PG-258's orphan. A text
     /// view that never previewed has no controller, and none is built here only to be torn down.
+    ///
+    /// The storage's delegate goes too, when it is this coordinator (ADR-0093 §D5): the first styling
+    /// installed it (ADR-0091 §D2) and nothing else takes it out. A delegate somebody else installed
+    /// is left where it is. The undo observations that replay the edit path (ADR-0093 §D7) end here.
     static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
         coordinator.builtLinkPreview?.tearDown()
+        coordinator.stopObservingUndoNotifications()
         guard let textView = scrollView.documentView as? NSTextView else { return }
         coordinator.undoManager?.removeAllActions(withTarget: textView)
         if let textStorage = textView.textStorage {
             coordinator.undoManager?.removeAllActions(withTarget: textStorage)
+            if textStorage.delegate === coordinator { textStorage.delegate = nil }
         }
     }
 }
