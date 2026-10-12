@@ -574,18 +574,38 @@ run on the dirty fragment; this profile cannot say whether it grows with the not
 
 ## Ledger entries
 
-**Not filed yet.** `/project-tasks` is not run from the agent that builds this record (ADR-0093's
-precedent, plan Task 8 step 4). The entries below are filed through `/project-tasks` at the merge gate, and
-their IDs are written here in the first docs change after the code PR merges, the one that flips this
-record to `accepted`:
+The three terms D9 and the profile left open were looked at again on 2026-10-12 (branch
+`perf/editor-residual-keystroke-terms`). Two are closed by measurement or by a change, one is profiled and
+stays open. None was filed as a ledger entry.
 
-- the binding write that copies the note on every keystroke (`NoteTextView+EditReplay.swift:25`, D9). The
-  profile cannot see it (the fixture's binding is `.constant`), so it rests on the code;
-- the transclusion occurrence scan (`TransclusionController.scanOccurrences` →
-  `Transclusion.occurrences(inFragment:)`), the largest app-owned term in R-12's profile at 4.3%, with the
-  open question whether it grows with the note;
-- the first keystroke after a far caret jump: 1.5 to 2.3 s at 1 MB in Debug, unchanged by this record,
-  likely TextKit's relayout and unprofiled. The entry is to profile it before naming an owner.
+- **The binding write and what follows it (closed, PG-406).** The write itself is cheap: `textView.string`
+  bridges without a copy (0.002 ms at 1 MB, Debug), so `parent.text = textView.string` is not the term. The
+  term is the compare `updateNSView` makes after SwiftUI sees the write, `textView.string != text`
+  (`NoteTextView+Update.swift`): linear in the note, 2.0 ms at 50 KB, 7.3 ms at 200 KB and 37 ms at 1 MB in
+  Debug, on every keystroke, and invisible to the bench because its binding is `.constant` and it never calls
+  `updateNSView`. `ModelSync` (`ModelSync.swift`) records the text the last binding write handed over and the
+  storage's character-edit count at that moment; `pushInputs` skips the compare only when no edit has reached
+  the storage since and the model's text equals the written one (two values that share storage compare in
+  constant time). Anything else, an external replacement included, falls through to the compare, so the record
+  can only say "equal", never "different". Pinned by `ModelSyncTests`.
+- **The transclusion occurrence scan (closed, PG-407, no code).** It is not a per-keystroke term. The ranged
+  scan reads the dirty fragment only: 72 to 74 characters at 50 KB, 200 KB and 1 MB, 0.09 ms in Debug at every
+  size. The 4.3% of R-12's profile is the whole-note scan the first keystroke after an open owes
+  (`takeTransclusionScan` returns `.whole` until a styling has set a range): in `build/pg405-release-sample.txt`
+  1,049 of the 1,109 samples under `runEditPasses` sit at `Transclusion.swift:207` (the whole scan) and 10 at
+  `:213` (the ranged one), and the window of that profile included the setup of every fixture. The whole scan
+  is slow because it walks a foreign string through `characterAtIndex:`, once per note, at the first edit.
+- **The first keystroke after a far caret jump (profiled, open, PG-408).** Release, 1 MB: 2,173 ms (fences) and
+  1,443 ms (prose), the Debug figure within noise, so it is not the build. 97% of the key is
+  `growToFitTheText` -> `LayoutDebt.settle` -> `NSTextLayoutManager.ensureLayout(for:)` on the owed range
+  (`NoteTextView+Layout.swift:125`, the ranged branch, not the whole-document one): TextKit lays out and
+  enumerates the elements between the last laid-out place and the range (60% element enumeration, 24%
+  `NSTextLayoutFragment._layout`, 15% fragment removal), about 22,000 lines in the bench. Scrolling the target
+  into view first does not change it in the fixture (2.35 to 2.47 s), but the fixture's window is never shown,
+  so no viewport layout runs and that does not say what a person's window does. Not changed: a cheaper
+  `settle` for a range far from the viewport needs the height estimate `growToFitTheText` reads to stay right
+  (ADR-0093 §D4), and that is decided with a hand check on a Release build with a 1 MB note (type after
+  Cmd+Down, after a click far from the previous caret, after a wikilink jump), which G-hand-405 already covers.
 
 Not filed: the list walks of D9, which the profile shows at 2 and 1 samples. They stay bounded by a list.
 
