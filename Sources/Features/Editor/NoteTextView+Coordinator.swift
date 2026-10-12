@@ -43,6 +43,9 @@ extension NoteTextView {
         /// The last character edit the text storage reported, in the text as it now is. Recorded
         /// with the kill switch on too: it is a report, and nothing reads it to decide anything.
         private(set) var lastRecordedEdit: StorageEdit?
+        /// What the last binding write handed over, so the next update need not compare the whole
+        /// note with the model (ADR-0094 §D9).
+        var modelSync = ModelSync()
         /// The structure map and the decision pending on the edits since the last styling
         /// (ADR-0091 §D2/§D3). Nil with the kill switch on, and until the first full restyle.
         private(set) var restyleScope: RestyleScope?

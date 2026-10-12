@@ -60,6 +60,7 @@ extension NoteTextView.Coordinator: NSTextStorageDelegate {
         let edit = StorageEdit(range: editedRange, delta: delta)
         nonisolated(unsafe) let storage = textStorage
         MainActor.assumeIsolated {
+            modelSync.heardEdit()
             recordStorageEdit(edit, in: storage)
         }
     }
