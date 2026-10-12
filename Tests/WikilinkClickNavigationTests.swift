@@ -194,6 +194,37 @@ import Testing
         #expect(selection.location == 0)
     }
 
+    /// PG-331: the test above went red in full-suite runs, never alone, because AppKit kept
+    /// delivering the selection notifications of a gone view to the coordinator that had been its
+    /// delegate, and this fixture's view could be allocated at that same address. A coordinator
+    /// that had revealed a view block read the new caret as a fence crossing and restyled the
+    /// view with its own styling, which dropped the hand-added `.editorLink` (measured: 169
+    /// strips in 271 address reuses out of 400 rounds, none without a reuse). Driven by calling
+    /// the method directly, as `aCoordinatorIgnoresTheChangeNotificationOfAnotherView` does for
+    /// `textDidChange`, because the address reuse itself is not a test's to arrange.
+    @Test func aCoordinatorOfAnotherViewLeavesThisViewsLinkAlone() {
+        let other = EmbedEditorFixtures.editor(
+            text: "prima\n```pergamenum-view\nrender: table\n```\ndopo\n",
+            hidesMarkup: true, root: nil, thumbnails: nil
+        )
+        other.textView.delegate = other.coordinator
+        other.coordinator.textView = other.textView
+        other.coordinator.applyStyling(to: other.textView, theme: .emergency)
+        // Inside the fence's body line: that coordinator now holds a revealed view block.
+        other.textView.setSelectedRange(NSRange(location: 29, length: 0))
+        let fixture = Self.wikilinkFixture()
+        fixture.textView.setSelectedRange(NSRange(location: 0, length: 0))
+
+        other.coordinator.textViewDidChangeSelection(
+            Notification(name: NSTextView.didChangeSelectionNotification, object: fixture.textView)
+        )
+
+        let storage = fixture.textView.textStorage
+        #expect(storage?.attribute(.editorLink, at: 4, effectiveRange: nil) is URL,
+                "another view's coordinator restyled this view and dropped its link")
+        #expect(storage?.delegate !== other.coordinator, "another view's coordinator took this storage's delegate")
+    }
+
     @Test func aStaleStoredIndexSelectsNothingAndLeavesTheSelectionAlone() {
         let fixture = EmbedEditorFixtures.editor(
             text: "Nessun link qui", hidesMarkup: false, root: nil, thumbnails: nil
