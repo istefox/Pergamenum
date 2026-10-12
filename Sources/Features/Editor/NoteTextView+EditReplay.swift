@@ -22,7 +22,9 @@ extension NoteTextView.Coordinator {
     /// but a panel already open is still refreshed, because that refresh is the only thing that
     /// closes it when the marked text ends its context.
     func runEditPasses(in textView: NSTextView, renumbering renumbers: Bool, completing: Bool = true) {
-        parent.text = textView.string
+        let written = textView.string
+        parent.text = written
+        modelSync.wrote(written)
         applyStylingIfNeeded(to: textView, theme: parent.theme)
         linksDidChange(in: textView)
         applyEmbeds(to: textView)

@@ -93,3 +93,38 @@ struct StorageEdit: Equatable, Sendable {
         return parts
     }
 }
+
+// MARK: - The window predicates and the end-anchored rule (ADR-0094 §D3)
+//
+// The step buffer's two shapes find the entries an edit reaches with these predicates, and hand each
+// one to the rules above; `precedes` wins when both hold, as in `shifted(_:)` and `shiftedKeys`. A key
+// is the empty range at its offset.
+
+extension StorageEdit {
+    /// Whether `range` ends at or before the old range's start, so the edit leaves it where it is.
+    func precedes(_ range: NSRange) -> Bool {
+        NSMaxRange(range) <= oldRange.location
+    }
+
+    /// Whether `range` starts at or after the old range's end, so the edit moves it by `delta`.
+    func follows(_ range: NSRange) -> Bool {
+        range.location >= NSMaxRange(oldRange)
+    }
+
+    /// `shifted(_:)`, except that a range that reached the end of the old text (`oldLength`) still
+    /// reaches the end of the new one: an unclosed fence runs to the end of the note, whatever is typed
+    /// after its last character. The structure map's fence rule, moved here from `StructureMap`.
+    ///
+    /// The new end is computed as `oldLength + delta`, where the removed `StructureMap` rule read the
+    /// real new text length. The two agree only while `oldLength` is the length of the text the edit
+    /// was made to, i.e. the new text's length minus `delta`. That holds today because every edit
+    /// reaches the map through `RestyleScope.record`, in order, and `record` leaves on
+    /// `.full(.wholesale)` before `applying` on a wholesale replace and on every edit after it, until
+    /// a full restyle rebuilds the map. A caller that reaches this rule another way must establish it.
+    func shifted(_ range: NSRange, anchoringTheEndOf oldLength: Int) -> NSRange? {
+        if NSMaxRange(range) == oldLength, oldRange.location >= range.location {
+            return NSRange(location: range.location, length: oldLength + delta - range.location)
+        }
+        return shifted(range)
+    }
+}

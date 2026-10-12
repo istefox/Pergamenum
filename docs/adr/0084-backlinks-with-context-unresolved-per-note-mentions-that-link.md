@@ -1,10 +1,12 @@
 # ADR-0084: Backlinks with context, unresolved per note, mentions that link
 
-- Status: planned. Milestone N3 of the note-workflow chain (`PG-386`, #888), SPEC R-24..R-28.
-  The implementation is not on `main`. Its logic, session writes and connectors land in N3's
-  session A PR and its inspector sections and GUI test in the session C PR; the flip to `accepted`
-  comes in the first docs change after the session C PR merges and names both merge commits (SPEC
-  R-31, `docs/adr/README.md` rule 2).
+- Status: **accepted**. Implemented by PR #953 (`54937eab`, 2026-10-08), N3's session A PR (the
+  logic, the session writes and the connectors), and PR #980 (`00954489`, 2026-10-12), the session
+  C PR (the inspector sections and §D7's GUI test). Milestone N3 of the note-workflow chain
+  (`PG-386`, #888), SPEC R-24..R-28, flipped by R-31. Two departures of the build are recorded in
+  place at the flip: no «Collega» on a title several notes share (§D3), and the «Scollega» dialog's
+  title (§D4). Open at the flip, per the plan's build result: every inspector section in light and
+  dark, «Dove compare» included, is owed to a hand check.
 - Date: 2026-10-04, written against `48a2d912`. **Re-checked 2026-10-07** on `origin/main` at
   `a2ada538` against the SPEC approved that day, before any code landed, and edited in place where
   the SPEC settled what this record had left open («Dove compare» on request, §D6; connector parity
@@ -129,8 +131,13 @@ returns the first mention's range in the original text and the text it matched. 
 becomes a derivation of it, so the scan and the link cannot disagree about which mention is the
 first. That holds for a title one note carries; for a title several notes share, `planLinkMention`
 drops the aliases (a homonym's alias is an ambiguous name) while `unlinkedMentions(for:)` still
-passes the subject's own, so an alias-only row would answer «Collega» with `noMention`, and Session
-C filters such rows out of the inspector for a shared title. The match is the scan's rule, run on
+passes the subject's own, so an alias-only row would answer «Collega» with `noMention`. *Amended
+2026-10-12, at the flip, as built in PR #980: the inspector does not filter those rows out. On a
+title several notes share it offers no «Collega» on any row
+(`VaultController.sharedTitle(ofNoteAt:)`) and shows the connectors' own sentence,
+`VaultSession.sharedTitleLinkRefusal(_:)`, under the list; every mention, alias-only ones included,
+stays listed and counted. The refusal is the inspector's and the connectors', not the session
+door's: `VaultSession.linkMention` still accepts the write.* The match is the scan's rule, run on
 the original text (case and diacritic insensitive `range(of:options:)`, whole words, outside
 wikilinks, body only), with narrowings added to ADR-0012 §D9's list. **A name inside fenced or
 inline code is not a mention** (SPEC Decision): writing `[[…]]` into code would change code, and a
@@ -206,7 +213,11 @@ the first and is named «legame strutturale tolto a metà: «A» non punta più 
 resta», and `written` holds what landed so ADR-0067's door catches the tabs up. The removal is by
 title, so a title that two notes share, on either side, is refused with nothing written. The row asks first
 through `.confirmationDialog(_:isPresented:presenting:)` (`.claude/rules/swiftui-views.md`: the
-value is the closure's parameter, never re-read from `@State` inside the `Task`).
+value is the closure's parameter, never re-read from `@State` inside the `Task`). *Amended
+2026-10-12, at the flip, as built in PR #980: the dialog's title is «Scollegare il legame
+strutturale?», and the two notes are named in its message, which receives the row; the approved
+mockup's scene (`InspectorLinksMockup`) was changed to match. A refusal is shown in an alert with
+the session's sentence.*
 
 *Connectors* (mandatory): `VaultAPI.removeStructuralLink(_:from:to:)`, `perg note unlink-related
 <percorso> <percorso-destinazione>`, and the MCP tool `remove_structural_link` (`path`, `target`,

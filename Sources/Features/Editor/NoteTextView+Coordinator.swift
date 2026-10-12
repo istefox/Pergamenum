@@ -43,6 +43,9 @@ extension NoteTextView {
         /// The last character edit the text storage reported, in the text as it now is. Recorded
         /// with the kill switch on too: it is a report, and nothing reads it to decide anything.
         private(set) var lastRecordedEdit: StorageEdit?
+        /// What the last binding write handed over, so the next update need not compare the whole
+        /// note with the model (ADR-0094 §D9).
+        var modelSync = ModelSync()
         /// The structure map and the decision pending on the edits since the last styling
         /// (ADR-0091 §D2/§D3). Nil with the kill switch on, and until the first full restyle.
         private(set) var restyleScope: RestyleScope?
@@ -63,13 +66,13 @@ extension NoteTextView {
         let decorations = EditorDecorationDelegate()
         /// The ranges the spell checker must leave alone: markdown syntax, not prose (M8).
         /// Filled by `applyStyling`, which already knows what every range of the note is,
-        /// so recognising them costs no second parse.
-        private(set) var unspellableRanges: [NSRange] = []
+        /// so recognising them costs no second parse. On a step (ADR-0094 §D7).
+        private(set) var unspellableRanges = OffsetRanges<NSRange>()
         /// Every `![[file.est]]`/`![alt](file.est)` line's own syntax range, found by the
         /// same `applyStyling` walk over `MarkdownStyler.spans(in:)` that already
         /// recognises `.embedRun` (ADR-0018 slice 3, Step 2). `NoteTextView+Embeds.swift`
-        /// reads this rather than parsing the note a second time.
-        private(set) var embedRuns: [NSRange] = []
+        /// reads this rather than parsing the note a second time. On a step (ADR-0094 §D7).
+        private(set) var embedRuns = OffsetRanges<NSRange>()
         /// Where each embed resolves to, once resolved - the render table
         /// `EditorDecorationDelegate` reads from, via `decorations.apply(embeds:)`, to
         /// actually draw one (ADR-0018 slice 3, Step 3). Owned here rather than resolved
@@ -90,7 +93,7 @@ extension NoteTextView {
             )
             // The fences an arrow key is tested against come from the map when it is current
             // (ADR-0091 §D6), not from a parse of the note per key.
-            controller.fenceRanges = { [weak self] in self?.currentViewBlockFences() }
+            controller.fenceRanges = { [weak self] selection in self?.currentViewBlockFences(touching: selection) }
             return controller
         }()
         /// The embed resize drag and its three phases (ADR-0074 §D2, ADR-0019 §D6,
@@ -189,6 +192,12 @@ extension NoteTextView {
         /// the caret does.
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
+            // Same guard as `textDidChange`, for the same reason: a registration that outlived its
+            // view is met by a new view at the same address, and a stale coordinator that once
+            // revealed a view block read the new view's caret as a fence crossing, restyled it with
+            // its own note's styling (dropping every `.editorLink`) and took its storage's delegate
+            // slot (PG-331, reproduced in the unit suite).
+            guard textView.delegate === self else { return }
             // The format bar first, and entirely inside AppKit: it is a child window this view
             // owns, so showing it needs no SwiftUI update at all. That matters here more than
             // anywhere - this method runs on every arrow key.
@@ -418,8 +427,8 @@ extension NoteTextView {
             // `applyStyling` runs on every `updateNSView` whose inputs moved.
             decorations.apply(revealsInlineSpans: parent.revealsInlineSpans)
             storage.endEditing()
-            unspellableRanges = MarkdownStyler.merged(collected.unspellable)
-            self.embedRuns = collected.embedRuns
+            unspellableRanges = OffsetRanges(sorted: MarkdownStyler.merged(collected.unspellable))
+            self.embedRuns = OffsetRanges(sorted: collected.embedRuns)
             settleBaseline(storage: storage, textView: textView, text: text, theme: theme)
             restyleLog.full += 1
             // After the transaction, deliberately: a grid resizes itself and a caret rescue
@@ -573,7 +582,7 @@ extension NoteTextView {
             shouldSetSpellingState value: Int,
             range affectedCharRange: NSRange
         ) -> Int {
-            let isSyntax = unspellableRanges.contains { NSIntersectionRange($0, affectedCharRange).length > 0 }
+            let isSyntax = unspellableRanges.intersects(affectedCharRange)
             return isSyntax ? 0 : value
         }
 
@@ -768,7 +777,16 @@ extension NoteTextView.Coordinator {
     /// own map handed back to the scope. Everything outside `dirty` is what the shift left at each
     /// edit.
     func applyIncrementalStyling(to textView: NSTextView, theme: Theme, dirty: NSRange) {
-        guard let storage = textView.textStorage, let scope = restyleScope else { return }
+        // No binding of the scope: one alive across `absorb` below shares the map's storage, and the
+        // mutation would copy every store whole (ADR-0094 §D4). What is needed of it is read into locals.
+        // A fence's ordinal counts every fence above it in the note (ADR-0033 §D3); the map's runs
+        // above `dirty` are the note's own, shifted.
+        guard let storage = textView.textStorage,
+              let listSeed = restyleScope?.listSeed(at: dirty.location),
+              let firstOrdinal = restyleScope?.map.viewBlockRuns.count(endingAtOrBefore: dirty.location)
+        else {
+            return
+        }
         isStyling = true
         defer { isStyling = false }
 
@@ -776,7 +794,7 @@ extension NoteTextView.Coordinator {
         let fragment = note.substring(with: dirty)
         let spans = MarkdownStyler.spans(
             inFragment: fragment,
-            context: .init(listSeed: scope.listSeed(at: dirty.location), readsFrontmatter: dirty.location == 0)
+            context: .init(listSeed: listSeed, readsFrontmatter: dirty.location == 0)
         )
         var context = MarkdownAttributedText.StyleContext(theme: theme, links: true, gutter: theme.spacing(.gutter))
         storage.beginEditing()
@@ -792,9 +810,6 @@ extension NoteTextView.Coordinator {
         }
         pushFaces(theme)
         applyTables(to: textView, runs: collected.tableRuns, markers: &collected.hiddenMarkers, within: dirty)
-        // A fence's ordinal counts every fence above it in the note (ADR-0033 §D3); the map's runs
-        // above `dirty` are the note's own, shifted.
-        let firstOrdinal = scope.map.viewBlockRuns.filter { NSMaxRange($0) <= dirty.location }.count
         applyViewBlocks(
             to: textView, runs: collected.viewBlockRuns, markers: &collected.hiddenMarkers,
             within: dirty, firstOrdinal: firstOrdinal
@@ -803,12 +818,8 @@ extension NoteTextView.Coordinator {
         decorations.apply(revealsInlineSpans: parent.revealsInlineSpans)
         storage.endEditing()
 
-        unspellableRanges = MarkdownStyler.spliced(
-            unspellableRanges, replacing: dirty, with: MarkdownStyler.merged(collected.unspellable)
-        )
-        embedRuns = embedRuns.filter { NSMaxRange($0) <= dirty.location }
-            + collected.embedRuns
-            + embedRuns.filter { $0.location >= NSMaxRange(dirty) }
+        unspellableRanges.spliceMerging(MarkdownStyler.merged(collected.unspellable), replacing: dirty)
+        embedRuns.splice(collected.embedRuns, replacing: dirty)
         restyleScope?.absorb(StructureMap(text: fragment), at: dirty.location, replacing: dirty)
         stylingBaseline?.edits = recordedEdits
         owe(.range(dirty))
@@ -866,10 +877,14 @@ extension NoteTextView.Coordinator {
         stylingBaseline.map { $0.edits != recordedEdits } ?? false
     }
 
-    /// The closed view-block fences of the map, when the map is the text's own (ADR-0091 §D6).
-    func currentViewBlockFences() -> [NSRange]? {
+    /// The closed view-block fences of the map that touch `selection`, in order, when the map is the
+    /// text's own (ADR-0091 §D6). Found by search, the shape of `selectionReveals` (ADR-0094 §D6).
+    func currentViewBlockFences(touching selection: NSRange) -> [NSRange]? {
         guard let scope = restyleScope, scope.fencesAreCurrent else { return nil }
-        return scope.map.fences
+        guard selection.location != NSNotFound else { return [] }
+        let fences = scope.map.fences
+        return fences.indices(touching: selection)
+            .map { fences[$0] }
             .filter { $0.language == ViewBlock.language && $0.isClosed }
             .map(\.range)
     }
@@ -878,7 +893,29 @@ extension NoteTextView.Coordinator {
     /// called from `shiftDerivedState(by:)` (ADR-0091 §D6). Here because both are `private(set)` to
     /// this file.
     func shiftStyledRanges(by edit: StorageEdit) {
-        unspellableRanges = unspellableRanges.flatMap { edit.clipped($0) }
-        embedRuns = embedRuns.compactMap { edit.shifted($0) }
+        unspellableRanges.apply(edit, partial: .clip)
+        embedRuns.apply(edit, partial: .drop)
+    }
+
+    /// The step tallies of the stores that grow with the note, by name (ADR-0094 §D5): `hiddenMarkers`,
+    /// `unspellable` and `embedRuns`, and the structure map's seven `map.*` stores while a scope is kept.
+    /// A test seam; the counting compiles only under `#if DEBUG`, and a Release build reads zeros.
+    ///
+    /// In the trailing extension, not the class body, because the stores it resets are `private(set)` to
+    /// this file.
+    func offsetStoreTallies() -> [String: StepTally] {
+        var tallies = restyleScope?.map.tallies ?? [:]
+        tallies["hiddenMarkers"] = decorations.hiddenMarkers.tally
+        tallies["unspellable"] = unspellableRanges.tally
+        tallies["embedRuns"] = embedRuns.tally
+        return tallies
+    }
+
+    /// Zeroes every tally `offsetStoreTallies()` answers, so a test reads what one keystroke cost.
+    func resetOffsetStoreTallies() {
+        decorations.hiddenMarkers.resetTally()
+        unspellableRanges.resetTally()
+        embedRuns.resetTally()
+        restyleScope?.resetTallies()
     }
 }

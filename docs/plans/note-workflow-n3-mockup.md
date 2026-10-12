@@ -106,8 +106,8 @@ content. Scenes (ADR-0084 §D1, §D2, §D4, §D6):
 2. **The row menu,** drawn open on a plain row (Apri, Apri nell'altra colonna, Rendi strutturale)
    and on the structural row (Apri, Apri nell'altra colonna, Scollega), so the two catalogues are
    seen side by side.
-3. **«Scollega» asking first:** the confirmation «Scollegare «A» e «B»?», «Scollega» destructive,
-   «Annulla».
+3. **«Scollega» asking first:** the confirmation «Scollegare il legame strutturale?», the two notes
+   named in its message, «Scollega» destructive, «Annulla».
 4. **LINK NON RISOLTI for this note,** titled «Link non risolti in questa nota: 3» (ADR-0084 §D2).
    Two rows, each the target name with «Crea nota» and «Vai al link» as small trailing buttons; a third row for `[[Piano.md]]`, which is not a valid title,
    with «Vai al link» only. The empty state: «nessun link non risolto in questa nota».

@@ -37,7 +37,11 @@ extension NoteTextView {
         if isNoteSwitch, links.preview != nil { coordinator.linkPreview.noteChanged() }
         // Only touch the text when the model diverges from what is on screen:
         // reassigning it unconditionally would reset the cursor on every keystroke.
-        if textView.string != text {
+        // Not read at all when the view wrote this very text and nothing has edited it since: the
+        // compare is linear in the note, and SwiftUI updates the view after every keystroke
+        // (ADR-0094 §D9).
+        let viewHoldsTheModel = textView.textStorage?.delegate === coordinator && coordinator.modelSync.viewHolds(text)
+        if !viewHoldsTheModel, textView.string != text {
             // This view is one persistent instance per editor column (never rebuilt per
             // note), so a genuine note switch and the same note's content changing
             // externally (undo, sync) both land here. Carrying the old raw offset forward
