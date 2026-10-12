@@ -431,6 +431,9 @@ The holders:
 A holder added later that keys by offset must get the same method, or it is a defect. The hosted
 R-05 test compares every holder named here with a twin that was fully restyled.
 
+`hiddenMarkers`, the coordinator's two range lists and `StructureMap` move a step since
+ADR-0094 §D1; the other holders keep this section's tables, with ADR-0094 §D8's bounds.
+
 ### D7. The passes after the styling
 
 **Transclusions (R-09).** The styling pass hands `applyTransclusions` a one-shot token that names the

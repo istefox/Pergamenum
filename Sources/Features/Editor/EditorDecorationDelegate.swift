@@ -207,8 +207,9 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// feature - hiding - with three sources.
     ///
     /// Not `private`: `listParagraph(at:storage:)` in `EditorDecorationDelegate+ListRendering.swift`
-    /// reads it too (ADR-0028, Task 3).
-    nonisolated(unsafe) var hiddenMarkers: [Int: [HiddenMarker]] = [:]
+    /// reads it too (ADR-0028, Task 3). An `OffsetTable`, so an edit moves a step rather than every
+    /// key below it (ADR-0094 §D7); `hiddenMarkers[x]` is the exact lookup every reader makes.
+    nonisolated(unsafe) var hiddenMarkers = OffsetTable<[HiddenMarker]>()
     /// Paragraphs currently drawn in full, because the caret's paragraph, a non-empty
     /// selection, an active IME composition or the find bar's current match touches them
     /// (ADR-0018 §D2). Keyed the same way as `headingMarkers`.
@@ -337,8 +338,8 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// every SwiftUI update, and logging on each of those would drown the one line per
     /// fold this file otherwise writes.
     func apply(hiddenMarkers markers: [Int: [HiddenMarker]], hidingMarkup hides: Bool) {
-        guard markers != hiddenMarkers || hides != hidesMarkup else { return }
-        hiddenMarkers = markers
+        guard !(hiddenMarkers == markers) || hides != hidesMarkup else { return }
+        hiddenMarkers = OffsetTable(markers)
         hidesMarkup = hides
         let count = markers.values.reduce(0) { $0 + $1.count }
         Logger.folding.debug(
@@ -952,7 +953,7 @@ extension EditorDecorationDelegate {
         foldedHeadings = edit.shiftedKeys(foldedHeadings)
         renditions = edit.shiftedKeys(renditions)
         embedRenditions = edit.shiftedKeys(embedRenditions)
-        hiddenMarkers = edit.shiftedKeys(hiddenMarkers)
+        hiddenMarkers.apply(edit)
         revealedParagraphs = edit.shiftedKeys(revealedParagraphs)
         revealedSpans = edit.shiftedKeys(revealedSpans)
         tableViews = edit.shiftedKeys(tableViews)
@@ -963,9 +964,7 @@ extension EditorDecorationDelegate {
     /// are replaced by `markers`, every other key is left as the shift left it. `markers` are the
     /// restyled range's own, keyed by paragraph start in the note.
     func splice(hiddenMarkers markers: [Int: [HiddenMarker]], in dirty: NSRange, hidingMarkup hides: Bool) {
-        var spliced = hiddenMarkers.filter { !NSLocationInRange($0.key, dirty) }
-        spliced.merge(markers) { _, new in new }
-        hiddenMarkers = spliced
+        hiddenMarkers.replace(in: dirty, with: markers)
         hidesMarkup = hides
     }
 }
@@ -975,20 +974,4 @@ extension Logger {
     /// persisted to the log store, which cost a round of debugging to rediscover. This is a
     /// feature whose failure mode is "nothing happens", so it has to leave a trace.
     static let folding = Logger(subsystem: "it.stefer.pergamenum", category: "folding")
-}
-
-/// `EditorDecorationDelegate`'s offset-keyed stores as comparable values (ADR-0091 §D6), the part
-/// of `DerivedStateSnapshot` this file can read.
-struct DecorationSnapshot: Equatable {
-    var hiddenMarkerKeys: [Int]
-    var hiddenLineOffsets: Set<Int>
-    var foldedHeadings: [Int: Int]
-    var tableRowOffsets: Set<Int>
-    var viewBlockLineOffsets: Set<Int>
-    var renditionKeys: [Int]
-    var embedRenditionKeys: [Int]
-    var revealedParagraphs: Set<Int>
-    var revealedSpanKeys: [Int]
-    var tableViewKeys: [Int]
-    var viewBlockHostKeys: [Int]
 }

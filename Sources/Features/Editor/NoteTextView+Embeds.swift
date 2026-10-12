@@ -292,8 +292,10 @@ extension NoteTextView.Coordinator {
         let scan = takeEmbedScan()
         if case .none = scan { return }
         let dirty: NSRange? = if case .range(let range) = scan { range } else { nil }
+        // Only the runs inside the restyled range, found by search rather than handed whole to
+        // `EmbedTable.apply`'s own filter (ADR-0094 §D7).
         embeds.apply(
-            runs: embedRuns,
+            runs: dirty.map { embedRuns.entries(startingIn: $0) } ?? Array(embedRuns),
             notePath: parent.vault.notePath,
             root: parent.vault.vaultRoot,
             thumbnails: parent.vault.thumbnails,

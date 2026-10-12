@@ -332,6 +332,8 @@ map). A `textDidChange` with no recorded range stays the whole-text form. The ca
 **What stays linear.** The parity is a sum over the map's lines above the start: an array walk over
 integers, the same order as ADR-0091's list-seed fold and its shift, and no text is read for it.
 
+Replaced by ADR-0094 §D6: the parity is a rank in the map's odd-delimiter lines.
+
 ### D9. The structural bench rows
 
 `scripts/editor-restyle-bench.sh --structural` sets `RESTYLE_BUDGET_STRUCTURAL=1` and prints a third
@@ -571,6 +573,8 @@ is the third ledger entry's open question. App-owned, the largest term is ADR-00
 the derived state: `shiftStyledRanges` (`NoteTextView+Coordinator.swift:875`) and
 `EditorDecorationDelegate.shift` (`EditorDecorationDelegate.swift:948`), about 20% of the key together,
 walking every styled range and every decoration on every edit. Neither is changed here.
+
+The app-owned term named here is removed by ADR-0094; see its Measured after.
 
 ## Gates
 
