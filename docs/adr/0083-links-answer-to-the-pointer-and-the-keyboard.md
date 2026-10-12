@@ -1,9 +1,16 @@
 # ADR-0083: Links answer to the pointer and the keyboard
 
-- Status: planned. Milestone N3 of the note-workflow chain (`PG-386`, #888), SPEC R-20..R-23.
-  The implementation is not on `main`. It lands in N3's session B PR (the editor) and session C PR
-  (the GUI tests of §D8); the flip to `accepted` comes in the first docs change after the session C
-  PR merges and names both merge commits (SPEC R-31, `docs/adr/README.md` rule 2).
+- Status: **accepted**. Implemented by PR #964 (`a75a5d9a`, 2026-10-10), N3's session B PR (the
+  editor, §D1 to §D7), as amended by PR #973 (`92b0dcef`, 2026-10-11), the preview's review fixes
+  (`LinkPreviewTrigger`'s `hideAndSchedule` and its handling in `LinkPreviewController` when the
+  pointer moves from one link to another, the board-target paragraph of §D7), and PR #980
+  (`00954489`, 2026-10-12), the session C PR (the GUI tests of §D8). Milestone N3 of the
+  note-workflow chain (`PG-386`, #888), SPEC R-20..R-23, flipped by R-31. §D7 was re-read against
+  the code of PR #964 as amended by #973 at the flip and corrected where it differed. Open at the
+  flip, per the plan's build result: §D8's two GUI tests were not seen green (XCTest drops `[` on
+  the Italian - Pro layout, and `perform(withKeyModifiers:)` did not stamp Command on the hover
+  events), so the popover in light and dark, its edge and Cmd+[ on that layout are owed to a hand
+  check.
 - Date: 2026-10-04, written against `48a2d912`. **Amended 2026-10-07** in place, before any code
   landed: §D7 is rewritten for an `NSPopover` (SPEC Decision "The preview is an `NSPopover`, not a
   `NeverKeyPanel`"), with its first Alternatives paragraph, and every line number below was read
@@ -267,7 +274,11 @@ poi riprova» (SPEC edge case: "A draft parked in the composer is kept and the o
 
 **D7. The preview is an `NSPopover` anchored beside the link, opened by Cmd and the pointer, its
 lifecycle owned by one controller.** *Amended 2026-10-07: the record's first §D7 drew it in a
-`NeverKeyPanel`; the SPEC reversed that (Alternatives).*
+`NeverKeyPanel`; the SPEC reversed that (Alternatives). Amended 2026-10-12, at the flip to
+`accepted`: re-read against the code of PR #964 as amended by #973 (`92b0dcef`), and corrected
+where the build differs from the text (the controller's placement, the tracking area's options, the
+lifetimes of the monitor and of the window observations, the window-key guard, the anchor rect, the
+move from one link to another).*
 
 *What it shows* (`LinkPreviewContent.make(...)`, pure):
 
@@ -277,7 +288,8 @@ lifecycle owned by one controller.** *Amended 2026-10-07: the record's first §D
 - a board target: the board's name;
 - several matches: «N note si chiamano «X»» and their folder labels;
 - no match: «Nessuna nota si chiama «X»», plus «Cmd+clic per crearla» when creatable;
-- an external URL or a file embed: nothing, no popover (SPEC edge case).
+- an external URL or a file embed: nothing, no popover (SPEC edge case); a tag, a date and a note
+  that cannot be read have none either.
 
 A board target is named, not resolved: resolving it walks every board in the vault
 (`CanvasStore.allBoards()`), a disk-derived list ADR-0072 §D7 forbids keeping across hovers. The
@@ -290,35 +302,45 @@ only), so the controller reads it off `WikilinkParser` at the hovered index, the
 already uses.
 
 *When it shows* (`LinkPreviewTrigger`, a pure state machine in `Sources/Core/Links/`, time passed
-in): Command is held, no non-modifier key has been pressed since, the pointer rests on one
-`.editorLink` run, and 250 ms have passed since the last of those became true. Shift and Option do
-not matter, so the popover stays while the person reaches for a click variant. The dwell keeps a
-Cmd+S or Cmd+F chord typed with the pointer over a link from flashing a popover. It closes on
-Command released, the pointer leaving the run, Escape (consumed only while the popover is up), any
-key, a scroll, the window resigning key, the text changing, and the note changing.
+in): Command is held, no non-modifier key has been pressed since Command went down, the pointer
+rests on one `.editorLink` run, and 250 ms have passed since the last of those became true. Shift
+and Option do not matter, so the popover stays while the person reaches for a click variant. The
+dwell keeps a Cmd+S or Cmd+F chord typed with the pointer over a link from flashing a popover; a key
+typed with Command up does not count. It closes on Command released, the pointer leaving the run,
+Escape (consumed only while the popover is up), any key, a scroll, the window resigning key, the
+text changing, and the note changing. A pointer that moves from the shown run straight onto another
+link, Command still held, hides the popover and starts that link's dwell in the same step.
 
 *Where it lives* (ADR-0074 §D2/§D3): `LinkPreviewController`, a `@MainActor final class` in
-`NoteTextView+LinkPreview.swift`, held by the Coordinator as one `lazy` property beside `tables`
-and `reveal` and reading the parent's inputs through the same provider at use time. The controller
-is the only owner of the lifecycle; nothing else shows or closes the popover. It owns:
+`NoteTextView+LinkPreview.swift`, built on first use by the Coordinator's `linkPreview` accessor
+(the build-on-first-use of `tables` and `reveal`) and kept in `builtLinkPreview`, so tearing down a
+text view that never previewed builds nothing; it reads the parent's inputs through the same
+provider at use time, and is attached to the text view, and told of a note switch, only while
+`links.preview` is set. The controller is the only owner of the lifecycle; nothing else shows or
+closes the popover. It owns:
 
 - a small tracker `NSResponder` that is the owner of one tracking area over the text view's
-  visible rect (`.mouseMoved`, `.mouseEnteredAndExited`, `.activeInKeyWindow`, `.inVisibleRect`;
-  with `.inVisibleRect` AppKit tracks the visible rect itself, so no `updateTrackingAreas` re-add
-  is needed). The tracker is a separate owner, so `CompletingTextView`'s own `cursorUpdate` and
-  `mouseMoved` overrides (ADR-0090) neither see its events nor are needed by it;
+  visible rect (`.mouseMoved`, `.mouseEnteredAndExited`, `.activeInKeyWindow`, `.inVisibleRect`,
+  `.assumeInside`; with `.inVisibleRect` AppKit tracks the visible rect itself, so no
+  `updateTrackingAreas` re-add is needed, and `.assumeInside` makes the first `mouseExited` arrive
+  when the area is added with the pointer already inside). The tracker is a separate owner, so
+  `CompletingTextView`'s own `cursorUpdate` and `mouseMoved` overrides (ADR-0090) neither see its
+  events nor are needed by it;
 - exactly one local event monitor for `.flagsChanged`, `.keyDown` and `.scrollWheel`, installed on
-  entry and removed on exit, so it exists only while the pointer is inside the text view (PG-258:
-  a monitor that outlived its view was that ticket);
-- one observation of the text view's window resigning key, registered while the popover is up and
-  removed when it goes;
+  entry, or on the first pointer move when the area was added with the pointer already inside
+  (AppKit sends no `mouseEntered` then), and removed on exit and when the window resigns key, so it
+  exists only while the pointer is inside the text view of the key window (PG-258: a monitor that
+  outlived its view was that ticket);
+- two observations of the text view's window resigning key: one that lives with the monitor, so a
+  dwell scheduled before an app switch (Command held through Cmd+Tab, no popover up yet) is
+  cancelled, and one registered while the popover is up and removed when it goes;
 - the presenter (below), the clock and the scheduler for the dwell, both injected.
 
 The point-to-link resolution is `CompletingTextView.linkCharacterIndex(at:)`, called, not copied:
 the protected file stays the one place a point becomes a link. A `mouseMoved` with Command already
 down starts the dwell too, so the popover does not depend on a `flagsChanged` arriving after the
 pointer. `tearDown()` hides the popover and removes the monitor, the tracking area and the window
-observation, whether or not the text view still has a window: it is called from
+observations, whether or not the text view still has a window: it is called from
 `NoteTextView.dismantleNSView`, which runs after SwiftUI has detached the text view (its own comment
 says so), and a pane switch is a rebuild, not a hide, so a popover left up there would be exactly
 PG-258's orphan. Each removal is asserted in-process.
@@ -339,22 +361,27 @@ PG-258's orphan. Each removal is asserted in-process.
   preferring the edge below the line; AppKit moves it to the opposite edge when there is no room.
   Anchored to the rect's edge, it is drawn beside the link and never over it, so a Cmd+click aimed
   at the link reaches the link (SPEC Decision). The preferred edge is given in the text view's
-  coordinates, which are flipped; the coder confirms "below" on the Debug build rather than
-  trusting the constant's name.
+  coordinates, which are flipped: the build passes `.maxY`, the bottom in a flipped view; a
+  confirmation by eye on the Debug build is not recorded at the flip (the status line's hand check).
+- The rect is the controller's: it lays out the run first (`ensureLayout(for:)`), reads its TextKit 2
+  segments, and anchors to the segment the pointer is on when the run wraps, else the first. A run
+  with no laid-out segment gives no rect and no show. `firstRect(forCharacterRange:)`-style queries
+  answer zero for a range not laid out (`.claude/rules/swiftui-views.md`), and a zero rect would
+  clamp the popover to a screen corner.
 - Guarded before every show: no show when the text view has no window, the window is not visible,
-  or the run's rect is empty. `NSPopover.h` documents an `NSInvalidArgumentException` for a
-  positioning view not in a window and a no-op for one that is not visible, and
-  `firstRect(forCharacterRange:)`-style queries answer zero for a range not laid out
-  (`.claude/rules/swiftui-views.md`), so the layout is confirmed before the rect is read.
+  the window is not key (a dwell that ran out after an app switch must not put a popover over a
+  background window), or the rect is empty. `NSPopover.h` documents an `NSInvalidArgumentException`
+  for a positioning view not in a window and a no-op for one that is not visible.
 
 *Never first responder, checked rather than assumed.* `NSPopover.h` declares no property that keeps
 the popover's window from becoming key, and whether a shown popover with this content takes key
 status is not documented (insufficient data on 2026-10-07). So the presenter samples, immediately
 before and after `show`, whether the editor's window is key and whether the text view is its first
 responder (`LinkPreviewFocus`). If either went from true to false, it closes the popover at once,
-gives first responder back to the text view, and reports the failure, and the trigger stays hidden
-until a fresh dwell. The comparison is a pure function, `LinkPreviewFocus.lostKeyboard(before:after:)`,
-tested in-process; the GUI test (D8) proves the real popover leaves the keyboard with the editor.
+gives first responder back to the text view, and answers the show with `false`; the controller
+hands that to the trigger as `.showFailed`, and the trigger stays hidden until a fresh dwell, as it
+does after any other refused show. The comparison is a pure function,
+`LinkPreviewFocus.lostKeyboard(before:after:)`, tested in-process; the GUI test (D8) proves the real popover leaves the keyboard with the editor.
 This is the cost the SPEC names: the guarantee rests on a test and a fail-closed check, not on a
 type.
 
