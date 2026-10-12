@@ -192,6 +192,12 @@ extension NoteTextView {
         /// the caret does.
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
+            // Same guard as `textDidChange`, for the same reason: a registration that outlived its
+            // view is met by a new view at the same address, and a stale coordinator that once
+            // revealed a view block read the new view's caret as a fence crossing, restyled it with
+            // its own note's styling (dropping every `.editorLink`) and took its storage's delegate
+            // slot (PG-331, reproduced in the unit suite).
+            guard textView.delegate === self else { return }
             // The format bar first, and entirely inside AppKit: it is a child window this view
             // owns, so showing it needs no SwiftUI update at all. That matters here more than
             // anywhere - this method runs on every arrow key.
