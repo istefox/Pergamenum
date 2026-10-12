@@ -113,6 +113,14 @@ final class VaultController {
     var isShowingQuickLook = false
     /// Set by the "Nota correlata…" command.
     var isAddingRelatedLink = false
+    /// The path «Rendi strutturale» chose before the sheet opened (ADR-0084 §D4); the sheet takes it
+    /// once through `takeStructuralLinkPreselection()`.
+    var structuralLinkPreselection: String?
+    /// The inspector's backlink rows, keyed by `(indexGeneration, title)` (ADR-0084 §D1); never
+    /// observed, so filling it schedules no render.
+    let backlinkRowsMemo = IndexKeyedMemo<String, [BacklinkRow]>()
+    /// The last «Dove compare» answer (ADR-0084 §D6), keyed by `(path, indexGeneration)`.
+    @ObservationIgnored var appearancesMemo: AppearancesMemo?
     /// Set by the global search command (Cmd+Shift+F).
     var isShowingGlobalSearch = false
     /// Set by the quick switcher command.
@@ -220,7 +228,10 @@ final class VaultController {
             Self.log.fault("impossibile risolvere Application Support: apertura del vault annullata")
             // The open vault, if any, keeps running: tell the person why nothing changed. With no
             // session there is nowhere to show it (`recordProblem` is the session's door).
-            recordProblem("Apertura della cartella note annullata: impossibile risolvere la cartella di Application Support")
+            recordProblem(
+                "Apertura della cartella note annullata: "
+                    + "impossibile risolvere la cartella di Application Support"
+            )
             return
         }
         // Only once the state directory resolved: a bail above leaves the open vault watching.

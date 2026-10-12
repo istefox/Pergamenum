@@ -853,40 +853,51 @@ No static check is declared that passes on `main`: SwiftLint fails there by desi
 the stop-gate red before the suite runs. The type check is the build inside the test command.
 `scripts/check-adr-references.py` is a documentation checker, run by hand in Task 8, not a code check.
 
-## Build result (2026-10-10)
+## Build result (2026-10-11)
 
 BUILD · DONE WITH WARNINGS
-Scope: Session B, Tasks 3 and 4 (PR B: R-20..R-23, R-29, R-30)
-Files: 57 changed paths uncommitted: 30 modified, 27 untracked (14 new test files, 12 new sources incl. Sources/Core/Links/{LinkOpening,LinkAtCaret,LinkPreviewTrigger,LinkPreviewContent}.swift, this plan); ADR-0083 §D1 amended in place
-Tests: PergamenumTests 6034 passed in 366 suites (5 known issues, pre-existing, HostedViewSupport.swift:46), 14 (coverage) tests; perg and pergamenum-mcp build exit 0
+Scope: Session C, Tasks 5, 6 and 7 (PR C: R-20, R-21, R-22, R-24..R-28, R-29, R-30); Task 8 is not in this build
+Files: 33 changed paths uncommitted on feat/note-workflow-n3 (10 modified before the sweeps, new: 4 inspector sources, 5 sections/sheets, 5 test files, UITests/LinkMentionUITests.swift)
+Tests: PergamenumTests green on the last stop-gate run (6242 passed at the sweep coder's run, 5 known issues pre-existing); perg and pergamenum-mcp build exit 0, mcp-smoke OK and IndexCache.schemaVersion untouched at the tester's run; GUI 1 of 3 shown green (LinkMentionUITests, no recorded verdict), 2 not green, see WARN; 0 (coverage) tests labelled
 Review: sonnet, safe; opus, safe
-Coverage: R-20, R-21, R-22, R-23, R-29 covered; R-30 UNCOVERED on tests (a gate requirement, verified by the runs above)
+Coverage: not run, the plan's requirement set is not SPEC.md
 Deferred: none
-Dropped: 1 (post-sweep 1)
-Dispatch: Round 0 (red): tester — Task 3
-Dispatch: Round 1: coder — NoteTextView+LinkPreview.swift:275 (reviewer: sonnet, opus), VaultController+LinkOpening.swift:28 (reviewer: sonnet, opus); tester — LinkPreviewControllerTests.swift:123 (fixture); debugger — LinkPreviewTrigger.swift:61 (reviewer: sonnet, opus), NoteTextView+LinkPreview.swift:91 (reviewer: opus), NoteTextView+LinkPreview.swift:254 (reviewer: sonnet), NoteTextView+Coordinator.swift:170 (reviewer: sonnet)
-Dispatch: Round 2: re-review only (sonnet safe, opus safe), no FIX line
-Dispatch: Round 1 (sweep): coder — ShortcutSettings.swift:83 (reviewer: sonnet), LinkChoiceSheet.swift:107 (reviewer: sonnet), NoteTextView.swift:290 (reviewer: opus), LinkPreviewView.swift:75-79 (reviewer: opus), LinkPreviewControllerTests.swift:10 (follow-up: debugger), MenuCommands.swift:16 (follow-up: tester); debugger — LinkPreviewPopover.swift:71 (reviewer: opus)
-WARN: UNCOVERED R-30 tests: R-30 is a gate requirement (unit suite, three targets build); the runs verify it, no test names it
-WARN: by-hand check still owed (plan Task 4 "Done means"): popover and choice menu in light and dark on the Debug build, popover edge below the line (.maxY), first-show size; not doable by an agent
-WARN: decision-bound, for Stefano: the coder amended ADR-0083 §D1 (.otherColumn opens a stable tab via openNoteInNewTab, because openNote(at:) consumes the other column's preview tab); MockupGalleryView label flipped to «N3, approvato» on the strength of the 2026-10-08 approval
-WARN: Cmd+Opt+Return was measured against com.apple.symbolichotkeys by the coder (58 entries, none on key code 36), not re-run by the reviewers
-WARN: build ran on kepler/feature/note-workflow-n3-session-b, not feat/note-workflow-n3-session-b, which is checked out by the worktree adr-0083-0084-pg-386; /ship decides the branch name
-WARN: all of the work is uncommitted; the stop-gate collided twice with the tester's own xcodebuild (build database locked, no verdict, not a red test)
-INFO: review escalated, size: 54 changed files, threshold 20
-INFO: Task 3/4 line cites checked on da38099d: only NoteTextView.dismantleNSView moved (:280 to :284)
-Session A: Scope: Session A, Tasks 1 and 2 (Tasks 3 to 8 are gated on PR A, the mockup approval and PR C by the plan)
-Session A: Files: 58 changed files, Session A: new Sources/Core/Links/, UnresolvedTargets.swift, Connector/VaultLinkWrites.swift, Vault/VaultSession+LinkWrites.swift and +Appearances.swift, MCPServer NoteLinks files, 13 new test files; ADR-0083/0084, this plan, SPEC.md are planning artifacts
-Session A: Tests: PergamenumTests 5778 passed (5 known issues, pre-existing); perg and pergamenum-mcp build exit 0; scripts/mcp-smoke.py exit 0
-Session A: Review: sonnet, safe; opus, safe
+Dropped: 9 (fix-hunk 3, nit 4, post-sweep 2)
+Dispatch: Round 0 (red): tester — Task 5
+Dispatch: Round 1: debugger — BacklinksSection.swift:130-136 (reviewer: sonnet, opus), BacklinkCommand.swift:23 (reviewer: sonnet), VaultController+Inspector.swift:21-30 (reviewer: opus); coder — UnresolvedLinksSection.swift:22 (reviewer: opus)
+Dispatch: Round 2: debugger — BacklinksSection.swift:53 (reviewer: opus); coder — WhereNoteAppearsSection.swift:81 (reviewer: opus), LinkMentionReview.swift:60 (reviewer: opus)
+Dispatch: Round 1 (sweep): coder — 9 in-diff candidates and C1..C7
+Dispatch: Round 2 (sweep): debugger — VaultController+Inspector.swift:46-53 (reviewer: opus)
+WARN: GUI tests for R-20 (Cmd+hover preview) and R-21 (Cmd+[) not green: XCTest drops "[" on the Italian - Pro layout, perform(withKeyModifiers:) does not stamp Command on hover events, external monitor and focus-stealing apps contaminated every run; no product defect shown, both owed to a hand check; scripts/uitests.sh --affected not run
+WARN: by-hand checks still owed (plan Tasks 4, 6, 7): popover and choice menu light and dark, every inspector section light and dark including «Dove compare» on a note used by a board and a pratica, the two Vista variants after binding keys, follow from Oggi and Diario, ambiguous title from Quick Open, Cmd+[ on this keyboard layout (ShortcutCommand.swift:324)
+WARN: decision-bound, for Stefano: «Collega» is no longer offered on a title several notes share (the connector's sentence is shown), which departs from ADR-0084 §D3 (stale text at lines 131-133 needs an edit; the session door still accepts the write, refusal is UI-only); the unlink dialog title became «Scollegare il legame strutturale?» and the approved mockup text was changed to match; the shared-title state has no approved mockup scene
+WARN: test changes: InspectorSectionLabelTests follows unresolved(count:) and its empty phrase from the plan; InspectorLinkRowsTests' shared-title test was inverted after the filter was removed; CapturePanelTests' contested-combination test now picks a free combination from a list (same assertions)
+WARN: plan Task 6 text still cites the old dialog title «Scollegare «A» e «B»?» (plan line 689)
+INFO: review escalated, size: 23 changed files, threshold 20
+INFO: build ran on feat/note-workflow-n3, created from main; all work is uncommitted
 
 ```text
-FIX	swept	**MINOR** [other] Sources/Features/Settings/ShortcutSettings.swift:83 — The reset button's help and accessibility label read "Torna a " with nothing after it for the two commands that ship unbound (reviewer: sonnet)
-FIX	swept	**MINOR** [wrong-behaviour] Sources/Features/Editor/LinkPreviewPopover.swift:71 — show() guards window.isVisible but not isKeyWindow (reviewer: opus)
-FIX	swept	**NIT** Sources/Features/Editor/LinkChoiceSheet.swift:107 — composer comment says "a sheet of its own" (reviewer: sonnet)
-FIX	swept	**NIT** Sources/Features/Editor/NoteTextView.swift:290 — dismantleNSView builds the lazy linkPreview unconditionally (reviewer: opus)
-FIX	swept	**NIT** Sources/Features/Editor/LinkPreviewView.swift:75-79 — no-op mask on non-fading lines (reviewer: opus)
-FIX	swept	**MINOR** [other] Tests/LinkPreviewControllerTests.swift:10 — LinkPreviewControllerLifecycle over type_body_length (follow-up: debugger)
-FIX	swept	**MINOR** [other] Sources/App/MenuCommands.swift:16 — the three Vista items have no test (follow-up: tester)
-DROP	post-sweep	**MINOR** [other] Sources/Features/Editor/NoteTextView+Coordinator.swift:420 — SwiftLint file_length, applyStyling length and cyclomatic complexity, already there before this build; no safe move removes them (follow-up: debugger)
+DROP	fix-hunk	**MINOR** [wrong-behaviour] Sources/App/VaultController+Inspector.swift:61 — "Nota correlata…" never clears structuralLinkPreselection; beginStructuralLink(preselecting: nil) has no production caller (reviewer: opus)
+DROP	fix-hunk	**MINOR** [other] Sources/App/VaultController+Inspector.swift:18 — backlink line reads are uncapped and synchronous on the main actor (reviewer: opus)
+DROP	fix-hunk	**MINOR** [style] Sources/App/VaultController+Inspector.swift:46 — linkableMentions(ofNoteAt:) is a pass-through whose name promises a filter (reviewer: sonnet, opus)
+DROP	post-sweep	**MINOR** [wrong-behaviour] Sources/Vault/VaultSession+LinkWrites.swift:63 — the homonym-title refusal lives only in the view and the connector, not at the session door (reviewer: opus)
+DROP	post-sweep	**MINOR** [other] Sources/Features/DesignGallery/UnlinkedMentionsMockup.swift:194 — no mockup scene for the shared-title state the section draws (reviewer: opus)
+FIX	swept	**MAJOR** [wrong-behaviour] Sources/Features/Editor/BacklinksSection.swift:130-136 — «Scollega» refusals now surface through unlinkStructuralLink and an alert (reviewer: sonnet, opus)
+FIX	swept	**MAJOR** [wrong-behaviour] Sources/App/VaultController+Inspector.swift:46-53 — alias-only filter removed, shared-title mentions stay listed (reviewer: opus)
+FIX	swept	**MINOR** [wrong-behaviour] Sources/Features/Editor/LinkMentionSheet.swift:22 — «Annulla» disabled while the confirm is in flight (reviewer: opus)
+FIX	swept	**MINOR** [wrong-behaviour] Sources/Features/Editor/UnlinkedMentionsSection.swift:153 — no «Collega» on a shared title, the connector's sentence shown (reviewer: opus)
+FIX	swept	**MINOR** [other] Sources/App/VaultController+Inspector.swift:35 — related read from the read's record, no second parse (reviewer: opus)
+FIX	swept	**MINOR** [other] Sources/Features/Editor/UnlinkedMentionsSection.swift:210 — mention filter moved onto VaultController and tested (follow-up: tester)
+FIX	swept	**MINOR** [other] Sources/Features/Editor/RelatedLinkSheet.swift:100 — sharedTitles moved to LinkChoice and tested (follow-up: tester)
+FIX	swept	**MINOR** [other] Sources/App/VaultController.swift:231 — 125-column line wrapped (follow-up: coder)
+FIX	swept	**NIT** Sources/Features/Editor/UnlinkedMentionsSection.swift:72 — header counter excludes nothingLeft rows (reviewer: opus)
+FIX	swept	**NIT** Sources/App/CommandActions+LinkNavigation.swift:23 — goToLink no-op made explicit in a comment (reviewer: sonnet)
+FIX	swept	**NIT** Sources/Features/Editor/BacklinksSection.swift:39 — dialog names moved into the message closure (reviewer: opus)
+FIX	swept	**NIT** Sources/App/IndexKeyedMemo.swift:6 — doc names the controller-held memo (reviewer: opus)
+FIX	swept	**MINOR** [other] Tests/CapturePanelTests.swift:129 — contested hot-key test tries a list of combinations (follow-up: coder)
+FIX	swept	**MINOR** [other] Tests/UnresolvedLinksLimitTests.swift:7 — stale comment corrected (follow-up: coder)
+FIX	swept	**MINOR** [other] Sources/Features/DesignGallery/InspectorLinksMockupPieces.swift:80 — left unchanged: the SDK shows no deprecation for Text-in-Text (follow-up: coder)
+FIX	swept	**MINOR** [other] Sources/Core/Shortcuts/ShortcutCommand.swift:324 — back/forward defaults pinned by a test, default unchanged (follow-up: debugger)
+FIX	swept	**MINOR** [other] Sources/Core/Links/BacklinkContext.swift:33 — unreadable row takes structural from the index (follow-up: debugger)
+FIX	swept	**MINOR** [other] Sources/Features/DesignGallery/InspectorLinksMockup.swift:164 — mockup reads the section's empty phrase (follow-up: coder)
 ```
