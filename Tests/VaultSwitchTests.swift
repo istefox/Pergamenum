@@ -412,6 +412,44 @@ private final class SecondSwitch {
     controller.close()
 }
 
+/// Arms the two note-birth transients that name a file of the open folder: the creation toast's
+/// offer (a pane-host creation) and an «Estrai in una nota» draft over the new note's text.
+@MainActor
+private func armNoteBirthTransients(_ controller: VaultController, title: String) async throws {
+    _ = try await controller.createComposedNote(NoteComposition(title: title, folder: ""))
+    controller.recordSelection(NSRange(location: 0, length: 3), inColumn: controller.focusedColumnIndex)
+    try #require(controller.beginExtraction())
+    try #require(controller.creationUndo != nil)
+    try #require(controller.extraction != nil)
+}
+
+// PG-387 (N4): «Annulla» within the toast's ten seconds, or an open «Estrai» sheet, would
+// otherwise resolve the folder being left's path against the next session.
+@MainActor
+@Test func theCreationOfferAndTheExtractionOfTheLeftVaultDoNotSurviveASwitchOrAClose() async throws {
+    let a = try TemporaryVault()
+    let b = try TemporaryVault()
+    let rootB = b.root
+    let controller = try await quitController(a)
+    try vaultB(b, rememberedIn: controller)
+    try await armNoteBirthTransients(controller, title: "Nata in A")
+
+    let switched = await controller.switchVault(to: rootB) { _ in
+        Issue.record("no dirty tab: nothing to ask")
+        return .cancel
+    }
+
+    #expect(switched)
+    #expect(controller.creationUndo == nil)
+    #expect(controller.extraction == nil)
+
+    try await armNoteBirthTransients(controller, title: "Nata in B")
+    controller.close()
+
+    #expect(controller.creationUndo == nil)
+    #expect(controller.extraction == nil)
+}
+
 // The guard after the saves' `await` (ADR-0043 §D7). The second switch is scheduled from the
 // first one's question, so it is on the main actor's queue before the first switch reaches the
 // saves' actor hop, its first suspension, and runs there: the save's own continuation can only

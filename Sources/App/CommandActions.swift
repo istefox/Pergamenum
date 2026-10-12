@@ -128,10 +128,12 @@ final class CommandActions {
         run(command)
     }
 
-    /// The three commands a note row may run (ADR-0023 cluster 2). Named once and read by
+    /// The four commands a note row may run (ADR-0023 cluster 2). Named once and read by
     /// both `run(_:on:)` and `canRun(_:on:)`, so the menu cannot offer an entry the action
     /// refuses, nor grey one it would have performed.
-    static let rowCommands: Set<ShortcutCommand> = [.copyLink, .noteHistory, .applyTemplate]
+    /// «Classifica…» joined them with ADR-0085 §D6: once the row's note is open it is the subject
+    /// `runNoteBirth` finds.
+    static let rowCommands: Set<ShortcutCommand> = [.copyLink, .noteHistory, .applyTemplate, .classifyNote]
 
     /// The tabs of the Note pane (ADR-0012 D5). Their own method rather than three more
     /// arms of `runFile`: they are one family, and the File menu already separates them
@@ -195,6 +197,8 @@ final class CommandActions {
             navigation.isShowingNuovaPratica = true
         case .copyLink, .revealInFinder, .toggleStar:
             runOnSelectionOrOpenNote(command)
+        case .classifyNote:
+            runNoteBirth(command)
         default:
             assertionFailure("«\(command.title)» is in the File section and is not handled")
         }
@@ -231,6 +235,8 @@ final class CommandActions {
             navigation.findStep = (navigation.findStep ?? 0) + 1
         case .findPrevious:
             navigation.findStep = (navigation.findStep ?? 0) - 1
+        case .extractToNote:
+            runNoteBirth(command)
         default:
             assertionFailure("«\(command.title)» is in the Modifica section and is not handled")
         }
@@ -255,7 +261,7 @@ final class CommandActions {
         switch command {
         case .paneNotes, .paneWorkspace, .paneToday, .paneTasks, .paneDiary,
              .paneTags, .paneViews, .paneStarred, .paneRecordings, .refreshRecordings,
-             .panePratiche, .paneContenitore:
+             .panePratiche, .paneContenitore, .paneUnfiled:
             runNavigation(command)
         case .toggleInspector:
             navigation.isShowingInspector.toggle()

@@ -48,7 +48,7 @@ private struct ContenitoreSheets: ViewModifier {
     func body(content: Content) -> some View {
         content
             .sheet(item: item(\.classifying)) { item in
-                ClassificaSheet(schedaPath: item.id, actions: actions)
+                ClassificaSheet(subject: .scheda(item.id))
             }
             .sheet(item: item(\.renaming)) { item in
                 ContenitoreNameSheet(

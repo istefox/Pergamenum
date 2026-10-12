@@ -1,21 +1,23 @@
 import SwiftUI
 
+/// The naming sheet of the board's Cartella and Link tools. «Documento» is named in the note
+/// composer's sheet host instead (`DocumentComposerSheet`, ADR-0085 §D7), which reuses this
+/// sheet's `Confirmation` for what it shows once the document is made.
 struct NewCanvasItemSheet: View {
-    enum Kind { case folder, link, note }
+    enum Kind { case folder, link }
 
     @Environment(\.theme) private var theme
     let kind: Kind
-    /// Closes the sheet: «Annulla», and «Fine» on a document's confirmation.
+    /// Closes the sheet: «Annulla».
     let onCancel: () -> Void
     /// Makes the item and answers what the sheet shows next. Awaited, so the sheet stays open,
     /// with what was typed, until the write is done (n1-seams R-18); the caller closes it when
     /// it answers `.editing` for a made folder or link.
     let onConfirm: (String) async -> Confirmation
-    /// «Apri» on a document's confirmation, with the note's path (note-workflow R-05).
-    let onOpen: (String) -> Void
 
-    /// Where the sheet stands once the person has pressed «Crea» (note-workflow R-05): typing, the
-    /// write running, the document made (the sheet stays open to offer «Apri»), or a sentence.
+    /// Where a creation sheet stands once the person has pressed «Crea» (note-workflow R-05):
+    /// typing, the write running, the document made (its sheet stays open to offer «Apri»), or a
+    /// sentence.
     enum Confirmation: Equatable {
         case editing
         case working
@@ -42,7 +44,6 @@ struct NewCanvasItemSheet: View {
         switch kind {
         case .folder: "Nuova cartella"
         case .link: "Nuovo link"
-        case .note: "Nuovo documento"
         }
     }
 
@@ -50,38 +51,14 @@ struct NewCanvasItemSheet: View {
         switch kind {
         case .folder: "Nome della cartella"
         case .link: "URL o URI (https://, obsidian://, message://)"
-        case .note: "Titolo della nota"
         }
     }
 
     var body: some View {
-        Group {
-            if case .created(let path, let created) = phase {
-                confirmation(path: path, title: created)
-            } else {
-                form
-            }
-        }
-        .padding(theme.spacing(.l))
-        .frame(width: 460)
-        .background(theme.color(.surfaceCard))
-    }
-
-    /// The document is made and on the board: «Apri» shows it in the Note pane, «Fine» (Return
-    /// or Esc) closes the sheet (note-workflow R-05).
-    private func confirmation(path: String, title created: String) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
-            Text(title).themedText(.title)
-            Text("Documento «\(created)» creato e posizionato sulla board.")
-                .themedText(.body, color: .textSecondary)
-            HStack {
-                Spacer()
-                Button("Apri") { onOpen(path) }
-                Button("Fine", action: onCancel)
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .onExitCommand(perform: onCancel)
+        form
+            .padding(theme.spacing(.l))
+            .frame(width: 460)
+            .background(theme.color(.surfaceCard))
     }
 
     private var failure: String? {

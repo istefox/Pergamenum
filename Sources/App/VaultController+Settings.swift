@@ -13,6 +13,13 @@ extension VaultController {
         session?.updateSettings(change)
     }
 
+    /// «Modello della nota del giorno» (ADR-0086 §D2): a template's vault-relative path, or nil
+    /// for «Nessuno», which removes the key rather than writing an empty one.
+    func setDailyTemplate(_ path: String?) {
+        let chosen = path.flatMap { $0.isEmpty ? nil : $0 }
+        updateSettings { $0.dailyTemplate = chosen }
+    }
+
     /// Re-imports the closed vocabularies from the harness-system checkout and writes
     /// the replica back into the vault.
     func importConventions(from repository: URL) {

@@ -215,10 +215,8 @@ extension NoteTextView {
                 applyStyling(to: textView, theme: parent.theme)
             }
             reportLinkAtCaret(in: textView)
-            let caret = textView.selectedRange().location
-            let entry = parent.outline.outlineRanges.lastIndex { $0.location <= caret }
-            guard requests.claimOutlineEntry(entry) else { return }
-            parent.outline.onOutlineEntryChanged?(entry)
+            reportSelection(in: textView)
+            reportOutlineEntry(in: textView)
         }
 
         /// Puts the cursor in the editor.

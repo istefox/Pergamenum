@@ -33,7 +33,13 @@ final class VaultHost {
     var root: URL { session.root }
 
     var tools: [Tool] {
-        ToolCatalogue.reading + (allowsWriting ? ToolCatalogue.writing + ToolCatalogue.noteLinks : [])
+        ToolCatalogue.reading + (allowsWriting ? Self.writingTools : [])
+    }
+
+    /// Every tool that writes: listed only under `--allow-write`, and the second lock in
+    /// `write(_:_:)` checks the same list.
+    private static var writingTools: [Tool] {
+        ToolCatalogue.writing + ToolCatalogue.noteLinks + ToolCatalogue.noteBirth
     }
 
     // MARK: Calling
@@ -170,7 +176,7 @@ final class VaultHost {
     /// writing tools are absent from `tools/list` without `--allow-write`, and a client
     /// that calls one anyway is told no rather than obeyed.
     private func write(_ name: String, _ arguments: ToolArguments) async throws -> CallTool.Result? {
-        guard (ToolCatalogue.writing + ToolCatalogue.noteLinks).contains(where: { $0.name == name }) else { return nil }
+        guard Self.writingTools.contains(where: { $0.name == name }) else { return nil }
         guard allowsWriting else {
             throw ConnectorError(
                 """
@@ -188,7 +194,8 @@ final class VaultHost {
                 title: try arguments.required("title"),
                 folder: arguments.string("folder"),
                 topic: arguments.string("topic"),
-                date: arguments.string("date")
+                date: arguments.string("date"),
+                template: arguments.string("template")
             ))
         case "append_to_note":
             return reply(try await VaultAPI.appendToNote(
@@ -216,7 +223,8 @@ final class VaultHost {
                 ),
                 text: try arguments.required("text"),
                 scheduled: arguments.string("scheduled"),
-                due: arguments.string("due")
+                due: arguments.string("due"),
+                template: arguments.string("template")
             ))
         default:
             return try await writeWork(name, arguments)

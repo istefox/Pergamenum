@@ -158,3 +158,165 @@ private let sampleDate = CalendarDate(iso: "2026-08-18")!
     // filter matching everything would still pass an "are the two templates there" check.
     #expect(session.templates.map(\.title) == ["Riunione", "Verbale"])
 }
+
+// MARK: - PG-387 (ADR-0086 §D1): `resolve`, `{{time}}` and `{{cursor}}` (R-07, R-08)
+
+private let nineOhFive = TaskTime(hour: 9, minute: 5)
+
+@Test func theTimePlaceholderResolvesToHoursAndMinutesWithTwoDigits() {
+    let resolved = NoteTemplate.resolve("Ora {{time}}", title: "T", date: sampleDate, time: nineOhFive)
+
+    #expect(resolved.body == "Ora 09:05")
+    #expect(resolved.caretOffset == nil)
+}
+
+@Test func resolveStillSubstitutesTitleAndDateAndLeavesAnUnknownPlaceholderAlone() {
+    let resolved = NoteTemplate.resolve(
+        "{{title}} {{autore}} {{date}}", title: "Ciao", date: sampleDate, time: nineOhFive
+    )
+
+    #expect(resolved.body == "Ciao {{autore}} 2026-08-18")
+}
+
+@Test func theCursorMarkerIsNeverWrittenAndGivesTheOffsetWhereItStood() {
+    let resolved = NoteTemplate.resolve(
+        "# {{title}}\n\n{{cursor}}", title: "Ciao", date: sampleDate, time: nineOhFive
+    )
+
+    #expect(resolved.body == "# Ciao\n\n")
+    #expect(resolved.caretOffset == 8)
+}
+
+@Test func withTwoMarkersTheFirstWinsAndBothAreGone() {
+    let resolved = NoteTemplate.resolve(
+        "A{{cursor}}B{{cursor}}C", title: "T", date: sampleDate, time: nineOhFive
+    )
+
+    #expect(resolved.body == "ABC")
+    #expect(resolved.caretOffset == 1)
+}
+
+@Test func aTitleThatContainsTheMarkerIsWrittenAsTypedAndTheRealMarkerStillWins() {
+    // The marker is located in the template before any other substitution, so the title's
+    // copy of it is typed text and the caret goes where the template put its own.
+    let resolved = NoteTemplate.resolve(
+        "# {{title}}\n{{cursor}}", title: "Ciao {{cursor}}", date: sampleDate, time: nineOhFive
+    )
+
+    #expect(resolved.body == "# Ciao {{cursor}}\n")
+    #expect(resolved.caretOffset == "# Ciao {{cursor}}\n".utf16.count)
+}
+
+@Test func aTemplateWithoutAMarkerHasNoOffset() {
+    let resolved = NoteTemplate.resolve("# {{title}}", title: "T", date: sampleDate, time: nineOhFive)
+
+    #expect(resolved.body == "# T")
+    #expect(resolved.caretOffset == nil)
+}
+
+@Test func theOffsetCountsUTF16UnitsNotCharacters() {
+    // The emoji is one Character and two UTF-16 units; an NSTextView counts the second.
+    let resolved = NoteTemplate.resolve("😀{{cursor}}", title: "T", date: sampleDate, time: nineOhFive)
+
+    #expect(resolved.body == "😀")
+    #expect(resolved.caretOffset == 2)
+}
+
+@Test func theCaretInTheWrittenTextIsTheAbsoluteOffsetAfterTheFrontmatter() throws {
+    let resolved = NoteTemplate.resolve(
+        "# {{title}}\n\n{{cursor}}Fine", title: "Ciao", date: sampleDate, time: nineOhFive
+    )
+    let frontmatter = "---\ndate: 2026-08-18\ntags:\n  - type-note\n---\n"
+    // What `createNote` writes: the block, one separating line break, then the body.
+    let written = frontmatter + "\n" + resolved.body
+
+    let offset = try #require(resolved.caret(inWritten: written))
+    #expect(offset == frontmatter.utf16.count + 1 + 8)
+    // And the offset really is where "Fine" starts.
+    #expect((written as NSString).substring(from: offset) == "Fine")
+    #expect(NoteTemplate.resolve("senza", title: "T", date: sampleDate, time: nineOhFive)
+        .caret(inWritten: "---\n---\n\nsenza") == nil)
+}
+
+@Test func cursorBackIsTheUnitsBetweenTheCaretAndTheEndOfTheBody() throws {
+    let resolved = NoteTemplate.resolve(
+        "# {{title}}\n\n{{cursor}}\n\nFine", title: "Ciao", date: sampleDate, time: nineOhFive
+    )
+    let offset = try #require(resolved.caretOffset)
+
+    #expect(resolved.cursorBack == resolved.body.utf16.count - offset)
+    #expect(resolved.cursorBack == 6)
+    #expect(NoteTemplate.resolve("senza", title: "T", date: sampleDate, time: nineOhFive).cursorBack == nil)
+}
+
+// MARK: - PG-387 (ADR-0086 §D5): `composing` (R-09)
+
+@Test func aCapturedTextGoesAtTheMarker() {
+    let resolved = NoteTemplate.Resolved(body: "# Ciao\n\n", caretOffset: 8)
+
+    #expect(NoteTemplate.composing(captured: "Testo", into: resolved) == "# Ciao\n\nTesto")
+}
+
+@Test func aCapturedTextIsInsertedAtTheMarkerEvenWithBodyAfterIt() {
+    let resolved = NoteTemplate.Resolved(body: "A\nB", caretOffset: 2)
+
+    #expect(NoteTemplate.composing(captured: "Testo", into: resolved) == "A\nTestoB")
+}
+
+@Test func withoutAMarkerTheBodyThenOneBlankLineThenTheText() {
+    let resolved = NoteTemplate.Resolved(body: "# Ciao", caretOffset: nil)
+
+    #expect(NoteTemplate.composing(captured: "Testo", into: resolved) == "# Ciao\n\nTesto")
+}
+
+// MARK: - PG-387 (ADR-0086 §D6): `reference` (R-10)
+
+private let twoTemplates = ["Templates/Riunione.md", "Templates/Verbale.md"]
+
+@Test func aReferenceByExactPathByTitleAndByFileNameAllResolveToThePath() {
+    #expect(NoteTemplate.reference("Templates/Riunione.md", among: twoTemplates) == .success("Templates/Riunione.md"))
+    #expect(NoteTemplate.reference("Riunione", among: twoTemplates) == .success("Templates/Riunione.md"))
+    #expect(NoteTemplate.reference("Riunione.md", among: twoTemplates) == .success("Templates/Riunione.md"))
+    #expect(NoteTemplate.reference("Verbale", among: twoTemplates) == .success("Templates/Verbale.md"))
+}
+
+@Test func anUnknownReferenceListsTheTemplatesThatExist() throws {
+    let result = NoteTemplate.reference("Assente", among: twoTemplates)
+
+    guard case .failure(.unknown(let name, let available)) = result else {
+        Issue.record("expected .unknown, got \(result)")
+        return
+    }
+    #expect(name == "Assente")
+    #expect(available.count == 2)
+    #expect(available.allSatisfy { $0.contains("Riunione") || $0.contains("Verbale") })
+    // The sentence is what both connectors show: it names the template the person can pick.
+    let sentence = try #require(result.failureValue).sentence
+    #expect(sentence.contains("Assente"))
+    #expect(sentence.contains("Riunione"))
+    #expect(sentence.contains("Verbale"))
+}
+
+@Test func twoTemplatesWithTheSameTitleAreAmbiguousAndNamed() throws {
+    let paths = ["Templates/A/Riunione.md", "Templates/B/Riunione.md", "Templates/Verbale.md"]
+
+    for reference in ["Riunione", "Riunione.md"] {
+        let result = NoteTemplate.reference(reference, among: paths)
+        guard case .failure(.ambiguous(_, let candidates)) = result else {
+            Issue.record("expected .ambiguous for «\(reference)», got \(result)")
+            continue
+        }
+        #expect(Set(candidates) == ["Templates/A/Riunione.md", "Templates/B/Riunione.md"])
+        let sentence = try #require(result.failureValue).sentence
+        #expect(sentence.contains("Templates/A/Riunione.md"))
+        #expect(sentence.contains("Templates/B/Riunione.md"))
+    }
+    // The exact path settles it.
+    #expect(NoteTemplate.reference("Templates/A/Riunione.md", among: paths) == .success("Templates/A/Riunione.md"))
+}
+
+private extension Result {
+    var failureValue: Failure? {
+        if case .failure(let failure) = self { failure } else { nil }
+    }
+}

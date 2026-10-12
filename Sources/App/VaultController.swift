@@ -91,9 +91,12 @@ final class VaultController {
     var noteDraft: NoteDraft?
     /// Whether the new-note composer occupies the editor column.
     var isComposingNote = false
-    /// The sentence a failed Quick Open creation shows inside the switcher (n1-seams R-18), set
-    /// and cleared by `createNoteFromQuickOpen`, cleared by the switcher on the next keystroke.
-    var quickSwitcherProblem: String?
+    /// The «Estrai in una nota» sheet's subject while it is open (ADR-0085 §D8), nil otherwise.
+    /// Stored here, declared in `VaultController+NoteBirth.swift`: an extension holds no storage.
+    var extraction: ExtractionDraft?
+    /// The «Nota creata · Annulla» offer of the last pane-host creation (ADR-0085 §D9), at most
+    /// one; a new creation replaces it and `CreationUndo.window` ends it.
+    var creationUndo: CreationUndo.Offer?
     /// Notes whose tab was closed, newest last, for «riapri l'ultima tab chiusa».
     /// Paths and not buffers: a closed tab was saved or explicitly discarded (ADR-0012 D3),
     /// so there is nothing left to keep that the file does not already have.
@@ -319,6 +322,10 @@ final class VaultController {
         // A draft names a folder in the vault being closed, and the composer would
         // otherwise still be sitting in the editor column of a vault that is gone.
         endNewNote()
+        // The creation toast's offer and the «Estrai» draft name a file of that vault too
+        // (PG-387): «Annulla» would otherwise resolve the path against the next session.
+        creationUndo = nil
+        extraction = nil
     }
 
     /// Full rebuild from disk. Cheap by design, and the answer to any doubt about the

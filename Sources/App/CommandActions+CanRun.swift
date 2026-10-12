@@ -76,8 +76,15 @@ extension CommandActions {
              // needs-vault/no-Full-Disk-Access state once inside it.
              .panePratiche,
              // ADR-0071 §D11: the same convention; the pane shows its own no-vault state.
-             .paneContenitore:
+             .paneContenitore,
+             // ADR-0085 §D1: the same convention; the pane shows its own no-vault state.
+             .paneUnfiled:
             true
+        // ADR-0085 §D6/§D8: «Classifica…» needs a subject, «Estrai in una nota» a selection.
+        case .classifyNote:
+            canClassify
+        case .extractToNote:
+            canExtract
         // Plan Task 8 (R-20, R-21): `vault.root != nil` mirrors `.newNote`/`.newBoard`
         // above: creating a pratica needs somewhere to write it.
         case .newPratica, .addToPraticaFromMail:

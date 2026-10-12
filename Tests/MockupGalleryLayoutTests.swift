@@ -85,6 +85,24 @@ struct MockupGalleryLayoutTests {
         #expect(InspectorLinksMockup.sheetWidth <= MockupGalleryView.rowWidth)
     }
 
+    // (pg-387-n4 Task 1) The «Nascita di una nota» page is reachable from the picker, with the
+    // milestone Task 5 gives it once the code adopts its variants.
+    @Test func theNoteBirthPageIsListedWithItsMilestone() {
+        #expect(MockupGalleryView.Screen.allCases.contains(.noteBirth))
+        #expect(MockupGalleryView.Screen.noteBirth.title == "Nascita di una nota")
+        #expect(MockupGalleryView.Screen.noteBirth.milestone == "N4, approvato")
+    }
+
+    // (pg-387-n4 Task 1) Two sidebars side by side, the pane, the sheets and the two toasts all fit
+    // the row: a scene wider than `rowWidth` is clipped at both edges.
+    @Test func theNoteBirthScenesFitInTheRow() {
+        #expect(2 * NoteBirthMockup.sidebarWidth + rowSpacing <= MockupGalleryView.rowWidth)
+        #expect(NoteBirthMockup.paneWidth <= MockupGalleryView.rowWidth)
+        #expect(NoteBirthMockup.sheetWidth > 0)
+        #expect(NoteBirthMockup.sheetWidth <= MockupGalleryView.rowWidth)
+        #expect(NoteBirthMockup.toastHeight > 0)
+    }
+
     // (note-workflow-n3-mockup Task 2) The mirror scene sets two `MockupCell`s side by side at
     // `mirrorCellWidth`, and each cell pads after its frame: a width taken as `pairWidth` itself
     // would come to 704 and be clipped at both edges.

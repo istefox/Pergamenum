@@ -311,6 +311,10 @@ struct RootView: View {
                 Il Contenitore archivia i documenti che metti nella cartella di raccolta: \
                 senza un vault non c'è dove tenerli.
                 """) { ContenitoreView() }
+        case .unfiled:
+            requiringVault(
+                "«Da classificare» raccoglie le note ancora marcate status-inbox: senza un vault non ce ne sono."
+            ) { UnfiledPane() }
         }
     }
 

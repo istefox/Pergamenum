@@ -90,6 +90,11 @@ extension NoteTextView {
         /// first, the same as `Attachment.resolve` already does for reading mode
         /// (`MarkdownReadingView.notePath`).
         var notePath = ""
+        /// The tab in front in this column. One text view serves every tab of a column, and two
+        /// tabs can show the same note with identical text (`openNoteInNewTab` does not dedupe), so
+        /// the path alone cannot tell that the tab changed. Nil where there is no tab behind the
+        /// editor (the diary, the today pane).
+        var tabID: UUID?
         /// The vault's render cache for embedded files - the same `ThumbnailStore` reading
         /// mode's `EmbeddedFileView` reads, so a picture is rendered once and shared between
         /// the two surfaces rather than duplicated.
@@ -138,5 +143,24 @@ extension NoteTextView {
         /// name it was written into the vault under. A screenshot has no file to drop, so
         /// without this it could not enter a note at all.
         var onPasteImage: ((Data) -> String?)?
+    }
+
+    /// What the editor reports about, and is asked to do with, the selection (ADR-0085 §D8,
+    /// ADR-0086 §D4; read by `NoteTextView+SelectionReport.swift`). Empty by default, so a
+    /// text view with no vault behind it behaves as it always did.
+    struct SelectionInputs {
+        /// A one-shot request to put the caret at an absolute UTF-16 offset: the daily note's
+        /// `{{cursor}}`, a template applied, a composed note's body caret. Applied once, then
+        /// reported through `onCaretApplied`.
+        var caretRequest: CaretRequest?
+        var onCaretApplied: () -> Void = {}
+        /// The non-empty selection, once per change, and nil once when it collapses. A bare caret
+        /// moving, or typing with one, reports nothing.
+        var onSelectionChanged: ((NSRange?) -> Void)?
+
+        struct CaretRequest: Equatable {
+            let id: Int
+            let offset: Int
+        }
     }
 }

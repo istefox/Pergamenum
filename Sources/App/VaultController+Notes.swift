@@ -41,25 +41,6 @@ extension VaultController {
         return relativePath
     }
 
-    /// «Crea la nota» in the quick switcher (n1-seams R-18): a note at the vault root, opened in
-    /// a new tab. Answers whether it was made, and on a failure leaves the creation failure's
-    /// sentence on `quickSwitcherProblem` for the switcher to show under its field, so the
-    /// person can change the title and try again instead of the panel closing on nothing.
-    @discardableResult
-    func createNoteFromQuickOpen(title: String) async -> Bool {
-        do {
-            try await createNote(title: title, date: .today)
-            quickSwitcherProblem = nil
-            return true
-        } catch {
-            // Shown under the field and kept in the problem list as well (note-workflow R-11).
-            let sentence = ConformanceText.creationFailure(error)
-            quickSwitcherProblem = sentence
-            recordProblem(sentence)
-            return false
-        }
-    }
-
     /// A note's text, for a caller that has to look inside one it is not editing - the
     /// quick switcher listing the headings of the note you are about to jump into.
     ///
@@ -130,16 +111,20 @@ extension VaultController {
     // MARK: The daily note
 
     /// Opens today's daily note, creating it if it does not exist (SPEC §8.1).
+    ///
+    /// Through `dailyNoteBirth(for:at:)`, the one door a day is born through (ADR-0086 §D3): the
+    /// call that created the day carries the daily template's `{{cursor}}` to the tab, and a day
+    /// that already existed moves no caret.
     @discardableResult
     func openDailyNote(for date: CalendarDate) async throws -> String {
         guard let session else { throw CreationError.alreadyExists("nessun vault aperto") }
-        let existedAlready = session.exists(dailyNotePath(for: date))
-        let relativePath = try await session.dailyNote(for: date)
-        openNote(at: relativePath)
+        let birth = try await session.dailyNoteBirth(for: date, at: Date())
+        openNote(at: birth.path, caret: birth.created ? birth.caret : nil)
+        guard birth.created else { return birth.path }
         // Only when this call is the one that created the file (PG-095) - re-opening an
         // existing daily note changes nothing the sidebar tree needs to know about.
-        if !existedAlready { Task { await rescan() } }
-        return relativePath
+        Task { await rescan() }
+        return birth.path
     }
 
     // MARK: The new-note draft
@@ -152,6 +137,8 @@ extension VaultController {
         var topic = ""
         /// The chosen template's relative path, empty for none (ADR-0011 D6).
         var template = ""
+        /// The tags the composer's topic field resolved (ADR-0085 §D7), parked with the rest.
+        var tags: [Tag] = []
     }
 
     /// Starts a new note in a folder, nil meaning "wherever the last one was going".

@@ -55,6 +55,9 @@ struct NoteTextView: NSViewRepresentable {
     var vault = VaultInputs()
     /// How a link is followed, previewed and offered (`NoteTextView+Inputs.swift`, ADR-0083).
     var links = LinkInputs()
+    /// The selection the editor reports and the caret it is asked to place
+    /// (`NoteTextView+Inputs.swift`, ADR-0085 §D8), read in `NoteTextView+SelectionReport.swift`.
+    var selection = SelectionInputs()
     /// Text the Inserisci menu asked for, applied at the cursor and then reported as
     /// applied so it is not inserted twice on the next view update (SPEC §10). Carries
     /// `opensQueryBuilder` for the insert-view command (R-04, ADR-0034 §D10): true only

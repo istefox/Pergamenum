@@ -80,8 +80,13 @@ import Testing
 // Three commands follow the link under the caret. One ships bound; two ship with no key, which is
 // why the two generic checks above skip an empty binding and the commands in `shipsUnbound`.
 
-@Test func onlyTheTwoLinkVariantsShipUnbound() {
-    #expect(ShortcutCommand.shipsUnbound == [.followLinkInNewTab, .followLinkInOtherColumn])
+@Test func onlyTheTwoLinkVariantsAndTheTwoNoteBirthVerbsShipUnbound() {
+    // PG-387 (N4), ADR-0085 §D6/§D8: «Classifica…» and «Estrai in una nota» join the two link
+    // variants, so the pin goes from two to four. Replaces `onlyTheTwoLinkVariantsShipUnbound`
+    // (the change Stefano approved in chat before Task 4 ran).
+    #expect(ShortcutCommand.shipsUnbound == [
+        .followLinkInNewTab, .followLinkInOtherColumn, .classifyNote, .extractToNote,
+    ])
     for command in ShortcutCommand.shipsUnbound {
         #expect(command.defaultBinding == KeyBinding(""), "\(command.rawValue) deve uscire senza tasto")
     }
@@ -365,4 +370,36 @@ private func makeDefaults() -> (UserDefaults, String) {
 @Test func theFrontmatterToggleLivesInTheViewSectionOnCommandOptionY() {
     #expect(ShortcutCommand.toggleFrontmatter.section == .view)
     #expect(ShortcutCommand.toggleFrontmatter.defaultBinding == KeyBinding("y", [.command, .option]))
+}
+
+// MARK: - ADR-0085 §D1/§D6/§D8 (PG-387, N4), R-01, R-04, R-13
+
+@Test func theUnfiledPaneShipsOnControlCommandI() {
+    #expect(ShortcutCommand.paneUnfiled.defaultBinding == KeyBinding("i", [.command, .control]))
+    #expect(ShortcutCommand.paneUnfiled.section == .view)
+    #expect(ShortcutCommand.paneUnfiled.title == "Vai a Da classificare")
+}
+
+@Test func theUnfiledPaneAndItsShortcutAreOnePair() {
+    #expect(Navigation.Pane.unfiled.shortcut == .paneUnfiled)
+    #expect(Navigation.Pane.unfiled.title == "Da classificare")
+    #expect(Navigation.Pane.allCases.last == .unfiled)
+}
+
+@Test func classifyAndExtractLiveInTheirMenusWithTheirTitles() {
+    #expect(ShortcutCommand.classifyNote.section == .file)
+    #expect(ShortcutCommand.classifyNote.title == "Classifica…")
+    #expect(ShortcutCommand.extractToNote.section == .edit)
+    #expect(ShortcutCommand.extractToNote.title == "Estrai in una nota")
+}
+
+@Test func onlyExtractToNoteTakesTheSelection() {
+    for command in ShortcutCommand.allCases {
+        #expect(command.takesSelection == (command == .extractToNote), "\(command.rawValue)")
+    }
+}
+
+@Test func noTwoCommandsShareTheKeyOfTheUnfiledPane() {
+    let holders = ShortcutCommand.allCases.filter { $0.defaultBinding == KeyBinding("i", [.command, .control]) }
+    #expect(holders == [.paneUnfiled])
 }

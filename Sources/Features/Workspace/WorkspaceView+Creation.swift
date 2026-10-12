@@ -2,15 +2,20 @@ import SwiftUI
 
 /// What a tap on the empty board makes, and the sheet the two-step tools ask through.
 extension WorkspaceView {
-    /// What the user is about to create, once they have typed its name or URL.
+    /// What the user is about to create, once they have named it.
     ///
-    /// The kind is the sheet's own, rather than a second enum of the same three cases
-    /// that has to be mapped onto it at the point of presentation.
+    /// The kind is the sheet's own for a folder or a link, rather than a second enum of the same
+    /// cases that has to be mapped onto it at the point of presentation; a document is named in
+    /// the note composer instead (ADR-0085 §D7).
     struct NewItemDraft: Identifiable {
+        enum Kind {
+            case item(NewCanvasItemSheet.Kind)
+            case document
+        }
+
         let id = UUID()
-        var kind: NewCanvasItemSheet.Kind
+        var kind: Kind
         var point: CGPoint
-        var value = ""
     }
 
     /// Acts on a tap on empty board with the selected tool.
@@ -29,7 +34,9 @@ extension WorkspaceView {
             let id = workspace.addFreeText("", at: point)
             workspace.beginTextEdit(nodeID: id)
         case .sheet(let kind):
-            newItemDraft = NewItemDraft(kind: kind, point: point)
+            newItemDraft = NewItemDraft(kind: .item(kind), point: point)
+        case .composeDocument:
+            newItemDraft = NewItemDraft(kind: .document, point: point)
         case .importPanel:
             if let urls = VaultOpenPanel.chooseFiles(
                 title: "Importa immagini",
@@ -51,47 +58,118 @@ extension WorkspaceView {
     /// when the creation failed (n1-seams R-18, note-workflow R-11). Closed only if it is still
     /// this draft's sheet after the write (ADR-0043 §D7). Every failure is already in the problem
     /// list by then, recorded where it happened, so a sheet closed during the write loses nothing.
+    @ViewBuilder
     func newItemSheet(_ draft: NewItemDraft) -> some View {
-        NewCanvasItemSheet(
-            kind: draft.kind,
-            onCancel: { newItemDraft = nil },
-            onConfirm: { value in
-                let confirmation = await create(draft.kind, value: value, at: draft.point)
-                if newItemDraft?.id == draft.id, confirmation == .editing { newItemDraft = nil }
-                return confirmation
-            },
-            onOpen: { path in
-                if let commandActions {
-                    commandActions.showInNotePane(path)
-                } else {
-                    // A host that forgot to inject `CommandActions` would make «Apri» do nothing in
-                    // silence: loud in Debug, and a problem in the list everywhere.
-                    assertionFailure("WorkspaceView hosted without CommandActions: «Apri» cannot open \(path)")
-                    vault.recordProblem("Impossibile aprire \(path) nel pannello Note")
+        switch draft.kind {
+        case .item(let kind):
+            NewCanvasItemSheet(
+                kind: kind,
+                onCancel: { newItemDraft = nil },
+                onConfirm: { value in
+                    let confirmation = await create(kind, value: value, at: draft.point)
+                    if newItemDraft?.id == draft.id, confirmation == .editing { newItemDraft = nil }
+                    return confirmation
                 }
-                newItemDraft = nil
-            }
-        )
+            )
+        case .document:
+            // Awaited, so the sheet waits for the write (n1-seams R-18): the note and its card,
+            // and no tab, since the person is working on the board (R-10).
+            DocumentComposerSheet(
+                folder: workspace.folder,
+                create: { composition in
+                    await workspace.createDocument(
+                        titled: composition.title, at: draft.point, through: vault,
+                        topics: composition.tags, body: composition.body
+                    )
+                },
+                onClose: { newItemDraft = nil },
+                onOpen: { path in
+                    if let commandActions {
+                        commandActions.showInNotePane(path)
+                    } else {
+                        // A host that forgot to inject `CommandActions` would make «Apri» do
+                        // nothing in silence: loud in Debug, and a problem in the list everywhere.
+                        assertionFailure("WorkspaceView hosted without CommandActions: «Apri» cannot open \(path)")
+                        vault.recordProblem("Impossibile aprire \(path) nel pannello Note")
+                    }
+                    newItemDraft = nil
+                }
+            )
+        }
     }
 
     /// Makes what the sheet asked for. Answers what the sheet shows next: `.editing` when it
-    /// can close, the document's confirmation, or the sentence to show in place.
+    /// can close, or the sentence to show in place.
     private func create(
         _ kind: NewCanvasItemSheet.Kind, value: String, at point: CGPoint
     ) async -> NewCanvasItemSheet.Confirmation {
         switch kind {
         case .folder:
-            // In place and in the problem list, the note kind's route (note-workflow R-11): the
+            // In place and in the problem list, the document's route (note-workflow R-11): the
             // board is still usable and the name can be retried.
             return workspace.createFolderFromSheet(named: value, at: point).map { .failed($0) } ?? .editing
         case .link:
             _ = workspace.addLink(value, at: point)
             return .editing
-        case .note:
-            // Awaited, so the sheet waits for the write (n1-seams R-18): the note and its card,
-            // and no tab, since the person is working on the board (R-10).
-            let creation = await workspace.createDocument(titled: value, at: point, through: vault)
-            return NewCanvasItemSheet.confirmation(after: creation, title: value)
         }
+    }
+}
+
+/// Workspace «Documento»: the note composer in its sheet host, the folder fixed to the board's
+/// (ADR-0085 §D7, R-11), and N1's confirmation once the document is on the board - «Apri» shows
+/// it in the Note pane, «Fine» (Return or Esc) closes the sheet (note-workflow R-05).
+struct DocumentComposerSheet: View {
+    @Environment(\.theme) private var theme
+    let folder: String
+    let create: @MainActor (NoteComposition) async -> WorkspaceController.DocumentCreation
+    let onClose: () -> Void
+    let onOpen: (String) -> Void
+
+    @State private var phase: NewCanvasItemSheet.Confirmation = .editing
+
+    var body: some View {
+        if case .created(let path, let title) = phase {
+            confirmation(path: path, title: title)
+        } else {
+            NewNoteComposer(
+                draft: VaultController.NoteDraft(),
+                host: .sheet(folder: folder),
+                perform: { composition in
+                    let outcome = NewCanvasItemSheet.confirmation(
+                        after: await create(composition), title: composition.title
+                    )
+                    switch outcome {
+                    case .created(let path, _):
+                        phase = outcome
+                        return path
+                    case .failed(let sentence):
+                        // Shown by the composer in place, with what was typed (n1-seams R-18).
+                        throw NoteBirthRefusal(description: sentence)
+                    case .editing, .working:
+                        throw NoteBirthRefusal(description: "Documento non creato.")
+                    }
+                },
+                onCreated: { _ in },
+                onCancel: onClose
+            )
+        }
+    }
+
+    private func confirmation(path: String, title created: String) -> some View {
+        VStack(alignment: .leading, spacing: theme.spacing(.m)) {
+            Text("Nuovo documento").themedText(.title)
+            Text("Documento «\(created)» creato e posizionato sulla board.")
+                .themedText(.body, color: .textSecondary)
+            HStack {
+                Spacer()
+                Button("Apri") { onOpen(path) }
+                Button("Fine", action: onClose)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(theme.spacing(.l))
+        .frame(width: NewNoteComposer.sheetWidth, alignment: .leading)
+        .background(theme.color(.surfaceCard))
+        .onExitCommand(perform: onClose)
     }
 }

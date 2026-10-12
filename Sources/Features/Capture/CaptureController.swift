@@ -54,6 +54,10 @@ final class CaptureController {
         /// Only a task carries dates (ADR-0008 §D6, and `VaultAPI.capture` refuses them
         /// elsewhere rather than dropping them).
         var takesDates: Bool { self == .task }
+
+        /// Only «Nota nuova» offers a template menu (R-09, ADR-0086 §D5): «Task», «Oggi» and
+        /// «In una nota» write into something that already has a shape.
+        var takesTemplate: Bool { self == .note }
     }
 
     /// How the last capture ended, for the line the panel shows before it closes.
@@ -76,6 +80,10 @@ final class CaptureController {
     var notePath: String?
     /// Where `.note` writes. Nil means the vault's inbox folder (`VaultSession.inboxFolder`).
     var folder: String?
+    /// The template a «Nota nuova» is composed into: a vault-relative path under `Templates/`
+    /// or a title, nil for none (ADR-0086 §D5). Kept across destinations, passed on only for
+    /// «Nota nuova».
+    var template: String?
     private(set) var outcome: Outcome?
 
     /// When the unsent text stops being worth keeping.
@@ -154,6 +162,8 @@ final class CaptureController {
         }
         guard !isEmpty else { return false }
 
+        forgetTemplateNoLongerInTheVault(session)
+
         // A taken title is refused here in the composer's sentence and writes nothing
         // (ADR-0088 §D2). A filter, not a guard (ADR-0043 §D7): `createNote`'s own check stays
         // the guard, so a file appearing in between is still refused, in the connector's wording.
@@ -177,7 +187,9 @@ final class CaptureController {
                 // `description` is the ISO form F-03 requires, which is what
                 // `VaultAPI.day` reads back.
                 scheduled: destination.takesDates ? scheduled?.description : nil,
-                due: destination.takesDates ? due?.description : nil
+                due: destination.takesDates ? due?.description : nil,
+                // Refused by `VaultAPI.capture` on any other destination, so never sent there.
+                template: destination.takesTemplate ? template : nil
             )
             outcome = .wrote(path: summary.path)
             reset()
@@ -189,6 +201,18 @@ final class CaptureController {
             outcome = .refused("\(error)")
             return false
         }
+    }
+
+    /// Drops a remembered template that is not, by its exact path, a note under `Templates/`.
+    ///
+    /// The panel keeps `template` across invocations and `CaptureTemplateMenu` labels by exact
+    /// `relativePath`, so the person sees «Nessun modello» for anything else. The same test decides
+    /// here: `NoteTemplate.reference` would also resolve by file name, and a template moved from
+    /// `Templates/Sub/X.md` to `Templates/X.md` would then be composed on though the panel showed
+    /// none. The menu only ever stores an exact path, so nothing a person chose is lost.
+    private func forgetTemplateNoLongerInTheVault(_ session: VaultSession) {
+        guard let template else { return }
+        if !session.templates.contains(where: { $0.relativePath == template }) { self.template = nil }
     }
 
     /// Says where the capture went, or why it did not.

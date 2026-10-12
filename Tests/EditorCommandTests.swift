@@ -148,8 +148,11 @@ private var catalogue: [EditorCommand] { EditorCommand.all(canRun: { _ in true }
     }
     #expect(!appCommands.contains(.globalCapture))
     #expect(!appCommands.contains(.pastePlain))
+    // A third, since PG-387 (ADR-0085 §D8): «Estrai in una nota» takes the selection, which a
+    // caret has none of; the text view adds it only over a selection a `/` replaced.
+    #expect(!appCommands.contains(.extractToNote))
     // Everything else in the catalogue is there.
-    #expect(appCommands.count == ShortcutCommand.allCases.count - 2)
+    #expect(appCommands.count == ShortcutCommand.allCases.count - 3)
 }
 
 @MainActor

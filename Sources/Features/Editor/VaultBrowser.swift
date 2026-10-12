@@ -25,6 +25,7 @@ struct VaultBrowser: View {
                         .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
                 }
                 editor
+                    .modifier(NoteBirthPresentation())
                     .frame(minWidth: 360)
                 if navigation.isShowingInspector && !navigation.isNotesFocused {
                     inspector
@@ -62,16 +63,9 @@ struct VaultBrowser: View {
     /// Cmd+T asked for a tab of its own (ADR-0012 D5), which is why `openChosenNote` and not
     /// `openNote`.
     ///
-    /// The switcher closes first, except for «Crea la nota»: that one closes only once the note
-    /// exists, and a refused title leaves the switcher open with the sentence under its field
-    /// (`createNoteFromQuickOpen`, n1-seams R-18).
+    /// «Crea la nota» writes nothing here: it opens the composer prefilled with the title and
+    /// closes the switcher (ADR-0085 §D7, R-11), so the composer stays the one naming surface.
     private func open(_ choice: QuickSwitcher.Choice) {
-        if case .createNote(let title) = choice {
-            Task { @MainActor in
-                if await vault.createNoteFromQuickOpen(title: title) { vault.isShowingQuickSwitcher = false }
-            }
-            return
-        }
         vault.isShowingQuickSwitcher = false
         switch choice {
         case .note(let path):
@@ -82,9 +76,8 @@ struct VaultBrowser: View {
                     vault.recordProblem(ConformanceText.creationFailure(error))
                 }
             }
-        case .createNote:
-            // Handled above, before the switcher closes.
-            break
+        case .createNote(let title):
+            vault.offerNoteFromQuickOpen(title: title)
         case .heading(let path, let range, let ordinal):
             vault.openChosenNote(at: path)
             // One turn later, so the column has the note before the jump reaches it. Sent in

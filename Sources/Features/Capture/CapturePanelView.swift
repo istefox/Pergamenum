@@ -60,7 +60,12 @@ struct CapturePanelView: View {
     @ViewBuilder
     private var targetRow: some View {
         switch controller.destination {
-        case .note: folderPicker
+        case .note:
+            // The template beside the folder, on «Nota nuova» only (ADR-0086 §D5).
+            HStack(spacing: theme.spacing(.m)) {
+                folderPicker
+                CaptureTemplateMenu(controller: controller, session: session) { focusRequest += 1 }
+            }
         case .task, .existing: notePicker
         case .today: EmptyView()
         }

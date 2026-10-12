@@ -191,7 +191,7 @@ enum TagRules {
 
     /// T-07 forbids date tags. Catches the shapes a date actually takes in practice:
     /// `2026`, `2026-08`, `2026-08-11` and `20260811`, in any namespace.
-    private static func isDateLike(_ value: String) -> Bool {
+    static func isDateLike(_ value: String) -> Bool {
         let digitsOnly = value.allSatisfy { $0.isNumber }
         if digitsOnly, value.count == 4 || value.count == 6 || value.count == 8 {
             return isPlausibleYearPrefix(value)

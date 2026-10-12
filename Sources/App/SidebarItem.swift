@@ -90,7 +90,10 @@ enum SidebarItem: Hashable, Identifiable, Sendable {
                 //
                 // «Contenitore» before Pratiche (ADR-0071 §D11), which keeps Pratiche
                 // immediately before Registrazioni.
-                [.pane(.tasks), .pane(.contenitore), .pane(.pratiche), .pane(.recordings)]
+                //
+                // «Da classificare» right after Attività (ADR-0085 §D1): it lists notes still
+                // to be filed, which is work, and sits beside the other inbox of the vault.
+                [.pane(.tasks), .pane(.unfiled), .pane(.contenitore), .pane(.pratiche), .pane(.recordings)]
             }
         }
     }

@@ -122,6 +122,11 @@ struct ViewCommands: Commands {
             Button("Applica un template…") { actions.run(.applyTemplate) }
                 .keyboardShortcut(shortcuts.shortcut(for: .applyTemplate))
                 .disabled(!actions.canRun(.applyTemplate))
+            // ADR-0085 §D6: the open note, the selected «Da classificare» row, or the
+            // Contenitore's selection - whichever is in front.
+            Button(ShortcutCommand.classifyNote.title) { actions.run(.classifyNote) }
+                .keyboardShortcut(shortcuts.shortcut(for: .classifyNote))
+                .disabled(!actions.canRun(.classifyNote))
             Divider()
             Button("Anteprima rapida") { actions.run(.quickLook) }
                 .keyboardShortcut(shortcuts.shortcut(for: .quickLook))
@@ -328,6 +333,11 @@ struct EditCommands: Commands {
                 .keyboardShortcut(shortcuts.shortcut(for: .findNext))
             Button(ShortcutCommand.findPrevious.title) { actions.run(.findPrevious) }
                 .keyboardShortcut(shortcuts.shortcut(for: .findPrevious))
+            // ADR-0085 §D8: live while the focused tab has a non-empty selection.
+            Divider()
+            Button(ShortcutCommand.extractToNote.title) { actions.run(.extractToNote) }
+                .keyboardShortcut(shortcuts.shortcut(for: .extractToNote))
+                .disabled(!actions.canRun(.extractToNote))
         }
     }
 }

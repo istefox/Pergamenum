@@ -38,6 +38,11 @@ extension RootView {
             .sheet(item: Bindable(navigation).linkChoice) { request in
                 LinkChoiceSheet(request: request) { navigation.linkChoice = nil }
             }
+            // «Classifica…» on a note or, from «Da classificare», on a scheda (ADR-0085 §D5). The
+            // Contenitore keeps presenting its own from `contenitore.classifying` (ADR-0071 §D12).
+            .sheet(item: Bindable(navigation).classifying) { subject in
+                ClassificaSheet(subject: subject)
+            }
             .sheet(item: Bindable(navigation).praticaLinkRequest) { request in
                 PraticaLinkPicker(
                     request: request,

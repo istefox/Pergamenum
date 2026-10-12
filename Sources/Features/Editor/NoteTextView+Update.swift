@@ -32,7 +32,7 @@ extension NoteTextView {
 
         // Compared and recorded on every update, read only inside the branch below. Claimed
         // ahead of the text sync rather than after it: nothing the sync triggers reads it.
-        let isNoteSwitch = coordinator.requests.claimNotePath(vault.notePath)
+        let isNoteSwitch = coordinator.requests.claimNotePath(vault.notePath, tab: vault.tabID)
         // A preview of a link in the note that was there is a preview of nothing now (ADR-0083 §D7).
         if isNoteSwitch, links.preview != nil { coordinator.linkPreview.noteChanged() }
         // Only touch the text when the model diverges from what is on screen:
@@ -81,6 +81,14 @@ extension NoteTextView {
         // the selection notification reported no link, and the styled one has the caret's link
         // only now (ADR-0083 §D3). The ledger drops it when nothing changed.
         coordinator.reportLinkAtCaret(in: textView)
+        // And the selection the switch left behind: the ledger was reset with the note, so this
+        // reports the new note's selection (none, after the caret went to 0) to the tab that is
+        // active now, clearing a range its tab kept from when it was last in front. A no-op
+        // everywhere else: one comparison, no write on a bare caret (PG-401).
+        coordinator.reportSelection(in: textView)
+        // And the index entry, for the same switch: a same-note tab switch fires no selection
+        // notification, so the incoming tab's `currentOutlineEntry` would stay what it last held.
+        coordinator.reportOutlineEntryAfterSwitch(in: textView)
     }
 
     /// Step 3: applies the Inserisci menu's text at the cursor, and opens the query builder
@@ -147,5 +155,7 @@ extension NoteTextView {
             coordinator.scroll(textView, to: scrollRequest.range)
             outline.onScrollApplied()
         }
+
+        coordinator.applyCaretRequest(in: textView)
     }
 }

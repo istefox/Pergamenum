@@ -144,6 +144,18 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     /// Hides or shows the open note's frontmatter block (a view of the note, never an edit).
     case toggleFrontmatter
 
+    // PG-387 (N4), ADR-0085 §D1/§D6/§D8. New raw values, so the overrides file is unaffected. Declared
+    // before `followLink` on purpose: `ShortcutTests.theLinkCommandsAreAppendedAfterEveryExistingOne`
+    // pins the last three cases of the catalogue to the link commands, and that test is not among
+    // the ones the plan lets Task 4 change.
+    /// The thirteenth pane: jumps to «Da classificare» (`Navigation.Pane.unfiled`).
+    case paneUnfiled
+    /// File → «Classifica…»: the note open, or the row selected in «Da classificare». Ships with no key.
+    case classifyNote
+    /// Modifica → «Estrai in una nota»: the selection of the focused tab becomes a note of its own.
+    /// Ships with no key.
+    case extractToNote
+
     /// "Segui il link" (ADR-0083 §D3, PG-386; appended last like the above): the link at the caret.
     case followLink
     /// "Apri il link in una nuova tab": the same, in a tab of its own. Ships with no key.
@@ -152,7 +164,13 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
     case followLinkInOtherColumn
 
     /// Shipped with no key (`KeyBinding("")`, a cleared override's value), for Impostazioni (ADR-0083 §D3).
-    static let shipsUnbound: Set<ShortcutCommand> = [.followLinkInNewTab, .followLinkInOtherColumn]
+    static let shipsUnbound: Set<ShortcutCommand> = [
+        .followLinkInNewTab, .followLinkInOtherColumn, .classifyNote, .extractToNote,
+    ]
+
+    /// Whether the command acts on the text selected in the focused tab, so it can run only while
+    /// one exists (ADR-0085 §D8). `.extractToNote` only.
+    var takesSelection: Bool { self == .extractToNote }
 
     var id: String { rawValue }
 
@@ -180,11 +198,11 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .newNote, .newBoard, .dailyNote, .quickTask, .globalCapture, .quickLook, .globalSearch,
              .quickSwitcher, .save, .openVault, .copyLink, .revealInFinder, .noteHistory,
-             .toggleStar, .applyTemplate, .newPratica:
+             .toggleStar, .applyTemplate, .newPratica, .classifyNote:
             .file
         case .newTab, .closeTab, .reopenTab:
             .tab
-        case .pastePlain, .findInNote, .replaceInNote, .findNext, .findPrevious:
+        case .pastePlain, .findInNote, .replaceInNote, .findNext, .findPrevious, .extractToNote:
             .edit
         case .insertWikilink, .insertRelated, .addToPraticaFromMail:
             .insert
@@ -192,7 +210,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
              .paneDiary, .paneViews, .paneStarred, .toggleInspector,
              .foldSection, .unfoldAll, .goBack, .goForward,
              .paneRecordings, .refreshRecordings, .panePratiche, .paneContenitore,
-             .toggleFrontmatter, .followLink, .followLinkInNewTab, .followLinkInOtherColumn:
+             .toggleFrontmatter, .followLink, .followLinkInNewTab, .followLinkInOtherColumn, .paneUnfiled:
             .view
         case .taskToggle, .taskToday, .taskTomorrow, .taskPlusTwo, .taskNextWeek, .taskAddSubtask:
             .task
@@ -263,6 +281,9 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         case .followLink: "Segui il link"
         case .followLinkInNewTab: "Apri il link in una nuova tab"
         case .followLinkInOtherColumn: "Apri il link nell'altra colonna"
+        case .paneUnfiled: "Vai a Da classificare"
+        case .classifyNote: "Classifica…"
+        case .extractToNote: "Estrai in una nota"
         }
     }
 
@@ -395,6 +416,10 @@ enum ShortcutCommand: String, CaseIterable, Identifiable, Sendable {
         // none on key code 36), in this catalogue (Cmd+Return, Cmd+Shift+Return are tasks) and `Sources/`.
         case .followLink: KeyBinding("return", [.command, .option])
         case .followLinkInNewTab, .followLinkInOtherColumn: KeyBinding("")
+        // Ctrl+Cmd+I (ADR-0085 §D1): the same modifier pair as the other panes; the unbound arm
+        // below carries the two verbs (ADR-0085 §D6/§D8).
+        case .paneUnfiled: KeyBinding("i", [.command, .control])
+        case .classifyNote, .extractToNote: KeyBinding("")
         }
     }
 }
