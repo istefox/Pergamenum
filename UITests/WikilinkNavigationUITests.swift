@@ -101,4 +101,104 @@ final class WikilinkNavigationUITests: PergamenumUITestCase {
         )
     }
 
+    /// Waits up to `timeout` seconds for the editor's source to contain `text`.
+    private func waitForEditor(_ editor: XCUIElement, toContain text: String, timeout: TimeInterval = 5) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline, !((editor.value as? String ?? "").contains(text)) {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        return (editor.value as? String ?? "").contains(text)
+    }
+
+    /// The window and the editor's source, kept with the result bundle: the runner's own temporary
+    /// directory cannot be read afterwards, so a red is diagnosed from attachments (ui-tests rules).
+    private func attachEvidence(named name: String, editor: XCUIElement) {
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "\(name): finestra"
+        shot.lifetime = .keepAlways
+        add(shot)
+        let source = XCTAttachment(string: editor.value as? String ?? "(nessun valore)")
+        source.name = "\(name): testo dell'editor"
+        source.lifetime = .keepAlways
+        add(source)
+    }
+
+    /// N3 (R-21, ADR-0083 §D8): Cmd+Opt+Return follows the link under the caret, Cmd+[ comes back.
+    /// The caret goes inside `[[Destinazione]]` by keyboard alone: the fixture has no trailing
+    /// newline, so Cmd+Down lands at the end of the text and three Left arrows step back over
+    /// `]]` and one letter, whatever the line wraps to.
+    func testFollowingTheLinkAtTheCaretAndComingBack() throws {
+        let editor = openOriginAndReturnEditor()
+        editor.click()
+        editor.typeKey(.downArrow, modifierFlags: .command)
+        for _ in 0..<3 { editor.typeKey(.leftArrow, modifierFlags: []) }
+
+        editor.typeKey(.return, modifierFlags: [.command, .option])
+        XCTAssertTrue(
+            waitForEditor(editor, toContain: "Nota di arrivo"),
+            "Cmd+Opt+Return con il cursore nel link non ha aperto 'Destinazione'"
+        )
+
+        // Read before the key, to tell "the history recorded nothing" from "the key never arrived".
+        let backWasEnabled = element("history-back").isEnabled
+        editor.typeKey("[", modifierFlags: .command)
+        let cameBack = waitForEditor(editor, toContain: "Destinazione")
+        if !cameBack {
+            // Evidence only: does the toolbar's own button walk back? Tells a key the editor
+            // swallowed from a history that cannot go back.
+            element("history-back").click()
+            let buttonWorks = waitForEditor(editor, toContain: "Destinazione", timeout: 3)
+            attachEvidence(
+                named: "dopo Cmd+[ (history-back abilitato prima del tasto: \(backWasEnabled); "
+                    + "il pulsante torna indietro: \(buttonWorks))",
+                editor: editor
+            )
+        }
+        XCTAssertTrue(cameBack, "Cmd+[ non è tornato a 'Origine'")
+        XCTAssertFalse(
+            (editor.value as? String ?? "").contains("Nota di arrivo"),
+            "dopo Cmd+[ l'editor mostra ancora 'Destinazione'"
+        )
+    }
+
+    /// N3 (R-20, ADR-0083 §D8): the preview shows under Cmd+hover and goes when the modifier is
+    /// released, and it leaves the keyboard with the editor - a character typed afterwards lands
+    /// in the note. The dwell is 250 ms, so the wait is generous.
+    func testCommandHoverShowsThePreviewAndReleaseHidesIt() throws {
+        let editor = openOriginAndReturnEditor()
+        editor.click()
+        let link = wikilinkElement()
+        // Resolved outside the block: a closure that reaches `self` is not `Sendable`.
+        let preview = element("link-preview")
+
+        let application: XCUIApplication = app
+        var shown = false
+        var evidence: XCUIScreenshot?
+        XCUIElement.perform(withKeyModifiers: .command) {
+            link.hover()
+            shown = preview.waitForExistence(timeout: 3)
+            if !shown { evidence = application.screenshot() }
+        }
+        if let evidence {
+            let attachment = XCTAttachment(screenshot: evidence)
+            attachment.name = "Cmd+hover senza anteprima"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        XCTAssertTrue(shown, "Cmd+hover sul wikilink non ha mostrato l'anteprima")
+
+        let gone = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: preview
+        )
+        XCTAssertEqual(
+            XCTWaiter().wait(for: [gone], timeout: 2), .completed,
+            "rilasciato Cmd l'anteprima è rimasta"
+        )
+
+        editor.typeText("Q")
+        XCTAssertTrue(
+            waitForEditor(editor, toContain: "Q"),
+            "il carattere digitato dopo l'anteprima non è arrivato all'editor"
+        )
+    }
 }

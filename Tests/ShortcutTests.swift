@@ -108,6 +108,13 @@ import Testing
     #expect(ShortcutCommand.followLink.defaultBinding == KeyBinding("return", [.command, .option]))
 }
 
+/// Pins today's defaults, nothing more (ADR-0015 §D5): whether Cmd+[ and Cmd+] are reachable on
+/// the Italian - Pro layout, where the brackets need Option, is a hand check, not this test.
+@Test func backAndForwardShipOnTheCommandBrackets() {
+    #expect(ShortcutCommand.goBack.defaultBinding == KeyBinding("[", .command))
+    #expect(ShortcutCommand.goForward.defaultBinding == KeyBinding("]", .command))
+}
+
 @Test func theLinkCommandsAreAppendedAfterEveryExistingOne() {
     // Raw values are persisted keys and the menu order follows `allCases`: appended, never inserted.
     let all = ShortcutCommand.allCases

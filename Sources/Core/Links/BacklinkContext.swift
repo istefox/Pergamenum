@@ -44,12 +44,18 @@ struct BacklinkRow: Equatable, Sendable, Identifiable {
         path: String, title: String, text: String, linking target: String, related: [String]
     ) -> BacklinkRow {
         let lines = BacklinkContext.lines(linking: target, in: text)
+        return BacklinkRow(
+            title: title, path: path, firstLine: lines.first, count: lines.count,
+            isStructural: isStructural(related: related, linking: target)
+        )
+    }
+
+    /// Whether a `related` list names `target`. Also what an unreadable row asks of the index's
+    /// copy of that list, so «Rendi strutturale» is not offered for a link that already is.
+    static func isStructural(related: [String], linking target: String) -> Bool {
         let wanted = target.lowercased()
-        let isStructural = related.contains { entry in
+        return related.contains { entry in
             WikilinkParser.links(in: entry).contains { $0.target.lowercased() == wanted }
         }
-        return BacklinkRow(
-            title: title, path: path, firstLine: lines.first, count: lines.count, isStructural: isStructural
-        )
     }
 }

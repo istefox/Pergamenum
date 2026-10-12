@@ -126,16 +126,31 @@ import Testing
 }
 
 @MainActor
-@Test func aCombinationSomebodyElseHoldsComesBackAsTakenAndNotAsSuccess() {
+@Test func aCombinationSomebodyElseHoldsComesBackAsTakenAndNotAsSuccess() throws {
     // The negative control for the test above: without this, `.registered` could be
     // what the type returns no matter what the system said, and every assertion about
     // it would pass while the panel never opened. Two holders of the same combination
     // is exactly what `kEventHotKeyExclusive` exists to refuse.
     let first = GlobalHotkey()
     let second = GlobalHotkey()
-    let contested = KeyBinding("x", [.command, .control, .option, .shift])
 
-    #expect(first.register(contested) == .registered(contested))
+    // The hot key is machine-wide: a second test host running this suite at the same time
+    // (another worktree) can hold Cmd+Ctrl+Opt+Shift+X already. The contested combination is
+    // the first of these the system gives this host; a candidate is skipped only when it is
+    // taken, so any other answer still fails here, and the assertions below are unchanged.
+    var held: KeyBinding?
+    for key in ["x", "q", "j", "k", "b", "n"] {
+        let candidate = KeyBinding(key, [.command, .control, .option, .shift])
+        let state = first.register(candidate)
+        if state == .registered(candidate) {
+            held = candidate
+            break
+        }
+        try #require(state == .takenByAnotherApp(candidate), "\(candidate) answered \(state)")
+    }
+    let contested = try #require(held, "every candidate combination is held by another process")
+
+    #expect(first.state == .registered(contested))
     #expect(second.register(contested) == .takenByAnotherApp(contested))
     #expect(!second.state.isRegistered)
     #expect(second.state.explanation != nil)

@@ -19,6 +19,17 @@ import Testing
     #expect(LinkChoice.folderLabel(of: "Offerta.md") == LinkChoice.rootLabel)
 }
 
+// MARK: - sharedTitles
+
+/// `RelatedLinkSheet` labels a candidate by `folderLabel(of:)` exactly when its title is here.
+@Test func aTitleTwoCandidatesCarryIsSharedIgnoringCaseAndAUniqueOneIsNot() {
+    let shared = LinkChoice.sharedTitles(["Riunione", "Piano", "riunione", "Curva", "RIUNIONE"])
+
+    #expect(shared == ["riunione"], "lowercased, once, whatever the spelling")
+    #expect(LinkChoice.sharedTitles(["Piano", "Curva"]).isEmpty)
+    #expect(LinkChoice.sharedTitles([]).isEmpty)
+}
+
 // MARK: - An ambiguous title is one row per path
 
 @Test func anAmbiguousDestinationGivesOneRowPerPathLabelledByItsFolder() {
