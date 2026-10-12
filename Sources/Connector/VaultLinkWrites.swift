@@ -25,9 +25,7 @@ extension VaultAPI {
         guard carriers.count <= 1 else {
             // The tool takes a title, and a wikilink names a title: there is no "which" to give,
             // so the sentence says what does resolve it, as `removeStructuralLink`'s does.
-            throw ConnectorError(
-                "il titolo «\(title)» è di più note, e il link si scrive per titolo: rinomina una delle omonime"
-            )
+            throw ConnectorError(VaultSession.sharedTitleLinkRefusal(title))
         }
         guard let target = carriers.first else {
             throw ConnectorError("nessuna nota si chiama «\(title)»")

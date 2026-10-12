@@ -126,11 +126,14 @@ struct InspectorLinksMockup: View {
         ) {
             LinkMockupSheet(
                 width: MockupGalleryView.pairWidth,
-                title: "Scollegare «Riunione settimanale» e «Piano prove 2026»?",
+                title: "Scollegare il legame strutturale?",
                 confirm: "Scollega",
                 destructive: true
             ) {
-                Text("Il legame e i due motivi spariscono da entrambe le note.")
+                Text(
+                    "Il legame fra «Riunione settimanale» e «Piano prove 2026» e i due motivi "
+                        + "spariscono da entrambe le note."
+                )
                     .themedText(.caption, color: .textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -161,7 +164,7 @@ struct InspectorLinksMockup: View {
                 InspectorMockupPanel {
                     InspectorMockupSection(
                         title: "LINK NON RISOLTI", spokenLabel: "Link non risolti in questa nota: 0",
-                        emptyText: "nessun link non risolto in questa nota"
+                        emptyText: VaultBrowser.InspectorSection.unresolved(count: 0).emptyText
                     ) { EmptyView() }
                 }
             }

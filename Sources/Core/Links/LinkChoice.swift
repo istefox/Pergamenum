@@ -41,4 +41,15 @@ struct LinkChoice: Equatable, Sendable, Identifiable {
         let folder = (path as NSString).deletingLastPathComponent
         return folder.isEmpty ? rootLabel : folder
     }
+
+    /// The lowercased titles more than one of `titles` carries: the rows a list tells apart by
+    /// `folderLabel(of:)`, the root included (SPEC R-22).
+    static func sharedTitles(_ titles: [String]) -> Set<String> {
+        var seen: Set<String> = []
+        var shared: Set<String> = []
+        for title in titles.map({ $0.lowercased() }) where !seen.insert(title).inserted {
+            shared.insert(title)
+        }
+        return shared
+    }
 }
