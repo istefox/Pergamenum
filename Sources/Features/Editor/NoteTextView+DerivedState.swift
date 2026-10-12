@@ -20,6 +20,23 @@ struct DerivedStateSnapshot: Equatable {
     var map: StructureMap?
 }
 
+/// `EditorDecorationDelegate`'s offset-keyed stores as comparable values (ADR-0091 §D6), the part
+/// of `DerivedStateSnapshot` the delegate's file can read. Here rather than beside the delegate, so that
+/// file stays under SwiftLint's `file_length` (ADR-0094 §D7).
+struct DecorationSnapshot: Equatable {
+    var hiddenMarkerKeys: [Int]
+    var hiddenLineOffsets: Set<Int>
+    var foldedHeadings: [Int: Int]
+    var tableRowOffsets: Set<Int>
+    var viewBlockLineOffsets: Set<Int>
+    var renditionKeys: [Int]
+    var embedRenditionKeys: [Int]
+    var revealedParagraphs: Set<Int>
+    var revealedSpanKeys: [Int]
+    var tableViewKeys: [Int]
+    var viewBlockHostKeys: [Int]
+}
+
 extension NoteTextView.Coordinator {
     /// Moves every offset-keyed holder past `edit`, where it lives (ADR-0091 §D6): each holder
     /// shifts its own stores, so a new store is shifted by the holder that adds it.
@@ -39,8 +56,8 @@ extension NoteTextView.Coordinator {
     func derivedStateSnapshot() -> DerivedStateSnapshot {
         DerivedStateSnapshot(
             decorations: decorations.offsetKeyedSnapshot(),
-            unspellable: unspellableRanges,
-            embedRuns: embedRuns,
+            unspellable: Array(unspellableRanges),
+            embedRuns: Array(embedRuns),
             tablesDrawn: tables.drawn.keys.sorted(),
             tableHiddenRows: tables.hiddenRows,
             viewBlocksDrawn: viewBlocks.drawn.keys.sorted(),

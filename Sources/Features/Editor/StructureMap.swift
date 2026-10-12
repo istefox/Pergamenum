@@ -9,6 +9,10 @@ import Foundation
 /// the ones the fragment produced. After an edit and its restyle the map equals `StructureMap(text:)`
 /// of the new text, which the property test proves.
 ///
+/// Every store that grows with the note sits on a step (ADR-0094 §D6): an edit replaces the lines it
+/// touched and moves the rest by its delta in one `replace`, and the readers answer by search. The three
+/// mark sets keep, at line starts, what the parity and `pendingOpener` used to walk the lines for.
+///
 /// Foundation only (ADR-0091 §D1).
 struct StructureMap: Equatable, Sendable {
     struct Line: Equatable, Sendable {
@@ -28,10 +32,24 @@ struct StructureMap: Equatable, Sendable {
         var isClosed: Bool
     }
 
-    private(set) var lines: [Line] = []
-    private(set) var fences: [Fence] = []
-    private(set) var tableRuns: [NSRange] = []
-    private(set) var viewBlockRuns: [NSRange] = []
+    /// A line start, the element of the three mark sets.
+    struct Mark: OffsetEntry, Sendable {
+        var position: Int
+
+        func moved(by delta: Int) -> Mark { Mark(position: position + delta) }
+    }
+
+    private(set) var lines = StepBuffer<Line>()
+    private(set) var fences = OffsetRanges<Fence>()
+    private(set) var tableRuns = OffsetRanges<NSRange>()
+    private(set) var viewBlockRuns = OffsetRanges<NSRange>()
+    /// The starts of the lines whose `listFacts.fenceDelimiters` is odd: the fence parity before a line
+    /// is the rank of its start here, modulo 2 (ADR-0094 §D6).
+    private(set) var oddFenceLines = StepBuffer<Mark>()
+    /// The starts of the lines whose signature holds a bracket token.
+    private(set) var bracketLines = StepBuffer<Mark>()
+    /// The starts of the lines whose bracket tokens include a `]]`.
+    private(set) var closingLines = StepBuffer<Mark>()
     private(set) var frontmatterZoneEnd: Int?
     /// The fences two other readers see where they part from `fences`: the block tokenizer's own
     /// walk, which starts after the frontmatter, and `WikilinkParser.codeRanges`, which also takes
@@ -44,11 +62,15 @@ struct StructureMap: Equatable, Sendable {
     init(text: String) {
         let nsText = text as NSString
         length = nsText.length
-        lines = Self.lines(of: text, base: 0)
+        let built = Self.lines(of: text, base: 0)
+        lines = StepBuffer(sorted: built)
+        oddFenceLines = StepBuffer(sorted: Self.marks(of: built, \.isOddFenceLine))
+        bracketLines = StepBuffer(sorted: Self.marks(of: built, \.holdsBracket))
+        closingLines = StepBuffer(sorted: Self.marks(of: built, \.holdsClosingBracket))
         frontmatterZoneEnd = Self.frontmatterZoneEnd(lines: lines, text: nsText) { text }
 
         let regions = CodeFence.regions(in: text)
-        fences = regions.map { region in
+        let fenceList = regions.map { region in
             Fence(
                 range: NSRange(region.range, in: text),
                 language: region.language,
@@ -57,12 +79,13 @@ struct StructureMap: Equatable, Sendable {
                 isClosed: region.body.upperBound != region.range.upperBound
             )
         }
+        fences = OffsetRanges(sorted: fenceList)
 
         let runs = MarkdownStyler.structuralRuns(in: text, regions: regions)
-        tableRuns = runs.tables.map { NSRange($0, in: text) }
-        viewBlockRuns = runs.viewBlocks.map { NSRange($0, in: text) }
+        tableRuns = OffsetRanges(sorted: runs.tables.map { NSRange($0, in: text) })
+        viewBlockRuns = OffsetRanges(sorted: runs.viewBlocks.map { NSRange($0, in: text) })
 
-        let fenceRanges = Set(fences.map(\.range))
+        let fenceRanges = Set(fenceList.map(\.range))
         let others = (runs.tokenFences + WikilinkParser.fencedCodeRanges(in: text[runs.bodyStart...]))
             .map { NSRange($0, in: text) }
             .filter { !fenceRanges.contains($0) }
@@ -106,6 +129,8 @@ struct StructureMap: Equatable, Sendable {
         // The new lines run from the first touched line's start to the end of the line holding the
         // edit's new end, the "\n" that ends it included so a "\r\n" is read as one terminator.
         let newLength = text.length
+        // The fence rule below computes the new end as `oldLength + delta` (ADR-0094 §D3).
+        assert(oldLength + edit.delta == newLength, "the map's length is not that of the text the edit was made to")
         var end = min(NSMaxRange(edit.range), newLength)
         while end < newLength, text.character(at: end) != 10 { end += 1 }
         let endsWithBreak = end < newLength
@@ -113,18 +138,17 @@ struct StructureMap: Equatable, Sendable {
         var fresh = Self.lines(of: region, base: start)
         if endsWithBreak { fresh.removeLast() }
 
-        for index in (last + 1)..<lines.count { lines[index].start += edit.delta }
-        lines.replaceSubrange(first...last, with: fresh)
+        // The touched lines' span in the text as it was, read before anything moves: the mark sets
+        // replace the marks inside it.
+        let windowEnd = last + 1 < lines.count ? lines[last + 1].start : Int.max
+        lines.replace(first..<last + 1, with: fresh, movingTheRestBy: edit.delta, as: .shift)
+        replaceMarks(from: start, to: windowEnd, with: fresh, movingTheRestBy: edit.delta, as: .shift)
         length = newLength
 
-        fences = fences.compactMap { fence in
-            Self.shifted(fence.range, by: edit, oldLength: oldLength, newLength: newLength).map {
-                Fence(range: $0, language: fence.language, isClosed: fence.isClosed)
-            }
-        }
-        codeBlocks = codeBlocks.compactMap { Self.shifted($0, by: edit, oldLength: oldLength, newLength: newLength) }
-        tableRuns = tableRuns.compactMap { edit.shifted($0) }
-        viewBlockRuns = viewBlockRuns.compactMap { edit.shifted($0) }
+        fences.apply(edit, anchoringTheEndOf: oldLength)
+        codeBlocks = codeBlocks.compactMap { edit.shifted($0, anchoringTheEndOf: oldLength) }
+        tableRuns.apply(edit, partial: .drop)
+        viewBlockRuns.apply(edit, partial: .drop)
 
         // Only the first line opens a frontmatter and only a line up to its closing one ends it, so
         // an edit below the zone leaves it where it is.
@@ -141,33 +165,64 @@ struct StructureMap: Equatable, Sendable {
     /// map of the dirty range's own text, whose offsets start `offset` units into the note.
     mutating func splice(_ fragment: StructureMap, at offset: Int, replacing dirty: NSRange) {
         let end = NSMaxRange(dirty)
-        let low = lines.firstIndex { $0.start >= dirty.location } ?? lines.count
-        let high = lines[low...].firstIndex { $0.start >= end } ?? lines.count
+        let low = lines.lowerBound(dirty.location)
+        let high = max(low, lines.lowerBound(end))
         let fresh = fragment.lines
             .filter { $0.start < dirty.length }
             .map { Line(start: $0.start + offset, signature: $0.signature, listFacts: $0.listFacts) }
-        lines.replaceSubrange(low..<high, with: fresh)
+        lines.replace(low..<high, with: fresh, movingTheRestBy: 0, as: .splice)
+        replaceMarks(from: dirty.location, to: end, with: fresh, movingTheRestBy: 0, as: .splice)
 
-        func moved(_ range: NSRange) -> NSRange { NSRange(location: range.location + offset, length: range.length) }
-        fences = Self.spliced(fences, \.range, dirty: dirty, with: fragment.fences.map {
-            Fence(range: moved($0.range), language: $0.language, isClosed: $0.isClosed)
-        })
-        tableRuns = Self.spliced(tableRuns, \.self, dirty: dirty, with: fragment.tableRuns.map(moved))
-        viewBlockRuns = Self.spliced(viewBlockRuns, \.self, dirty: dirty, with: fragment.viewBlockRuns.map(moved))
-        codeBlocks = Self.spliced(codeBlocks, \.self, dirty: dirty, with: fragment.codeBlocks.map(moved))
+        fences.splice(fragment.fences.map { $0.moved(by: offset) }, replacing: dirty)
+        tableRuns.splice(fragment.tableRuns.map { $0.moved(by: offset) }, replacing: dirty)
+        viewBlockRuns.splice(fragment.viewBlockRuns.map { $0.moved(by: offset) }, replacing: dirty)
+        codeBlocks = Self.spliced(codeBlocks, dirty: dirty, with: fragment.codeBlocks.map { $0.moved(by: offset) })
+    }
+
+    /// Replaces, in each mark set, the marks at positions `from ..< to` (in the coordinates the sets are
+    /// in now) with the marks of `fresh`, and moves every mark after them by `delta`.
+    private mutating func replaceMarks(
+        from start: Int, to end: Int, with fresh: [Line], movingTheRestBy delta: Int, as operation: StepTally.Operation
+    ) {
+        func replace(_ marks: inout StepBuffer<Mark>, _ holds: KeyPath<Line, Bool>) {
+            let low = marks.lowerBound(start)
+            let high = max(low, marks.lowerBound(end))
+            marks.replace(low..<high, with: Self.marks(of: fresh, holds), movingTheRestBy: delta, as: operation)
+        }
+        replace(&oddFenceLines, \.isOddFenceLine)
+        replace(&bracketLines, \.holdsBracket)
+        replace(&closingLines, \.holdsClosingBracket)
     }
 
     // MARK: Reading
 
     /// The index of the line holding `offset`: the last one starting at or before it.
     func lineIndex(containing offset: Int) -> Int {
-        var low = 0
-        var high = lines.count - 1
-        while low < high {
-            let middle = (low + high + 1) / 2
-            if lines[middle].start <= offset { low = middle } else { high = middle - 1 }
-        }
-        return low
+        max(0, lines.partition { $0.start > offset }.index - 1)
+    }
+
+    /// Whether an odd number of fence delimiters lies above line `index` (ADR-0093 §D8): the rank of the
+    /// line's start among the odd-delimiter lines, modulo 2 (ADR-0094 §D6). A sum modulo 2 is the count
+    /// of its odd terms modulo 2.
+    func fenceParity(before index: Int) -> Bool {
+        let bound = index < lines.count ? lines[index].start : Int.max
+        return oddFenceLines.lowerBound(bound) % 2 == 1
+    }
+
+    /// The index of the nearest line before line `index` whose signature holds a bracket token, or nil.
+    /// `index` may be `lines.count`, which reads as a position past every line.
+    func nearestBracketLine(before index: Int) -> Int? {
+        let bound = index < lines.count ? lines[index].start : Int.max
+        let mark = bracketLines.lowerBound(bound) - 1
+        guard mark >= 0 else { return nil }
+        return lines.lowerBound(bracketLines[mark].position)
+    }
+
+    /// Whether a line after line `index` holds a `]]`. `index` must be a valid line index, unlike
+    /// `nearestBracketLine(before:)`: its one caller passes a line that reader returned.
+    func hasClosingBracket(after index: Int) -> Bool {
+        let start = lines[index].start
+        return closingLines.partition { $0.position > start }.index < closingLines.count
     }
 
     /// Where line `index` ends, its terminator included.
@@ -219,7 +274,7 @@ struct StructureMap: Equatable, Sendable {
     /// `NoteFrontmatter.range`, which the styler reads, and `FrontmatterSource`'s delimiter test,
     /// which `NoteDocument.parse` and so `Transclusion` read. The whole text when either opens and
     /// finds no closing line; nil when neither opens.
-    private static func frontmatterZoneEnd(lines: [Line], text: NSString, string: () -> String) -> Int? {
+    private static func frontmatterZoneEnd(lines: StepBuffer<Line>, text: NSString, string: () -> String) -> Int? {
         guard !lines.isEmpty else { return nil }
         let length = text.length
         /// Line `index` as `NoteDocument` splits it: up to its "\n", a "\r" before it kept.
@@ -240,7 +295,7 @@ struct StructureMap: Equatable, Sendable {
             let whole = string()
             guard let range = NoteFrontmatter.range(in: whole) else { return length }
             let closingStart = whole.utf16.distance(from: whole.startIndex, to: range.upperBound) - 3
-            zoneEnd = contentEnd(lineIndex(of: closingStart, in: lines))
+            zoneEnd = contentEnd(max(0, lines.partition { $0.start > closingStart }.index - 1))
         }
         if FrontmatterSource.isDelimiter(FrontmatterSource.interpreted(first, isFirst: true)) {
             guard let closing = lines.indices.dropFirst().first(where: {
@@ -251,32 +306,71 @@ struct StructureMap: Equatable, Sendable {
         return zoneEnd
     }
 
-    private static func lineIndex(of offset: Int, in lines: [Line]) -> Int {
-        var low = 0
-        var high = lines.count - 1
-        while low < high {
-            let middle = (low + high + 1) / 2
-            if lines[middle].start <= offset { low = middle } else { high = middle - 1 }
-        }
-        return low
+    /// The marks of `lines` for which `holds` is true, at their starts.
+    private static func marks(of lines: [Line], _ holds: KeyPath<Line, Bool>) -> [Mark] {
+        lines.filter { $0[keyPath: holds] }.map { Mark(position: $0.start) }
     }
 
-    /// `StorageEdit.shifted`, except that a fence that reached the end of the old text still does:
-    /// an unclosed fence runs to the end of the note, whatever is typed after its last character.
-    private static func shifted(_ range: NSRange, by edit: StorageEdit, oldLength: Int, newLength: Int) -> NSRange? {
-        if NSMaxRange(range) == oldLength, edit.oldRange.location >= range.location {
-            return NSRange(location: range.location, length: newLength - range.location)
-        }
-        return edit.shifted(range)
-    }
-
-    /// `runs` without the ones that intersect `dirty`, and `fragment`'s in their place.
-    private static func spliced<Run>(
-        _ runs: [Run], _ key: KeyPath<Run, NSRange>, dirty: NSRange, with fragment: [Run]
-    ) -> [Run] {
+    /// `codeBlocks` without the ones that intersect `dirty`, and `fragment`'s in their place. The run
+    /// lists on a step take `OffsetRanges.splice`, the same partition; `codeBlocks` can overlap, so it
+    /// stays an array (ADR-0094 §D6).
+    private static func spliced(_ runs: [NSRange], dirty: NSRange, with fragment: [NSRange]) -> [NSRange] {
         let end = NSMaxRange(dirty)
-        let before = runs.filter { NSMaxRange($0[keyPath: key]) <= dirty.location }
-        let after = runs.filter { $0[keyPath: key].location >= end && NSMaxRange($0[keyPath: key]) > dirty.location }
+        let before = runs.filter { NSMaxRange($0) <= dirty.location }
+        let after = runs.filter { $0.location >= end && NSMaxRange($0) > dirty.location }
         return before + fragment + after
+    }
+}
+
+// MARK: - The step's entries (ADR-0094 §D2)
+
+extension StructureMap.Line: OffsetEntry {
+    var position: Int { start }
+
+    func moved(by delta: Int) -> StructureMap.Line {
+        var line = self
+        line.start += delta
+        return line
+    }
+
+    /// What the three mark sets record of a line.
+    fileprivate var isOddFenceLine: Bool { listFacts.fenceDelimiters % 2 == 1 }
+    fileprivate var holdsBracket: Bool { !signature.brackets.isEmpty }
+    fileprivate var holdsClosingBracket: Bool { signature.brackets.contains(.close) }
+}
+
+extension StructureMap.Fence: RangedEntry {
+    var position: Int { range.location }
+
+    func moved(by delta: Int) -> StructureMap.Fence {
+        with(range: NSRange(location: range.location + delta, length: range.length))
+    }
+
+    func with(range: NSRange) -> StructureMap.Fence {
+        StructureMap.Fence(range: range, language: language, isClosed: isClosed)
+    }
+}
+
+// MARK: - Tallies (ADR-0094 §D5)
+
+extension StructureMap {
+    /// The step tallies of the map's stores, by name: `map.lines`, `map.fences`, `map.tableRuns`,
+    /// `map.viewBlockRuns`, `map.oddFenceLines`, `map.bracketLines` and `map.closingLines`.
+    var tallies: [String: StepTally] {
+        [
+            "map.lines": lines.tally, "map.fences": fences.tally, "map.tableRuns": tableRuns.tally,
+            "map.viewBlockRuns": viewBlockRuns.tally, "map.oddFenceLines": oddFenceLines.tally,
+            "map.bracketLines": bracketLines.tally, "map.closingLines": closingLines.tally,
+        ]
+    }
+
+    mutating func resetTallies() {
+        lines.resetTally()
+        fences.resetTally()
+        tableRuns.resetTally()
+        viewBlockRuns.resetTally()
+        oddFenceLines.resetTally()
+        bracketLines.resetTally()
+        closingLines.resetTally()
     }
 }

@@ -89,10 +89,11 @@ final class ViewBlockController {
     private var lastRevealed: NSRange?
     /// `Coordinator.growToFitTheText` as `refresh` last handed it, for the deferred re-layout.
     private var growToFit: ((NSTextView) -> Void)?
-    /// Every closed view-block fence's range, read off the coordinator's structure map, or nil when
-    /// it keeps none that is current (ADR-0091 §D6): the kill switch is on, or nothing has been
-    /// styled yet. Set by the coordinator; nil falls back to a parse of the text.
-    var fenceRanges: (() -> [NSRange]?)?
+    /// The closed view-block fences touching the selection it is handed, read off the coordinator's
+    /// structure map (ADR-0094 §D6), or nil when it keeps none that is current (ADR-0091 §D6): the
+    /// kill switch is on, or nothing has been styled yet. Set by the coordinator; nil falls back to a
+    /// parse of the text.
+    var fenceRanges: ((NSRange) -> [NSRange]?)?
 
     init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate, layout: LayoutDebt) {
         self.parent = parent
@@ -105,7 +106,7 @@ final class ViewBlockController {
     /// arrow key, so the fences come from the map when there is one rather than from a parse.
     func selectionCrossedFence(in textView: NSTextView) -> Bool {
         let selection = textView.selectedRange()
-        let revealed = if let ranges = fenceRanges?() {
+        let revealed = if let ranges = fenceRanges?(selection) {
             ranges.first { Self.selectionReveals(selection, fence: $0) }
         } else {
             Self.revealedViewBlock(in: textView.string, selection: selection)
