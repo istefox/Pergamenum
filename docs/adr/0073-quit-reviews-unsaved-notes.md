@@ -550,7 +550,7 @@ never merged). Four gaps, each a recorded departure; §D1–§D11's text is unch
     predated; the head now names it. ADR-0058 carries a one-line amendment note pointing here. Pinned in
     `VaultControllerWriteCatchUpTests` (the rule, and split + Cmd+S) and in `QuitCoordinatorTests`
     (split + «Salva tutto» replies `true` with no banner).
-    Decided on the exact answer since ADR-0095 §D3 (`differsFromSaved`); `hasUnsavedChanges` is a mark that
+    Decided on the exact answer since ADR-0096 §D3 (`differsFromSaved`); `hasUnsavedChanges` is a mark that
     clears at the pause.
 16. **Two quit requests never overlap.** `shouldTerminate()` used to bump `attempt` and reset its
     debts on every call. A second request that arrived while a `.terminateLater` reply was still owed

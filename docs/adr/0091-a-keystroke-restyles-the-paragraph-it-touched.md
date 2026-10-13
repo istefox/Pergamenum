@@ -434,7 +434,7 @@ R-05 test compares every holder named here with a twin that was fully restyled.
 `hiddenMarkers`, the coordinator's two range lists and `StructureMap` move a step since
 ADR-0094 §D1; the other holders keep this section's tables, with ADR-0094 §D8's bounds.
 
-The outline is a holder since ADR-0095 §D6, shifted and spliced by this section's rule and rebuilt by §D8's
+The outline is a holder since ADR-0096 §D6, shifted and spliced by this section's rule and rebuilt by §D8's
 kill switch.
 
 ### D7. The passes after the styling

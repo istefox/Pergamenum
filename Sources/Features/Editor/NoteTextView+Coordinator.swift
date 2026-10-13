@@ -46,7 +46,7 @@ extension NoteTextView {
         /// What the last binding write handed over, so the next update need not compare the whole
         /// note with the model (ADR-0094 §D9).
         var modelSync = ModelSync()
-        /// The outline store this coordinator feeds (ADR-0095 §D6); `NoteTextView+Outline.swift`.
+        /// The outline store this coordinator feeds (ADR-0096 §D6); `NoteTextView+Outline.swift`.
         var outlineFeed = NoteTextView.OutlineFeed()
         /// The structure map and the decision pending on the edits since the last styling
         /// (ADR-0091 §D2/§D3). Nil with the kill switch on, and until the first full restyle.

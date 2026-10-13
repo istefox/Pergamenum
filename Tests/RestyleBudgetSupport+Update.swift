@@ -1,7 +1,7 @@
 import Foundation
 @testable import Pergamenum
 
-// ADR-0095 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 1 (PG-406, R-01).
+// ADR-0096 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 1 (PG-406, R-01).
 //
 // The bench row for a keystroke through SwiftUI's update: the editor column hosted in a window that is
 // never shown, a character typed at the middle paragraph's end, and SwiftUI made to run the update that

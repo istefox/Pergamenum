@@ -7,7 +7,7 @@ import Testing
 /// on a heading row's text toggles fold state exactly like a click on its chevron, without duplicating the
 /// `foldable` guard.
 ///
-/// **Restated for ADR-0095 §D7 (PG-406, plan Task 4).** These three cases called
+/// **Restated for ADR-0096 §D7 (PG-406, plan Task 4).** These three cases called
 /// `OutlinePane.foldableOffset(for:at:)` on a pane built with the note's text. The pane no longer holds the
 /// text (it draws from `OutlinePaneInputs`), so the answer moved to `OutlineStore.foldableOffset(ofEntry:)`,
 /// which reads the store's map. The texts, the entries asked about and the expected answers are the ones the

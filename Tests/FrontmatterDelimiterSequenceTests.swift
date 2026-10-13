@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// (coverage) ADR-0095 §D5 and ADR-0065 §D1.2, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md,
+// (coverage) ADR-0096 §D5 and ADR-0065 §D1.2, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md,
 // Task 6 (PG-406).
 //
 // `FrontmatterSource.closingDelimiterIndex(inLines:)` is the one delimiter test the array form now calls, so

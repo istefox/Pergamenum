@@ -1,6 +1,6 @@
 import Foundation
 
-// ADR-0095 §D7, plan Task 4 (PG-406).
+// ADR-0096 §D7, plan Task 4 (PG-406).
 //
 // What the sidebar's index is drawn from, as a value whose equality is the declared one: the rows are
 // the same when their source is the same, so SwiftUI compares a store's identity and generation and

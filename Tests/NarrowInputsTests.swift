@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0095 §D8, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406, R-04).
+// ADR-0096 §D8, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406, R-04).
 //
 // The tab bar's chip draws a title, a path, a preview style and a dot, and was handed the whole `NoteTab`,
 // so a keystroke that changed only the note's text invalidated every chip. `NoteTab.ChipFace` is what the

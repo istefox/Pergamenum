@@ -6,7 +6,7 @@
 # third table of the structural rows (ADR-0093 §D9, plan docs/plans/scoped-layout-followup.md Task 7,
 # R-13), and with `--jump` a fourth table of the keystroke after a caret jump (ADR-0094 §D1, plan
 # docs/plans/sublinear-offset-state-pg-405.md Task 1, R-06), and with `--update` a fifth table of a
-# keystroke through SwiftUI's update path (ADR-0095, plan
+# keystroke through SwiftUI's update path (ADR-0096, plan
 # docs/plans/no-whole-note-term-on-the-update-path-pg-406.md Task 1, R-01).
 #
 #   scripts/editor-restyle-bench.sh [--large|--large-only] [--runs N] [--no-warmup] [--structural] [--jump] [--update]

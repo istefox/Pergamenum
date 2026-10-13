@@ -1,6 +1,6 @@
 import Foundation
 
-// ADR-0095 §D6, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406).
+// ADR-0096 §D6, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406).
 //
 // The note's outline as offsets that move with an edit, in the shape of ADR-0094's holders: one
 // `OffsetRanges` of the lines that are a heading or an embed, shifted by `apply(_:)` and re-read over
@@ -131,7 +131,7 @@ struct OutlineMap: Equatable, Sendable {
         return 2
     }
 
-    /// Whether the entry at `ordinal` is a heading with at least one line under it (ADR-0095 §D7's
+    /// Whether the entry at `ordinal` is a heading with at least one line under it (ADR-0096 §D7's
     /// local rule): followed by another entry, unless that entry is a heading of the same or a higher
     /// level on the very next line; the last entry, when its line ends with a terminator.
     func isFoldable(_ ordinal: Int) -> Bool {

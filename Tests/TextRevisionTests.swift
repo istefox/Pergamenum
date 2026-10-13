@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0095 §D1 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 2.
+// ADR-0096 §D1 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 2.
 // R-03: a revision is unique per buffer value, so two buffers that differ in text never share one.
 
 @Suite struct TextRevisionTests {

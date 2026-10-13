@@ -418,4 +418,4 @@ Every ADR is `docs/adr/NNNN-<slug>.md`; the title below is that file's own headi
 - ADR-0091 — A keystroke restyles the paragraph it touched, and a structural change restyles the note
 - ADR-0093 — A keystroke lays out what it changed, and renumbers from a line the map vouches for
 - ADR-0094 — An edit moves a step, not every offset below it
-- ADR-0095 — What follows a keystroke compares a revision, not the note
+- ADR-0096 — What follows a keystroke compares a revision, not the note

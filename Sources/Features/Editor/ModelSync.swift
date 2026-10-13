@@ -22,7 +22,7 @@ struct ModelSync {
     /// Every character edit the storage has reported, counted with the kill switch on too.
     private var edits = 0
 
-    /// How many times the fallback branch compared the whole text (ADR-0095 §D8, PG-406): a test seam
+    /// How many times the fallback branch compared the whole text (ADR-0096 §D8, PG-406): a test seam
     /// that proves a keystroke compares nothing. Counted in every configuration.
     private(set) var compares = 0
 

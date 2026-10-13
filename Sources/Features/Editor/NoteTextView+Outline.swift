@@ -1,6 +1,6 @@
 import AppKit
 
-// ADR-0095 §D6 and §D7, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 5 (PG-406).
+// ADR-0096 §D6 and §D7, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 5 (PG-406).
 //
 // The coordinator's side of the outline store: which store it feeds, the shift, the splice and the
 // rebuild that keep it level with the storage, the stamp that says which revision it describes, and the

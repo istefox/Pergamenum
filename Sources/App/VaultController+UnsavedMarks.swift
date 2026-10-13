@@ -1,6 +1,6 @@
 import Foundation
 
-/// The pause check behind the unsaved mark (ADR-0095 §D3 and §D4, PG-406).
+/// The pause check behind the unsaved mark (ADR-0096 §D3 and §D4, PG-406).
 extension VaultController {
     /// Clears the mark of every tab, in every column, whose text is back to what the disk holds.
     ///

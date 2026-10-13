@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0095 §D3 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 2 (PG-406).
+// ADR-0096 §D3 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 2 (PG-406).
 // R-08: save, close and quit decide on the exact compare, never on the mark. The mark is cheap and may
 // read dirty late; a decision that read it would keep a buffer undone back to its saved text in the quit
 // question. Nothing at run time tells the two apart before the pause fires, so the call sites are read.

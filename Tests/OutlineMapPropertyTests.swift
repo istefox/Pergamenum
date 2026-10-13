@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0095 §D6, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406, R-06).
+// ADR-0096 §D6, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406, R-06).
 //
 // The outline map, driven the way the coordinator drives it, against the parse as the oracle. Seeded random
 // edit sequences from the same generator and the same seeds `IncrementalStylerPropertyTests` runs, with the

@@ -35,7 +35,7 @@ extension NoteTextView {
     struct OutlineInputs {
         /// Called with the index entry the caret is in, only when it changes, so the caret's
         /// position does not have to travel up on every arrow key. The entry is read from the
-        /// coordinator's outline store (ADR-0095 §D7).
+        /// coordinator's outline store (ADR-0096 §D7).
         var onOutlineEntryChanged: ((Int?) -> Void)?
         /// A line the index asked to be taken to (M8). The fourth one-shot input, and it
         /// follows the same shape as the other three: consumed once, then reported as applied.
@@ -50,7 +50,7 @@ extension NoteTextView {
         /// opened from the editor and one opened from the sidebar are one gesture with two doors,
         /// both handing it an offset.
         var onToggleFold: ((Int) -> Void)?
-        /// The column's outline store (ADR-0095 §D6): the coordinator splices and rebuilds it, and the
+        /// The column's outline store (ADR-0096 §D6): the coordinator splices and rebuilds it, and the
         /// sidebar reads its rows. Nil where no column owns one (Oggi, Diario, a test); the coordinator
         /// then keeps a private one.
         var store: OutlineStore?
@@ -60,7 +60,7 @@ extension NoteTextView {
         /// The folded sections (M8) as the heading offsets the tab keeps (`NoteTab.foldedEntries`,
         /// `FoldStateOrdinalIndexStalenessTests`), which the coordinator turns into the ordinals
         /// `NoteFolding` reads through the store's map, against the text it just styled, so an edit
-        /// that moves a heading cannot re-target the wrong section (ADR-0095 §D7).
+        /// that moves a heading cannot re-target the wrong section (ADR-0096 §D7).
         var foldedOffsets: Set<Int> = []
     }
 

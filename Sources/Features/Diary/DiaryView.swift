@@ -108,7 +108,7 @@ struct DiaryView: View {
     private var editor: some View {
         NoteTextView(
             // The editor's own write goes through `editorWrote`, which skips the whole-day compare
-            // the `prose` setter makes for a write from elsewhere (ADR-0095 §D9).
+            // the `prose` setter makes for a write from elsewhere (ADR-0096 §D9).
             text: Binding(get: { controller.prose }, set: { controller.editorWrote($0) }),
             theme: theme,
             noteTitles: vault.index.allNotes.map(\.title),

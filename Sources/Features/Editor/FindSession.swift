@@ -37,7 +37,7 @@ final class FindSession {
     /// `NoteTextView` already use for focus.
     private(set) var focusRequest = 0
 
-    /// How many times `update(in:)` ran with the bar open (ADR-0095 §D5): a test seam that proves a
+    /// How many times `update(in:)` ran with the bar open (ADR-0096 §D5): a test seam that proves a
     /// closed bar costs a keystroke nothing.
     @ObservationIgnored private(set) var updates: Int = 0
 

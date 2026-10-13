@@ -26,7 +26,7 @@ struct EditorColumnView: View {
     let columnIndex: Int
 
     /// The find session may be handed in (a test passes its own to read `updates`); otherwise the
-    /// column makes one, as it always did (ADR-0095 §D5, plan Task 4).
+    /// column makes one, as it always did (ADR-0096 §D5, plan Task 4).
     init(columnIndex: Int, find: FindSession = FindSession()) {
         self.columnIndex = columnIndex
         _find = State(initialValue: find)

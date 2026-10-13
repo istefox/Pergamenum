@@ -58,7 +58,7 @@ struct NoteTab: Identifiable, Equatable, Sendable {
     /// Whether the tab belongs to a vault other than the open one.
     var isFromPreviousVault: Bool { previousVaultRoot != nil }
 
-    /// What a tab's chip in the tab bar draws, and nothing it does not (ADR-0095 §D5, PG-406): equal
+    /// What a tab's chip in the tab bar draws, and nothing it does not (ADR-0096 §D5, PG-406): equal
     /// across keystrokes, so a chip that stores it is not invalidated by typing.
     struct ChipFace: Equatable, Sendable {
         let id: UUID
@@ -124,7 +124,7 @@ extension VaultController {
         var relativePath: String
         var title: String
         /// The text as the editor has it, which may differ from disk while editing. Every
-        /// assignment draws a new `revision` (ADR-0095 §D1).
+        /// assignment draws a new `revision` (ADR-0096 §D1).
         var text: String {
             didSet { revision = .next() }
         }
@@ -139,14 +139,14 @@ extension VaultController {
         /// One value, not two optionals (ADR-0064 §D3): `nil` is no conflict, `.text` the
         /// note changed on disk, `.deleted` the note is gone from disk.
         var externalChangePending: VaultSession.ExternalChange.Content?
-        /// The change marker of `text` (ADR-0095 §D1, PG-406): a new one on every assignment.
+        /// The change marker of `text` (ADR-0096 §D1, PG-406): a new one on every assignment.
         private(set) var revision: TextRevision
         /// The marker `revision` had when the buffer was last known to equal the disk.
-        /// Equal to `revision` only where the two texts are known equal (ADR-0095 §D3).
+        /// Equal to `revision` only where the two texts are known equal (ADR-0096 §D3).
         private(set) var savedRevision: TextRevision
 
         /// The same memberwise labels as before the revisions, so every construction compiles
-        /// unchanged (ADR-0095 §D2). One compare, when the buffer is built: equal texts start
+        /// unchanged (ADR-0096 §D2). One compare, when the buffer is built: equal texts start
         /// linked, so a freshly opened note reads clean. Observers do not run in `init`.
         init(
             relativePath: String,
@@ -165,11 +165,11 @@ extension VaultController {
             savedRevision = text == savedText ? drawn : .next()
         }
 
-        /// The unsaved mark (ADR-0095 §D3): constant time, may read dirty late, never reads clean
+        /// The unsaved mark (ADR-0096 §D3): constant time, may read dirty late, never reads clean
         /// while the texts differ. Display only; a decision reads `differsFromSaved`.
         var hasUnsavedChanges: Bool { revision != savedRevision }
 
-        // The three places besides `init` that link `savedRevision` to `revision` (ADR-0095 §D3).
+        // The three places besides `init` that link `savedRevision` to `revision` (ADR-0096 §D3).
         // Here and not in `OpenNote+Revision.swift` because the setters are `private(set)`.
 
         /// Takes `text` as both the buffer and the disk's side (a catch-up that found them equal).
@@ -181,7 +181,7 @@ extension VaultController {
 
         /// Records that `written` reached disk, and links the mark when the buffer still holds it.
         /// When nothing was typed during the write the two strings share storage and the compare
-        /// costs nothing (ADR-0095 §D4).
+        /// costs nothing (ADR-0096 §D4).
         mutating func recordWrite(_ written: String) {
             savedText = written
             if text == written {

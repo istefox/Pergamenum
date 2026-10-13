@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0095 §D5 to §D10, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406,
+// ADR-0096 §D5 to §D10, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406,
 // R-02, R-04, R-05, R-07, R-10).
 //
 // Some of what makes a keystroke cheap is an absence that no counter can see: a view that names the

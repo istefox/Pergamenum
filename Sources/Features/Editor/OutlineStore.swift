@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-// ADR-0095 §D6 and §D7, plan Task 4 (PG-406).
+// ADR-0096 §D6 and §D7, plan Task 4 (PG-406).
 //
 // The outline of one column as an observable value: the map that moves with the edits, the rows the
 // sidebar draws from it, and the revision the map was last known to describe. A view that reads `rows`

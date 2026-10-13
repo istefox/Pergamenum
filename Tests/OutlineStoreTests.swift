@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0095 §D6 and §D7, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406,
+// ADR-0096 §D6 and §D7, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406,
 // R-06, R-07).
 //
 // The store is the observable half of the outline: the map that moves with the edits, the rows the sidebar

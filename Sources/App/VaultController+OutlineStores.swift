@@ -1,6 +1,6 @@
 import Foundation
 
-/// The registry of the columns' outline stores (ADR-0095 §D6, PG-406): one store per editor column,
+/// The registry of the columns' outline stores (ADR-0096 §D6, PG-406): one store per editor column,
 /// made where the column is made and dropped when the column closes. A store follows the column's
 /// storage, not a tab: a tab switch is a full restyle, which rebuilds it.
 extension VaultController {

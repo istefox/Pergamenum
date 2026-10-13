@@ -152,7 +152,7 @@ extension ScrolledEditorFixture {
     /// The fold the model would hold for `heading`: that heading's UTF-16 offset in the text as it is
     /// now (the key `NoteTab.foldedEntries` keeps), or nothing when the heading is no longer there.
     ///
-    /// Restated for ADR-0095 §D7 (PG-406, plan Task 4): this wrote the heading's ordinal into
+    /// Restated for ADR-0096 §D7 (PG-406, plan Task 4): this wrote the heading's ordinal into
     /// `outline.foldedEntries`, which the input no longer carries; the coordinator turns the offset into
     /// an ordinal itself. Which heading is folded, and when, is as it was.
     func fold(heading: String?) {
@@ -455,7 +455,7 @@ struct RestyleTwin {
         check("foldLayout", left.foldLayout, right.foldLayout)
         check("revealed", left.revealed, right.revealed)
         check("revealedSpans", left.revealedSpans, right.revealedSpans)
-        // ADR-0095 §D6 (plan Task 4): the outline the coordinator's store keeps is derived state too, and
+        // ADR-0096 §D6 (plan Task 4): the outline the coordinator's store keeps is derived state too, and
         // the full-restyle twin rebuilds it after every edit, so it is the oracle.
         check("outline", left.outline, right.outline)
         return found

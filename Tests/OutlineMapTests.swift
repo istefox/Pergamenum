@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0095 §D6, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406, R-06, R-07).
+// ADR-0096 §D6, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406, R-06, R-07).
 //
 // The outline map is a second reader of the rule `NoteOutline.entries(in:)` applies, so every assertion
 // here compares it with that function (and with `foldedOrdinals(ofOffsets:in:)` and

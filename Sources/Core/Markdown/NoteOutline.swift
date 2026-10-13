@@ -94,7 +94,7 @@ enum NoteOutline {
     }
 }
 
-// MARK: - The rule for one line (ADR-0095 §D6, PG-406)
+// MARK: - The rule for one line (ADR-0096 §D6, PG-406)
 
 extension NoteOutline {
     /// What one trimmed line says about the outline: a heading with its level and plain title, or an

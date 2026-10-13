@@ -1,4 +1,4 @@
-# ADR-0095: What follows a keystroke compares a revision, not the note
+# ADR-0096: What follows a keystroke compares a revision, not the note
 
 - Status: **planned**. It reaches `main` with its plan (`docs/plans/no-whole-note-term-on-the-update-path-pg-406.md`)
   and the root `SPEC.md` in a docs PR ahead of the code (`docs/adr/README.md` rule 2). It stays `planned` until
@@ -8,10 +8,12 @@
 - Date: 2026-10-12. Written against `93c17096`; re-dated on 2026-10-13 to `32cd8ed2`, the commit this build sits
   on (`git log -1 --format=%h HEAD`), which brought PG-387's note birth (`b429afb7`) in. Every line number below
   names that commit's tree, re-read there, unless the sentence says it names this build's code.
-- Number: `0095`. On 2026-10-12 the highest number on `origin/main` is `0094`, and no local or remote-tracking
-  ref holds `docs/adr/0095*` (`git ls-tree` over every ref, and `git log --all -- 'docs/adr/0095*'` printed
-  nothing). `0092` stays skipped for the reason ADR-0093's header records. Check again immediately before each
-  merge (rule 1), including the branches about to merge.
+- Number: `0096`. Drafted as `0095` on 2026-10-12, when the highest number on `origin/main` was `0094` and no
+  ref held `docs/adr/0095*`. On 2026-10-13 `origin/main` took `0095` for PG-392
+  (`0095-the-board-controller-lives-with-the-vault.md`, merged by PR #1000, `5ead20db`), so this record was
+  renumbered to `0096` before the code PR, with every reference in the sources, tests, plan and indexes.
+  `0092` stays skipped for the reason ADR-0093's header records. Check again immediately before each merge
+  (rule 1), including the branches about to merge.
 - Source: root `SPEC.md` (Approved 2026-10-12), "No term proportional to the note on the SwiftUI path of a
   keystroke (PG-406)", R-01 to R-13; ledger entry `PG-406` (#990). This record registers the SPEC's six
   decisions and does not reopen them. It settles the two design items the SPEC left to the plan: how a revision

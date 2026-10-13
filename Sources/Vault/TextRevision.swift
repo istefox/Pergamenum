@@ -1,7 +1,7 @@
 import Foundation
 import Synchronization
 
-/// A change marker for the open-note buffer's text (ADR-0095 §D1, PG-406).
+/// A change marker for the open-note buffer's text (ADR-0096 §D1, PG-406).
 ///
 /// Opaque and equatable: two buffers that differ in text never share one, and every assignment
 /// to a buffer's text draws a new one, so equality and change detection read this instead of the

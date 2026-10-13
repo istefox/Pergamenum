@@ -103,7 +103,7 @@ private func swapped(
             NoteTextView(
                 text: .constant(Self.note), theme: .emergency, noteTitles: [], tagSuggestions: [],
                 onFollowLink: { _ in },
-                // Restated for ADR-0095 §D7 (PG-406, plan Task 4): the entries' ranges and the folded
+                // Restated for ADR-0096 §D7 (PG-406, plan Task 4): the entries' ranges and the folded
                 // ordinals left `OutlineInputs`; the heading's offset (`# Uno` is at 0, the ordinal's
                 // old value) takes their place. The scenario and its expectation are unchanged.
                 outline: .init(onToggleFold: sink, foldedOffsets: [0])
@@ -252,7 +252,7 @@ private func swapped(
         let view = NoteTextView(
             text: .constant(Self.note), theme: .emergency, noteTitles: [], tagSuggestions: [],
             onFollowLink: { _ in },
-            // Restated for ADR-0095 §D6 and §D7 (PG-406, plan Task 4): the entries' ranges are no longer
+            // Restated for ADR-0096 §D6 and §D7 (PG-406, plan Task 4): the entries' ranges are no longer
             // handed in. The coordinator keeps a store of its own, built on first read from the text view's
             // string, because this fixture sets `textView.string` and moves the caret with no styling pass
             // in between. The scenario and its expected reports are unchanged.

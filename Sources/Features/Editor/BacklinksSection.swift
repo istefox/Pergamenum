@@ -12,7 +12,7 @@ struct BacklinksSection: View {
     @Environment(VaultController.self) private var vault
     @Environment(CommandActions.self) private var commandActions
 
-    /// The open note's title and path, and not the buffer (ADR-0095 §D5): typing changes neither,
+    /// The open note's title and path, and not the buffer (ADR-0096 §D5): typing changes neither,
     /// so a keystroke does not invalidate the section.
     let title: String
     let relativePath: String

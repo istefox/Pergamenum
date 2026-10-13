@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0095 §D8, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406).
+// ADR-0096 §D8, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406).
 //
 // `NoteDocument.frontmatter(in:)` reads the block at the top of a note without splitting the body, for
 // the inspector's category row, which parsed the whole note per body evaluation. Its contract is the

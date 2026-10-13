@@ -4,7 +4,7 @@ import SwiftUI
 import Testing
 @testable import Pergamenum
 
-// ADR-0095 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 1 (PG-406, R-01).
+// ADR-0096 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 1 (PG-406, R-01).
 //
 // The first test fixture to host `EditorColumnView`. A keystroke typed into its text view writes the
 // binding, and SwiftUI's update (the diff of the column's inputs, the column's body, `updateNSView`)
@@ -17,7 +17,7 @@ final class UpdatePathFixture {
     let vault: VaultController
     let textView: CompletingTextView
     let coordinator: NoteTextView.Coordinator
-    /// The pause the vault was built with, so a test fires it by hand (ADR-0095 §D4, plan Task 4).
+    /// The pause the vault was built with, so a test fires it by hand (ADR-0096 §D4, plan Task 4).
     let typingPause: any PauseScheduler
     /// The find session the column was built over, so a test reads `updates` and opens the bar.
     let find: FindSession

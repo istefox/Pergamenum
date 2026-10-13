@@ -24,7 +24,7 @@ import Testing
             noteTitles: [],
             tagSuggestions: [],
             onFollowLink: { _ in },
-            // Restated for ADR-0095 §D7 (PG-406, plan Task 4): `OutlineInputs` no longer carries the
+            // Restated for ADR-0096 §D7 (PG-406, plan Task 4): `OutlineInputs` no longer carries the
             // entries' ranges or the folded ordinals, so the scenario passes the folded heading's offset
             // instead. `# Uno` is at offset 0, so `folded` (entry 0) and its offset are the same number,
             // and the scenario and its expectations are as they were.

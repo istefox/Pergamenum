@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0095 §D3 and §D4 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 2
+// ADR-0096 §D3 and §D4 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 2
 // (PG-406). R-08: typing restarts the pause, the pause settles the unsaved marks of every tab in every
 // column, and save, close and quit never wait for it.
 //
@@ -104,7 +104,7 @@ private final class Ran {
         #expect(controller.unsavedMarkChecks == 2, "one exact compare for each tab whose mark was on")
     }
 
-    // Green today: a save links the revisions at once (ADR-0095 §D3) and never needs the pause.
+    // Green today: a save links the revisions at once (ADR-0096 §D3) and never needs the pause.
     @Test func aSaveClearsTheMarkWithoutThePause() async throws {
         let vault = try TemporaryVault()
         let pause = ManualPauseScheduler()
@@ -120,7 +120,7 @@ private final class Ran {
         #expect(quitOnDisk(vault.root, "A.md") == edited)
     }
 
-    // Save, close and quit decide on the exact answer (ADR-0095 §D3, ADR-0073 departure 15): a buffer
+    // Save, close and quit decide on the exact answer (ADR-0096 §D3, ADR-0073 departure 15): a buffer
     // undone back to its saved text is clean for all three before the pause has run.
     @Test func closeAndQuitDecideOnTheExactAnswer() async throws {
         let vault = try TemporaryVault()

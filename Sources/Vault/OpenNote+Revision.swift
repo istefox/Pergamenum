@@ -1,6 +1,6 @@
 import Foundation
 
-/// The read side of the open-note buffer's revisions (ADR-0095 §D2 and §D3, PG-406).
+/// The read side of the open-note buffer's revisions (ADR-0096 §D2 and §D3, PG-406).
 ///
 /// The three writers that link `savedRevision` to `revision` (`adopt(_:)`, `recordWrite(_:)`,
 /// `settleUnsavedMark()`) live beside the stored properties in `NoteTab.swift`: the setters are
@@ -14,7 +14,7 @@ extension VaultController.OpenNote {
         revision == savedRevision ? false : text != savedText
     }
 
-    /// Equality by revision, never by text (ADR-0095 §D2): constant in the note's size. Two buffers
+    /// Equality by revision, never by text (ADR-0096 §D2): constant in the note's size. Two buffers
     /// holding the same text compare unequal, which for SwiftUI means one more body evaluation,
     /// never a wrong one.
     static func == (lhs: VaultController.OpenNote, rhs: VaultController.OpenNote) -> Bool {

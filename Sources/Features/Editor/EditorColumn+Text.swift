@@ -161,7 +161,7 @@ extension EditorColumnView {
             onToggleFold: { entry in focused { vault.toggleFold(entry) } },
             // The column's store, which the sidebar reads too, so the editor and the index cannot
             // disagree about what the sections are; the revision is read live when a pass stamps it,
-            // and the folds go in as the offsets the tab keeps (ADR-0095 §D6, §D7). Nothing here
+            // and the folds go in as the offsets the tab keeps (ADR-0096 §D6, §D7). Nothing here
             // parses the note.
             store: vault.columns.indices.contains(columnIndex)
                 ? vault.registeredOutlineStore(forColumn: vault.columns[columnIndex].id) : nil,
@@ -314,7 +314,7 @@ private struct FindKeeping: ViewModifier {
     let find: FindSession
     let navigation: Navigation
     /// What the search watches for a change of the note: a revision, compared in constant time,
-    /// never the whole text (ADR-0095 §D5).
+    /// never the whole text (ADR-0096 §D5).
     let revision: TextRevision
     /// The note's text, read only when a handler runs.
     let text: () -> String

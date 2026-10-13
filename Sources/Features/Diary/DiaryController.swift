@@ -24,7 +24,7 @@ final class DiaryController {
     /// Settable because the editor writes it; every change goes through `didSet`, which counts
     /// it as an edit and schedules the save. A load is not an edit and compares nothing; a write
     /// from outside the editor compares first, so an equal value schedules no save; the editor's
-    /// own write (`editorWrote(_:)`) is an edit without the compare (ADR-0095 §D9).
+    /// own write (`editorWrote(_:)`) is an edit without the compare (ADR-0096 §D9).
     var prose: String = "" {
         didSet {
             guard isLoaded else { return }
@@ -36,7 +36,7 @@ final class DiaryController {
             scheduleSave()
         }
     }
-    /// How many times `prose`'s observer compared the whole day against its old value (ADR-0095 §D9,
+    /// How many times `prose`'s observer compared the whole day against its old value (ADR-0096 §D9,
     /// PG-406): a test seam that proves the editor's own write costs nothing.
     @ObservationIgnored private(set) var proseCompares: Int = 0
     /// Raised by `editorWrote(_:)` for the one assignment it makes, read by `prose`'s observer.
@@ -48,7 +48,7 @@ final class DiaryController {
     /// Raised by the toolbar's date button.
     var isChoosingDate = false
 
-    /// The editor wrote `prose` (ADR-0095 §D9): an edit, recorded and saved like any other, without
+    /// The editor wrote `prose` (ADR-0096 §D9): an edit, recorded and saved like any other, without
     /// comparing the whole day against what it replaced. An editor write of the same characters
     /// schedules a save of the same bytes, which the compare used to skip.
     func editorWrote(_ prose: String) {

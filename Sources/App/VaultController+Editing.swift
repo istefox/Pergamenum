@@ -169,7 +169,7 @@ extension VaultController {
             if tab.note.externalChangePending == .deleted {
                 tab.note.savedText = ""
                 // The assignment drew a new `savedRevision`; an already empty buffer is equal to it
-                // and would read dirty with no typing pause scheduled to clear it (ADR-0095 §D3).
+                // and would read dirty with no typing pause scheduled to clear it (ADR-0096 §D3).
                 tab.note.settleUnsavedMark()
             }
             tab.note.externalChangePending = nil

@@ -5,7 +5,7 @@
 - **SPEC:** root `SPEC.md`, "No term proportional to the note on the SwiftUI path of a keystroke (PG-406)", Status
   Approved (2026-10-12), R-01 to R-13. Its `## Decisions`, `## Constraints` and `## Test seams` are settled
   input, and no task below reopens them. `/ship` archives it under `docs/archive/specs/`.
-- **ADR outcome: new ADR**, `docs/adr/0095-what-follows-a-keystroke-compares-a-revision-not-the-note.md`, written
+- **ADR outcome: new ADR**, `docs/adr/0096-what-follows-a-keystroke-compares-a-revision-not-the-note.md`, written
   `planned` (the SPEC's "ADR needed" constraint, R-12).
   - It extends ADR-0094 §D9, keeps ADR-0073's departure 15 on the exact answer (D3), and adds the outline as an
     ADR-0091 §D6 holder under §D3's rule and §D8's kill switch, with no new invalidation case (D6). It keeps
@@ -25,7 +25,7 @@
   - It flips to `accepted` in the first docs change after the code PR merges and G-ceiling-406 and G-hand-405 are
     answered (rule 2).
   - **`CLAUDE.md`'s `## ADR index` needs one line**, pasted from `scripts/adr-index.py` with the docs PR:
-    `- ADR-0095 — What follows a keystroke compares a revision, not the note`. Until then
+    `- ADR-0096 — What follows a keystroke compares a revision, not the note`. Until then
     `scripts/adr-index.py --check` reports it missing.
 - **Governing ADRs, registered and not reopened:**
   - ADR-0094: §D1 to §D3 (the `OffsetRanges` shape and `StorageEdit`'s rule), §D9 and "Ledger entries" (`ModelSync`).
@@ -34,10 +34,10 @@
   - ADR-0073: departure 15 (catch-up on a dirty buffer whose text is the incoming one), §D4 the save door.
   - ADR-0082: §D7, the Release hand check by the person; §D9, the bench and the person's ceilings.
   - ADR-0074 §D1: the outline is a controller of its own. ADR-0045: a widened `private` names its reader.
-- **Baseline.** `main` at `93c17096`, which is `origin/main`. `SPEC.md`, this plan and both ADR-0095 drafts are
+- **Baseline.** `main` at `93c17096`, which is `origin/main`. `SPEC.md`, this plan and both ADR-0096 drafts are
   untracked.
 - **Delivery.**
-  - A docs PR carries `SPEC.md`, this plan, ADR-0095 and the index line. Its body says "refs PG-406".
+  - A docs PR carries `SPEC.md`, this plan, ADR-0096 and the index line. Its body says "refs PG-406".
   - One code PR on `fix/no-whole-note-term-on-the-update-path-pg-406`, cut from `main` after the docs branch lands,
     built in one `/build` session. Its body carries `Closes #990` and no other closing keyword, negated or not
     (the PR #964 incident).
@@ -71,7 +71,7 @@
 1. **`OpenNote` is built directly in 46 places in 22 test files** and once in the sources
    (`VaultController+Tabs.swift:400`). No source or test compares two `OpenNote`, `NoteTab` or `EditorColumn`
    values with `==`; only `openNote == nil`. An explicit `init` with the memberwise labels keeps all of them
-   compiling (ADR-0095 §D2).
+   compiling (ADR-0096 §D2).
 2. **`canRun(.save)` reads `hasUnsavedChanges`** (`CommandActions+CanRun.swift:35`), and it is evaluated per body:
    by the File menu (`VaultCommands.swift:102`) and by the column for every app entry of the slash menu
    (`EditorColumn+Text.swift:185` -> `EditorCommand.all(canRun:)`, `EditorCommand.swift:214`). It reads the mark.
@@ -102,11 +102,11 @@
    `VaultController+Editing.swift:151-152` (`acceptExternalChange`), `:170` (`keepLocalVersion`, `savedText = ""`),
    `VaultController+TabFollowUps.swift:51` (the writer's catch-up), `NoteTab.swift:149-150` (`catchUp`). With a
    `didSet` on `text` every one of them makes a new revision without being touched; only the ones that know the
-   texts are equal link the revisions (ADR-0095 §D3).
+   texts are equal link the revisions (ADR-0096 §D3).
 10. **The save path keeps one storage.** `saveTab` reads `note.text` before its `await`
     (`VaultController+Editing.swift:60`) and `VaultSession.write` builds `WriteResult(path:text:)` from that value
     and announces it before returning (`VaultSession.swift:702-706`), so the writer's catch-up can link with a
-    compare that costs nothing when nothing was typed (ADR-0095 §D4).
+    compare that costs nothing when nothing was typed (ADR-0096 §D4).
 11. **`NoteTab.foldedEntries` holds offsets that are never shifted** (`NoteTab.swift:22`); a fold whose heading moves
     is dropped by `foldedOrdinals(ofOffsets:in:)` today. That behaviour stays (`PG-402` is outside); the store's
     `ordinals(ofOffsets:)` answers the same.
@@ -226,7 +226,7 @@ starts `restyle-budget-update`, so no other table's pattern matches it.
 - `scripts/editor-restyle-bench.sh --large-only --runs 3 --update`
 
 Report both outputs verbatim, with `sw_vers`, `xcodebuild -version` and the Mac model. Task 7 writes them into
-ADR-0095. If a 1 MB update keystroke on the old code runs past several seconds per key, say so and report the
+ADR-0096. If a 1 MB update keystroke on the old code runs past several seconds per key, say so and report the
 runs you could take.
 
 ### Task 2 — Tester: the revision, the mark and the pause, declared and red (R-03, R-08, R-09)
@@ -253,7 +253,7 @@ Signatures:
 Red: yes
 
 **Declarations with neutral bodies, never `fatalError`.** `TextRevision.swift` imports Foundation and
-`Synchronization` and carries a header naming ADR-0095 §D1; `next()` answers one constant value. `revision` and
+`Synchronization` and carries a header naming ADR-0096 §D1; `next()` answers one constant value. `revision` and
 `savedRevision` are stored on `OpenNote` in `NoteTab.swift` (a stored property cannot live in an extension), the
 explicit `init` sets both to `next()`; the methods sit in `OpenNote+Revision.swift`. `hasUnsavedChanges` keeps
 today's body, `differsFromSaved` answers `text != savedText`, `adopt` assigns both texts, `recordWrite` assigns
@@ -310,7 +310,7 @@ today's body, `differsFromSaved` answers `text != savedText`, `adopt` assigns bo
 
 **One restated test (R-09).** `VaultControllerExternalDeletionTests.swift:183-185`, `aBufferUndoneToCleanCanStillBeKeptAndSaved`,
 undoes back to the saved text and requires a clean buffer at once. Insert `controller.settleUnsavedMarks()` before
-the `#require`, with a comment naming ADR-0095 §D3: the mark clears at the pause now, and the test's point
+the `#require`, with a comment naming ADR-0096 §D3: the mark clears at the pause now, and the test's point
 (`keepLocalVersion` on a deleted note turns a clean buffer dirty) is unchanged. Green before Task 3 and after it.
 No other test asserts clean after an undo back (grep of the 84 `hasUnsavedChanges` lines in 23 test files); if
 Task 3 turns another red for that reason only, it stops and reports rather than restating.
@@ -326,7 +326,7 @@ Red: no
 
 1. **`TextRevision.next()`**: one `private static let counter = Atomic<UInt64>(0)`,
    `wrappingAdd(1, ordering: .relaxed).newValue`. No lock, no actor.
-2. **`OpenNote`** (ADR-0095 §D1 to §D3):
+2. **`OpenNote`** (ADR-0096 §D1 to §D3):
    - `var text: String { didSet { revision = .next() } }`; `var savedText: String { didSet { savedRevision = .next() } }`.
    - The explicit `init` draws one revision for `text`, and sets `savedRevision` to it when `text == savedText`,
      otherwise to a second draw. Observers do not run in `init`.
@@ -407,12 +407,12 @@ them. `DerivedStateSnapshot.outline` is filled with `[]`. `outlineStore(forColum
 complete body here. `UpdatePathFixture` gains the two parameters and passes them on.
 
 **Restated tests, named with their reason (R-09).** Each keeps its scenario and its expected outcome; only the
-input shape changes, because ADR-0095 §D7 removes the ranges and the ordinals from `OutlineInputs`:
+input shape changes, because ADR-0096 §D7 removes the ranges and the ordinals from `OutlineInputs`:
 
 - `FoldBadgeClickTests.swift:21-28` and `EditorControllerReadTimingRemainingTests.swift:102-107`: drop
   `outlineRanges:`, pass `foldedOffsets:` the heading's offset (0 for `# Uno`, so the value does not change).
 - `EditorControllerReadTimingRemainingTests.swift:250-254` (`OutlineEntryCallbackFiresOnChangeOnly`): drop
-  `outlineRanges:`. The coordinator's own store answers (ADR-0095 §D6, built on first read).
+  `outlineRanges:`. The coordinator's own store answers (ADR-0096 §D6, built on first read).
 - `ScrolledEditorFixture.swift:153-159` (`fold(heading:)`): write the heading's UTF-16 offset into
   `outline.foldedOffsets` instead of its ordinal into `foldedEntries`. `RestyleTwin.differences` compares
   `outline` and `RestyleTwin.emptyFields` names it when empty.
@@ -510,7 +510,7 @@ Red: no
    `closingDelimiterIndex(in:)` calls the new sequence form, so all eight readers share one delimiter test
    (ADR-0065 §D1.2, PG-276; item 15). The sequence form takes a different label on purpose: an overload under
    `in:` would resolve the array form's own call to itself.
-2. **`OutlineMap`** (ADR-0095 §D6): `init(text:)`/`rebuild` from `NoteOutline.entries(in:)`; `apply` through
+2. **`OutlineMap`** (ADR-0096 §D6): `init(text:)`/`rebuild` from `NoteOutline.entries(in:)`; `apply` through
    `OffsetRanges.apply(_:partial:)`, the partial rule chosen by the property test and the caret test (start from
    `.clip`: an entry whose line is edited keeps its start until the splice re-reads it); `splice` reads each line of
    `dirty`, skips the lines intersecting a fence, trims and calls `entry(inLine:)`, then `OffsetRanges.splice`;
@@ -583,7 +583,7 @@ was run on `93c17096`:
   `QuitCoordinatorTests`, `VaultSwitchTests`, `NoteTabTests`, `TabSaveTests`, `VaultTests`, `QuitVaultSwitchTests`,
   `ColumnCloseTests`, `NoteTabGestureTests`, `VaultControllerMoveNoteTests`, `VaultControllerReconcileTests`;
   `CardFoldTests`, `NoteSaveIndicatorTests` and the three `Workspace*` files read other types' flags and are
-  unaffected. Each reads clean after a save, a catch-up or an open, which link at once (ADR-0095 §D3); the one that
+  unaffected. Each reads clean after a save, a catch-up or an open, which link at once (ADR-0096 §D3); the one that
   reads clean after an undo back was restated in Task 2.
 - `OpenNote(` constructions: 46 in 22 test files, compiling unchanged through the explicit `init`.
 - `OutlineInputs` and `OutlinePane(`: item 12, restated in Task 4; `NoteTextViewUpdatePinsTests.swift:67` unchanged.
@@ -591,7 +591,7 @@ was run on `93c17096`:
   `NoteTabBar.swift:46` only.
 - `closingDelimiterIndex(in:)`: the seven callers of item 15, unchanged.
 - `foldedOrdinals(ofOffsets:in:)` stays (the fresh path, `FoldStateOrdinalIndexStalenessTests`).
-- **Any red is diagnosed first.** It is restated only with its reason written into ADR-0095, never disabled or
+- **Any red is diagnosed first.** It is restated only with its reason written into ADR-0096, never disabled or
   weakened. The golden corpus, the hosted twin and the property tests are never restated.
 
 **R-09.** Run `StylerGoldenTests` (byte-identical), then the files in `Tests:`, then the **full unit suite**
@@ -611,7 +611,7 @@ app-owned term the profile shows as it appears.
 
 ### Task 7 — Coder: the ADR's numbers and pointers, the index, the ledger and the gates (R-01, R-11, R-12, R-13)
 Owner: coder
-Files: docs/adr/0095-what-follows-a-keystroke-compares-a-revision-not-the-note.md, docs/adr/0094-an-edit-moves-a-step-not-every-offset-below-it.md, docs/adr/0091-a-keystroke-restyles-the-paragraph-it-touched.md, docs/adr/0073-quit-reviews-unsaved-notes.md, docs/adr/INDEX.md, CLAUDE.md, Tests/RestyleBudgetSupport+Update.swift, Tests/EditorUpdatePathBudgetTests.swift
+Files: docs/adr/0096-what-follows-a-keystroke-compares-a-revision-not-the-note.md, docs/adr/0094-an-edit-moves-a-step-not-every-offset-below-it.md, docs/adr/0091-a-keystroke-restyles-the-paragraph-it-touched.md, docs/adr/0073-quit-reviews-unsaved-notes.md, docs/adr/INDEX.md, CLAUDE.md, Tests/RestyleBudgetSupport+Update.swift, Tests/EditorUpdatePathBudgetTests.swift
 Tests: EditorUpdatePathBudgetTests.swift, RestyleBudgetSupport+Update.swift
 Signatures:
 - RestyleBudget.updateCeilings — `static let updateCeilings: [Case: Double]`
@@ -619,29 +619,29 @@ Signatures:
 - scripts/check-adr-references.py — exits 0 after `git fetch origin`
 Red: no
 
-1. **ADR-0095 "Measured" (R-01, R-12).** A section after D11: the six update rows and the editor-only rows, before
+1. **ADR-0096 "Measured" (R-01, R-12).** A section after D11: the six update rows and the editor-only rows, before
    (Task 1) and after (Task 6), the share each adds, the counter values, the Mac, the OS, the Xcode and the
    configuration; the Release profile's table and the terms it names. Debug numbers include the counters'
    increments; the Release profile does too, at one increment per event.
 2. **Pointers, one line each; history is not rewritten (R-12).**
-   - ADR-0094 §D9 and its "Ledger entries" first bullet: "What SwiftUI does after the write is removed by ADR-0095;
+   - ADR-0094 §D9 and its "Ledger entries" first bullet: "What SwiftUI does after the write is removed by ADR-0096;
      `ModelSync` is unchanged."
-   - ADR-0073, implementation notes, departure 15: "Decided on the exact answer since ADR-0095 §D3
+   - ADR-0073, implementation notes, departure 15: "Decided on the exact answer since ADR-0096 §D3
      (`differsFromSaved`); `hasUnsavedChanges` is a mark that clears at the pause."
-   - ADR-0091 §D6, after its holder tables: "The outline is a holder since ADR-0095 §D6, shifted and spliced by
+   - ADR-0091 §D6, after its holder tables: "The outline is a holder since ADR-0096 §D6, shifted and spliced by
      this section's rule and rebuilt by §D8's kill switch."
-3. **Indexes.** `docs/adr/INDEX.md` gets ADR-0095's summary line in its own format, after ADR-0094's. `CLAUDE.md`'s
+3. **Indexes.** `docs/adr/INDEX.md` gets ADR-0096's summary line in its own format, after ADR-0094's. `CLAUDE.md`'s
    `## ADR index` holds the line `scripts/adr-index.py` prints, pasted with the docs PR; here it is only checked.
    `scripts/adr-index.py --check` and `scripts/check-adr-references.py` pass after `git fetch origin`.
 4. **G-ceiling-406 (R-01), HITL.** Put the six update rows, their editor-only rows and the shares in front of the
-   person, with ADR-0095's Gates proposal (20 ms on the share, a ceiling on the total like PG-401's). Write
+   person, with ADR-0096's Gates proposal (20 ms on the share, a ceiling on the total like PG-401's). Write
    `RestyleBudget.updateCeilings` only with the values they give, and assert them in
    `aKeystrokeThroughSwiftUIsUpdateIsPrinted` for the rows that run. If the person puts the ceiling on the share,
    the test measures the editor-only row of the same case in the same run (the shape of
-   `aKeystrokeInTheMiddleStaysUnderItsCeiling`) and asserts the difference. Record the answer in ADR-0095's Gates.
+   `aKeystrokeInTheMiddleStaysUnderItsCeiling`) and asserts the difference. Record the answer in ADR-0096's Gates.
 5. **Ledger entries (the SPEC's third open item).** Through `/project-tasks`, never by editing `TODO.md` by hand:
-   each app-owned term Task 6's profile names that ADR-0095 does not remove, its ID written into ADR-0095
-   "Ledger entries". If `/project-tasks` cannot be run from the building agent, say so in ADR-0095 and leave the
+   each app-owned term Task 6's profile names that ADR-0096 does not remove, its ID written into ADR-0096
+   "Ledger entries". If `/project-tasks` cannot be run from the building agent, say so in ADR-0096 and leave the
    filing to the person at the merge gate.
 6. **G-hand-405, repeated (R-11), HITL, the person on a Release build.**
    - Build with `xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -configuration Release
@@ -651,7 +651,7 @@ Red: no
    - Hand over R-11's checklist verbatim (type at the end and in the middle, Enter, a wrapping sentence, Cmd+Down,
      scroll to the end, click low in the pane, undo and redo, an IME composition, near the top then at the end
      three times), plus a `sample` of the process while typing.
-   - The verdict goes into ADR-0095's Gates and, as a dated line, under ADR-0094's G-hand-405 bullet
+   - The verdict goes into ADR-0096's Gates and, as a dated line, under ADR-0094's G-hand-405 bullet
      (`0094-…md:570-585`), which records the not-passed run (R-13's second half).
 7. **PG-406 (R-13).** Closed by the code PR: `Closes #990` in its body and no other closing keyword; the ledger
    entry closed through `/project-tasks` at the merge.
@@ -664,9 +664,9 @@ Red: no
   Debug and 55 ms Release at 1 MB, about 94% TextKit's (`PG-404`, ADR-0094 "Measured after"). The proposal: 20 ms
   on the share the update path adds, ceilings on the total like PG-401's. Decided at PLAN APPROVAL or at
   G-ceiling-406; nothing in Tasks 1 to 6 depends on the answer.
-- **The pause interval (user decision).** 500 ms proposed (ADR-0095 §D4).
+- **The pause interval (user decision).** 500 ms proposed (ADR-0096 §D4).
 - **Diario's reading (user decision).** `editorWrote(_:)` makes an editor write of identical characters schedule a
-  save of identical bytes (ADR-0095 §D9). The alternative is to keep Diario's compare and file a ledger entry.
+  save of identical bytes (ADR-0096 §D9). The alternative is to keep Diario's compare and file a ledger entry.
 - **The perimeter reading (user decision).** Items 2 to 6 of "What reading the tree added" are taken in under the
   Perimeter decision. If the person reads it more narrowly, the dropped items get ledger entries in Task 7 step 5
   and their source guards leave Task 4.
@@ -679,7 +679,7 @@ Red: no
   (`AttachmentChipMenuTests.swift:127`, `QuickLookFocusTests.swift:245`). Not this plan's to fix silently: if the
   person agrees at PLAN APPROVAL, Task 7 step 2 relabels the two bullets and files the open caret-jump term through
   `/project-tasks`.
-- **Two ADR-0095 drafts in the tree.** Another writer produced
+- **Two ADR-0096 drafts in the tree.** Another writer produced
   `docs/adr/0095-a-keystrokes-update-compares-a-revision-not-the-note.md` at the same time, and was still changing
   it while this plan was written. The person keeps one; the other is removed by the person or the orchestrator,
   never by an agent of this plan.
@@ -705,7 +705,7 @@ Red: no
   configuration, so no `#if DEBUG` symbol is reached from a test.
 - **ADR number collision.** `0095` is free today; re-check before each merge (Task 7 step 8).
 - **HITL gates:**
-  - PLAN APPROVAL: this plan, ADR-0095, which of the two ADR-0095 drafts survives, the R-01 reading, 500 ms, the
+  - PLAN APPROVAL: this plan, ADR-0096, which of the two ADR-0096 drafts survives, the R-01 reading, 500 ms, the
     Diario reading, the perimeter reading, the PG-407/PG-408 relabel;
   - commit and push of the docs branch and of the code branch;
   - G-ceiling-406 (Task 7 step 4);
@@ -723,7 +723,7 @@ CHECK-CMD CANDIDATE: NONE
 ## Build result (2026-10-13)
 
 BUILD · DONE WITH WARNINGS
-Files: 79 changed (9 new Sources, ADR-0095 new, tests new or restated); Project.swift and Tuist/Package.swift unchanged
+Files: 79 changed (9 new Sources, ADR-0096 new, tests new or restated); Project.swift and Tuist/Package.swift unchanged
 Tests: PergamenumTests green, 6720 tests in 414 suites, 5 known issues (R-15 harness, theHarnessWindowRefusesFocusAndEveryCallThatWouldShowIt); golden corpus (119 cases) identical
 Review: sonnet, safe; opus, safe (4 rounds, no BLOCKER or MAJOR in any)
 Coverage:
@@ -734,7 +734,7 @@ Deferred: 0
 Dropped: 7 (fix-hunk 2, nit 2, unlocated 1, post-sweep 2)
 Dispatch: Round 0 (red): tester — Task 2, tester — Task 4
 Dispatch: Round 1: debugger — keepLocalVersion settle (VaultController+Editing.swift:169) (reviewer: sonnet); coder — 7 local MINOR fixes
-Dispatch: Round 2: coder — registry test for addColumn, ADR-0095 D3/D4 rewording, footer fallback to a fresh store, gate wording (reviewer: sonnet, opus)
+Dispatch: Round 2: coder — registry test for addColumn, ADR-0096 D3/D4 rewording, footer fallback to a fresh store, gate wording (reviewer: sonnet, opus)
 Dispatch: Round 3 (sweep): coder — 7 in-diff candidates and C1
 INFO: review escalated, size: 79 changed files, threshold 20
 INFO: Task 1 (tester, green) ran alone before the red phase, on the old code, as the plan orders (R-01 "before" numbers)
@@ -750,28 +750,28 @@ FIX	local	**MINOR** [other] Sources/App/VaultController.swift:334 — close() re
 FIX	local	**MINOR** [other] Tests/UnsavedMarkSourceGuardTests.swift:16 — decisionFiles omits Sources/App/VaultController+NoteBirth.swift, whose two decision sites (lines 105 and 152) this diff moved to differsFromSaved, so a regression there would pass the guard. Fix: add the file with 2 sites. (reviewer: sonnet)	coder
 FIX	local	**MINOR** [other] Sources/App/VaultController+VaultSwitch.swift:85 — A vault switch replaces every column without dropping its outline store, leaking one OutlineStore per column. Fix: outlineStores.removeAll() beside the columns reset, plus a registry test for the switch. (reviewer: opus)	coder
 FIX	local	**MINOR** [other] Sources/App/PauseScheduler.swift:10 — PauseScheduler.cancel() has no caller, so a pending unsaved-mark settle survives close() and switchVault(to:). Fix: cancel the pause where the vault is closed or switched, or drop the requirement. (reviewer: opus)	coder
-FIX	local	**MINOR** [plan-deviation] Tests/OutlineStoreTests.swift:97-106 — The per-seed non-vacuity floor was weakened from half the steps to a quarter with its reason only in the test, while the plan requires a restated test's reason in ADR-0095, which records none. Fix: add a Restated tests entry to ADR-0095, or retune the seeds so the original floor holds. (reviewer: opus)	coder
-FIX	local	**MINOR** [plan-deviation] Sources/Features/Editor/NoteTextView+Update.swift:60 — The added modelSync.wrote(text) is outside the plan's step and contradicts ADR-0095 D8's claim that ModelSync is untouched, though it is sound. Fix: record the new call in D8 or remove it. (reviewer: opus)	coder
+FIX	local	**MINOR** [plan-deviation] Tests/OutlineStoreTests.swift:97-106 — The per-seed non-vacuity floor was weakened from half the steps to a quarter with its reason only in the test, while the plan requires a restated test's reason in ADR-0096, which records none. Fix: add a Restated tests entry to ADR-0096, or retune the seeds so the original floor holds. (reviewer: opus)	coder
+FIX	local	**MINOR** [plan-deviation] Sources/Features/Editor/NoteTextView+Update.swift:60 — The added modelSync.wrote(text) is outside the plan's step and contradicts ADR-0096 D8's claim that ModelSync is untouched, though it is sound. Fix: record the new call in D8 or remove it. (reviewer: opus)	coder
 FIX	local	**MINOR** [other] Sources/Features/Editor/NoteListPane+Footer.swift:54 — The outline-store registry is mutated from inside a view body (also EditorColumn+Text.swift:166), against the pure-body agreement. Fix: create a column's store where the column is created and read a non-mutating lookup in the body. (reviewer: opus)	coder
 FIX	swept	**NIT** Sources/Features/Editor/NoteTextView+Transclusion.swift:29 — Comments still describe the deleted outlineRanges input (also FormattingTextView+Clicks.swift:161). Rewrite them to name the outline store. (reviewer: opus)
 FIX	swept	**NIT** Sources/Features/Editor/OutlineMap.swift:122 — level(ofEntry:)'s doc says level 1 for an embed with no heading above, while it answers 2. Reword to match items. (reviewer: opus)
 FIX	local	**MINOR** [other] Tests/OutlineStoreRegistryTests.swift:36 — No test proves a column-creation door registers the store a view body reads: the split tests create stores through outlineStore(forColumn:) which creates on demand, so removing the registration in addColumn still passes. Fix: after splitEditor() assert registeredOutlineStore(forColumn:) is non-nil for both columns and outlineStores.count == 2 before any creating call. (reviewer: sonnet, opus)	coder
-FIX	local	**MINOR** [other] docs/adr/0095-what-follows-a-keystroke-compares-a-revision-not-the-note.md:147 — D3 says keepLocalVersion's savedText assignment leaves the mark on, but it now calls settleUnsavedMark() and clears the mark for an empty buffer; the line citation :170 is also stale. Fix: reword to say it assigns "" then settles, staying dirty only for a non-empty buffer. (reviewer: sonnet)	coder
-FIX	local	**MINOR** [other] docs/adr/0095-what-follows-a-keystroke-compares-a-revision-not-the-note.md:153 — The D3 reader table and the 93c17096 baseline omit the VaultController+NoteBirth.swift decision sites (:105 sourceIsDirty, :152 settledSession) that now read differsFromSaved and are in the guard list. Fix: add a note-birth row reading exact and re-date the baseline to 32cd8ed2. (reviewer: sonnet)	coder
-FIX	swept	**NIT** docs/adr/0095-what-follows-a-keystroke-compares-a-revision-not-the-note.md:185 — D4 does not record that close() and switchVault(to:) cancel typingPause. Fix: add one sentence. (reviewer: sonnet)
+FIX	local	**MINOR** [other] docs/adr/0096-what-follows-a-keystroke-compares-a-revision-not-the-note.md:147 — D3 says keepLocalVersion's savedText assignment leaves the mark on, but it now calls settleUnsavedMark() and clears the mark for an empty buffer; the line citation :170 is also stale. Fix: reword to say it assigns "" then settles, staying dirty only for a non-empty buffer. (reviewer: sonnet)	coder
+FIX	local	**MINOR** [other] docs/adr/0096-what-follows-a-keystroke-compares-a-revision-not-the-note.md:153 — The D3 reader table and the 93c17096 baseline omit the VaultController+NoteBirth.swift decision sites (:105 sourceIsDirty, :152 settledSession) that now read differsFromSaved and are in the guard list. Fix: add a note-birth row reading exact and re-date the baseline to 32cd8ed2. (reviewer: sonnet)	coder
+FIX	swept	**NIT** docs/adr/0096-what-follows-a-keystroke-compares-a-revision-not-the-note.md:185 — D4 does not record that close() and switchVault(to:) cancel typingPause. Fix: add one sentence. (reviewer: sonnet)
 FIX	local	**MINOR** [other] Sources/Features/Editor/NoteListPane+Footer.swift:19 — The footer drops the whole INDICE section when the focused column has no registered store, so a registry regression reads as a note without headings. Fix: fall back to OutlineStore(text: note.text) instead of hiding the pane. (reviewer: opus)	coder
-FIX	local	**MINOR** [other] docs/adr/0095-what-follows-a-keystroke-compares-a-revision-not-the-note.md:526 — The plan-approval gate is still written as an open choice (500 ms, the Diario reading) though the code implements one branch of each. Fix: record the answer and its date in that bullet, as section C1 does for G-hand-405. (reviewer: opus)	coder
+FIX	local	**MINOR** [other] docs/adr/0096-what-follows-a-keystroke-compares-a-revision-not-the-note.md:526 — The plan-approval gate is still written as an open choice (500 ms, the Diario reading) though the code implements one branch of each. Fix: record the answer and its date in that bullet, as section C1 does for G-hand-405. (reviewer: opus)	coder
 FIX	swept	**NIT** Sources/Features/Editor/NoteListPane+Footer.swift:59 — describing(_:) relies on a comment to stay out of view bodies. Make it a function taking the note so the constraint is structural. (reviewer: opus)
-DROP	fix-hunk	**MINOR** [style] docs/adr/0095-what-follows-a-keystroke-compares-a-revision-not-the-note.md:251 — settleBaseline is cited as :762, this build's line (32cd8ed2 has it at :760), while the neighbouring :823 is the 32cd8ed2 line; the section mixes two trees. Fix: cite :760 or say "in this build". (reviewer: sonnet, opus)
-FIX	swept	**MINOR** [style] docs/adr/0095-what-follows-a-keystroke-compares-a-revision-not-the-note.md:222 — D5 says closingDelimiterIndex(in:) gains an overload, but the code adds a differently labelled sibling closingDelimiterIndex(inLines:) and its own comment says it avoided an overload. Fix: reword the ADR to match. (reviewer: sonnet)
-DROP	fix-hunk	**MINOR** [style] docs/adr/0095-what-follows-a-keystroke-compares-a-revision-not-the-note.md:124 — The claim of 46 OpenNote constructions in 22 test files does not reproduce: 32cd8ed2 has 15 in 10 files. Fix: recount and restate, or drop the number. (reviewer: sonnet)
-FIX	swept	**NIT** docs/adr/0095-what-follows-a-keystroke-compares-a-revision-not-the-note.md:83 — TodayView.swift:215 is the enclosing if-let; the NoteTextView( construction is at :216. (reviewer: sonnet)
+DROP	fix-hunk	**MINOR** [style] docs/adr/0096-what-follows-a-keystroke-compares-a-revision-not-the-note.md:251 — settleBaseline is cited as :762, this build's line (32cd8ed2 has it at :760), while the neighbouring :823 is the 32cd8ed2 line; the section mixes two trees. Fix: cite :760 or say "in this build". (reviewer: sonnet, opus)
+FIX	swept	**MINOR** [style] docs/adr/0096-what-follows-a-keystroke-compares-a-revision-not-the-note.md:222 — D5 says closingDelimiterIndex(in:) gains an overload, but the code adds a differently labelled sibling closingDelimiterIndex(inLines:) and its own comment says it avoided an overload. Fix: reword the ADR to match. (reviewer: sonnet)
+DROP	fix-hunk	**MINOR** [style] docs/adr/0096-what-follows-a-keystroke-compares-a-revision-not-the-note.md:124 — The claim of 46 OpenNote constructions in 22 test files does not reproduce: 32cd8ed2 has 15 in 10 files. Fix: recount and restate, or drop the number. (reviewer: sonnet)
+FIX	swept	**NIT** docs/adr/0096-what-follows-a-keystroke-compares-a-revision-not-the-note.md:83 — TodayView.swift:215 is the enclosing if-let; the NoteTextView( construction is at :216. (reviewer: sonnet)
 FIX	swept	**NIT** Tests/UnsavedMarkSourceGuardTests.swift:10 — The header comment still names the baseline 93c17096 while the ADR was re-dated to 32cd8ed2; update the commit reference. (reviewer: sonnet)
-DROP	nit	**NIT** docs/adr/0095-what-follows-a-keystroke-compares-a-revision-not-the-note.md:149-150 — The sentence mixes bases: :170 is baseline-relative while :173 for settleUnsavedMark matches neither commit (175 in the working tree). Fix: cite both from one commit. (reviewer: opus)
+DROP	nit	**NIT** docs/adr/0096-what-follows-a-keystroke-compares-a-revision-not-the-note.md:149-150 — The sentence mixes bases: :170 is baseline-relative while :173 for settleUnsavedMark matches neither commit (175 in the working tree). Fix: cite both from one commit. (reviewer: opus)
 DROP	post-sweep	**MINOR** [other] Sources/Features/Editor/CompletingTextView.swift:272 — refreshCompletion orders the completion panel front even when the parent window is not visible; any hosted test typing #, /, : or [[ puts the panel on screen, only UpdatePathFixture's check blocks it (follow-up: coder)
 DROP	post-sweep	**MINOR** [other] Tests/HostedViewSupport.swift:197 — refusals arriving after tearDown are attributed to no test (known PG-201 limit) (follow-up: coder)
 DROP	unlocated	**MINOR** [other] mktemp -t template is not substituted on this macOS, the log is named editor-restyle-bench.XXXXXX.<random> (follow-up: tester)
 FIX	swept	**MINOR** [other] Tests/UpdatePathSourceGuardTests.swift:10 — comment still says the guard was checked against the tree at 93c17096 (stale base) (follow-up: coder)
-FIX	fix-hunk	**MINOR** [other] docs/adr/0095-what-follows-a-keystroke-compares-a-revision-not-the-note.md:69 — Stale line pointer: foldedOrdinals(ofOffsets:in:) is cited as (:159), a 93c17096 number; at 32cd8ed2 the call is EditorColumn+Text.swift:166. Fix: write (:166). (reviewer: opus)	coder
+FIX	fix-hunk	**MINOR** [other] docs/adr/0096-what-follows-a-keystroke-compares-a-revision-not-the-note.md:69 — Stale line pointer: foldedOrdinals(ofOffsets:in:) is cited as (:159), a 93c17096 number; at 32cd8ed2 the call is EditorColumn+Text.swift:166. Fix: write (:166). (reviewer: opus)	coder
 DROP	nit	**NIT** Tests/UnsavedMarkSourceGuardTests.swift:10 — The header calls the list "plan item 8's decision list" though it also holds the two VaultController+NoteBirth.swift sites item 8 never named. (reviewer: opus)
 ```

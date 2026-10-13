@@ -20,7 +20,7 @@ extension NoteListPane {
             Divider()
             // The rows, the caret's entry and the folds are read here, so the pane holds none of
             // them as observed state, and `.equatable()` skips its body when they are what they
-            // were (ADR-0095 §D7). The store answers for the revision the note is at, and parses
+            // were (ADR-0096 §D7). The store answers for the revision the note is at, and parses
             // the note's own text only when it does not describe it yet. A column with no
             // registered store gets an empty one, which describes no revision and so answers from
             // the text: a registry miss costs a parse, never the index, and the body registers

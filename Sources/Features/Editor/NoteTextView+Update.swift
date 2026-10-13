@@ -55,7 +55,7 @@ extension NoteTextView {
             let selection = textView.selectedRange()
             textView.string = text
             // The view now holds the model's own value, so the next update finds it without a second
-            // whole-note compare (ADR-0095 §D8): one compare per replaced model. The storage heard the
+            // whole-note compare (ADR-0096 §D8): one compare per replaced model. The storage heard the
             // assignment synchronously, so a later character edit still sends the next update here.
             coordinator.modelSync.wrote(text)
             textView.setSelectedRange(NSRange(
@@ -74,7 +74,7 @@ extension NoteTextView {
         coordinator.applyEmbeds(to: textView)
         coordinator.applyTransclusions(to: textView, theme: theme)
         // The model's fold offsets as ordinals of the outline the styling just brought up to date
-        // (ADR-0095 §D7): nothing folded reads nothing.
+        // (ADR-0096 §D7): nothing folded reads nothing.
         coordinator.applyFolding(
             to: textView, folded: coordinator.foldedOrdinals(of: outline.foldedOffsets, in: textView),
             hidesFrontmatter: outline.hidesFrontmatter, theme: theme

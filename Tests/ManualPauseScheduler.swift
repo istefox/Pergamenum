@@ -1,7 +1,7 @@
 import Foundation
 @testable import Pergamenum
 
-// ADR-0095 §D4 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 2 (PG-406).
+// ADR-0096 §D4 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 2 (PG-406).
 //
 // The pause a test fires by hand: no timer, so no test waits on the clock (ADR-0043 §D9).
 

@@ -207,14 +207,14 @@ final class VaultController {
     /// is worth the door sitting in an unexpected file.
     var pinnedTags: [Tag] = []
 
-    /// The "typing stopped" signal that settles the unsaved marks (ADR-0095 §D4, PG-406); injected
+    /// The "typing stopped" signal that settles the unsaved marks (ADR-0096 §D4, PG-406); injected
     /// so a test fires it by hand instead of waiting on a timer. Never observed.
     @ObservationIgnored let typingPause: any PauseScheduler
     /// How many tabs `settleUnsavedMarks()` has checked, a counter for the tests; never observed.
     /// The setter is internal, not `private(set)`, because its one writer is
     /// `VaultController+UnsavedMarks.swift` (ADR-0045).
     @ObservationIgnored var unsavedMarkChecks = 0
-    /// The outline store of each column, made with the column and dropped with it (ADR-0095 §D6,
+    /// The outline store of each column, made with the column and dropped with it (ADR-0096 §D6,
     /// PG-406). Never observed: a store is itself observable. Written by
     /// `VaultController+OutlineStores.swift` (ADR-0045).
     @ObservationIgnored var outlineStores: [EditorColumn.ID: OutlineStore] = [:]
@@ -388,7 +388,7 @@ final class VaultController {
             $0.isPreview = false
         }
         // The mark goes on at once; whether an undo back cleared it is asked when typing pauses
-        // (ADR-0095 §D4), never on the keystroke.
+        // (ADR-0096 §D4), never on the keystroke.
         typingPause.restart { [weak self] in self?.settleUnsavedMarks() }
     }
 

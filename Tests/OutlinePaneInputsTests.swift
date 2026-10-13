@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0095 §D7, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406, R-07).
+// ADR-0096 §D7, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406, R-07).
 //
 // `OutlinePaneInputs` is what the sidebar's index is drawn from, and its `==` is what lets
 // `.equatable()` skip the pane on a keystroke that changed no row: the rows are the same when their

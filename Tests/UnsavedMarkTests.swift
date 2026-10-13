@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0095 §D1 to §D3 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 2
+// ADR-0096 §D1 to §D3 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 2
 // (PG-406). R-03: every assignment to a buffer's text draws a new revision, and two buffers that differ in
 // text never share one. R-08: the unsaved mark is on as soon as the revisions differ, never reads clean
 // while the texts differ, and is cleared by `settleUnsavedMark()`, which is what the typing pause calls.
@@ -29,7 +29,7 @@ private func buffer(text: String, saved: String) -> VaultController.OpenNote {
         seen.append(note.revision)
 
         // Restated (Task 6, R-09). The red-phase step called `catchUp(to: .text("c"))` on this DIRTY buffer
-        // ("b" against saved "a") and required a new revision. Departure 15 (ADR-0073, kept by ADR-0095 §D3)
+        // ("b" against saved "a") and required a new revision. Departure 15 (ADR-0073, kept by ADR-0096 §D3)
         // says a dirty buffer is asked, not overwritten, when the incoming text is not its own: `.asked`
         // assigns nothing, so the revision correctly stays. The property this test guards is "every
         // assignment draws a revision", so the dirty step now asserts the opposite fact (no assignment, no
@@ -124,7 +124,7 @@ private func buffer(text: String, saved: String) -> VaultController.OpenNote {
         #expect(note.savedRevision == savedRevision)
     }
 
-    // ADR-0095 §D4: the writer links its saved text to the buffer only when the buffer holds exactly the
+    // ADR-0096 §D4: the writer links its saved text to the buffer only when the buffer holds exactly the
     // string that was written; anything typed after the text was read stays marked.
     @Test func recordWriteLinksOnlyWhenTheBufferHoldsTheWrittenText() {
         var held = buffer(text: "a", saved: "a")

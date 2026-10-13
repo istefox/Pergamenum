@@ -4,7 +4,7 @@ import SwiftUI
 import Testing
 @testable import Pergamenum
 
-// ADR-0095 §D10, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406, R-10).
+// ADR-0096 §D10, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406, R-10).
 //
 // Oggi and Diario do not host the editor column (`TodayView.swift:215`, `DiaryView.swift:109`): each builds
 // a `NoteTextView` of its own, so R-10 asks that they get the same cheap keystroke by their own bindings.

@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0095 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 1 (PG-406, R-01).
+// ADR-0096 (planned), plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 1 (PG-406, R-01).
 //
 // A keystroke through SwiftUI's update, as a printed row: never asserted on time until G-ceiling-406. The
 // always-on tests assert the shape of the line the bench script greps and that the fixture really makes

@@ -242,7 +242,7 @@ struct VaultBrowser: View {
     /// that just added or removed the key shows here before the next write, the same
     /// reason `vault.violations(for:)` reads live text rather than the index's own copy.
     /// Nothing shows when the note carries no such key. Read through the bounded frontmatter, so
-    /// the body is never split on the inspector's account (ADR-0095 §D5).
+    /// the body is never split on the inspector's account (ADR-0096 §D5).
     @ViewBuilder
     private func categoryLink(_ note: VaultController.OpenNote) -> some View {
         if let slug = CategoryFrontmatter.slug(in: NoteDocument.frontmatter(in: note.text).foreignKeys) {

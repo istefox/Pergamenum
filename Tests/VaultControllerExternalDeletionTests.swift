@@ -182,7 +182,7 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
 
     // Undone back to the saved text: the buffer reads clean again.
     //
-    // Restated for ADR-0095 §D3 (PG-406, plan Task 2): the unsaved mark no longer compares the whole
+    // Restated for ADR-0096 §D3 (PG-406, plan Task 2): the unsaved mark no longer compares the whole
     // text on a keystroke, so an undo back leaves it on until the typing pause settles it. The pause
     // is `settleUnsavedMarks()` here, called by hand. The test's point - `keepLocalVersion` on a
     // deleted note turns a clean buffer dirty - is unchanged, and so is every expected outcome below.
@@ -204,7 +204,7 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     #expect(controller.openNote?.hasUnsavedChanges == false)
 }
 
-/// Red without `settleUnsavedMark()` in `keepLocalVersion()` (PG-406, ADR-0095 §D3): `savedText = ""`
+/// Red without `settleUnsavedMark()` in `keepLocalVersion()` (PG-406, ADR-0096 §D3): `savedText = ""`
 /// draws a new `savedRevision`, so an already empty buffer, whose text equals it, reads dirty with no
 /// typing pause scheduled to clear the mark. The non-empty buffer staying dirty is
 /// `keepLocalVersionThenSaveRecreatesTheFile` above.

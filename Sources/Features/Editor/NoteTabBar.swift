@@ -167,7 +167,7 @@ private typealias ChipFace = NoteTab.ChipFace
 
 /// One tab: a dot when the note has unsaved edits, its title, and a close button.
 ///
-/// It stores the tab's face, not the tab (ADR-0095 §D5): a keystroke after the first changes no
+/// It stores the tab's face, not the tab (ADR-0096 §D5): a keystroke after the first changes no
 /// field of it, so typing does not invalidate the chip.
 private struct NoteTabChip: View {
     @Environment(\.theme) private var theme

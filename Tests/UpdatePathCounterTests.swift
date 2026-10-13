@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// ADR-0095 §D5 to §D10, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406,
+// ADR-0096 §D5 to §D10, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 4 (PG-406,
 // R-02, R-04, R-05, R-06, R-07).
 //
 // Counters, not clocks: a keystroke through SwiftUI's update (`UpdatePathFixture` hosts the real

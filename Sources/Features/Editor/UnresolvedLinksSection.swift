@@ -8,7 +8,7 @@ struct UnresolvedLinksSection: View {
     @Environment(VaultController.self) private var vault
     @Environment(CommandActions.self) private var commandActions
 
-    /// The open note's path, and not the buffer (ADR-0095 §D5): typing does not change it.
+    /// The open note's path, and not the buffer (ADR-0096 §D5): typing does not change it.
     let relativePath: String
 
     var body: some View {

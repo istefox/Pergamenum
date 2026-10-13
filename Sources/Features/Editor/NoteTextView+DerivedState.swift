@@ -18,7 +18,7 @@ struct DerivedStateSnapshot: Equatable {
     var revealed: Set<Int>
     var revealedSpans: [Int: [NSRange]]
     var map: StructureMap?
-    /// The outline map's items (ADR-0095 §D6), empty while the coordinator feeds no store.
+    /// The outline map's items (ADR-0096 §D6), empty while the coordinator feeds no store.
     var outline: [OutlineMap.Item]
 }
 

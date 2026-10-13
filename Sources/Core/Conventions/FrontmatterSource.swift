@@ -103,7 +103,7 @@ struct FrontmatterSource: Equatable, Sendable {
     }
 
     /// The same test over lines read in order, reading no line past the closing delimiter, so a
-    /// reader that wants the block alone does not split the body (ADR-0095 §D5). A label of its
+    /// reader that wants the block alone does not split the body (ADR-0096 §D5). A label of its
     /// own rather than an overload under `in:`, which would resolve the array form's call to itself.
     static func closingDelimiterIndex<Lines: Sequence>(inLines lines: Lines) -> Int? where Lines.Element == String {
         var iterator = lines.makeIterator()
@@ -340,12 +340,12 @@ extension FrontmatterRules {
     }
 }
 
-// MARK: - The bounded read (ADR-0095 §D5, PG-406)
+// MARK: - The bounded read (ADR-0096 §D5, PG-406)
 
 extension NoteDocument {
     /// The frontmatter of `text` and nothing else, read without splitting the body: the same value
     /// as `parse(text).frontmatter`, through the same delimiter test and the same parser. A note
-    /// that opens with `---` and never closes it is still read whole (ADR-0095 §D11).
+    /// that opens with `---` and never closes it is still read whole (ADR-0096 §D11).
     static func frontmatter(in text: String) -> Frontmatter {
         let lines = NewlineSplitLines(text)
         guard let closing = FrontmatterSource.closingDelimiterIndex(inLines: lines) else { return .empty }

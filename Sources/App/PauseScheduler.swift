@@ -1,6 +1,6 @@
 import Foundation
 
-/// A restartable pause on the main actor (ADR-0095 §D4, PG-406): the editor's "typing stopped"
+/// A restartable pause on the main actor (ADR-0096 §D4, PG-406): the editor's "typing stopped"
 /// signal, injected so no test waits on a timer.
 ///
 /// `restart(_:)` replaces the pending action and starts the interval again; `cancel()` drops it.
@@ -12,7 +12,7 @@ protocol PauseScheduler: AnyObject {
 
 /// The production pause: a main-actor `Task` that sleeps for `interval` and then runs the last
 /// action given to `restart(_:)`, once. 500 ms by default: at five keys a second keys arrive every
-/// 200 ms, so half a second without one is "typing stopped" (ADR-0095 §D4).
+/// 200 ms, so half a second without one is "typing stopped" (ADR-0096 §D4).
 @MainActor
 final class TaskPauseScheduler: PauseScheduler {
     private let interval: Duration

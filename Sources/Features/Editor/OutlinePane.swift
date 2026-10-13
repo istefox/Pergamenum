@@ -6,7 +6,7 @@ import SwiftUI
 /// holds things *about* the note - conformance, backlinks, tasks that point here - and
 /// the sidebar holds things you navigate to. An index is the second kind.
 ///
-/// Drawn from `OutlinePaneInputs` (ADR-0095 §D7): the rows of the column's outline store, which
+/// Drawn from `OutlinePaneInputs` (ADR-0096 §D7): the rows of the column's outline store, which
 /// the editor feeds from the same `NoteOutline` rule, so a click here and what the editor folds
 /// cannot disagree about what the sections are. It holds no text and reads no observed property
 /// of the vault: the caret's entry and the folds arrive as inputs, and it is `Equatable` by them,
@@ -40,7 +40,7 @@ struct OutlinePane: View, Equatable {
     /// (ADR-0026 §D5), so this is the only place a gap can ask "would this move work".
     @State private var draggingEntry: Int?
 
-    /// Equal by the inputs, never by the closures (ADR-0095 §D7). Nonisolated because `Equatable` is:
+    /// Equal by the inputs, never by the closures (ADR-0096 §D7). Nonisolated because `Equatable` is:
     /// the inputs are a `let` of a sendable value, so reading them crosses no actor.
     nonisolated static func == (lhs: OutlinePane, rhs: OutlinePane) -> Bool {
         lhs.inputs == rhs.inputs

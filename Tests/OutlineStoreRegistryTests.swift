@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// (coverage) ADR-0095 §D6, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 6 (PG-406).
+// (coverage) ADR-0096 §D6, plan docs/plans/no-whole-note-term-on-the-update-path-pg-406.md, Task 6 (PG-406).
 //
 // The registry of the columns' outline stores is not named by an R-id test: `UpdatePathCounterTests` reads
 // the store of column 0 through it, but nothing pins what its doc comment states (one store per column, made

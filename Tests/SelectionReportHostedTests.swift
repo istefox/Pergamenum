@@ -84,7 +84,7 @@ private struct SelectionRoot: View {
                     if let tab = model.tabID { model.selectionByTab[tab] = range }
                 }
             ),
-            // Restated for ADR-0095 §D6 and §D7 (PG-406, plan Task 5): `OutlineInputs` no longer carries the
+            // Restated for ADR-0096 §D6 and §D7 (PG-406, plan Task 5): `OutlineInputs` no longer carries the
             // entries' ranges. The coordinator's own store, built from the same text, answers the caret's
             // entry; the scenario and its expected reports are unchanged.
             outline: .init(
