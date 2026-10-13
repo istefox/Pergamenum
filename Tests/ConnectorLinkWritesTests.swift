@@ -407,3 +407,153 @@ func aLinkMentionOfATitleTwoNotesShareIsRefusedByNameAndWritesNothing(dryRun: Bo
     #expect(try bytes(vault, "Altra.md") == before)
     #expect(session.journalOnDisk.entries().count == journalBefore)
 }
+
+// MARK: - appendToNote takes an indexed note and nothing else (PG-398)
+
+@MainActor
+@Test(arguments: nonNotePaths)
+func anAppendIntoAFileThatIsNotANoteIsRefusedAndWritesNothing(path: String) async throws {
+    let vault = try TemporaryVault()
+    let session = try await vaultWithNonNotes(vault)
+    let before = try bytes(vault, path)
+    let journalBefore = session.journalOnDisk.entries().count
+
+    VaultAPI.arm(session, command: "append_to_note", dryRun: false)
+    let error = await #expect(throws: ConnectorError.self) {
+        _ = try await VaultAPI.appendToNote(session, at: path, text: "Aggiunta")
+    }
+
+    #expect(error?.description == "«\(path)» non è una nota del vault")
+    #expect(error?.isUsage == false)
+    #expect(try bytes(vault, path) == before)
+    #expect(session.journalOnDisk.entries().count == journalBefore)
+}
+
+@MainActor
+@Test func anAppendToAMissingPathIsRefusedWithTheSessionsSentenceAndCreatesNothing() async throws {
+    let vault = try TemporaryVault()
+    let session = try await vaultWithAMention(vault)
+
+    VaultAPI.arm(session, command: "append_to_note", dryRun: false)
+    let error = await #expect(throws: ConnectorError.self) {
+        _ = try await VaultAPI.appendToNote(session, at: "Assente.md", text: "Aggiunta")
+    }
+
+    #expect(error?.description == session.linkEndRefusal("Assente.md"))
+    #expect(error?.description == "nessuna nota in «Assente.md»")
+    #expect(!FileManager.default.fileExists(
+        atPath: vault.root.appending(path: "Assente.md").path(percentEncoded: false)
+    ))
+}
+
+/// The empty-text guard still answers first, as a usage error, whatever the path is.
+@MainActor
+@Test func anAppendOfNoTextIsAUsageErrorBeforeThePathIsLookedAt() async throws {
+    let vault = try TemporaryVault()
+    let session = try await vaultWithNonNotes(vault)
+
+    VaultAPI.arm(session, command: "append_to_note", dryRun: false)
+    let error = await #expect(throws: ConnectorError.self) {
+        _ = try await VaultAPI.appendToNote(session, at: "Lavagna.canvas", text: "")
+    }
+
+    #expect(error?.isUsage == true)
+}
+
+@MainActor
+@Test func anAppendToAnIndexedNoteIsStillAcceptedAndJournaled() async throws {
+    let vault = try TemporaryVault()
+    let session = try await vaultWithAMention(vault)
+    let journalBefore = session.journalOnDisk.entries().count
+
+    VaultAPI.arm(session, command: "append_to_note", dryRun: false)
+    let summary = try await VaultAPI.appendToNote(session, at: "Altra.md", text: "Aggiunta in coda.")
+
+    #expect(summary.applied)
+    #expect(summary.path == "Altra.md")
+    let text = try String(decoding: bytes(vault, "Altra.md"), as: UTF8.self)
+    #expect(text.contains("Aggiunta in coda."))
+    #expect(session.journalOnDisk.entries().count > journalBefore)
+}
+
+// MARK: - addTask into a note takes an indexed note and nothing else (PG-398)
+
+@MainActor
+@Test(arguments: nonNotePaths)
+func aTaskIntoAFileThatIsNotANoteIsRefusedAndWritesNothing(path: String) async throws {
+    let vault = try TemporaryVault()
+    let session = try await vaultWithNonNotes(vault)
+    let before = try bytes(vault, path)
+    let journalBefore = session.journalOnDisk.entries().count
+
+    VaultAPI.arm(session, command: "add_task", dryRun: false)
+    let error = await #expect(throws: ConnectorError.self) {
+        _ = try await VaultAPI.addTask(session, text: "Delta", scheduled: nil, due: nil, note: path)
+    }
+
+    #expect(error?.description == "«\(path)» non è una nota del vault")
+    #expect(error?.isUsage == false)
+    #expect(try bytes(vault, path) == before)
+    #expect(session.journalOnDisk.entries().count == journalBefore)
+}
+
+/// A missing note keeps the session's sentence and adds the inbox hint, and nothing is created:
+/// not the note, not the inbox, not a journal entry.
+@MainActor
+@Test func aTaskIntoAMissingNoteIsRefusedWithTheInboxHintAndWritesNothing() async throws {
+    let vault = try TemporaryVault()
+    let session = try await vaultWithAMention(vault)
+    let journalBefore = session.journalOnDisk.entries().count
+    let filesBefore = try FileManager.default.subpathsOfDirectory(
+        atPath: vault.root.path(percentEncoded: false)
+    ).sorted()
+
+    VaultAPI.arm(session, command: "add_task", dryRun: false)
+    let error = await #expect(throws: ConnectorError.self) {
+        _ = try await VaultAPI.addTask(session, text: "Delta", scheduled: nil, due: nil, note: "Assente.md")
+    }
+
+    #expect(error?.description == "nessuna nota in «Assente.md»: un task va in una nota che c'è, o nell'inbox")
+    #expect(error?.isUsage == false)
+    #expect(try FileManager.default.subpathsOfDirectory(
+        atPath: vault.root.path(percentEncoded: false)
+    ).sorted() == filesBefore)
+    #expect(session.journalOnDisk.entries().count == journalBefore)
+}
+
+@MainActor
+@Test func aTaskIntoAnIndexedNoteIsStillAcceptedAndJournaled() async throws {
+    let vault = try TemporaryVault()
+    let session = try await vaultWithAMention(vault)
+    let journalBefore = session.journalOnDisk.entries().count
+
+    VaultAPI.arm(session, command: "add_task", dryRun: false)
+    let summary = try await VaultAPI.addTask(session, text: "Delta", scheduled: nil, due: nil, note: "Altra.md")
+
+    #expect(summary.applied)
+    #expect(summary.path == "Altra.md")
+    let text = try String(decoding: bytes(vault, "Altra.md"), as: UTF8.self)
+    #expect(text.contains("- [ ] Delta"))
+    #expect(session.journalOnDisk.entries().count > journalBefore)
+}
+
+/// The empty-text and malformed-date guards still answer first, as usage errors, whatever the
+/// note is.
+@MainActor
+@Test func aTaskWithNoTextOrABadDateIsAUsageErrorBeforeTheNoteIsLookedAt() async throws {
+    let vault = try TemporaryVault()
+    let session = try await vaultWithNonNotes(vault)
+
+    VaultAPI.arm(session, command: "add_task", dryRun: false)
+    let empty = await #expect(throws: ConnectorError.self) {
+        _ = try await VaultAPI.addTask(session, text: "", scheduled: nil, due: nil, note: "Lavagna.canvas")
+    }
+    let badDate = await #expect(throws: ConnectorError.self) {
+        _ = try await VaultAPI.addTask(
+            session, text: "Delta", scheduled: "domani-forse", due: nil, note: "Lavagna.canvas"
+        )
+    }
+
+    #expect(empty?.isUsage == true)
+    #expect(badDate?.isUsage == true)
+}

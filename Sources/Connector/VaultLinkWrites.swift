@@ -77,8 +77,11 @@ extension VaultAPI {
     /// Both doors write wikilinks and frontmatter into a note: a path that exists but is not an
     /// indexed note (a `.canvas`, a `.pergamenum/*.json`) is refused before anything is read, in the
     /// session's own words (`VaultSession.linkEndRefusal`) so the app and a connector refuse alike.
+    /// Not `private` (PG-398): the pratiche message doors in `VaultPraticheLinks.swift`,
+    /// `appendToNote` and `addTask` in `VaultWrites.swift`, and `classifyNote` and `extractToNote`
+    /// in `VaultNoteBirth.swift` hold the same invariant, and `private` is file-scoped.
     @MainActor
-    private static func requireNote(_ session: VaultSession, _ path: String) throws {
+    static func requireNote(_ session: VaultSession, _ path: String) throws {
         if let refusal = session.linkEndRefusal(path) { throw ConnectorError(refusal) }
     }
 }
