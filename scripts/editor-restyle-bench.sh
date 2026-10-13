@@ -5,9 +5,11 @@
 # (ADR-0091 §D11, plan docs/plans/per-paragraph-restyle.md Task 6, R-12), and with `--structural` a
 # third table of the structural rows (ADR-0093 §D9, plan docs/plans/scoped-layout-followup.md Task 7,
 # R-13), and with `--jump` a fourth table of the keystroke after a caret jump (ADR-0094 §D1, plan
-# docs/plans/sublinear-offset-state-pg-405.md Task 1, R-06).
+# docs/plans/sublinear-offset-state-pg-405.md Task 1, R-06), and with `--update` a fifth table of a
+# keystroke through SwiftUI's update path (ADR-0096, plan
+# docs/plans/no-whole-note-term-on-the-update-path-pg-406.md Task 1, R-01).
 #
-#   scripts/editor-restyle-bench.sh [--large|--large-only] [--runs N] [--no-warmup] [--structural] [--jump]
+#   scripts/editor-restyle-bench.sh [--large|--large-only] [--runs N] [--no-warmup] [--structural] [--jump] [--update]
 #
 # It runs only `PergamenumTests/EditorRestyleBudgetTests`, greps the `restyle-budget` lines
 # the test prints (one per size and variant: `size=<bytes> variant=<prose|fences>
@@ -34,6 +36,14 @@
 # `PergamenumTests/EditorRestyleJumpTests`. `crossed` is the number of lines between the two places. Printed
 # and never asserted; the test only asserts that both places restyle by range.
 #
+# The fifth table (only with `--update`) comes from the lines that start `restyle-budget-update`
+# (`size=<bytes> variant=<prose|fences> cpu_ms=<min> wall_ms=<min> runs=<K>`): a keystroke typed into a real
+# editor column hosted in a window that is never shown, with SwiftUI's update (the diff of the column's inputs,
+# its body, `updateNSView`) run before the keystroke returns, from `PergamenumTests/EditorUpdatePathBudgetTests`.
+# `editor_ms` is the first table's `cpu_ms` for the same size and variant (the editor's own work, which never
+# goes through SwiftUI), and `share_ms` is `cpu_ms - editor_ms`: what the update path adds. Printed and never
+# asserted on time; the test only asserts that the update ran after every key.
+#
 # Every run also adds `PergamenumTests/OffsetStoreHostedCounterTests` (ADR-0094 §D5, plan
 # docs/plans/sublinear-offset-state-pg-405.md Task 4, R-05): the touched-entries counters on the real editor,
 # asserted where they can be afforded (the 200 KB rows on every run but `--large-only`, the 1 MB rows with
@@ -59,6 +69,8 @@
 #                                only. The per-turn suite measures none of them.
 #   RESTYLE_BUDGET_JUMP=1        the caret-jump row for every case that runs; set by --jump only. The
 #                                per-turn suite measures none of it.
+#   RESTYLE_BUDGET_UPDATE=1      the update-path row for every case that runs; set by --update only. The
+#                                per-turn suite measures none of it.
 #
 # It builds into its own DerivedData (`build/restyle-bench-dd`), never the default one the
 # Stop hook's unit build uses: two xcodebuilds on one `build.db` produce "database is locked"
@@ -80,6 +92,7 @@ cd "$root" || exit 2
 # --no-warmup   skip the warm-up keystroke (only for a case where one keystroke takes minutes)
 # --structural  also measure the four structural rows (a third table)
 # --jump        also measure the keystroke after a caret jump (a fourth table)
+# --update      also measure the keystroke through SwiftUI's update path (a fifth table)
 export TEST_RUNNER_RESTYLE_BUDGET_200KB=1
 export TEST_RUNNER_RESTYLE_BUDGET_FALLBACK=1
 extra=()
@@ -98,6 +111,9 @@ while [ $# -gt 0 ]; do
         --jump)
             export TEST_RUNNER_RESTYLE_BUDGET_JUMP=1
             extra+=("-only-testing:PergamenumTests/EditorRestyleJumpTests") ;;
+        --update)
+            export TEST_RUNNER_RESTYLE_BUDGET_UPDATE=1
+            extra+=("-only-testing:PergamenumTests/EditorUpdatePathBudgetTests") ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -190,6 +206,30 @@ if [ -n "$jump" ]; then
         size=$(field size "$line")
         printf '%-10s %-8s %10s %10s %8s %5s\n' "$((size / 1024)) KB" "$(field variant "$line")" \
             "$(field cpu_ms "$line")" "$(field wall_ms "$line")" "$(field crossed "$line")" "$(field runs "$line")"
+    done
+    echo
+fi
+
+update=$(grep -E '^restyle-budget-update size=' "$log" || true)
+if [ -n "$update" ]; then
+    echo "through SwiftUI's update (printed, never asserted):"
+    printf '%-10s %-8s %10s %10s %10s %10s %5s\n' "size" "variant" "cpu_ms" "wall_ms" "editor_ms" "share_ms" "runs"
+    printf '%-10s %-8s %10s %10s %10s %10s %5s\n' "----------" "--------" "----------" "----------" "----------" "----------" "-----"
+    printf '%s\n' "$update" | while IFS= read -r line; do
+        size=$(field size "$line")
+        variant=$(field variant "$line")
+        cpu=$(field cpu_ms "$line")
+        # The first table's cpu_ms for the same size and variant, if that row ran.
+        editor_line=$(printf '%s\n' "$lines" | grep -E "^restyle-budget size=${size} variant=${variant} " | head -n 1 || true)
+        if [ -n "$editor_line" ]; then
+            editor=$(field cpu_ms "$editor_line")
+            share=$(awk -v a="$cpu" -v b="$editor" 'BEGIN { printf "%.2f", a - b }')
+        else
+            editor="-"
+            share="-"
+        fi
+        printf '%-10s %-8s %10s %10s %10s %10s %5s\n' "$((size / 1024)) KB" "$variant" "$cpu" \
+            "$(field wall_ms "$line")" "$editor" "$share" "$(field runs "$line")"
     done
     echo
 fi

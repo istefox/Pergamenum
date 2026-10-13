@@ -157,8 +157,9 @@ extension FormattingTextView {
     /// The outline ordinal of the heading whose line begins at `offset`, or nil when no entry does.
     ///
     /// The fold is held by entry ordinal and the fragment knows a character offset, so the two are
-    /// joined by the outline itself - the same translation the note editor makes through
-    /// `parent.outlineRanges`, which is that list precomputed. A card has no such property to read,
+    /// joined by the outline itself - the same translation the note editor makes through its
+    /// outline store (`OutlineMap.ordinals(ofOffsets:)`), which keeps that list level with the
+    /// text. A card has no store to read,
     /// and `NoteOutline.entries(in:)` over a card's worth of text is cheap enough to ask per click;
     /// a second opinion about which section is which is the one thing this must not be, so the
     /// ordinals are counted over *every* entry, embeds included, exactly as `NoteFolding` counts

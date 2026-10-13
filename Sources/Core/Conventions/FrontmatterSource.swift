@@ -99,8 +99,21 @@ struct FrontmatterSource: Equatable, Sendable {
     /// line, later lines are not, and the first later delimiter wins. A reader that tests the
     /// delimiters its own way drifts from `NoteDocument.parse`, which is how PG-276 happened.
     static func closingDelimiterIndex(in lines: [String]) -> Int? {
-        guard let first = lines.first, isDelimiter(interpreted(first, isFirst: true)) else { return nil }
-        return lines.indices.dropFirst().first { isDelimiter(interpreted(lines[$0])) }
+        closingDelimiterIndex(inLines: lines)
+    }
+
+    /// The same test over lines read in order, reading no line past the closing delimiter, so a
+    /// reader that wants the block alone does not split the body (ADR-0096 §D5). A label of its
+    /// own rather than an overload under `in:`, which would resolve the array form's call to itself.
+    static func closingDelimiterIndex<Lines: Sequence>(inLines lines: Lines) -> Int? where Lines.Element == String {
+        var iterator = lines.makeIterator()
+        guard let first = iterator.next(), isDelimiter(interpreted(first, isFirst: true)) else { return nil }
+        var index = 1
+        while let line = iterator.next() {
+            if isDelimiter(interpreted(line)) { return index }
+            index += 1
+        }
+        return nil
     }
 
     /// Splits a note's text (§D1.2). `components(separatedBy:)` is Foundation's split, below the
@@ -324,5 +337,49 @@ extension FrontmatterRules {
         let lines = body.components(separatedBy: "\n")
         guard let closing = FrontmatterSource.closingDelimiterIndex(in: lines) else { return false }
         return lines[1..<closing].contains { FrontmatterParser.keyName(of: FrontmatterSource.interpreted($0)) != nil }
+    }
+}
+
+// MARK: - The bounded read (ADR-0096 §D5, PG-406)
+
+extension NoteDocument {
+    /// The frontmatter of `text` and nothing else, read without splitting the body: the same value
+    /// as `parse(text).frontmatter`, through the same delimiter test and the same parser. A note
+    /// that opens with `---` and never closes it is still read whole (ADR-0096 §D11).
+    static func frontmatter(in text: String) -> Frontmatter {
+        let lines = NewlineSplitLines(text)
+        guard let closing = FrontmatterSource.closingDelimiterIndex(inLines: lines) else { return .empty }
+        let block = lines.dropFirst().prefix(closing - 1).map { FrontmatterSource.interpreted($0) }
+        return FrontmatterParser.parse(block)
+    }
+}
+
+/// The lines of a text split on U+000A, read one at a time: what `components(separatedBy: "\n")`
+/// answers, a CRLF line keeping its `\r` and a trailing line break giving a last empty line, without
+/// splitting the lines nobody asks for.
+private struct NewlineSplitLines: Sequence {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    struct Iterator: IteratorProtocol {
+        let scalars: String.UnicodeScalarView
+        var position: String.Index?
+
+        mutating func next() -> String? {
+            guard let start = position else { return nil }
+            guard let newline = scalars[start...].firstIndex(of: "\n") else {
+                position = nil
+                return String(String.UnicodeScalarView(scalars[start...]))
+            }
+            position = scalars.index(after: newline)
+            return String(String.UnicodeScalarView(scalars[start..<newline]))
+        }
+    }
+
+    func makeIterator() -> Iterator {
+        Iterator(scalars: text.unicodeScalars, position: text.unicodeScalars.startIndex)
     }
 }

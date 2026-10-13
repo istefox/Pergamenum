@@ -46,7 +46,7 @@ struct NoteTabBar: View {
                         NoteTabChip(
                             // Only the focused column's active tab wears the accent. Two tabs
                             // marked active in one window is two answers to "where am I".
-                            tab: tab,
+                            face: tab.chipFace,
                             isActive: isFocused && tab.id == activeID,
                             onSelect: { focus { vault.focusTab(tab.id) } },
                             onMakeStable: { focus { vault.makeStable(tab.id) } },
@@ -163,12 +163,17 @@ struct NoteTabBar: View {
     }
 }
 
+private typealias ChipFace = NoteTab.ChipFace
+
 /// One tab: a dot when the note has unsaved edits, its title, and a close button.
+///
+/// It stores the tab's face, not the tab (ADR-0096 §D5): a keystroke after the first changes no
+/// field of it, so typing does not invalidate the chip.
 private struct NoteTabChip: View {
     @Environment(\.theme) private var theme
     @State private var isHovering = false
 
-    let tab: NoteTab
+    let face: ChipFace
     let isActive: Bool
     let onSelect: () -> Void
     let onMakeStable: () -> Void
@@ -202,19 +207,19 @@ private struct NoteTabChip: View {
         // The note's path, not its title: a UI test asks for the tab of one note, and a title
         // is the note's prose (PG-265). Not unique on purpose when the note is open in both
         // columns (one chip each): the lookup is column-agnostic and takes `firstMatch`.
-        .accessibilityIdentifier("note-tab-\(tab.note.relativePath)")
+        .accessibilityIdentifier("note-tab-\(face.relativePath)")
     }
 
     private var title: some View {
         HStack(spacing: theme.spacing(.xs)) {
-            if tab.note.hasUnsavedChanges {
+            if face.isUnsaved {
                 Circle()
                     .fill(theme.color(.accentPrimary))
                     .frame(width: 8, height: 8)
                     .help("Modifiche non salvate")
-                    .accessibilityLabel("\(tab.note.title), modifiche non salvate")
+                    .accessibilityLabel("\(face.title), modifiche non salvate")
             }
-            Text(tab.note.title)
+            Text(face.title)
                 // `.body` and not `.caption`: 11 points is a label under something, and this
                 // is the name of what you are reading. Safari and Xcode both title a tab at
                 // the body size, and at 11 the row read as a caption strip.
@@ -226,7 +231,7 @@ private struct NoteTabChip: View {
                 // Italic says "this one is on its way out": the next single click in the list
                 // reuses this tab. VS Code's convention, and the only cue that distinguishes
                 // a preview from a tab that will still be here in ten minutes.
-                .italic(tab.isPreview)
+                .italic(face.isPreview)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 // The title is what decides the width, up to a cap: a fixed 168 left «test»
@@ -251,7 +256,7 @@ private struct NoteTabChip: View {
         .buttonStyle(.plain)
         .opacity(isActive || isHovering ? 1 : 0)
         .help("Chiudi la tab")
-        .accessibilityLabel("Chiudi \(tab.note.title)")
+        .accessibilityLabel("Chiudi \(face.title)")
     }
 
     /// Every tab has a shape; the active one has the accent.

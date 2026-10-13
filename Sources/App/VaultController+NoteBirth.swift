@@ -102,7 +102,7 @@ extension VaultController {
             id: UUID(), tabID: tab.id, sourcePath: tab.note.relativePath, range: range, text: selected,
             title: CaptureTitle.derive(fromTypedLine: heading, now: Date(), calendar: .current).title,
             folder: (tab.note.relativePath as NSString).deletingLastPathComponent,
-            sourceIsDirty: tab.note.hasUnsavedChanges
+            sourceIsDirty: tab.note.differsFromSaved
         )
         return true
     }
@@ -149,7 +149,7 @@ extension VaultController {
     private func settledSession(for path: String, savingFirst: Bool, refusal: String) async throws -> VaultSession {
         guard let session else { throw NoteBirthRefusal(description: "nessuna cartella note aperta") }
         if savingFirst {
-            let dirty = columns.flatMap(\.tabs).filter { $0.note.relativePath == path && $0.note.hasUnsavedChanges }
+            let dirty = columns.flatMap(\.tabs).filter { $0.note.relativePath == path && $0.note.differsFromSaved }
             for tab in dirty {
                 if case .failed(let message) = await saveTab(tab.id) { throw NoteBirthRefusal(description: message) }
             }

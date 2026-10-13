@@ -41,6 +41,7 @@ extension NoteTextView {
         // compare is linear in the note, and SwiftUI updates the view after every keystroke
         // (ADR-0094 §D9).
         let viewHoldsTheModel = textView.textStorage?.delegate === coordinator && coordinator.modelSync.viewHolds(text)
+        if !viewHoldsTheModel { coordinator.modelSync.countCompare() }
         if !viewHoldsTheModel, textView.string != text {
             // This view is one persistent instance per editor column (never rebuilt per
             // note), so a genuine note switch and the same note's content changing
@@ -53,6 +54,10 @@ extension NoteTextView {
             // tell the two cases apart.
             let selection = textView.selectedRange()
             textView.string = text
+            // The view now holds the model's own value, so the next update finds it without a second
+            // whole-note compare (ADR-0096 §D8): one compare per replaced model. The storage heard the
+            // assignment synchronously, so a later character edit still sends the next update here.
+            coordinator.modelSync.wrote(text)
             textView.setSelectedRange(NSRange(
                 location: isNoteSwitch ? 0 : min(selection.location, (text as NSString).length),
                 length: 0
@@ -65,10 +70,14 @@ extension NoteTextView {
         // The dirty range, nothing, or the whole note (ADR-0091 §D8): the second pass of a
         // keystroke `textDidChange` already styled finds nothing to do.
         coordinator.applyStylingIfNeeded(to: textView, theme: theme)
+        coordinator.stampOutline(in: textView)
         coordinator.applyEmbeds(to: textView)
         coordinator.applyTransclusions(to: textView, theme: theme)
+        // The model's fold offsets as ordinals of the outline the styling just brought up to date
+        // (ADR-0096 §D7): nothing folded reads nothing.
         coordinator.applyFolding(
-            to: textView, folded: outline.foldedEntries, hidesFrontmatter: outline.hidesFrontmatter, theme: theme
+            to: textView, folded: coordinator.foldedOrdinals(of: outline.foldedOffsets, in: textView),
+            hidesFrontmatter: outline.hidesFrontmatter, theme: theme
         )
         // After the styling, always: a styling rewrites the attributes it covers and
         // invalidates the layout with them, so a highlight painted before it would be

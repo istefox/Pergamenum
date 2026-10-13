@@ -18,13 +18,31 @@ extension NoteListPane {
     var footer: some View {
         if let note = vault.openNote, vault.isOpenNoteVisible {
             Divider()
+            // The rows, the caret's entry and the folds are read here, so the pane holds none of
+            // them as observed state, and `.equatable()` skips its body when they are what they
+            // were (ADR-0096 §D7). The store answers for the revision the note is at, and parses
+            // the note's own text only when it does not describe it yet. A column with no
+            // registered store gets an empty one, which describes no revision and so answers from
+            // the text: a registry miss costs a parse, never the index, and the body registers
+            // nothing.
+            let store = focusedOutlineStore ?? OutlineStore()
+            let answer = store.rows(describing: note.revision, text: note.text)
             OutlinePane(
-                entries: NoteOutline.entries(in: note.text),
-                onSelect: navigation.jumpToOutlineEntry(range:ordinal:),
-                text: note.text,
-                notePath: note.relativePath,
+                inputs: OutlinePaneInputs(
+                    rows: answer.rows,
+                    source: answer.source,
+                    notePath: note.relativePath,
+                    currentEntry: vault.currentOutlineEntry,
+                    foldedOrdinals: store.foldedOrdinals(
+                        ofOffsets: vault.foldedEntries, describing: note.revision, text: note.text
+                    )
+                ),
+                onSelect: { ordinal in selectOutlineEntry(ordinal, from: store) },
+                onToggleFold: { ordinal in toggleOutlineFold(ordinal, from: store) },
+                moveReplacements: { moving, target in outlineMoveReplacements(moving: moving, to: target) },
                 onMove: navigation.moveOutlineSection
             )
+            .equatable()
             // A share of the pane rather than half of it: the index is for finding your
             // way inside the open note, and the list of notes is how you got there.
             // `maxHeight` and not `height`, so a note with two headings takes two rows.
@@ -32,6 +50,48 @@ extension NoteListPane {
         }
         Divider()
         statusBar
+    }
+
+    /// The focused column's outline store, the one its editor feeds.
+    private var focusedOutlineStore: OutlineStore? {
+        guard vault.columns.indices.contains(vault.focusedColumnIndex) else { return nil }
+        return vault.registeredOutlineStore(forColumn: vault.columns[vault.focusedColumnIndex].id)
+    }
+
+    /// `store` when it describes `note`, otherwise one read from the note's text: what a click
+    /// resolves against. Static, so it reads no view state: the note is the one the caller read when
+    /// the click happened, and the parse it may cost is paid there, never per body.
+    private static func store(_ store: OutlineStore, describing note: VaultController.OpenNote?) -> OutlineStore? {
+        guard let note else { return nil }
+        return store.describes == note.revision ? store : OutlineStore(text: note.text)
+    }
+
+    /// A click on a row: the editor scrolls to the entry's line.
+    private func selectOutlineEntry(_ ordinal: Int, from store: OutlineStore) {
+        let resolved = Self.store(store, describing: vault.openNote)
+        guard let range = resolved?.lineRange(ofEntry: ordinal) else { return }
+        navigation.jumpToOutlineEntry(range: range, ordinal: ordinal)
+    }
+
+    /// The chevron or a double-click: folds the section by its heading's offset, the key
+    /// `NoteTab.foldedEntries` keeps.
+    private func toggleOutlineFold(_ ordinal: Int, from store: OutlineStore) {
+        let resolved = Self.store(store, describing: vault.openNote)
+        guard let offset = resolved?.foldableOffset(ofEntry: ordinal) else { return }
+        vault.toggleFold(offset)
+    }
+
+    /// A drag's validity and its drop, over the note's text as it is when asked.
+    private func outlineMoveReplacements(
+        moving entry: Int, to target: OutlinePane.MoveTarget
+    ) -> [(range: NSRange, text: String)]? {
+        guard let text = vault.openNote?.text else { return nil }
+        switch target {
+        case .nestingUnder(let heading):
+            return OutlineMove.replacements(in: text, moving: entry, nestingUnder: heading)
+        case .toPrecede(let destination):
+            return OutlineMove.replacements(in: text, moving: entry, toPrecede: destination)
+        }
     }
 
     // MARK: Status

@@ -23,7 +23,7 @@ extension EditorColumnView {
 
     /// Asks only when there is something to lose; a clean tab closes on the click.
     func requestClose(_ tab: NoteTab) {
-        if tab.note.hasUnsavedChanges {
+        if tab.note.differsFromSaved {
             closing = tab
         } else {
             focused { vault.closeTab(tab.id) }

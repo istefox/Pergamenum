@@ -94,7 +94,8 @@ extension EditorColumnView {
         .modifier(FindKeeping(
             find: find,
             navigation: navigation,
-            text: note.text,
+            revision: note.revision,
+            text: { tab?.note.text ?? "" },
             isFocused: isFocused
         ))
     }
@@ -148,27 +149,24 @@ extension EditorColumnView {
     /// `editing(_:)`'s `outline:` group, out of line for the same reason.
     private func outlineInputs(for note: VaultController.OpenNote) -> NoteTextView.OutlineInputs {
         .init(
-            // Computed here, once per rebuild, from the same `NoteOutline` the sidebar
-            // draws: the text view needs the ranges only to say which one the caret is
-            // in, and it must be the same list or the highlight lands a row off.
-            outlineRanges: NoteOutline.entries(in: note.text).map {
-                NSRange($0.range, in: note.text)
-            },
             // Not through `focused`: this also fires when the text view loads its note, and
             // taking the focus there moved it to the other column on returning to Note.
             onOutlineEntryChanged: { entry in vault.recordOutlineEntry(entry, inColumn: columnIndex) },
             scrollRequest: pendingJump,
             onScrollApplied: { pendingJump = nil },
-            // `NoteTab.foldedEntries` is offsets; `NoteTextView`/`NoteFolding` still want the
-            // ordinal `NoteOutline.entries(in:)` index. Translated here, fresh against this
-            // render's own `note.text`, rather than trusting a value computed against a
-            // possibly older version of it.
-            foldedEntries: foldedOrdinals(ofOffsets: tab?.foldedEntries ?? [], in: note.text),
             hidesFrontmatter: tab?.hidesFrontmatter ?? false,
             // `entry` here is the heading's own offset, straight from `NoteTextView`'s
-            // fold-badge click (`unfold(at:in:)`) - never re-derived through `outlineRanges`,
-            // which is exactly the stale lookup that used to name the wrong section.
-            onToggleFold: { entry in focused { vault.toggleFold(entry) } }
+            // fold-badge click (`unfold(at:in:)`) - never re-derived through an ordinal, which is
+            // exactly the stale lookup that used to name the wrong section.
+            onToggleFold: { entry in focused { vault.toggleFold(entry) } },
+            // The column's store, which the sidebar reads too, so the editor and the index cannot
+            // disagree about what the sections are; the revision is read live when a pass stamps it,
+            // and the folds go in as the offsets the tab keeps (ADR-0096 §D6, §D7). Nothing here
+            // parses the note.
+            store: vault.columns.indices.contains(columnIndex)
+                ? vault.registeredOutlineStore(forColumn: vault.columns[columnIndex].id) : nil,
+            currentRevision: { tab?.note.revision },
+            foldedOffsets: tab?.foldedEntries ?? []
         )
     }
 
@@ -315,7 +313,11 @@ extension EditorColumnView {
 private struct FindKeeping: ViewModifier {
     let find: FindSession
     let navigation: Navigation
-    let text: String
+    /// What the search watches for a change of the note: a revision, compared in constant time,
+    /// never the whole text (ADR-0096 §D5).
+    let revision: TextRevision
+    /// The note's text, read only when a handler runs.
+    let text: () -> String
     /// Cmd+G is the window's key and this column's search: the one without the focus has to
     /// let it pass, or it steps its own matches and clears the counter the other was reading.
     let isFocused: Bool
@@ -323,11 +325,12 @@ private struct FindKeeping: ViewModifier {
     func body(content: Content) -> some View {
         content
             // Recomputed when the note changes as well as when the query does: with the bar
-            // open, typing in the note moves every match after the caret.
-            .onChange(of: text) { find.update(in: text) }
-            .onChange(of: find.query) { find.update(in: text) }
-            .onChange(of: find.isRegex) { find.update(in: text) }
-            .onChange(of: find.isCaseSensitive) { find.update(in: text) }
+            // open, typing in the note moves every match after the caret. With it closed,
+            // `update(in:)` returns before it searches.
+            .onChange(of: revision) { find.update(in: text()) }
+            .onChange(of: find.query) { find.update(in: text()) }
+            .onChange(of: find.isRegex) { find.update(in: text()) }
+            .onChange(of: find.isCaseSensitive) { find.update(in: text()) }
             // Cmd+G and Cmd+Shift+G arrive as a running total, so the same key pressed twice
             // is two steps where a Bool set twice would be one. Consumed by taking the
             // difference and writing back what was taken.

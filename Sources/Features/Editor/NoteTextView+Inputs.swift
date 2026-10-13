@@ -31,34 +31,37 @@ extension NoteTextView {
         var matchJump: NSRange?
     }
 
-    /// The outline's inputs: the entries as line ranges, the jump to one, and folding.
+    /// The outline's inputs: the store, the jump to an entry, and folding.
     struct OutlineInputs {
-        /// The index's entries, as line ranges. Handed to the text view so it can say which
-        /// one the caret is in without the caret's position having to travel up on every
-        /// arrow key.
-        var outlineRanges: [NSRange] = []
+        /// Called with the index entry the caret is in, only when it changes, so the caret's
+        /// position does not have to travel up on every arrow key. The entry is read from the
+        /// coordinator's outline store (ADR-0096 §D7).
         var onOutlineEntryChanged: ((Int?) -> Void)?
         /// A line the index asked to be taken to (M8). The fourth one-shot input, and it
         /// follows the same shape as the other three: consumed once, then reported as applied.
         var scrollRequest: Navigation.OutlineJump?
         var onScrollApplied: () -> Void = {}
-        /// The index entries whose sections are folded (M8), as indices into
-        /// `NoteOutline.entries(in:)` of the current text: the ordinals `NoteFolding.layout` and
-        /// `NoteFolding.sections` read. The tab keeps each fold by its heading's own UTF-16
-        /// offset (`NoteTab.foldedEntries`, PG-021 follow-up,
-        /// `FoldStateOrdinalIndexStalenessTests`) and `EditorColumn+Text.swift` converts those
-        /// offsets here through `foldedOrdinals(ofOffsets:in:)` on every render, so an edit that
-        /// moves a heading to another position cannot re-target the wrong section.
-        var foldedEntries: Set<Int> = []
         /// Whether the frontmatter block is left out of the layout (`NoteTab.hidesFrontmatter`).
         /// Applied by the same pass as the folds, which is why it rides in this group.
         var hidesFrontmatter = false
         /// Called with the UTF-16 offset of the heading whose fold badge was clicked (PG-021) -
-        /// the folded heading's own live layout offset, never re-derived through `outlineRanges`.
+        /// the folded heading's own live layout offset, never re-derived through an entry's ordinal.
         /// `OutlinePane`'s chevron reaches the same `VaultController.toggleFold`, so a section
         /// opened from the editor and one opened from the sidebar are one gesture with two doors,
         /// both handing it an offset.
         var onToggleFold: ((Int) -> Void)?
+        /// The column's outline store (ADR-0096 §D6): the coordinator splices and rebuilds it, and the
+        /// sidebar reads its rows. Nil where no column owns one (Oggi, Diario, a test); the coordinator
+        /// then keeps a private one.
+        var store: OutlineStore?
+        /// The revision of the text the model holds now, asked when a pass runs, so the store can be
+        /// stamped with the revision it describes. Read live, never captured.
+        var currentRevision: (() -> TextRevision?)?
+        /// The folded sections (M8) as the heading offsets the tab keeps (`NoteTab.foldedEntries`,
+        /// `FoldStateOrdinalIndexStalenessTests`), which the coordinator turns into the ordinals
+        /// `NoteFolding` reads through the store's map, against the text it just styled, so an edit
+        /// that moves a heading cannot re-target the wrong section (ADR-0096 §D7).
+        var foldedOffsets: Set<Int> = []
     }
 
     /// What the editor needs to follow, preview and offer a link (ADR-0083 §D2, §D3, §D6, §D7),

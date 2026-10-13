@@ -46,7 +46,7 @@ extension VaultController {
         let folder = relativePath.trimmingCharacters(in: .pathSlashes)
         let isInside = { (path: String) in path == folder || path.hasPrefix("\(folder)/") }
         let hasDirtyTab = columns.contains { column in
-            column.tabs.contains { tab in tab.note.hasUnsavedChanges && isInside(tab.note.relativePath) }
+            column.tabs.contains { tab in tab.note.differsFromSaved && isInside(tab.note.relativePath) }
         }
         if hasDirtyTab { return Self.unsavedNoteInFolderRefusal }
         if openBoard.hasUnsavedChanges, !openBoard.board.isEmpty, isInside(openBoard.board) {

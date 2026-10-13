@@ -46,6 +46,8 @@ extension NoteTextView {
         /// What the last binding write handed over, so the next update need not compare the whole
         /// note with the model (ADR-0094 §D9).
         var modelSync = ModelSync()
+        /// The outline store this coordinator feeds (ADR-0096 §D6); `NoteTextView+Outline.swift`.
+        var outlineFeed = NoteTextView.OutlineFeed()
         /// The structure map and the decision pending on the edits since the last styling
         /// (ADR-0091 §D2/§D3). Nil with the kill switch on, and until the first full restyle.
         private(set) var restyleScope: RestyleScope?
@@ -765,6 +767,7 @@ extension NoteTextView.Coordinator {
             layoutDebt.oweEverything()
         }
         restyleScope = forcesFullRestyle ? nil : RestyleScope(text: text)
+        rebuildOutline(from: text)
         let inputs = StylingInputs(storage: storage, textView: textView, theme: theme, parent: parent)
         stylingBaseline = (inputs, recordedEdits)
         embedScan = .whole
@@ -821,6 +824,7 @@ extension NoteTextView.Coordinator {
         unspellableRanges.spliceMerging(MarkdownStyler.merged(collected.unspellable), replacing: dirty)
         embedRuns.splice(collected.embedRuns, replacing: dirty)
         restyleScope?.absorb(StructureMap(text: fragment), at: dirty.location, replacing: dirty)
+        spliceOutline(in: textView, note: note, dirty: dirty)
         stylingBaseline?.edits = recordedEdits
         owe(.range(dirty))
         restyleLog.incremental += 1

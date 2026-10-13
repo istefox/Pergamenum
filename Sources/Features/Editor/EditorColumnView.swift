@@ -25,6 +25,13 @@ struct EditorColumnView: View {
 
     let columnIndex: Int
 
+    /// The find session may be handed in (a test passes its own to read `updates`); otherwise the
+    /// column makes one, as it always did (ADR-0096 §D5, plan Task 4).
+    init(columnIndex: Int, find: FindSession = FindSession()) {
+        self.columnIndex = columnIndex
+        _find = State(initialValue: find)
+    }
+
     /// Held here rather than read straight from `Navigation`, because the insertion has to be
     /// consumed once: read directly it would be re-applied on every view update.
     @State var pendingInsertion: Navigation.Insertion?

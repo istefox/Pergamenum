@@ -18,6 +18,8 @@ struct DerivedStateSnapshot: Equatable {
     var revealed: Set<Int>
     var revealedSpans: [Int: [NSRange]]
     var map: StructureMap?
+    /// The outline map's items (ADR-0096 §D6), empty while the coordinator feeds no store.
+    var outline: [OutlineMap.Item]
 }
 
 /// `EditorDecorationDelegate`'s offset-keyed stores as comparable values (ADR-0091 §D6), the part
@@ -49,6 +51,7 @@ extension NoteTextView.Coordinator {
         folding.shift(by: edit)
         reveal.shift(by: edit)
         shiftStyledRanges(by: edit)
+        fedOutlineStore?.apply(edit)
     }
 
     /// The state above as values, read from the stores themselves; `map` is nil while no scope is
@@ -67,7 +70,8 @@ extension NoteTextView.Coordinator {
             foldLayout: folding.lastFoldLayout,
             revealed: reveal.lastRevealed,
             revealedSpans: reveal.lastRevealedSpans,
-            map: restyleScope?.map
+            map: restyleScope?.map,
+            outline: fedOutlineStore?.map.items ?? []
         )
     }
 }

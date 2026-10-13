@@ -8,10 +8,11 @@ struct UnresolvedLinksSection: View {
     @Environment(VaultController.self) private var vault
     @Environment(CommandActions.self) private var commandActions
 
-    let note: VaultController.OpenNote
+    /// The open note's path, and not the buffer (ADR-0096 §D5): typing does not change it.
+    let relativePath: String
 
     var body: some View {
-        let rows = vault.unresolvedLinkRows(ofNoteAt: note.relativePath)
+        let rows = vault.unresolvedLinkRows(ofNoteAt: relativePath)
         let header = VaultBrowser.InspectorSection.unresolved(count: rows.count)
         TraySection(
             title: header.title,
@@ -46,7 +47,7 @@ struct UnresolvedLinksSection: View {
     /// ADR-0083 §D6's offer: the composer, in this note's folder, with the target as its title.
     private func create(_ row: UnresolvedLinkRow) {
         guard let choice = LinkChoice.entries(for: .missing(title: row.target, creatable: true)).first else { return }
-        commandActions.choose(choice, how: .replace, from: note.relativePath)
+        commandActions.choose(choice, how: .replace, from: relativePath)
     }
 
     private func small(_ title: String, identifier: String, action: @escaping () -> Void) -> some View {

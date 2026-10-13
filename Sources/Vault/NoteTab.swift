@@ -58,6 +58,24 @@ struct NoteTab: Identifiable, Equatable, Sendable {
     /// Whether the tab belongs to a vault other than the open one.
     var isFromPreviousVault: Bool { previousVaultRoot != nil }
 
+    /// What a tab's chip in the tab bar draws, and nothing it does not (ADR-0096 §D5, PG-406): equal
+    /// across keystrokes, so a chip that stores it is not invalidated by typing.
+    struct ChipFace: Equatable, Sendable {
+        let id: UUID
+        let title: String
+        let relativePath: String
+        let isPreview: Bool
+        let isUnsaved: Bool
+    }
+
+    /// The chip's face: the tab's identity and the note's name, and the unsaved mark, never the text.
+    var chipFace: ChipFace {
+        ChipFace(
+            id: id, title: note.title, relativePath: note.relativePath,
+            isPreview: isPreview, isUnsaved: note.hasUnsavedChanges
+        )
+    }
+
     init(note: VaultController.OpenNote, id: UUID = UUID()) {
         self.id = id
         self.note = note
@@ -105,18 +123,80 @@ extension VaultController {
     struct OpenNote: Equatable, Sendable {
         var relativePath: String
         var title: String
-        /// The text as the editor has it, which may differ from disk while editing.
-        var text: String
-        /// The text as last read from or written to disk.
-        var savedText: String
+        /// The text as the editor has it, which may differ from disk while editing. Every
+        /// assignment draws a new `revision` (ADR-0096 §D1).
+        var text: String {
+            didSet { revision = .next() }
+        }
+        /// The text as last read from or written to disk. Every assignment draws a new
+        /// `savedRevision`, which leaves the mark on until something links the two (§D3).
+        var savedText: String {
+            didSet { savedRevision = .next() }
+        }
         /// An external change arrived while this note had unsaved edits. The editor
         /// must ask rather than merging or discarding either side (ADR-0001 §D3.4).
         ///
         /// One value, not two optionals (ADR-0064 §D3): `nil` is no conflict, `.text` the
         /// note changed on disk, `.deleted` the note is gone from disk.
         var externalChangePending: VaultSession.ExternalChange.Content?
+        /// The change marker of `text` (ADR-0096 §D1, PG-406): a new one on every assignment.
+        private(set) var revision: TextRevision
+        /// The marker `revision` had when the buffer was last known to equal the disk.
+        /// Equal to `revision` only where the two texts are known equal (ADR-0096 §D3).
+        private(set) var savedRevision: TextRevision
 
-        var hasUnsavedChanges: Bool { text != savedText }
+        /// The same memberwise labels as before the revisions, so every construction compiles
+        /// unchanged (ADR-0096 §D2). One compare, when the buffer is built: equal texts start
+        /// linked, so a freshly opened note reads clean. Observers do not run in `init`.
+        init(
+            relativePath: String,
+            title: String,
+            text: String,
+            savedText: String,
+            externalChangePending: VaultSession.ExternalChange.Content? = nil
+        ) {
+            self.relativePath = relativePath
+            self.title = title
+            self.text = text
+            self.savedText = savedText
+            self.externalChangePending = externalChangePending
+            let drawn = TextRevision.next()
+            revision = drawn
+            savedRevision = text == savedText ? drawn : .next()
+        }
+
+        /// The unsaved mark (ADR-0096 §D3): constant time, may read dirty late, never reads clean
+        /// while the texts differ. Display only; a decision reads `differsFromSaved`.
+        var hasUnsavedChanges: Bool { revision != savedRevision }
+
+        // The three places besides `init` that link `savedRevision` to `revision` (ADR-0096 §D3).
+        // Here and not in `OpenNote+Revision.swift` because the setters are `private(set)`.
+
+        /// Takes `text` as both the buffer and the disk's side (a catch-up that found them equal).
+        mutating func adopt(_ text: String) {
+            self.text = text
+            savedText = text
+            savedRevision = revision
+        }
+
+        /// Records that `written` reached disk, and links the mark when the buffer still holds it.
+        /// When nothing was typed during the write the two strings share storage and the compare
+        /// costs nothing (ADR-0096 §D4).
+        mutating func recordWrite(_ written: String) {
+            savedText = written
+            if text == written {
+                savedRevision = revision
+            }
+        }
+
+        /// Clears the unsaved mark when the texts are equal; answers whether it changed anything.
+        /// A buffer that is still dirty is left exactly as it was.
+        @discardableResult
+        mutating func settleUnsavedMark() -> Bool {
+            guard hasUnsavedChanges, text == savedText else { return false }
+            savedRevision = revision
+            return true
+        }
 
         /// What `catchUp(to:)` did with the incoming content (ADR-0064 §D3).
         enum CatchUp: Equatable {
@@ -147,14 +227,13 @@ extension VaultController {
         ///   An in-process write passes `.text` and can never get this answer.
         @discardableResult
         mutating func catchUp(to incoming: VaultSession.ExternalChange.Content) -> CatchUp {
-            if hasUnsavedChanges, incoming != .text(text) {
+            if differsFromSaved, incoming != .text(text) {
                 externalChangePending = incoming
                 return .asked
             }
             switch incoming {
             case .text(let incomingText):
-                text = incomingText
-                savedText = incomingText
+                adopt(incomingText)
                 externalChangePending = nil
                 return .adopted
             case .deleted:

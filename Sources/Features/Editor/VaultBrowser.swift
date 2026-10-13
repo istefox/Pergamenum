@@ -199,14 +199,14 @@ struct VaultBrowser: View {
                     star(note)
                     categoryLink(note)
                     history(note)
-                    BacklinksSection(note: note)
+                    BacklinksSection(title: note.title, relativePath: note.relativePath)
                     // Under the backlinks, chosen from the mockup: the two answer the same
                     // question a step apart - who points here, and who talks about this
                     // without pointing.
                     UnlinkedMentionsSection(notePath: note.relativePath)
                     WhereNoteAppearsSection(notePath: note.relativePath)
                     LinkedTasksPanel(title: note.title, emptyText: "nessun task linka questa nota")
-                    UnresolvedLinksSection(note: note)
+                    UnresolvedLinksSection(relativePath: note.relativePath)
                 }
                 .padding(theme.spacing(.m))
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -241,10 +241,11 @@ struct VaultBrowser: View {
     /// from the index (SPEC "UI flows: Linked note", ADR-0047 §D10) - an unsaved edit
     /// that just added or removed the key shows here before the next write, the same
     /// reason `vault.violations(for:)` reads live text rather than the index's own copy.
-    /// Nothing shows when the note carries no such key.
+    /// Nothing shows when the note carries no such key. Read through the bounded frontmatter, so
+    /// the body is never split on the inspector's account (ADR-0096 §D5).
     @ViewBuilder
     private func categoryLink(_ note: VaultController.OpenNote) -> some View {
-        if let slug = CategoryFrontmatter.slug(in: NoteDocument.parse(note.text).frontmatter.foreignKeys) {
+        if let slug = CategoryFrontmatter.slug(in: NoteDocument.frontmatter(in: note.text).foreignKeys) {
             let category = vault.categories.entries.first { $0.slug == slug }
             VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
                 Text("CATEGORIA").themedText(.caption, color: .textTertiary)

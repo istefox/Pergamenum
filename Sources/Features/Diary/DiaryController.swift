@@ -21,21 +21,41 @@ final class DiaryController {
     private(set) var day: CalendarDate = .today
     /// The day's text without its `## Diario` section, which is what the editor edits.
     ///
-    /// Settable because it is bound straight to the editor; every change goes through
-    /// `didSet`, which counts it as an edit and schedules the save.
+    /// Settable because the editor writes it; every change goes through `didSet`, which counts
+    /// it as an edit and schedules the save. A load is not an edit and compares nothing; a write
+    /// from outside the editor compares first, so an equal value schedules no save; the editor's
+    /// own write (`editorWrote(_:)`) is an edit without the compare (ADR-0096 §D9).
     var prose: String = "" {
         didSet {
-            guard prose != oldValue, isLoaded else { return }
+            guard isLoaded else { return }
+            if !isEditorWrite {
+                proseCompares += 1
+                guard prose != oldValue else { return }
+            }
             noteEdited()
             scheduleSave()
         }
     }
+    /// How many times `prose`'s observer compared the whole day against its old value (ADR-0096 §D9,
+    /// PG-406): a test seam that proves the editor's own write costs nothing.
+    @ObservationIgnored private(set) var proseCompares: Int = 0
+    /// Raised by `editorWrote(_:)` for the one assignment it makes, read by `prose`'s observer.
+    @ObservationIgnored private var isEditorWrite = false
     private(set) var entries: [DiaryEntry] = []
 
     /// The entry being composed or edited, and the sheet that shows it. Nil is closed.
     var draft: DiaryDraft?
     /// Raised by the toolbar's date button.
     var isChoosingDate = false
+
+    /// The editor wrote `prose` (ADR-0096 §D9): an edit, recorded and saved like any other, without
+    /// comparing the whole day against what it replaced. An editor write of the same characters
+    /// schedules a save of the same bytes, which the compare used to skip.
+    func editorWrote(_ prose: String) {
+        isEditorWrite = true
+        defer { isEditorWrite = false }
+        self.prose = prose
+    }
 
     private let vault: VaultController
     /// False until the first load, so the initial assignment to `prose` is not read as

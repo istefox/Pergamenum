@@ -56,7 +56,7 @@ extension VaultController {
     /// text is read before the `await`; anything typed during it stays unsaved. No focusing:
     /// a background tab, or one of the other column, is saved where it is.
     func saveTab(_ id: NoteTab.ID) async -> TabSave {
-        guard let writer = tab(withID: id), writer.note.hasUnsavedChanges else { return .clean }
+        guard let writer = tab(withID: id), writer.note.differsFromSaved else { return .clean }
         let note = writer.note
         // A tab that outlived a vault switch names a path of the vault it came from; writing it
         // here would overwrite, or create, a different file (ADR-0073 §D5, departure 13). The
@@ -90,7 +90,7 @@ extension VaultController {
         let outcome = await saveTab(id)
         switch outcome {
         case .saved, .clean:
-            if tab(withID: id)?.note.hasUnsavedChanges != true { closeTab(id) }
+            if tab(withID: id)?.note.differsFromSaved != true { closeTab(id) }
         case .failed:
             break
         }
@@ -148,8 +148,7 @@ extension VaultController {
         switch pending {
         case .text(let incoming):
             var note = tab.note
-            note.text = incoming
-            note.savedText = incoming
+            note.adopt(incoming)
             note.externalChangePending = nil
             replaceOpenNote(note)
         case .deleted:
@@ -167,7 +166,12 @@ extension VaultController {
     ///   the tab asks first, instead of leaving a clean tab on a missing file nothing can save.
     func keepLocalVersion() {
         updateFocusedTab { tab in
-            if tab.note.externalChangePending == .deleted { tab.note.savedText = "" }
+            if tab.note.externalChangePending == .deleted {
+                tab.note.savedText = ""
+                // The assignment drew a new `savedRevision`; an already empty buffer is equal to it
+                // and would read dirty with no typing pause scheduled to clear it (ADR-0096 §D3).
+                tab.note.settleUnsavedMark()
+            }
             tab.note.externalChangePending = nil
         }
     }

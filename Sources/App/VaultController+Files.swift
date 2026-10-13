@@ -31,7 +31,7 @@ extension VaultController {
         // The question is whether *any* tab is dirty, so it stops at the first one rather
         // than flattening every column's tabs into an array to ask for its emptiness.
         columns.contains { column in
-            column.tabs.contains { $0.note.relativePath == relativePath && $0.note.hasUnsavedChanges }
+            column.tabs.contains { $0.note.relativePath == relativePath && $0.note.differsFromSaved }
         }
     }
 

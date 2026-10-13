@@ -75,6 +75,7 @@ extension VaultController {
         }
         guard let closing = columns.firstIndex(where: { $0.id == columnID }) else { return false }
         columns.remove(at: closing)
+        dropOutlineStore(forColumn: columnID)
         focusedColumnIndex = 0
         rememberTabs()
         return true

@@ -37,6 +37,10 @@ final class FindSession {
     /// `NoteTextView` already use for focus.
     private(set) var focusRequest = 0
 
+    /// How many times `update(in:)` ran with the bar open (ADR-0096 §D5): a test seam that proves a
+    /// closed bar costs a keystroke nothing.
+    @ObservationIgnored private(set) var updates: Int = 0
+
     var matches: [NSRange] { result.ranges }
 
     /// The match the stepper is on, or nil when there is none to be on.
@@ -96,6 +100,7 @@ final class FindSession {
 
     func update(in text: String) {
         guard isOpen else { return }
+        updates += 1
         result = NoteFind.run(currentQuery, in: text, within: scope)
         // Clamped, never reset: an edit that removes the last match should leave the stepper
         // on the new last one, not send it back to the top of the note.

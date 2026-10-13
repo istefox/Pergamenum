@@ -99,12 +99,14 @@ private func swapped(
     @Test func aBadgeClickAfterAParentSwapCallsTheNewOnToggleFold() throws {
         var old: [Int] = []
         var new: [Int] = []
-        let ranges = NoteOutline.entries(in: Self.note).map { NSRange($0.range, in: Self.note) }
         func view(_ sink: @escaping (Int) -> Void) -> NoteTextView {
             NoteTextView(
                 text: .constant(Self.note), theme: .emergency, noteTitles: [], tagSuggestions: [],
                 onFollowLink: { _ in },
-                outline: .init(outlineRanges: ranges, foldedEntries: [0], onToggleFold: sink)
+                // Restated for ADR-0096 §D7 (PG-406, plan Task 4): the entries' ranges and the folded
+                // ordinals left `OutlineInputs`; the heading's offset (`# Uno` is at 0, the ordinal's
+                // old value) takes their place. The scenario and its expectation are unchanged.
+                outline: .init(onToggleFold: sink, foldedOffsets: [0])
             )
         }
         let coordinator = view { old.append($0) }.makeCoordinator()
@@ -247,11 +249,14 @@ private func swapped(
     private static let note = "prosa iniziale\n# Uno\ncorpo uno\n# Due\ncorpo due\n"
 
     private func editor(_ log: Log) -> (NSTextView, NoteTextView.Coordinator) {
-        let ranges = NoteOutline.entries(in: Self.note).map { NSRange($0.range, in: Self.note) }
         let view = NoteTextView(
             text: .constant(Self.note), theme: .emergency, noteTitles: [], tagSuggestions: [],
             onFollowLink: { _ in },
-            outline: .init(outlineRanges: ranges, onOutlineEntryChanged: { log.entries.append($0) })
+            // Restated for ADR-0096 §D6 and §D7 (PG-406, plan Task 4): the entries' ranges are no longer
+            // handed in. The coordinator keeps a store of its own, built on first read from the text view's
+            // string, because this fixture sets `textView.string` and moves the caret with no styling pass
+            // in between. The scenario and its expected reports are unchanged.
+            outline: .init(onOutlineEntryChanged: { log.entries.append($0) })
         )
         let coordinator = view.makeCoordinator()
         let textView = CompletingTextView(usingTextLayoutManager: true)

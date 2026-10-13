@@ -181,7 +181,13 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     try #require(controller.openNote?.externalChangePending == .deleted)
 
     // Undone back to the saved text: the buffer reads clean again.
+    //
+    // Restated for ADR-0096 §D3 (PG-406, plan Task 2): the unsaved mark no longer compares the whole
+    // text on a keystroke, so an undo back leaves it on until the typing pause settles it. The pause
+    // is `settleUnsavedMarks()` here, called by hand. The test's point - `keepLocalVersion` on a
+    // deleted note turns a clean buffer dirty - is unchanged, and so is every expected outcome below.
     controller.updateOpenNoteText(original)
+    controller.settleUnsavedMarks()
     try #require(controller.openNote?.hasUnsavedChanges == false)
 
     controller.keepLocalVersion()
@@ -196,6 +202,28 @@ private func controller(_ vault: borrowing TemporaryVault) async throws -> Vault
     let onDisk = try String(contentsOf: vault.root.appending(path: "A.md"), encoding: .utf8)
     #expect(onDisk == original)
     #expect(controller.openNote?.hasUnsavedChanges == false)
+}
+
+/// Red without `settleUnsavedMark()` in `keepLocalVersion()` (PG-406, ADR-0096 §D3): `savedText = ""`
+/// draws a new `savedRevision`, so an already empty buffer, whose text equals it, reads dirty with no
+/// typing pause scheduled to clear the mark. The non-empty buffer staying dirty is
+/// `keepLocalVersionThenSaveRecreatesTheFile` above.
+@MainActor
+@Test func keepingAnEmptyBufferOnADeletedNoteReadsClean() async throws {
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    defer { controller.close() }
+    controller.openNote(at: "A.md")
+    controller.updateOpenNoteText("")
+    try vault.remove("A.md")
+    await controller.reconcile(["A.md"])
+    try #require(controller.openNote?.externalChangePending == .deleted)
+
+    controller.keepLocalVersion()
+
+    #expect(controller.openNote?.externalChangePending == nil)
+    #expect(controller.openNote?.text == "")
+    #expect(controller.openNote?.hasUnsavedChanges == false, "buffer vuoto e nulla su disco: sono uguali")
 }
 
 // MARK: 16 - R-04, the banner never offers a reload for a deletion

@@ -6,22 +6,32 @@ import SwiftUI
 /// holds things *about* the note - conformance, backlinks, tasks that point here - and
 /// the sidebar holds things you navigate to. An index is the second kind.
 ///
-/// It reads `NoteOutline`, which both this and the reading view use, so a click here and
-/// what appears there cannot disagree about what the sections are.
-struct OutlinePane: View {
-    @Environment(\.theme) private var theme
-    @Environment(VaultController.self) private var vault
+/// Drawn from `OutlinePaneInputs` (ADR-0096 §D7): the rows of the column's outline store, which
+/// the editor feeds from the same `NoteOutline` rule, so a click here and what the editor folds
+/// cannot disagree about what the sections are. It holds no text and reads no observed property
+/// of the vault: the caret's entry and the folds arrive as inputs, and it is `Equatable` by them,
+/// so a keystroke that moved no row and not the caret's entry leaves it equal and the footer's
+/// `.equatable()` skips its body.
+struct OutlinePane: View, Equatable {
+    /// Where a dragged section is asked to go: under a heading, or before an entry (`nil`, the
+    /// end of the note).
+    enum MoveTarget {
+        case nestingUnder(Int)
+        case toPrecede(Int?)
+    }
 
-    let entries: [NoteOutline.Entry]
-    /// Called with the entry's line and its position in the index. Two numbers because
-    /// the editor scrolls by character and the reading view by block.
-    let onSelect: (NSRange, Int) -> Void
-    /// The whole note, needed only to turn a `String.Index` range into the `NSRange` the
-    /// text view speaks. Converted here, once per click, rather than kept as two ranges.
-    let text: String
-    /// The open note's own path (PG-019): tags the drag payload, so a drop checks the
-    /// section it is being asked to move still belongs to the note it is shown for.
-    let notePath: String
+    @Environment(\.theme) private var theme
+
+    let inputs: OutlinePaneInputs
+    /// Called with the entry's position in the index; the footer resolves its line when the click
+    /// happens.
+    let onSelect: (Int) -> Void
+    /// Called with the entry's position for the chevron and the row's double-click; the footer
+    /// resolves the heading's offset when it happens.
+    let onToggleFold: (Int) -> Void
+    /// `OutlineMove.replacements` over the note's text, read when the closure runs: a drop's
+    /// replacements, or nil when the move is not valid.
+    let moveReplacements: (_ moving: Int, _ target: MoveTarget) -> [(range: NSRange, text: String)]?
     /// A valid drop's two replacements, ready for `Navigation.moveOutlineSection(_:)`.
     let onMove: ([(range: NSRange, text: String)]) -> Void
 
@@ -30,26 +40,31 @@ struct OutlinePane: View {
     /// (ADR-0026 §D5), so this is the only place a gap can ask "would this move work".
     @State private var draggingEntry: Int?
 
+    /// Equal by the inputs, never by the closures (ADR-0096 §D7). Nonisolated because `Equatable` is:
+    /// the inputs are a `let` of a sendable value, so reading them crosses no actor.
+    nonisolated static func == (lhs: OutlinePane, rhs: OutlinePane) -> Bool {
+        lhs.inputs == rhs.inputs
+    }
+
+    private var rows: [OutlineRow] { inputs.rows }
+
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing(.xs)) {
             Text("INDICE").themedText(.caption, color: .textTertiary)
-            if entries.isEmpty {
+            if rows.isEmpty {
                 // Says what is missing rather than showing an empty box, the same refusal
                 // the slash menu makes when nothing matches its query.
                 Text("nessun titolo in questa nota")
                     .themedText(.caption, color: .textTertiary)
             } else {
-                // Both answers cost a pass over the whole note each, and both used to be
-                // asked once per row - `hiddenByFold` inside the `ForEach`, `foldable`
-                // through every chevron. Asked once here and handed down instead.
-                let hidden = hiddenByFold
-                let foldable = self.foldable
+                // Asked once here and handed down, never once per row.
+                let hidden = inputs.hiddenByFold
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
+                        ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
                             if !hidden.contains(index) {
                                 gap(toPrecede: index)
-                                row(entry, at: index, foldable: foldable)
+                                self.row(row, at: index)
                             }
                         }
                         gap(toPrecede: nil)
@@ -65,23 +80,21 @@ struct OutlinePane: View {
         .accessibilityIdentifier("outlinePane")
     }
 
-    private func row(_ entry: NoteOutline.Entry, at index: Int, foldable: Set<Int>) -> some View {
-        let isCurrent = vault.currentOutlineEntry == index
+    private func row(_ row: OutlineRow, at index: Int) -> some View {
+        let isCurrent = inputs.currentEntry == index
         return HStack(spacing: 0) {
-            chevron(for: entry, at: index, foldable: foldable)
-            button(entry, at: index, isCurrent: isCurrent, foldable: foldable)
+            chevron(for: row, at: index)
+            button(row, at: index, isCurrent: isCurrent)
         }
-        .padding(.leading, CGFloat(entry.level - 1) * theme.spacing(.m))
-        .modifier(HeadingDraggable(entry: entry, index: index, beginDrag: beginDrag))
+        .padding(.leading, CGFloat(row.level - 1) * theme.spacing(.m))
+        .modifier(HeadingDraggable(row: row, index: index, beginDrag: beginDrag))
         .modifier(HeadingNestDropTarget(
-            entry: entry,
-            isValidDrag: draggingEntry.map {
-                OutlineMove.replacements(in: text, moving: $0, nestingUnder: index) != nil
-            } ?? false,
+            row: row,
+            isValidDrag: draggingEntry.map { moveReplacements($0, .nestingUnder(index)) != nil } ?? false,
             perform: { drag in
                 defer { draggingEntry = nil }
-                guard drag.notePath == notePath,
-                      let replacements = OutlineMove.replacements(in: text, moving: drag.entry, nestingUnder: index)
+                guard drag.notePath == inputs.notePath,
+                      let replacements = moveReplacements(drag.entry, .nestingUnder(index))
                 else { return false }
                 onMove(replacements)
                 return true
@@ -99,13 +112,11 @@ struct OutlinePane: View {
     private func gap(toPrecede destination: Int?) -> some View {
         OutlineGap(
             level: gapLevel(toPrecede: destination),
-            isValidDrag: draggingEntry.map {
-                OutlineMove.replacements(in: text, moving: $0, toPrecede: destination) != nil
-            } ?? false,
+            isValidDrag: draggingEntry.map { moveReplacements($0, .toPrecede(destination)) != nil } ?? false,
             perform: { drag in
                 defer { draggingEntry = nil }
-                guard drag.notePath == notePath,
-                      let replacements = OutlineMove.replacements(in: text, moving: drag.entry, toPrecede: destination)
+                guard drag.notePath == inputs.notePath,
+                      let replacements = moveReplacements(drag.entry, .toPrecede(destination))
                 else { return false }
                 onMove(replacements)
                 return true
@@ -119,14 +130,14 @@ struct OutlinePane: View {
     /// there is none. Display only: `OutlineMove.replacements` computes the real answer at
     /// drop time, this only has to agree with it.
     private func gapLevel(toPrecede destination: Int?) -> Int {
-        if let destination, entries.indices.contains(destination) {
-            if case .heading(let level) = entries[destination].kind { return level }
-            for candidate in entries[..<destination].reversed() {
+        if let destination, rows.indices.contains(destination) {
+            if case .heading(let level) = rows[destination].kind { return level }
+            for candidate in rows[..<destination].reversed() {
                 if case .heading(let level) = candidate.kind { return level }
             }
             return 1
         }
-        for candidate in entries.reversed() {
+        for candidate in rows.reversed() {
             if case .heading(let level) = candidate.kind { return level }
         }
         return 1
@@ -137,97 +148,43 @@ struct OutlinePane: View {
     /// same trap `WorkspaceRow.beginDrag()` documents).
     private func beginDrag(_ index: Int) -> OutlineSectionDrag {
         draggingEntry = index
-        return OutlineSectionDrag(notePath: notePath, entry: index)
+        return OutlineSectionDrag(notePath: inputs.notePath, entry: index)
     }
 
     /// The fold control, and only where there is something to fold: an embed has no
     /// section, and a heading with nothing under it would fold to nothing.
     @ViewBuilder
-    private func chevron(for entry: NoteOutline.Entry, at index: Int, foldable: Set<Int>) -> some View {
-        if let offset = foldableOffset(for: entry, at: index, foldable: foldable) {
-            // `vault.foldedEntries` is offsets (`NoteTab.foldedEntries`); this row's own
-            // `entry` already carries its heading's live offset, so no `NoteOutline` re-scan
-            // is needed to ask or to toggle - only `hiddenByFold` below needs the full
-            // translation, because it has to compare a folded *ancestor* against every entry.
+    private func chevron(for row: OutlineRow, at index: Int) -> some View {
+        if row.isFoldable {
+            let isFolded = inputs.foldedOrdinals.contains(index)
             Button {
-                vault.toggleFold(offset)
+                onToggleFold(index)
             } label: {
-                Image(systemName: vault.foldedEntries.contains(offset) ? "chevron.right" : "chevron.down")
+                Image(systemName: isFolded ? "chevron.right" : "chevron.down")
                     .themedText(.caption, color: .textTertiary)
                     .frame(width: 12)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(vault.foldedEntries.contains(offset) ? "Espandi la sezione" : "Ripiega la sezione")
-            .accessibilityLabel(vault.foldedEntries.contains(offset) ? "Espandi la sezione" : "Ripiega la sezione")
+            .help(isFolded ? "Espandi la sezione" : "Ripiega la sezione")
+            .accessibilityLabel(isFolded ? "Espandi la sezione" : "Ripiega la sezione")
         } else {
             Color.clear.frame(width: 12)
         }
     }
 
-    /// The heading's own UTF-16 offset, when this entry can be folded - nil for anything else
-    /// (an embed, or a heading with nothing under it), which is what makes it safe to call from
-    /// both the chevron and the row's own double-click without duplicating the `foldable` guard.
-    /// Internal, not `private`, so `@testable import Pergamenum` can call it directly
-    /// (`Tests/OutlinePaneFoldableOffsetTests.swift`).
-    ///
-    /// `foldable` is passed in by the rows, which already hold the set `body` computed once
-    /// for the whole rebuild; left out, it is computed here, which is a pass over the note
-    /// per call and is why the drawing path never omits it.
-    func foldableOffset(for entry: NoteOutline.Entry, at index: Int, foldable: Set<Int>? = nil) -> Int? {
-        guard case .heading = entry.kind else { return nil }
-        let known = foldable ?? self.foldable
-        guard known.contains(index) else { return nil }
-        return text.utf16.distance(from: text.startIndex, to: entry.range.lowerBound)
-    }
-
-    /// The entries that have at least one line under them. Computed once per rebuild rather
-    /// than per row, and in one pass over the note rather than one per entry (PG-268): asking
-    /// `hiddenParagraphs` entry by entry re-parsed the whole note once per heading.
-    private var foldable: Set<Int> {
-        NoteFolding.foldableEntries(in: text)
-    }
-
-    /// The entries a folded ancestor hides from the index itself (PG-090), so folding `##
-    /// A.1` also takes its `### A.1.1` out of INDICE, not just out of the editor. The same
-    /// "next heading of the same or a higher level ends the section" rule
-    /// `NoteFolding.sectionEnd` applies to lines, applied here directly to entries instead:
-    /// there is no text offset to look up, only which entry follows which. An `.embed` never
-    /// ends a section (it has no level of its own), so it stays hidden along with the
-    /// section it sits inside.
-    ///
-    /// `vault.foldedEntries` is translated to ordinals here, fresh against this view's own
-    /// `text`, before the ordinal walk below runs - the one place in this file that needs
-    /// every folded ancestor's ordinal at once rather than one row's own.
-    private var hiddenByFold: Set<Int> {
-        let folded = foldedOrdinals(ofOffsets: vault.foldedEntries, in: text)
-        guard !folded.isEmpty else { return [] }
-        var hidden: Set<Int> = []
-        for index in folded {
-            guard entries.indices.contains(index), case .heading(let level) = entries[index].kind
-            else { continue }
-            for next in entries.indices where next > index {
-                if case .heading(let nextLevel) = entries[next].kind, nextLevel <= level { break }
-                hidden.insert(next)
-            }
-        }
-        return hidden
-    }
-
-    private func button(
-        _ entry: NoteOutline.Entry, at index: Int, isCurrent: Bool, foldable: Set<Int>
-    ) -> some View {
+    private func button(_ row: OutlineRow, at index: Int, isCurrent: Bool) -> some View {
         Button {
-            onSelect(NSRange(entry.range, in: text), index)
+            onSelect(index)
         } label: {
             HStack(spacing: theme.spacing(.xs)) {
                 // Only the embeds carry a symbol. A bullet on every row would be a column
                 // of noise; a symbol where the kind changes is information.
-                if entry.kind == .embed {
+                if row.kind == .embed {
                     Image(systemName: "doc.richtext")
                         .themedText(.caption, color: .textTertiary)
                 }
-                Text(entry.title)
+                Text(row.title)
                     .themedText(.body, color: isCurrent ? .textPrimary : .textSecondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -242,12 +199,12 @@ struct OutlinePane: View {
             )
         }
         .buttonStyle(.plain)
-        .help(entry.title)
+        .help(row.title)
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
-                guard let offset = foldableOffset(for: entry, at: index, foldable: foldable)
-                else { return }
-                vault.toggleFold(offset)
+                // The same guard as the chevron: only a row with something to fold.
+                guard row.isFoldable else { return }
+                onToggleFold(index)
             }
         )
     }
@@ -259,12 +216,12 @@ struct OutlinePane: View {
 /// `if` in `row(_:at:)`, so `.draggable`'s autoclosure - which must wrap the call, not its
 /// result (the `WorkspaceRow.beginDrag()` trap) - stays next to the condition that gates it.
 private struct HeadingDraggable: ViewModifier {
-    let entry: NoteOutline.Entry
+    let row: OutlineRow
     let index: Int
     let beginDrag: (Int) -> OutlineSectionDrag
 
     func body(content: Content) -> some View {
-        if case .heading = entry.kind {
+        if case .heading = row.kind {
             content.draggable(beginDrag(index))
         } else {
             content
@@ -278,7 +235,7 @@ private struct HeadingDraggable: ViewModifier {
 /// AROUND the row means "into this", where a line between rows means "next to this". An embed
 /// row is never a nesting target - only a heading has a level to nest under.
 private struct HeadingNestDropTarget: ViewModifier {
-    let entry: NoteOutline.Entry
+    let row: OutlineRow
     let isValidDrag: Bool
     let perform: (OutlineSectionDrag) -> Bool
     let theme: Theme
@@ -286,7 +243,7 @@ private struct HeadingNestDropTarget: ViewModifier {
     @State private var isTargeted = false
 
     func body(content: Content) -> some View {
-        if case .heading = entry.kind {
+        if case .heading = row.kind {
             content
                 .background(
                     RoundedRectangle(cornerRadius: theme.radius(.control), style: .continuous)

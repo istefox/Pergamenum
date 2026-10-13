@@ -300,6 +300,8 @@ the identity of the grids and the hosts.
 - **The ledger (R-14)** gets one entry for the binding write, and one for each other app-owned term that
   R-12's profile lists among the top terms. The IDs are written under "Ledger entries".
 
+What SwiftUI does after the write is removed by ADR-0096; `ModelSync` is unchanged.
+
 ### D10. Acceptance
 
 Four levels, as the SPEC's test seams set them:
@@ -600,6 +602,7 @@ stays open. None was filed as a ledger entry.
   the storage since and the model's text equals the written one (two values that share storage compare in
   constant time). Anything else, an external replacement included, falls through to the compare, so the record
   can only say "equal", never "different". Pinned by `ModelSyncTests`.
+  What SwiftUI does after the write is removed by ADR-0096; `ModelSync` is unchanged.
 - **The transclusion occurrence scan (closed, PG-407, no code).** It is not a per-keystroke term. The ranged
   scan reads the dirty fragment only: 72 to 74 characters at 50 KB, 200 KB and 1 MB, 0.09 ms in Debug at every
   size. The 4.3% of R-12's profile is the whole-note scan the first keystroke after an open owes
