@@ -10,7 +10,9 @@
   flip, per the plan's build result: §D8's two GUI tests were not seen green (XCTest drops `[` on
   the Italian - Pro layout, and `perform(withKeyModifiers:)` did not stamp Command on the hover
   events), so the popover in light and dark, its edge and Cmd+[ on that layout are owed to a hand
-  check.
+  check. *Update 2026-10-13:* the popover's edge, its first-show size and its light and dark
+  themes were measured by a throwaway probe test (see §D7, "Measured"); Cmd+[ on that layout is
+  still owed to a hand check.
 - Date: 2026-10-04, written against `48a2d912`. **Amended 2026-10-07** in place, before any code
   landed: §D7 is rewritten for an `NSPopover` (SPEC Decision "The preview is an `NSPopover`, not a
   `NeverKeyPanel`"), with its first Alternatives paragraph, and every line number below was read
@@ -361,8 +363,16 @@ PG-258's orphan. Each removal is asserted in-process.
   preferring the edge below the line; AppKit moves it to the opposite edge when there is no room.
   Anchored to the rect's edge, it is drawn beside the link and never over it, so a Cmd+click aimed
   at the link reaches the link (SPEC Decision). The preferred edge is given in the text view's
-  coordinates, which are flipped: the build passes `.maxY`, the bottom in a flipped view; a
-  confirmation by eye on the Debug build is not recorded at the flip (the status line's hand check).
+  coordinates, which are flipped: the build passes `.maxY`, the bottom in a flipped view. *Measured
+  2026-10-13* (a probe test, not committed: the real `NSPopover` in a visible window, shown through
+  `NSPopover.show` itself because the test host never becomes the key window and the presenter's
+  guard refuses): with `.maxY` the popover's top edge meets the link's bottom edge, so it sits below
+  the link; with the window on the screen's bottom edge it moves above. Its content size is set at
+  the first show and equal at the second (360 wide; 104, 72, 50 and 32 high for a note, an
+  ambiguous title, a missing note and a board). With the bundled `pergamenum-light` and
+  `pergamenum-dark` themes the rendered text is dark and light respectively. Not measured: the
+  popover's own background, which AppKit draws outside the hosted view, so text contrast against it
+  is still a look on the Debug build.
 - The rect is the controller's: it lays out the run first (`ensureLayout(for:)`), reads its TextKit 2
   segments, and anchors to the segment the pointer is on when the run wraps, else the first. A run
   with no laid-out segment gives no rect and no show. `firstRect(forCharacterRange:)`-style queries
