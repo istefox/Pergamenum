@@ -188,22 +188,32 @@ struct EditorCommand: Identifiable, Sendable, Equatable, RankableEntry {
 
     /// The entries that run a command the app already has.
     ///
-    /// Every `ShortcutCommand` except two. `globalCapture` is the hot key for capturing
-    /// from *another* application, and offering it from inside the editor would open a
-    /// panel to write a note while the person is already writing one. `pastePlain` needs
-    /// the pasteboard and the caret at once, and the slash menu has just consumed both by
-    /// replacing the text that was typed.
+    /// Every `ShortcutCommand` except two, and those that take the selection. `globalCapture`
+    /// is the hot key for capturing from *another* application, and offering it from inside
+    /// the editor would open a panel to write a note while the person is already writing one.
+    /// `pastePlain` needs the pasteboard and the caret at once, and the slash menu has just
+    /// consumed both by replacing the text that was typed. A command that takes the selection
+    /// («Estrai in una nota») has none from the caret either: the text view offers it through
+    /// `selectionEntries` only while a `/` typed over a selection has stashed one (ADR-0085 §D8).
     static let appEntries: [EditorCommand] = ShortcutCommand.allCases
-        .filter { $0 != .globalCapture && $0 != .pastePlain }
-        .map { command in
-            EditorCommand(
-                id: "app.\(command.rawValue)",
-                title: command.title,
-                keywords: [command.section.title],
-                symbol: "command",
-                action: .app(command)
-            )
-        }
+        .filter { $0 != .globalCapture && $0 != .pastePlain && !$0.takesSelection }
+        .map(appEntry)
+
+    /// The commands that take the selection, in the app entries' shape, for the text view to add
+    /// over a stashed selection (`CompletingTextView.slashCandidates`).
+    static let selectionEntries: [EditorCommand] = ShortcutCommand.allCases
+        .filter(\.takesSelection)
+        .map(appEntry)
+
+    private static func appEntry(_ command: ShortcutCommand) -> EditorCommand {
+        EditorCommand(
+            id: "app.\(command.rawValue)",
+            title: command.title,
+            keywords: [command.section.title],
+            symbol: "command",
+            action: .app(command)
+        )
+    }
 
     // MARK: Filtering
 

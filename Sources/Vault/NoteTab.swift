@@ -26,6 +26,17 @@ struct NoteTab: Identifiable, Equatable, Sendable {
     /// Which index entry the caret is inside, reported by the editor only when it changes.
     /// Nil until the editor has said, which is any note not yet clicked into.
     var currentOutlineEntry: Int?
+    /// The followable link under the caret, as the URL the styler wrote on it, reported by the
+    /// editor on every selection change (ADR-0083 §D3). Transient: never persisted by
+    /// `OpenTabsStore`, and reset by `showing(_:)` with the rest of the per-note state.
+    var linkAtCaret: URL?
+    /// An absolute UTF-16 offset the editor should put the caret at once the tab is shown
+    /// (ADR-0086 §D4, PG-387 N4), taken once through `VaultController.takePendingCaret(forColumn:)`.
+    /// Transient like `linkAtCaret`: never persisted, reset by `showing(_:)`.
+    var pendingCaret: Int? = nil
+    /// The non-empty selection the editor reported for this tab (ADR-0085 §D8), nil when the
+    /// selection is collapsed. Transient like `linkAtCaret`.
+    var selection: NSRange? = nil
     /// A tab opened by a single click in the list, which the next single click reuses.
     ///
     /// One per column at most. Without it, browsing a list of forty notes means opening forty

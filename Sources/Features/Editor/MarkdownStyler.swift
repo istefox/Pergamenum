@@ -119,9 +119,17 @@ enum MarkdownStyler {
     /// maps both onto `Span`. The editor, the reading view, the exporter and the connectors
     /// therefore read a note alike: `file_name_here` is plain everywhere (PG-347).
     static func spans(in text: String) -> [StyledRange] {
+        spans(in: text, readsFrontmatter: true, listSeed: [])
+    }
+
+    /// The one body of `spans(in:)` and of the fragment entry `spans(inFragment:context:)`
+    /// (ADR-0091 §D4), so the two paths cannot drift: a fragment differs only in whether a leading
+    /// `---` is frontmatter and in the list stack its first line starts from.
+    static func spans(in text: String, readsFrontmatter: Bool, listSeed: [Int]) -> [StyledRange] {
         var result: [StyledRange] = []
 
-        let bodyStart = NoteFrontmatter.range(in: text).map { range -> String.Index in
+        let frontmatter = readsFrontmatter ? NoteFrontmatter.range(in: text) : nil
+        let bodyStart = frontmatter.map { range -> String.Index in
             result.append(StyledRange(range: range, span: .frontmatter))
             return range.upperBound
         } ?? text.startIndex
@@ -142,7 +150,9 @@ enum MarkdownStyler {
         // A line is what TextKit draws as one paragraph, so it ends at "\n" and "\r\n" only: a
         // U+2028 or a lone "\r" stays inside it, and a run, a tag boundary or a heading's extent
         // reads across it, as the editor's own per-line walk always did (ADR-0082 §D2).
-        let tokens = MarkdownBlockParser.lineTokens(in: text, readsFrontmatter: true, endsLine: LineBreak.isTerminator)
+        let tokens = MarkdownBlockParser.lineTokens(
+            in: text, readsFrontmatter: readsFrontmatter, endsLine: LineBreak.isTerminator, listSeed: listSeed
+        )
         var fence = 0
         for token in tokens {
             if token.kind == .frontmatter || token.kind == .blank { continue }
@@ -157,6 +167,49 @@ enum MarkdownStyler {
         // (ADR-0033 §D14) - `spans(in:)`'s own header rule that later spans win.
         result.append(contentsOf: viewBlockRuns(outside: fences))
         return result
+    }
+
+    /// The block runs `StructureMap` keeps, read through the same steps as `spans(in:)`
+    /// (ADR-0091 §D2): the table runs, the closed view-block runs, and the fences the block
+    /// tokenizer's own walk sees, which part from `CodeFence.regions` after a frontmatter that holds
+    /// a fence mark or a table row that does. `regions` is `CodeFence.regions(in: text)`, which the
+    /// caller already holds.
+    static func structuralRuns(in text: String, regions: [CodeFence.Region]) -> StructuralRuns {
+        let bodyStart = NoteFrontmatter.range(in: text)?.upperBound ?? text.startIndex
+        let fences = regions.filter { $0.range.lowerBound >= bodyStart }
+        let tokens = MarkdownBlockParser.lineTokens(in: text, readsFrontmatter: true, endsLine: LineBreak.isTerminator)
+
+        var tokenFences: [Range<String.Index>] = []
+        var index = 0
+        while index < tokens.count {
+            guard case .fenceOpen = tokens[index].kind else {
+                index += 1
+                continue
+            }
+            var end = index
+            while end + 1 < tokens.count, tokens[end + 1].kind == .fenceBody || tokens[end + 1].kind == .fenceClose {
+                end += 1
+                if tokens[end].kind == .fenceClose { break }
+            }
+            tokenFences.append(tokens[index].range.lowerBound..<tokens[end].range.upperBound)
+            index = end + 1
+        }
+
+        return StructuralRuns(
+            tables: tableSpans(of: tokens, outside: fences).map(\.range),
+            viewBlocks: viewBlockRuns(outside: fences).map(\.range),
+            tokenFences: tokenFences,
+            bodyStart: bodyStart
+        )
+    }
+
+    /// What `structuralRuns(in:regions:)` reads, indices in the text it was given.
+    struct StructuralRuns {
+        var tables: [Range<String.Index>]
+        var viewBlocks: [Range<String.Index>]
+        var tokenFences: [Range<String.Index>]
+        /// Where `NoteFrontmatter` ends the frontmatter, the start of what the link parser reads.
+        var bodyStart: String.Index
     }
 
     /// Whether a span is syntax rather than prose, and so must not be spell-checked (M8).
@@ -423,20 +476,25 @@ enum MarkdownStyler {
         outside fences: [CodeFence.Region]
     ) -> [StyledRange] {
         var result: [StyledRange] = []
-        // The slice and the base index are the same for every link in the note, and both
-        // are a walk over the whole text: built here once rather than four times per link,
-        // which is what the shift below used to cost.
+        // The slice is the same for every link in the note, and building it is a walk over the
+        // whole text: done here once, not per link.
         let slice = String(text[start...])
-        let offset = text.distance(from: text.startIndex, to: start)
-        let sliceStart = text.index(text.startIndex, offsetBy: offset)
+        // Where the previous link ended, in the slice and in the full text. The parser returns
+        // links in document order, so each shift below walks only the gap since the last link
+        // and the whole loop is one pass over the note; measuring every link from the start of
+        // the slice made a keystroke in a 50 KB note cost seconds (a walk per link, quadratic).
+        var sliceCursor = slice.startIndex
+        var textCursor = start
         for link in WikilinkParser.links(in: slice) {
             // The parser worked on a slice; shift its indices back onto the full text.
-            let lower = text.index(sliceStart, offsetBy: slice.distance(
-                from: slice.startIndex, to: link.range.lowerBound
+            let lower = text.index(textCursor, offsetBy: slice.distance(
+                from: sliceCursor, to: link.range.lowerBound
             ))
-            let upper = text.index(sliceStart, offsetBy: slice.distance(
-                from: slice.startIndex, to: link.range.upperBound
+            let upper = text.index(lower, offsetBy: slice.distance(
+                from: link.range.lowerBound, to: link.range.upperBound
             ))
+            sliceCursor = link.range.upperBound
+            textCursor = upper
 
             // `[[Curva]]` written inside a code fence is a wikilink in an example, not a
             // link to follow: making it clickable would take a person out of the note.

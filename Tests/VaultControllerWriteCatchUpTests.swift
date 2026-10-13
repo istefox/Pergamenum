@@ -351,7 +351,7 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     controller.updateOpenNoteText(unsaved)
 
     #expect(await controller.addStructuralLink(
-        from: "Origine.md", to: "Destinazione",
+        from: "Origine.md", toNoteAt: "03 Risorse/Destinazione.md",
         reason: "usa i dati", reverseReason: "fornisce i dati"
     ))
 
@@ -376,7 +376,7 @@ private func tab(showing path: String, in column: EditorColumn) throws -> NoteTa
     try #require(controller.focusedTab?.note.relativePath == "Origine.md")
 
     #expect(await controller.addStructuralLink(
-        from: "Origine.md", to: "Destinazione",
+        from: "Origine.md", toNoteAt: "03 Risorse/Destinazione.md",
         reason: "usa i dati", reverseReason: "fornisce i dati"
     ))
 

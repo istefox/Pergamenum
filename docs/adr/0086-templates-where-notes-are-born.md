@@ -1,14 +1,28 @@
 # ADR-0086: Templates where notes are born
 
-- Status: **planned**. Written before the implementation, for `PG-387`/#889 (N4 of the
-  note-workflow chain).
-- Date: 2026-10-04. Written against `48a2d912`. Every line number below was read there.
+- Status: **accepted**. Implemented by PR #992 (`32cd8ed2`, 2026-10-13), N4's one code PR: the two
+  placeholders, the daily-template setting at the one birth door, the one-shot caret, the template
+  choice in capture, Quick Open and Workspace «Documento», `--template` in both connectors, and
+  §D8's GUI test. Milestone N4 of the note-workflow chain (`PG-387`/#889), SPEC R-06 to R-11 and
+  R-17, flipped by R-18. Every decision was re-read against the code of PR #992 at the flip; where
+  the build differs, the text is amended in place (§D4, §D5, Consequences, References) and the
+  Implementation notes below list each difference. Open at the flip, per the plan's build result:
+  §D8's GUI test, `testTheDailyTemplatePlacesTheCaret`, was red in one GUI run contaminated by other
+  apps taking focus and passed in an earlier contaminated one, so no verdict is recorded and the
+  caret at `{{cursor}}` after Cmd+Shift+D is owed to `scripts/uitests.sh --affected` or a hand
+  check.
+- Date: 2026-10-04. Written against `48a2d912`. Every line number below was read there; the build
+  ran on `c8f63e5d`, where several had moved (Implementation notes).
 - Number: `0086` was reserved for this record by the chain's dispatch. It was checked free on every
   ref on 2026-10-04 (`git log --all -- 'docs/adr/0086*'` printed nothing). Check again immediately
   before the merge (`docs/adr/README.md` rule 1).
-- Source: root `SPEC.md` (Approved 2026-10-04), milestone N4, R-31 (and R-32 for the composer's
-  template menu). Plans: `docs/plans/note-workflow-n4-mockup.md` and `docs/plans/note-workflow-n4.md`.
-  Companion record: ADR-0085.
+- Source: `docs/archive/specs/pg-387-n4-birth-of-note.SPEC.md` (root `SPEC.md` while N4 was built,
+  Approved 2026-10-06), R-06 to R-10 (and R-11 for the composer's template menu, R-17 for the GUI
+  test). *Repointed 2026-10-13, at the flip: this record was written against the chain SPEC approved
+  2026-10-04 (R-31, R-32), which the N4 SPEC renumbers locally and maps to those ids.* Plans:
+  `docs/plans/note-workflow-n4-mockup.md` and `docs/plans/note-workflow-n4.md`, written against the
+  chain SPEC, and `docs/plans/pg-387-n4-birth-of-note.md`, the plan the build followed. Companion
+  record: ADR-0085.
 - Depends on ADR-0080 (N1) for the initial-tags rule every creation below inherits and for
   `CaptureTitle.derive`, which titles a capture «Nota nuova» with or without a template.
 - **Extends** ADR-0011 §D5–§D7: the folder rule is unchanged, application stays at creation time,
@@ -121,6 +135,17 @@ and a refusal would strand Cmd+Shift+D.
   is where Cmd+Shift+D shows it (ADR-0080, R-04). Cmd+Shift+D pressed inside Oggi keeps today's
   behaviour.
 
+*Amended 2026-10-13, at the flip, as built in PR #992: the column does not place the caret itself.
+`EditorColumnView` takes the offset once through `VaultController.takePendingCaret(forColumn:)`
+(an `onChange` of the front tab's `pendingCaret`, `initial: true`) and turns it into a numbered
+`CaretRequest`; the text view applies it once, claimed through its request ledger
+(`NoteTextView.Coordinator.applyCaretRequest`), and clears it. Placing the caret also takes the
+keyboard, through `takeFocus()` rather than `scroll`'s own first-responder call: the request usually
+arrives on the text view's first update, before the view is in a window, where `makeFirstResponder`
+is a silent no-op, and the first key typed after Cmd+Shift+D landed nowhere (R-08).
+`openNote(at:caret:)` on a note already open in the column focuses that tab and asks for the caret
+there too.*
+
 **D5. A template choice wherever a note is named.**
 
 - **The composer.** It keeps its template menu (ADR-0011 §D6) in every host but the extract mode
@@ -138,6 +163,14 @@ and a refusal would strand Cmd+Shift+D.
 - **No template elsewhere in capture.** «Task», «Oggi» and «In una nota» take none: the panel shows
   no menu there, and the connector refuses `template` with any destination but a new note. «Oggi»
   still gets D3's daily template when it is the one creating the day.
+
+*Amended 2026-10-13, at the flip, as built in PR #992: the capture menu (`CaptureTemplateMenu`)
+sits inside the destination row at the top of the panel, beside «Nota nuova»'s folder picker, not
+on a row of its own under it. `CaptureController.template` is kept in memory across destinations
+and sent only for «Nota nuova»; a remembered template that is no longer a note at its exact path
+under `Templates/` is dropped before the capture writes, so the panel never composes into a
+template it shows as «Nessun modello». The Workspace «Documento» reaches the composer through
+`DocumentComposerSheet`.*
 
 **D6. The connectors name a template by title or by path.**
 
@@ -220,12 +253,58 @@ Negative:
 
 Neutral:
 
-- `NoteTemplate.substituting` stays as a thin forward for its existing callers and tests.
+- `NoteTemplate.substituting` stays as a thin forward for its tests. *Amended 2026-10-13, at the
+  flip, as built in PR #992: both production callers, the composer and `TemplateSheet`, moved to
+  `resolve` in the build, so `NoteTemplateTests` is the forward's only caller.*
+
+## Implementation notes
+
+Written at the flip to `accepted`, 2026-10-13 (`PG-411`), against `origin/main` at `db999487`,
+reading the code PR #992 merged in `32cd8ed2`. Each decision was re-read against that code; nothing
+below says of the code was taken from the plan or the PR without being found in it.
+
+**Where the build differs, amended in place.**
+
+- D4: the column hands the caret to the text view as a numbered request, and placing it takes the
+  keyboard through `takeFocus()` (the plan's elaboration 8, built with `takingFocus: false` on
+  `scroll` and the focus asked separately).
+- D5: the capture menu sits inside the destination row, beside the folder picker, and a remembered
+  template that moved is dropped before the capture.
+- Consequences: `substituting` has no production caller left.
+- References: the N4 SPEC's data model adds one settings key, `dailyTemplate`; N1 had already
+  shipped `inboxFolder`.
+
+**Elaborations, not departures.**
+
+- D1: `Resolved.caret(inWritten:)` answers nil when the written text does not end with `body`, and
+  `Resolved.cursorBack` is the `TemplateSheet` mapping of D4 (0 without a marker, which keeps the
+  caret at the end as before).
+- D2: besides `NoteTemplate.isTemplate`, the setting must end in `.md` and hold no `..` component,
+  or it is ignored with a recorded problem. The picker (`DailyTemplateField`, identifier
+  `settings-daily-template`) keeps a stored path that no longer names a template listed under its
+  path, so it never shows a value it cannot select.
+- D6: `NoteTemplate.reference(_:among:)` takes an exact path, or the path with `.md` added, and
+  otherwise the file name among the templates; two templates sharing a file name in two subfolders
+  are ambiguous, never picked by order.
+- D3, D8 and D9 hold as written. PR #992 landed D9's three SPEC (app) notes, dated 2026-10-12.
+
+**D7 and the ledger.** `PG-121` is closed in `TODO.md` (2026-10-13, superseded by `PG-387`, PR
+#992). The `PG-387` ledger line still says "PG-121's engine stays deferred", the sentence D7 said
+`/ship` would correct; it was not corrected at the merge and is not corrected here.
+
+**Facts corrected without a decision changing.** The «Source» line is repointed to the N4 SPEC
+(R-01..R-18). The line numbers in the Context were read at `48a2d912` and several had moved by the
+build's base `c8f63e5d` (`dailyNote(for:)`, declared at `VaultSession+Notes.swift:122`, is at `:131`
+there, and capture «Oggi»'s call went from `VaultCapture.swift:117` to `:115`); they are left as
+written, as the state this record answered.
 
 ## References
 
-- SPEC.md (root), N4: R-31, R-32. Data model ("two new settings"), Edge cases (`{{cursor}}` twice),
-  Test seams 1, 5 and 6.
+- `docs/archive/specs/pg-387-n4-birth-of-note.SPEC.md` (root `SPEC.md` while built), R-06 to R-11
+  and R-17 (chain R-31, R-32). Data model (one new settings key, `dailyTemplate`; *amended
+  2026-10-13: this line said "two new settings", the chain SPEC's count with N1's `inboxFolder`*),
+  Edge cases (`{{cursor}}` twice), Test seams. `docs/plans/pg-387-n4-birth-of-note.md`, the plan
+  the build followed.
 - `docs/20261003_Pergamenum_NoteWorkflowRoadmap.md` §N4 task 4. `docs/20261002_Pergamenum_NoteWorkflowReport.md`
   I-4.
 - ADR-0007 §D6, ADR-0011 §D5–§D7, ADR-0036 §D10, ADR-0063, ADR-0073, ADR-0080 §D2/§D3, ADR-0085.

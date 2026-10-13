@@ -21,7 +21,7 @@ extension AppDelegate {
 
     /// A quit cancelled over a conflicted board shows the Workspace, where its banner already is
     /// (PG-336, ADR-0089 §D6). A vault switch cancelled over one reveals it the same way, through
-    /// `VaultController.revealOpenBoard` (ADR-0092 §D6).
+    /// `VaultController.revealOpenBoard` (ADR-0095 §D6).
     /// Internal, not private: read by `PergamenumApp.swift`'s `quit` and by the window's
     /// `.onAppear`, which wires `revealOpenBoard` to it (ADR-0045 §D3).
     func revealBoardAfterCancelledQuit() {

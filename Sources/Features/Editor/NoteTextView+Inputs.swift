@@ -42,11 +42,13 @@ extension NoteTextView {
         /// follows the same shape as the other three: consumed once, then reported as applied.
         var scrollRequest: Navigation.OutlineJump?
         var onScrollApplied: () -> Void = {}
-        /// The index entries whose sections are folded (M8). Held by each heading's own UTF-16
-        /// character offset, not by ordinal position: an edit elsewhere in the note can shift
-        /// which array position a heading sits at between one SwiftUI render pass and the next,
-        /// and a fold anchored to a position rather than to the heading itself would silently
-        /// re-target the wrong section (PG-021 follow-up, `FoldStateOrdinalIndexStalenessTests`).
+        /// The index entries whose sections are folded (M8), as indices into
+        /// `NoteOutline.entries(in:)` of the current text: the ordinals `NoteFolding.layout` and
+        /// `NoteFolding.sections` read. The tab keeps each fold by its heading's own UTF-16
+        /// offset (`NoteTab.foldedEntries`, PG-021 follow-up,
+        /// `FoldStateOrdinalIndexStalenessTests`) and `EditorColumn+Text.swift` converts those
+        /// offsets here through `foldedOrdinals(ofOffsets:in:)` on every render, so an edit that
+        /// moves a heading to another position cannot re-target the wrong section.
         var foldedEntries: Set<Int> = []
         /// Whether the frontmatter block is left out of the layout (`NoteTab.hidesFrontmatter`).
         /// Applied by the same pass as the folds, which is why it rides in this group.
@@ -57,6 +59,24 @@ extension NoteTextView {
         /// opened from the editor and one opened from the sidebar are one gesture with two doors,
         /// both handing it an offset.
         var onToggleFold: ((Int) -> Void)?
+    }
+
+    /// What the editor needs to follow, preview and offer a link (ADR-0083 §D2, §D3, §D6, §D7),
+    /// grouped as `vault` and `find` are. Empty by default: with `follow` nil the Coordinator falls
+    /// back to `onFollowLink(title)` for `.replace` and ignores the click variants, so a text view
+    /// with no vault behind it behaves as it always did.
+    struct LinkInputs {
+        /// A request to follow a link, answered with `.done` or the choice to put in front of the
+        /// person (`CommandActions.follow`).
+        var follow: ((LinkRequest) -> LinkFollowOutcome)?
+        /// A row of that choice picked from the menu at the click, with the click's how.
+        var choose: ((LinkChoice, LinkOpening) -> Void)?
+        /// What the Cmd+hover preview shows for a note title and its optional section.
+        var preview: ((String, String?) -> LinkPreviewContent?)?
+        /// The followable link under the caret, reported when it changes.
+        var onCaretLinkChanged: ((URL?) -> Void)?
+        /// «Crea «X»» chosen from the `[[` popup: the title to offer to the composer.
+        var offerCreation: ((String) -> Void)?
     }
 
     /// What the vault behind the editor provides. Nil or a no-op when no vault is open.
@@ -70,6 +90,11 @@ extension NoteTextView {
         /// first, the same as `Attachment.resolve` already does for reading mode
         /// (`MarkdownReadingView.notePath`).
         var notePath = ""
+        /// The tab in front in this column. One text view serves every tab of a column, and two
+        /// tabs can show the same note with identical text (`openNoteInNewTab` does not dedupe), so
+        /// the path alone cannot tell that the tab changed. Nil where there is no tab behind the
+        /// editor (the diary, the today pane).
+        var tabID: UUID?
         /// The vault's render cache for embedded files - the same `ThumbnailStore` reading
         /// mode's `EmbeddedFileView` reads, so a picture is rendered once and shared between
         /// the two surfaces rather than duplicated.
@@ -118,5 +143,24 @@ extension NoteTextView {
         /// name it was written into the vault under. A screenshot has no file to drop, so
         /// without this it could not enter a note at all.
         var onPasteImage: ((Data) -> String?)?
+    }
+
+    /// What the editor reports about, and is asked to do with, the selection (ADR-0085 §D8,
+    /// ADR-0086 §D4; read by `NoteTextView+SelectionReport.swift`). Empty by default, so a
+    /// text view with no vault behind it behaves as it always did.
+    struct SelectionInputs {
+        /// A one-shot request to put the caret at an absolute UTF-16 offset: the daily note's
+        /// `{{cursor}}`, a template applied, a composed note's body caret. Applied once, then
+        /// reported through `onCaretApplied`.
+        var caretRequest: CaretRequest?
+        var onCaretApplied: () -> Void = {}
+        /// The non-empty selection, once per change, and nil once when it collapses. A bare caret
+        /// moving, or typing with one, reports nothing.
+        var onSelectionChanged: ((NSRange?) -> Void)?
+
+        struct CaretRequest: Equatable {
+            let id: Int
+            let offset: Int
+        }
     }
 }

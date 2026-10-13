@@ -308,7 +308,7 @@ private func bareSession(_ vault: borrowing TemporaryVault) async -> VaultSessio
     defer { controller.close() }
     let session = try #require(controller.session)
     _ = try await session.addStructuralLink(
-        from: "Origine.md", to: "Destinazione",
+        from: "Origine.md", toNoteAt: "03 Risorse/Destinazione.md",
         reason: "usa i dati", reverseReason: "fornisce i dati"
     )
     controller.openNote(at: "Origine.md")

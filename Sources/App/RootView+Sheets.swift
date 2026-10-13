@@ -34,6 +34,15 @@ extension RootView {
             .sheet(item: Bindable(navigation).categoryLinkingNote) { request in
                 CategoryNotePicker(request: request) { navigation.categoryLinkingNote = nil }
             }
+            // A shared or dangling title followed from somewhere with no click point (ADR-0083 §D5).
+            .sheet(item: Bindable(navigation).linkChoice) { request in
+                LinkChoiceSheet(request: request) { navigation.linkChoice = nil }
+            }
+            // «Classifica…» on a note or, from «Da classificare», on a scheda (ADR-0085 §D5). The
+            // Contenitore keeps presenting its own from `contenitore.classifying` (ADR-0071 §D12).
+            .sheet(item: Bindable(navigation).classifying) { subject in
+                ClassificaSheet(subject: subject)
+            }
             .sheet(item: Bindable(navigation).praticaLinkRequest) { request in
                 PraticaLinkPicker(
                     request: request,

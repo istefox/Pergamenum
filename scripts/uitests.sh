@@ -176,6 +176,10 @@ classes_for_path() {
             echo "TaskCategoriesUITests" ;;
         Sources/Features/Diary/*|Sources/Features/Today/*|Sources/Core/Diary/*|Sources/Calendar/*)
             echo "DayViewUITests DiaryUITests EditorHandCheckUITests" ;;
+        # N4 (ADR-0085 §D11): the «Da classificare» pane and the classification rules behind it reach
+        # only the class that files a capture. NoteTemplate/TagEntry/NoteExtraction stay on ALL: the
+        # composer and the template sheet reach other classes.
+        Sources/Features/Unfiled/*|Sources/Core/Conventions/NoteClassification.swift) echo NoteBirthUITests ;;
         Sources/App/SparkleUpdateController*) echo NONE ;;
         Tests/*|docs/*|*.md|.claude/*|.github/*|scripts/*|.gitignore|.swiftlint.yml) echo NONE ;;
         *) echo ALL ;;
@@ -987,6 +991,15 @@ self_test() {
     expect_eq "classes_for_path: an unrelated Workspace source does not pick up the chip's class" \
         "WorkspaceBoardUITests WorkspaceIntegrationUITests WorkspaceOpenStateUITests SidebarMoveUITests" \
         "$(classes_for_path "Sources/Features/Workspace/WorkspaceView.swift")"
+
+    # PG-387 (N4): the «Da classificare» pane and its classification rules select the class that
+    # files a capture; the template rules, which the composer and the template sheet also reach, stay ALL.
+    expect_eq "classes_for_path: Sources/Features/Unfiled/* selects NoteBirthUITests" \
+        "NoteBirthUITests" \
+        "$(classes_for_path "Sources/Features/Unfiled/UnfiledPane.swift")"
+    expect_eq "classes_for_path: NoteTemplate.swift stays ALL, the composer reaches other classes" \
+        "ALL" \
+        "$(classes_for_path "Sources/Core/Conventions/NoteTemplate.swift")"
 
     # #645: `main`'s row inherits a green verdict across commits that cannot reach the UI (the
     # TODO.md sync after every merge), keeps `nessun verdetto` with the plan when they can, writes

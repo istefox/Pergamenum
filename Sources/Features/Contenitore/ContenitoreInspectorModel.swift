@@ -127,16 +127,3 @@ struct ContenitoreInspectorModel {
         return trimmed.isEmpty ? "" : "\n\(trimmed)\n"
     }
 }
-
-extension ClassificationRefusal {
-    /// The sentence «Classifica» shows for the refusal.
-    var sentence: String {
-        switch self {
-        case .noTopic: "Scegli almeno un argomento."
-        case .notATopic(let tag): "\(tag) non è un argomento."
-        case .unknownType(let tag): "\(tag) non è un tipo del vocabolario."
-        case .secondType(let tags): "Un solo tipo per documento: \(tags.map(\.description).joined(separator: ", "))."
-        case .tooManyTags(let count): "\(count) tag, massimo \(TagRules.maximumTagsPerNote)."
-        }
-    }
-}

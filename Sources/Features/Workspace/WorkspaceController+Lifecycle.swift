@@ -95,7 +95,7 @@ extension WorkspaceController {
     /// was already refused and was reported when it entered `.conflicted` (ADR-0054 §D5);
     /// quitting does not overwrite the other writer's bytes.
     ///
-    /// Since ADR-0092 it is also the first half of a pane leave (`leavePane()`) and of a vault
+    /// Since ADR-0095 it is also the first half of a pane leave (`leavePane()`) and of a vault
     /// switch (§D5): the board belongs to the vault controller, so all three reach it whichever
     /// pane is on screen.
     func settleForTermination() {
@@ -123,18 +123,18 @@ extension WorkspaceController {
         return canLeaveOpenBoardForVerb()
     }
 
-    /// A Workspace pane appeared over this board (ADR-0092 §D3). `WorkspaceView`'s `onAppear`
+    /// A Workspace pane appeared over this board (ADR-0095 §D3). `WorkspaceView`'s `onAppear`
     /// is the one caller.
     func enterPane() {
         panePresenters += 1
     }
 
-    /// A Workspace pane disappeared from over this board (ADR-0092 §D3): settles and flushes
+    /// A Workspace pane disappeared from over this board (ADR-0095 §D3): settles and flushes
     /// like every leave path, then releases the board only when no appearance is left and it is
     /// saved. A conflicted board is kept, and the quit and the vault switch name it. A pending
     /// one whose write failed is kept too but named by neither, since `quitConflict` answers
     /// only for `.conflicted`: it carries its own write-failure line, and a quit or a switch
-    /// retries the write and lets it go if that fails again (ADR-0092 §D3, a named residual).
+    /// retries the write and lets it go if that fails again (ADR-0095 §D3, a named residual).
     /// `WorkspaceView`'s `onDisappear` is the one caller.
     ///
     /// The count exists because SwiftUI can deliver a remount's new `onAppear` before the old

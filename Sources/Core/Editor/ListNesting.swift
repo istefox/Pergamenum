@@ -20,7 +20,14 @@ enum ListNesting {
     /// returns 1 plus the number of open ancestors whose content column is `<= indent`
     /// (CommonMark's tie-break: attach to the deepest list that still fits), capped at 6.
     static func level(in text: String, lineStart: String.Index, indent: Int) -> Int {
-        let ancestors = ancestorContentColumns(in: text, before: lineStart)
+        level(in: text, lineStart: lineStart, indent: indent, seed: [])
+    }
+
+    /// `level(in:lineStart:indent:)` for a fragment of a note: when the backward walk reaches the
+    /// top of `text` without meeting a line that closes every list, the stack open there is `seed`
+    /// (ADR-0091 §D4), the stack the note's own lines above the fragment leave.
+    static func level(in text: String, lineStart: String.Index, indent: Int, seed: [Int]) -> Int {
+        let ancestors = ancestorContentColumns(in: text, before: lineStart, seed: seed)
         let openBelow = ancestors.filter { $0 <= indent }.count
         return min(1 + openBelow, 6)
     }
@@ -45,29 +52,21 @@ enum ListNesting {
     /// open across a top-level paragraph). `markerWidth` is the same shared grammar, so a
     /// checkbox line is still counted as an ancestor here, exactly as it is today.
     static func levels(in text: String) -> [String.Index: Int] {
+        levels(in: text, seed: [])
+    }
+
+    /// `levels(in:)` for a fragment of a note: the fold starts at `seed`, the stack the note's own
+    /// lines above the fragment leave (ADR-0091 §D4), instead of at an empty one.
+    static func levels(in text: String, seed: [Int]) -> [String.Index: Int] {
         var levels: [String.Index: Int] = [:]
-        var stack: [Int] = []
+        var stack = seed
 
         var lineStart = text.startIndex
         while lineStart < text.endIndex {
             let lineEnd = text[lineStart...].firstIndex(where: LineBreak.isTerminator) ?? text.endIndex
-            let line = text[lineStart..<lineEnd]
-
-            if !line.isEmpty {
-                let indentPrefix = line.prefix(while: { $0 == " " || $0 == "\t" })
-                let indentColumns = indentPrefix.reduce(0) { $0 + ($1 == "\t" ? 4 : 1) }
-                let content = line.dropFirst(indentPrefix.count)
-
-                if let marker = markerWidth(in: content) {
-                    while let top = stack.last, top > indentColumns {
-                        stack.removeLast()
-                    }
-                    levels[lineStart] = min(1 + stack.count, 6)
-                    stack.append(indentColumns + marker)
-                } else if indentColumns == 0 {
-                    stack.removeAll()
-                }
-            }
+            let role = role(of: text[lineStart..<lineEnd])
+            stack = folding(stack, role)
+            if case .item = role { levels[lineStart] = min(stack.count, 6) }
 
             guard lineEnd < text.endIndex else { break }
             lineStart = text.index(after: lineEnd)
@@ -76,23 +75,68 @@ enum ListNesting {
         return levels
     }
 
+    /// What one line does to the stack of open items, the classification the forward walk of
+    /// `levels(in:)` makes, as a value (ADR-0091 §D3): `RestyleScope` folds these without reading
+    /// the text again.
+    enum Role: Equatable, Sendable {
+        /// An empty line: changes nothing.
+        case blank
+        /// A list line, its own indentation in columns (a tab counts as 4) and its content column.
+        case item(indent: Int, contentColumn: Int)
+        /// An indented line that is no list line: still inside the nearest open item.
+        case continuation
+        /// A non-blank line at column 0 that is no list line: nothing stays open across it.
+        case reset
+    }
+
+    /// The role of one line, its terminator excluded.
+    static func role(of line: Substring) -> Role {
+        guard !line.isEmpty else { return .blank }
+        let indentPrefix = line.prefix(while: { $0 == " " || $0 == "\t" })
+        let indentColumns = indentPrefix.reduce(0) { $0 + ($1 == "\t" ? 4 : 1) }
+        if let marker = markerWidth(in: line.dropFirst(indentPrefix.count)) {
+            return .item(indent: indentColumns, contentColumn: indentColumns + marker)
+        }
+        return indentColumns == 0 ? .reset : .continuation
+    }
+
+    /// One step of the forward fold: a list line pops every entry whose content column is greater
+    /// than its own indent and pushes its content column, so its level is the count after the
+    /// step; a blank or continuation line changes nothing; a reset clears the stack.
+    static func folding(_ stack: [Int], _ role: Role) -> [Int] {
+        switch role {
+        case .blank, .continuation:
+            return stack
+        case .reset:
+            return []
+        case .item(let indent, let contentColumn):
+            var next = stack
+            while let top = next.last, top > indent { next.removeLast() }
+            next.append(contentColumn)
+            return next
+        }
+    }
+
     /// The content columns of every list item still open just before `lineStart`, in
-    /// document order (outermost first).
+    /// document order (outermost first). A walk that reaches the top of `text` without meeting a
+    /// reset line starts from `seed`, the stack open above `text` when it is a fragment of a note.
     ///
     /// `lineStart` is always the start of a line (indentation included, never mid-line) -
     /// both callers pass a value derived that way, so the character right before it is
     /// either a line terminator (`"\n"` or the one-grapheme `"\r\n"`, PG-274) or nothing
     /// (`lineStart == text.startIndex`).
-    private static func ancestorContentColumns(in text: String, before lineStart: String.Index) -> [Int] {
+    private static func ancestorContentColumns(in text: String, before lineStart: String.Index, seed: [Int]) -> [Int] {
         var candidates: [(indent: Int, contentColumn: Int)] = []
+        var reachedTop = true
 
         var searchEnd = lineStart
         while searchEnd > text.startIndex {
             // The previous line ends right before `searchEnd`'s own leading line terminator.
             let previousLineEnd = text.index(before: searchEnd)
             let beforePreviousLineEnd = text[text.startIndex..<previousLineEnd]
-            let previousLineStart = beforePreviousLineEnd.lastIndex(where: LineBreak.isTerminator).map(text.index(after:))
-                ?? text.startIndex
+            let previousLineStart = beforePreviousLineEnd
+                .lastIndex(where: LineBreak.isTerminator)
+                .map(text.index(after:)) ?? text.startIndex
 
             let line = String(text[previousLineStart..<previousLineEnd])
             searchEnd = previousLineStart
@@ -112,13 +156,14 @@ enum ListNesting {
             // inside the nearest open item), or the boundary that closes every open list if
             // it sits at column 0.
             if indentColumns == 0 {
+                reachedTop = false
                 break
             }
         }
 
         candidates.reverse()
 
-        var stack: [Int] = []
+        var stack: [Int] = reachedTop ? seed : []
         for candidate in candidates {
             while let top = stack.last, top > candidate.indent {
                 stack.removeLast()
@@ -130,7 +175,7 @@ enum ListNesting {
 
     /// The width of a list marker (itself plus its one mandatory trailing space) at the
     /// start of `content`, restating the bullet and ordered-marker grammar of
-    /// `MarkdownBlockParser.lineTokens(in:readsFrontmatter:endsLine:)` with ASCII digits. Accepted
+    /// `MarkdownBlockParser.lineTokens(in:readsFrontmatter:endsLine:listSeed:)` with ASCII digits. Accepted
     /// duplication: `lineTokens` calls `ListNesting.levels(in:)` to give a list line its level, so
     /// `ListNesting` cannot project from those tokens without a dependency cycle.
     private static func markerWidth(in content: some StringProtocol) -> Int? {

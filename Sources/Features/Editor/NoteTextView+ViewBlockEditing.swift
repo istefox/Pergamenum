@@ -26,6 +26,9 @@ extension NoteTextView.Coordinator {
     /// sheet the app would never have shown over a revealed fence in the first place - so a
     /// caret parked on the fence must not make an otherwise-consistent commit unrefusable.
     /// Where a drawn record does exist, it is the strongest signal of drift and is honoured.
+    /// Where it is missing because an edit no styling has covered yet rewrote the fence's lines
+    /// (the shift drops such an entry, ADR-0091 §D6), the record is gone rather than absent, and
+    /// the commit is refused as it would have been against the record.
     ///
     /// `replaceAtomically(_:with:in:)` is the only write here (ADR-0019 §D7's precedent) - one
     /// `shouldChangeText`/`beginEditing`/`replaceCharacters`/`endEditing` write, therefore one
@@ -49,7 +52,9 @@ extension NoteTextView.Coordinator {
         else { return false }
 
         let liveBody = Self.viewBlockBody(in: textView.string as NSString, range: live.range)
-        if let recordedSource = viewBlocks.drawn[offset]?.source, recordedSource != liveBody {
+        if let recordedSource = viewBlocks.drawn[offset]?.source {
+            if recordedSource != liveBody { return false }
+        } else if hasUnstyledEdits {
             return false
         }
 

@@ -17,11 +17,6 @@ import Testing
 // AppKit calls it during a layout pass - and `CardFormattingTests`' bare offscreen
 // `FormattingTextView`. No window is created and no layout is forced: every assertion below is
 // about what the delegate is *told* and what it hands back, neither of which needs a screen.
-//
-// RED on arrival: `CardTextView.Coordinator.applyStyling(to:)` does not yet touch `decorations`
-// at all, `applyReveal(to:)` is a stub returning the empty set without publishing anything, and
-// `dismantleNSView` purges only the undo stack. Every `@Test` below fails on an assertion rather
-// than crashing the run - deliberately, so the rest of the suite still reports.
 
 /// The card, wired the way `CardTextView.makeNSView` wires it: a `FormattingTextView` inside the
 /// scroll view Apple's own `scrollableTextView()` builds, the coordinator as its delegate, and -
@@ -40,8 +35,11 @@ private struct Card {
 
     /// What the delegate hands back for the paragraph containing `offset`, asked exactly as
     /// AppKit asks it during a layout pass. `nil` is "draw the stored paragraph as it is" - the
-    /// setting off, the paragraph revealed under the caret, or nothing to conceal; anything else
-    /// is a displayed paragraph with the markers collapsed into `collapsedFont`.
+    /// setting off, nothing to conceal, or a heading or quote revealed under the caret (a card has
+    /// no gutter, so those keep today's shift, ADR-0081 §D6). A list item revealed under the caret
+    /// is not nil: lists hang on a card too, so it is a displayed paragraph carrying the item's
+    /// hanging style over the source string, uncollapsed. Any other non-nil answer is a concealed
+    /// paragraph with the markers collapsed into `collapsedFont`.
     func displayed(paragraphAt offset: Int) -> NSTextParagraph? {
         guard let storage = textView.textContentStorage else { return nil }
         let range = (textView.string as NSString).paragraphRange(for: NSRange(location: offset, length: 0))
@@ -182,9 +180,17 @@ private func makeCard(
         card.textView.setSelectedRange(NSRange(location: Self.listParagraph + 3, length: 0))
 
         #expect(card.coordinator.applyReveal(to: card.textView) == [Self.listParagraph])
-        // Nil is the raw source laid out: the `- ` is back under the caret, no bullet, nothing
-        // shifting sideways as the caret arrives.
-        #expect(card.displayed(paragraphAt: Self.listParagraph) == nil, "la riga col cursore mostra il sorgente")
+        // (n2-page R-13) Restated by ADR-0081 §D6, which says a card hangs lists too. This used to
+        // expect nil, the raw source laid out with nothing drawn over it. The caret's list line is
+        // now a displayed paragraph that carries the item's hanging style and whose string is the
+        // source with no substitution: the `- ` is back under the caret, no bullet, and the
+        // content stays on the column its concealed twin sits on.
+        let revealedItem = card.displayed(paragraphAt: Self.listParagraph)
+        #expect(revealedItem != nil, "la riga col cursore porta lo stile appeso")
+        #expect(revealedItem?.attributedString.string == "- primo\n", "la riga col cursore mostra il sorgente")
+        let revealedStyle = revealedItem?.attributedString
+            .attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect((revealedStyle?.headIndent ?? 0) > 0, "la riga rivelata non e appesa")
         #expect(card.displayed(paragraphAt: Self.headingParagraph) != nil, "le altre righe restano nascoste")
         #expect(card.displayed(paragraphAt: Self.emphasisParagraph) != nil, "le altre righe restano nascoste")
     }
@@ -205,6 +211,18 @@ private func makeCard(
             card.coordinator.applyReveal(to: card.textView) == [Self.headingParagraph, Self.listParagraph]
         )
         #expect(card.displayed(paragraphAt: Self.emphasisParagraph) != nil, "la riga fuori selezione resta nascosta")
+    }
+
+    /// (n2-page R-14) ADR-0081 §D6, recorded so nobody "fixes" it: a card has no gutter, so a
+    /// heading or a quote keeps today's revealed shift. The caret's heading line is the raw source
+    /// laid out, nil. Green already, on purpose.
+    @Test func aCardsRevealedHeadingStaysNilBecauseACardHasNoGutter() throws {
+        let card = try makeCard(Self.card, editable: true)
+        card.textView.setSelectedRange(NSRange(location: Self.headingParagraph + 3, length: 0))
+
+        #expect(card.coordinator.applyReveal(to: card.textView) == [Self.headingParagraph])
+        #expect(card.displayed(paragraphAt: Self.headingParagraph) == nil, "il titolo col cursore mostra il sorgente")
+        #expect(card.coordinator.decorations.gutter == 0)
     }
 
     // MARK: - ADR-0028 §D10: one setting, and off means off

@@ -125,18 +125,11 @@ extension VaultSession {
     }
 
     /// The path of a day's note, created when it is not there yet with the daily
-    /// frontmatter (`type-note` alone) and an empty body; there is no daily template
-    /// (SPEC §8.1).
+    /// frontmatter (`type-note` alone) and the daily template's body, or an empty one when
+    /// the vault names no template (ADR-0086 §D3, through `dailyNoteBirth`).
     @discardableResult
     func dailyNote(for date: CalendarDate) async throws -> String {
-        let relativePath = dailyNotePath(for: date)
-        if exists(relativePath) { return relativePath }
-        return try await createNote(
-            title: date.compactForm,
-            in: settings.dailyFolder,
-            date: date,
-            category: .daily
-        ).path
+        try await dailyNoteBirth(for: date, at: Date()).path
     }
 
     // MARK: Files brought in
@@ -231,15 +224,20 @@ extension VaultSession {
     /// target not - named in the problem list, not rolled back, since the rollback would be
     /// one more guarded write that can itself be refused. `written` still holds whatever
     /// landed before the refusal, so the editor's tab catch-up sees it (ADR-0058 §D5).
+    ///
+    /// The target is a **path**, never a title (ADR-0084 §D4): two notes can share a title, and
+    /// resolving one here would pick the first match.
     @discardableResult
     func addStructuralLink(
         from sourcePath: String,
-        to targetTitle: String,
+        toNoteAt targetPath: String,
         reason: String,
         reverseReason: String
     ) async -> (created: Bool, written: [WriteResult]) {
-        guard let targetPath = index.resolve(title: targetTitle).first else {
-            recordProblem("nessuna nota si chiama «\(targetTitle)»")
+        // Both ends must be indexed notes: `exists` also accepts a folder, a `.canvas` or a
+        // `.pergamenum/*.json`, and the link writes frontmatter and a bullet into each end.
+        if let refusal = [sourcePath, targetPath].lazy.compactMap({ self.linkEndRefusal($0) }).first {
+            recordProblem(refusal)
             return (false, [])
         }
         guard targetPath != sourcePath else {

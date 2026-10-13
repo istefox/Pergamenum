@@ -83,9 +83,12 @@ final class VaultController {
     var noteDraft: NoteDraft?
     /// Whether the new-note composer occupies the editor column.
     var isComposingNote = false
-    /// The sentence a failed Quick Open creation shows inside the switcher (n1-seams R-18), set
-    /// and cleared by `createNoteFromQuickOpen`, cleared by the switcher on the next keystroke.
-    var quickSwitcherProblem: String?
+    /// The «Estrai in una nota» sheet's subject while it is open (ADR-0085 §D8), nil otherwise.
+    /// Stored here, declared in `VaultController+NoteBirth.swift`: an extension holds no storage.
+    var extraction: ExtractionDraft?
+    /// The «Nota creata · Annulla» offer of the last pane-host creation (ADR-0085 §D9), at most
+    /// one; a new creation replaces it and `CreationUndo.window` ends it.
+    var creationUndo: CreationUndo.Offer?
     /// Notes whose tab was closed, newest last, for «riapri l'ultima tab chiusa».
     /// Paths and not buffers: a closed tab was saved or explicitly discarded (ADR-0012 D3),
     /// so there is nothing left to keep that the file does not already have.
@@ -105,6 +108,14 @@ final class VaultController {
     var isShowingQuickLook = false
     /// Set by the "Nota correlata…" command.
     var isAddingRelatedLink = false
+    /// The path «Rendi strutturale» chose before the sheet opened (ADR-0084 §D4); the sheet takes it
+    /// once through `takeStructuralLinkPreselection()`.
+    var structuralLinkPreselection: String?
+    /// The inspector's backlink rows, keyed by `(indexGeneration, title)` (ADR-0084 §D1); never
+    /// observed, so filling it schedules no render.
+    let backlinkRowsMemo = IndexKeyedMemo<String, [BacklinkRow]>()
+    /// The last «Dove compare» answer (ADR-0084 §D6), keyed by `(path, indexGeneration)`.
+    @ObservationIgnored var appearancesMemo: AppearancesMemo?
     /// Set by the global search command (Cmd+Shift+F).
     var isShowingGlobalSearch = false
     /// Set by the quick switcher command.
@@ -149,14 +160,14 @@ final class VaultController {
     @ObservationIgnored var didChangeExternally: ((String) -> Void)?
 
     /// The Workspace board of this vault: created once with the controller and never replaced
-    /// (ADR-0092 §D1). Strong, unlike the weak reference it replaces, so a conflicted board
+    /// (ADR-0095 §D1). Strong, unlike the weak reference it replaces, so a conflicted board
     /// outlives the pane that shows it. `openBoardPath` reads the path off it
     /// (`VaultController+Board.swift`).
     let openBoard: WorkspaceController
     /// Reopens the main window for a cancelled quit (ADR-0073 §D7); set by `RootView`'s `openWindow`.
     @ObservationIgnored var reopenMainWindow: (() -> Void)?
     /// Shows the Workspace pane with the open board, for a cancelled vault switch that left a
-    /// conflicted board (ADR-0092 §D6). Its one production writer is `PergamenumApp`'s window
+    /// conflicted board (ADR-0095 §D6). Its one production writer is `PergamenumApp`'s window
     /// `.onAppear`, which points it at `AppDelegate.revealBoardAfterCancelledQuit()`; nil in
     /// every test that does not set it.
     @ObservationIgnored var revealOpenBoard: (() -> Void)?
@@ -261,7 +272,7 @@ final class VaultController {
         let incoming = url.vaultKey
         let outgoing = root?.resolvingSymlinksInPath().standardizedFileURL
         // True on the first open and for another vault, false when the open vault reopens: the
-        // board, and a conflict on it, are then left untouched (ADR-0092 §D2).
+        // board, and a conflict on it, are then left untouched (ADR-0095 §D2).
         let rebinds = outgoing?.vaultKey != incoming
         for column in columns.indices {
             for tab in columns[column].tabs.indices {
@@ -280,7 +291,7 @@ final class VaultController {
         // the session just built, so both land in the same place (ADR-0017).
         thumbnails = ThumbnailStore(root: url, directory: newSession.state.thumbnails)
         // In the same synchronous stretch as the two assignments above, before any `await`,
-        // whether or not the Workspace pane is mounted (ADR-0092 §D2).
+        // whether or not the Workspace pane is mounted (ADR-0095 §D2).
         // The same vault reopened keeps its board, and only the cache it renders through follows.
         if rebinds { rebindBoard(to: url) } else { openBoard.useThumbnails(thumbnails) }
         // Recorded on open rather than on close, so a crash still leaves the vault
@@ -305,7 +316,7 @@ final class VaultController {
 
     func close() {
         // First, while the session is still here: a line `detach()` records lands in the
-        // closing vault's list (ADR-0092 §D2).
+        // closing vault's list (ADR-0095 §D2).
         openBoard.detach()
         watcher?.stop()
         watcher = nil
@@ -319,6 +330,10 @@ final class VaultController {
         // A draft names a folder in the vault being closed, and the composer would
         // otherwise still be sitting in the editor column of a vault that is gone.
         endNewNote()
+        // The creation toast's offer and the «Estrai» draft name a file of that vault too
+        // (PG-387): «Annulla» would otherwise resolve the path against the next session.
+        creationUndo = nil
+        extraction = nil
     }
 
     /// Full rebuild from disk. Cheap by design, and the answer to any doubt about the

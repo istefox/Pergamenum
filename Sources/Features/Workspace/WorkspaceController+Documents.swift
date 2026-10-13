@@ -20,14 +20,18 @@ extension WorkspaceController {
     /// The board and its folder are read before the write and checked again after it by
     /// `placeCreatedNote` (ADR-0043 §D7): a board opened meanwhile gets no card for a note made
     /// in the first one's folder. The note is still made, so the answer is still `.created`.
+    ///
+    /// `topics` and `body` are what the composer's sheet host chose (ADR-0085 §D7): the tags and
+    /// the resolved template, written by the same door.
     func createDocument(
-        titled title: String, at point: CGPoint, through vault: VaultController
+        titled title: String, at point: CGPoint, through vault: VaultController,
+        topics: [Tag] = [], body: String = ""
     ) async -> DocumentCreation {
         let targetBoard = board
         let targetFolder = folder
         do {
             let path = try await vault.createNote(
-                title: title, in: targetFolder, date: .today, opening: false
+                title: title, in: targetFolder, date: .today, topics: topics, body: body, opening: false
             )
             _ = placeCreatedNote(path, title: title, at: point, openedOn: targetBoard)
             return .created(path: path)

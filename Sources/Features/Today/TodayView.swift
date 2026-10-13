@@ -227,9 +227,10 @@ struct TodayView: View {
                 hidesMarkup: vault.settings.hidesMarkup,
                 revealsInlineSpans: vault.settings.revealsInlineSpans,
                 readableWidth: vault.settings.readableWidth,
-                onFollowLink: { title in
-                    if let path = vault.index.resolve(title: title).first { vault.openNote(at: path) }
-                },
+                // Through the open-link door (ADR-0083 §D5): a shared title is a choice, never
+                // the first match, and a follow puts the Note pane in front rather than opening
+                // the note behind Oggi.
+                onFollowLink: { commandActions.open(link: $0, from: note.relativePath) },
                 vault: .init(
                     vaultRoot: vault.root,
                     notePath: note.relativePath,
@@ -239,7 +240,8 @@ struct TodayView: View {
                     queries: .live(for: vault),
                     onOpenTag: { commandActions.open(tag: $0) },
                     onOpenDay: { commandActions.open(day: $0) }
-                )
+                ),
+                links: commandActions.linkInputs(from: note.relativePath, column: nil)
             )
             .frame(minHeight: 320)
             .accessibilityIdentifier("today-editor")

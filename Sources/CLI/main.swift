@@ -47,6 +47,10 @@ func noteGroup(_ arguments: Arguments) async throws -> ExitCode {
     case "rename": return try await WriteCommands.noteRename(arguments)
     case "move": return try await WriteCommands.noteMove(arguments)
     case "trash": return try await WriteCommands.noteTrash(arguments)
+    case "link-mention": return try await WriteCommands.noteLinkMention(arguments)
+    case "unlink-related": return try await WriteCommands.noteUnlinkRelated(arguments)
+    case "classify": return try await NoteBirthCommands.noteClassify(arguments)
+    case "extract": return try await NoteBirthCommands.noteExtract(arguments)
     default: return try await NoteCommands.run(arguments)
     }
 }

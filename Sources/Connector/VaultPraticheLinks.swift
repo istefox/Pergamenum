@@ -64,7 +64,7 @@ extension VaultAPI {
     /// thing from a broken one (R-08's own distinction).
     @MainActor
     static func praticaMessageLink(_ session: VaultSession, at relativePath: String) throws -> PraticaLinkTarget? {
-        guard session.exists(relativePath) else { throw ConnectorError("«\(relativePath)» non esiste") }
+        try requireNote(session, relativePath)
         let (_, text) = try session.read(relativePath)
         guard let linkedNote = MessageDocument.parse(text)?.frontmatter.linkedNote else { return nil }
         guard case let .wikilink(title) = PraticaLinkReference(parsing: linkedNote) else { return nil }
@@ -232,7 +232,7 @@ extension VaultAPI {
     private static func updateMessageNote(
         _ session: VaultSession, at relativePath: String, reference: String?
     ) async throws -> WriteSummary {
-        guard session.exists(relativePath) else { throw ConnectorError("«\(relativePath)» non esiste") }
+        try requireNote(session, relativePath)
         do {
             let (record, text) = try session.read(relativePath)
             let line = reference.map(MessageDocument.noteLine(for:))
@@ -317,7 +317,7 @@ extension VaultAPI {
         _ session: VaultSession, message relativePath: String, title: String
     ) async throws -> WriteSummary {
         guard !title.isEmpty else { throw ConnectorError("serve un titolo per la nota", usage: true) }
-        guard session.exists(relativePath) else { throw ConnectorError("«\(relativePath)» non esiste") }
+        try requireNote(session, relativePath)
         let praticaFolder = try praticaFolder(ofMessageAt: relativePath)
         let created = try await session.createNote(
             title: title, in: "", date: .today, topics: praticaContextTags(session, at: praticaFolder)

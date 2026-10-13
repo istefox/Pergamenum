@@ -108,7 +108,7 @@ private var crlfWithCategory: String {
     let session = await openSession(root: vault.root, stateBase: vault.stateBase)
 
     let result = await session.addStructuralLink(
-        from: "Alfa.md", to: "Beta", reason: "fornitura", reverseReason: "fornitura"
+        from: "Alfa.md", toNoteAt: "Beta.md", reason: "fornitura", reverseReason: "fornitura"
     )
 
     #expect(result.created)

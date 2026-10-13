@@ -138,6 +138,7 @@ struct SettingsView: View {
                 }
             ))
             .disabled(vault.root == nil)
+            DailyTemplateField()
             InboxFolderField()
             TextField("Cartella diario", text: Binding(
                 get: { vault.settings.diaryFolder },

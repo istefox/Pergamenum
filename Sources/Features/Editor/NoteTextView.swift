@@ -53,6 +53,11 @@ struct NoteTextView: NSViewRepresentable {
     /// (`NoteTextView+Inputs.swift`). Empty by default, so a text view with no vault behind
     /// it behaves exactly as before.
     var vault = VaultInputs()
+    /// How a link is followed, previewed and offered (`NoteTextView+Inputs.swift`, ADR-0083).
+    var links = LinkInputs()
+    /// The selection the editor reports and the caret it is asked to place
+    /// (`NoteTextView+Inputs.swift`, ADR-0085 §D8), read in `NoteTextView+SelectionReport.swift`.
+    var selection = SelectionInputs()
     /// Text the Inserisci menu asked for, applied at the cursor and then reported as
     /// applied so it is not inserted twice on the next view update (SPEC §10). Carries
     /// `opensQueryBuilder` for the insert-view command (R-04, ADR-0034 §D10): true only
@@ -102,9 +107,13 @@ struct NoteTextView: NSViewRepresentable {
         apply(spellCheck, to: textView)
         // The horizontal half is recomputed from the pane's width as soon as there is one
         // (ADR-0030 §D6); this is its floor, which is the value the editor has always had
-        // and the value it keeps when the setting is off or the pane is narrow.
+        // and the value it keeps when the setting is off or the pane is narrow, less the gutter
+        // every paragraph carries as its own indent (ADR-0081 §D1).
         textView.textContainerInset = NSSize(
-            width: Coordinator.minimumHorizontalInset, height: Coordinator.verticalInset
+            width: EditorGutter.containerInset(
+                readableInset: Coordinator.minimumHorizontalInset, gutter: theme.spacing(.gutter)
+            ),
+            height: Coordinator.verticalInset
         )
         textView.isVerticallyResizable = true
         textView.autoresizingMask = [.width]
@@ -249,6 +258,12 @@ struct NoteTextView: NSViewRepresentable {
             guard let textView else { return false }
             return coordinator.toggleCheckbox(at: point, in: textView)
         }
+        // A composition step changes the text and posts no `textDidChange` (ADR-0093 §D7): the
+        // edit path is replayed for it, and only while something it wrote is still unstyled.
+        textView.onComposedTextChanged = { [weak textView] in
+            guard let textView else { return }
+            coordinator.replayEditIfUnstyled(in: textView, composing: true)
+        }
     }
 
     /// Four steps, in this order and no other (`NoteTextView+Update.swift`): the text sync
@@ -277,11 +292,22 @@ struct NoteTextView: NSViewRepresentable {
     /// (ADR-0026), and pressing Cmd+Z twice. Removing every action still targeting this view
     /// or its storage - where `NSTextView` actually registers typing undo - drops the
     /// now-meaningless "redo my typing" step instead of leaving it to crash on.
+    ///
+    /// The Cmd+hover preview goes with it (ADR-0083 §D7): a pane switch is a rebuild, not a hide,
+    /// and a popover, monitor or tracking area left behind here would be PG-258's orphan. A text
+    /// view that never previewed has no controller, and none is built here only to be torn down.
+    ///
+    /// The storage's delegate goes too, when it is this coordinator (ADR-0093 §D5): the first styling
+    /// installed it (ADR-0091 §D2) and nothing else takes it out. A delegate somebody else installed
+    /// is left where it is. The undo observations that replay the edit path (ADR-0093 §D7) end here.
     static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
+        coordinator.builtLinkPreview?.tearDown()
+        coordinator.stopObservingUndoNotifications()
         guard let textView = scrollView.documentView as? NSTextView else { return }
         coordinator.undoManager?.removeAllActions(withTarget: textView)
         if let textStorage = textView.textStorage {
             coordinator.undoManager?.removeAllActions(withTarget: textStorage)
+            if textStorage.delegate === coordinator { textStorage.delegate = nil }
         }
     }
 }

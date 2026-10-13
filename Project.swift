@@ -149,7 +149,14 @@ let sharedSources: [SourceFileGlob] = [
     "Sources/Vault/VaultSession+Journal.swift",
     // ADR-0067 §D1: `VaultSession.write` calls `announce(_:)`, declared here.
     "Sources/Vault/VaultSession+LandedChanges.swift",
+    // ADR-0084 §D3/§D4: `linkMention` and `removeStructuralLink`, which `VaultAPI`'s link writes
+    // (`Sources/Connector/VaultLinkWrites.swift`) call from both connectors.
+    "Sources/Vault/VaultSession+LinkWrites.swift",
     "Sources/Vault/VaultSession+Notes.swift",
+    // ADR-0085 §D4/§D8 and ADR-0086 §D3: `classifyNote`, `extractToNote` and `dailyNoteBirth`,
+    // which `VaultAPI`'s classify and extract (`Sources/Connector/VaultNoteBirth.swift`) call from
+    // both connectors.
+    "Sources/Vault/VaultSession+NoteBirth.swift",
     // The stable note-id registry's vault-side store and lifecycle (ADR-0059 §D2/§D3/§D9),
     // named by hand per ADR-0007 §D2 the same way `CategoryRegistryStore.swift` above is:
     // `VaultSession+Journal.swift`'s `moveFile`/`trashFile` call the doors from Task 3 on,

@@ -75,15 +75,19 @@ import Testing
     let cap = view.theme.spacing(.readable)
     coordinator.observeWidthChanges(of: scrollView)
     coordinator.applyReadableWidth(to: textView)
+    // (n2-page R-13) Restated by ADR-0081 §D1: the inset is the readable inset less the gutter, which
+    // every paragraph now carries as its own indent. The column is where it was; only the inset
+    // moved. This used to assert `inset == (W - cap) / 2`.
+    let gutter = view.theme.spacing(.gutter)
     let before = textView.textContainerInset.width
-    #expect(before == (scrollView.contentView.bounds.width - cap) / 2)
+    #expect(before + gutter == (scrollView.contentView.bounds.width - cap) / 2)
     #expect(before > NoteTextView.Coordinator.minimumHorizontalInset)
 
     scrollView.setFrameSize(NSSize(width: 1000, height: 800))
     await withCheckedContinuation { done in DispatchQueue.main.async { done.resume() } }
 
     let after = textView.textContainerInset.width
-    #expect(after == (scrollView.contentView.bounds.width - cap) / 2)
+    #expect(after + gutter == (scrollView.contentView.bounds.width - cap) / 2)
     #expect(after < before)
     #expect(textView.textContainerInset.height == NoteTextView.Coordinator.verticalInset)
 }

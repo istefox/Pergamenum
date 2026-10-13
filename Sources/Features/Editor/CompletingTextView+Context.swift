@@ -144,6 +144,24 @@ extension CompletingTextView {
         return nil
     }
 
+    override var rangeForUserCompletion: NSRange {
+        // The default is a word range, which stops at the space inside "Curva di
+        // trasmissibilità" and would complete against the last word only.
+        guard let context = completionContext() else { return super.rangeForUserCompletion }
+        let cursor = selectedRange().location
+        let length: Int = switch context {
+        case .wikilink(let prefix): prefix.count
+        // Only what follows the `#`: the note's name is already right, and replacing it
+        // too would delete what the completion is a completion *of*.
+        case .section(_, let prefix): prefix.count
+        case .tag(let prefix): prefix.count
+        case .slash(let prefix): prefix.count
+        // The `:` goes too, as the tag's `#` does: what is written is the glyph alone.
+        case .emoji(let prefix): prefix.count
+        }
+        return NSRange(location: cursor - length, length: length)
+    }
+
     /// The `[[` candidates for `prefix`: the same ranking the Workspace `.text` card's own
     /// popup uses (`CardWikilinkCompletion.swift`) - notes and boards fuzzy-scored together, a
     /// board's bare filename as the insertable text - with each note's aliases offered too

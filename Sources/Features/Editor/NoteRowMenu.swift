@@ -53,6 +53,7 @@ struct NoteRowMenu: View {
         rowCommand(.copyLink)
         rowCommand(.noteHistory)
         rowCommand(.applyTemplate)
+        rowCommand(.classifyNote)
         Divider()
         Button("Mostra nel Finder") {
             // Through the boundary (PG-360): a path outside the vault reveals nothing.

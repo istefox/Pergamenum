@@ -323,7 +323,7 @@ Rules keyed to a file type live in `.claude/rules/` and load only when a matchin
 
 ## ADR index
 
-Every ADR is `docs/adr/NNNN-<slug>.md`; the title below is that file's own heading, so a new ADR needs no line written by hand here: paste what `scripts/adr-index.py` prints, and `scripts/adr-index.py --check` says when the list is behind. Long-form summaries of ADR-0019 to ADR-0090 are in `docs/adr/INDEX.md` (an older instruction to add a line to the "Chain decision index" means that file). ADR conventions (one number per file, the status line, citing an ADR from outside this repo) and the renumbering register: `docs/adr/README.md`.
+Every ADR is `docs/adr/NNNN-<slug>.md`; the title below is that file's own heading, so a new ADR needs no line written by hand here: paste what `scripts/adr-index.py` prints, and `scripts/adr-index.py --check` says when the list is behind. Long-form summaries of ADR-0019 to ADR-0091 are in `docs/adr/INDEX.md` (an older instruction to add a line to the "Chain decision index" means that file). ADR conventions (one number per file, the status line, citing an ADR from outside this repo) and the renumbering register: `docs/adr/README.md`.
 
 - ADR-0001 — Initial architecture
 - ADR-0002 — "Note" in the interface, and shortcuts the user can move
@@ -415,4 +415,7 @@ Every ADR is `docs/adr/NNNN-<slug>.md`; the title below is that file's own headi
 - ADR-0088 — One word-boundary truncator, and a capture title the panel always shows
 - ADR-0089 — A conflicted board or diary is asked about at quit
 - ADR-0090 — The editor's pointer is decided and drawn by AppKit, from two overrides
-- ADR-0092 — The Workspace board controller lives with the vault, not with its pane
+- ADR-0091 — A keystroke restyles the paragraph it touched, and a structural change restyles the note
+- ADR-0093 — A keystroke lays out what it changed, and renumbers from a line the map vouches for
+- ADR-0094 — An edit moves a step, not every offset below it
+- ADR-0095 — The Workspace board controller lives with the vault, not with its pane

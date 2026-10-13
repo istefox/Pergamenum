@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 @testable import Pergamenum
 
@@ -34,18 +35,18 @@ enum RestyleBudget {
         return c.bytes >= 1024 * kilobyte ? 3 : 5
     }
 
-    /// Whether the 1 MB cases run. A keystroke in a 1 MB note cost about eleven minutes of CPU on
-    /// the untouched code (ADR-0082 §D9), so the per-turn suite cannot afford them. They
-    /// run when `RESTYLE_BUDGET_1MB=1` (`scripts/editor-restyle-bench.sh --large`), or alone when
+    /// Whether the 1 MB cases run. A keystroke in a 1 MB note costs 6 to 12 s of CPU (about eleven
+    /// minutes before the `wikilinkSpans` fix, ADR-0082 §D9), so the per-turn suite leaves them
+    /// to the bench script. They run when `RESTYLE_BUDGET_1MB=1` (`scripts/editor-restyle-bench.sh --large`), or alone when
     /// it is `only` (`--large-only`).
     static var includesLargeNotes: Bool {
         ["1", "only"].contains(ProcessInfo.processInfo.environment["RESTYLE_BUDGET_1MB"])
     }
 
-    /// Whether the 200 KB cases run. One keystroke in a 200 KB note costs 20 to 26 s of CPU before
-    /// and after the N2 work, and with their warm-ups the two rows are most of the 397 s the four
-    /// rows added to the suite when measured, which the Stop hook's 600 s cannot carry beside the
-    /// rest of it (ADR-0082 §D9). They run when
+    /// Whether the 200 KB cases run. One keystroke in a 200 KB note costs about 1 s of CPU (20 to
+    /// 26 s before the `wikilinkSpans` fix, when the two rows added most of 397 s to the suite and
+    /// the Stop hook's 600 s could not carry them, ADR-0082 §D9). They stay on demand by the
+    /// person's decision at G-ceiling. They run when
     /// `RESTYLE_BUDGET_200KB=1`, which `scripts/editor-restyle-bench.sh` sets on every run but
     /// `--large-only`; the per-turn suite asserts the two 50 KB rows only.
     static var includesMediumNotes: Bool {
@@ -154,12 +155,17 @@ enum RestyleBudget {
     }
 
     /// One warm-up run, then the minimum CPU and the minimum wall time of `runs` runs. The noise
-    /// is one-sided, so the minimum is the estimate (§D5).
-    static func minimum(runs: Int, warmUp: Bool = true, _ body: () -> Void) -> (cpuMs: Double, wallMs: Double) {
-        if warmUp { body() }
+    /// is one-sided, so the minimum is the estimate (§D5). `prepare` runs before every call of `body`,
+    /// the warm-up included, and is never timed: a fallback row puts the note back with it, so each
+    /// run starts from the same text (ADR-0091 §D11).
+    static func minimum(
+        runs: Int, warmUp: Bool = true, prepare: () -> Void = {}, _ body: () -> Void
+    ) -> (cpuMs: Double, wallMs: Double) {
+        if warmUp { prepare(); body() }
         var cpu = Double.infinity
         var wall = Double.infinity
         for _ in 0..<max(1, runs) {
+            prepare()
             let cpuStart = threadCPUNanoseconds()
             let wallStart = DispatchTime.now().uptimeNanoseconds
             body()
@@ -177,16 +183,18 @@ enum RestyleBudget {
         (ms * factor).rounded(.up)
     }
 
-    /// The six ceilings, in milliseconds of thread CPU time per keystroke. Provisional: three
-    /// times the "before" column of ADR-0082 §D9, written here after the first measured run on
-    /// untouched code. The person fixes the final six at G-ceiling.
+    /// The six ceilings, in milliseconds of thread CPU time per keystroke, as fixed by the person at
+    /// G-ceiling-2 on 2026-10-11 (ADR-0091 §Gates): about twice the Release measurements of that day
+    /// (`scripts/pg-401-gates.sh`, a quiet run), rounded to a figure, and 20 ms, the SPEC's proposal,
+    /// where it holds with room (50 KB). They guard against a regression; they are not a target.
+    /// Release is no faster than Debug on these rows, the time being TextKit's, so one set serves both.
     static let ceilings: [Case: Double] = [
-        Case(bytes: 50 * kilobyte, variant: .prose): 4_410,  // before 1469.68 ms
-        Case(bytes: 50 * kilobyte, variant: .fences): 4_264,  // before 1421.30 ms
-        Case(bytes: 200 * kilobyte, variant: .prose): 64_670,  // before 21556.50 ms
-        Case(bytes: 200 * kilobyte, variant: .fences): 59_909,  // before 19969.66 ms
-        Case(bytes: 1024 * kilobyte, variant: .prose): 1_939_387,  // before 646462.33 ms, one cold run
-        Case(bytes: 1024 * kilobyte, variant: .fences): 1_965_244,  // before 655081.13 ms, one cold run
+        Case(bytes: 50 * kilobyte, variant: .prose): 20,  // Release 4.52 ms, ADR-0082 §D9 ceiling was 596
+        Case(bytes: 50 * kilobyte, variant: .fences): 20,  // Release 5.84 ms, was 677
+        Case(bytes: 200 * kilobyte, variant: .prose): 40,  // Release 18.04 ms, was 2_735
+        Case(bytes: 200 * kilobyte, variant: .fences): 75,  // Release 31.81 ms, was 3_200
+        Case(bytes: 1024 * kilobyte, variant: .prose): 250,  // Release 97.20 ms, was 18_927
+        Case(bytes: 1024 * kilobyte, variant: .fences): 1_800,  // Release 568.20 ms (770 and 907 when a build overlapped), was 35_532
     ]
 
     /// `restyle-budget size=<bytes> variant=<prose|fences> cpu_ms=<min> wall_ms=<min> runs=<K>`,
@@ -194,5 +202,172 @@ enum RestyleBudget {
     static func line(_ c: Case, cpuMs: Double, wallMs: Double, runs: Int) -> String {
         "restyle-budget size=\(c.bytes) variant=\(c.variant.rawValue) "
             + "cpu_ms=\(String(format: "%.2f", cpuMs)) wall_ms=\(String(format: "%.2f", wallMs)) runs=\(runs)"
+    }
+}
+
+// MARK: - The fallback rows (ADR-0091 §D11, R-12)
+
+extension RestyleBudget {
+    /// The three keystrokes that cost what a restyle of the note costs, or the table run: printed,
+    /// never asserted. Their raw values are what the bench script prints in its `path` column.
+    enum FallbackPath: String, Sendable, CaseIterable {
+        case fenceOpen = "fence-open"
+        case table
+        case listEnter = "list-enter"
+    }
+
+    /// Whether the fallback rows run. They do when `RESTYLE_BUDGET_FALLBACK=1`, which
+    /// `scripts/editor-restyle-bench.sh` sets; the per-turn suite leaves them out, since each is a
+    /// measurement of a whole-note restyle and the budget test already pays for six of them.
+    static var includesFallbackRows: Bool {
+        ProcessInfo.processInfo.environment["RESTYLE_BUDGET_FALLBACK"] == "1"
+    }
+
+    /// `restyle-budget-fallback size=<bytes> variant=<prose|fences> path=<fence-open|table|list-enter>
+    /// cpu_ms=<min> wall_ms=<min> runs=<K>`, the line `scripts/editor-restyle-bench.sh` greps for its
+    /// second table. It starts `restyle-budget-fallback`, so the first table's `^restyle-budget size=`
+    /// does not match it.
+    static func fallbackLine(_ c: Case, path: FallbackPath, cpuMs: Double, wallMs: Double, runs: Int) -> String {
+        "restyle-budget-fallback size=\(c.bytes) variant=\(c.variant.rawValue) path=\(path.rawValue) "
+            + "cpu_ms=\(String(format: "%.2f", cpuMs)) wall_ms=\(String(format: "%.2f", wallMs)) runs=\(runs)"
+    }
+
+    /// The end of the first paragraph line at or after the middle of the note: a place where one
+    /// `x` changes no construct, and the same place on every run.
+    static func insertionPoint(in note: String) -> Int {
+        let nsNote = note as NSString
+        let middle = nsNote.length / 2
+        let line = nsNote.range(
+            of: "Altro testo con", options: [], range: NSRange(location: middle, length: nsNote.length - middle)
+        )
+        guard line.location != NSNotFound else { return middle }
+        return nsNote.lineRange(for: line).upperBound - 1
+    }
+}
+
+// MARK: - The structural rows (ADR-0093 §D9, R-13)
+
+extension RestyleBudget {
+    /// The four edits that change structure beyond their line, so the restyle falls back to a wide
+    /// one: printed, never asserted. Their raw values are what the bench script prints in its `path`
+    /// column.
+    enum StructuralPath: String, Sendable, CaseIterable {
+        case fenceOpenLast = "fence-open-last"
+        case fenceOpenAbove = "fence-open-above"
+        case wikilinkOpen = "wikilink-open"
+        case wikilinkCloseFar = "wikilink-close-far"
+    }
+
+    /// Whether the structural rows run. They do when `RESTYLE_BUDGET_STRUCTURAL=1`, which
+    /// `scripts/editor-restyle-bench.sh --structural` sets; the per-turn suite leaves them out.
+    static var includesStructuralRows: Bool {
+        ProcessInfo.processInfo.environment["RESTYLE_BUDGET_STRUCTURAL"] == "1"
+    }
+
+    /// `restyle-budget-structural size=<bytes> variant=<prose|fences> path=<fence-open-last|
+    /// fence-open-above|wikilink-open|wikilink-close-far> cpu_ms=<min> wall_ms=<min> dirty=<utf16 length>
+    /// runs=<K>`, the line `scripts/editor-restyle-bench.sh --structural` greps for its third table. It
+    /// starts `restyle-budget-structural`, so neither of the other two tables' patterns match it.
+    static func structuralLine(
+        _ c: Case, path: StructuralPath, cpuMs: Double, wallMs: Double, dirty: Int, runs: Int
+    ) -> String {
+        "restyle-budget-structural size=\(c.bytes) variant=\(c.variant.rawValue) path=\(path.rawValue) "
+            + "cpu_ms=\(String(format: "%.2f", cpuMs)) wall_ms=\(String(format: "%.2f", wallMs)) "
+            + "dirty=\(dirty) runs=\(runs)"
+    }
+}
+
+/// A hosted editor prepared for one fallback keystroke, which it types and takes back.
+///
+/// Each path is prepared before any measurement, so the six rows' synthetic notes do not change:
+/// - `fence-open`: a line holding two backticks is inserted, and the keystroke is the third, typed at
+///   the line's start;
+/// - `table`: a table is inserted, and the keystroke is a letter typed in a cell of its row;
+/// - `list-enter`: the keystroke is Return at the end of a bullet item, through the command the
+///   coordinator claims (`claimsListCommand`).
+@MainActor
+struct FallbackScenario {
+    /// How the coordinator's styling counters moved across one keystroke.
+    struct Outcome {
+        var before: RestyleLog
+        var after: RestyleLog
+        var fulls: Int { after.full - before.full }
+        var incrementals: Int { after.incremental - before.incremental }
+    }
+
+    static let table = "| a | b |\n| --- | --- |\n| 1 | 2 |"
+
+    let fixture: ScrolledEditorFixture
+    let path: RestyleBudget.FallbackPath
+    /// Where the keystroke lands, in the note as prepared.
+    let location: Int
+    /// The length of the note as prepared, which `restore()` returns to.
+    private let baseLength: Int
+    /// For `table`: the run of table lines the restyle should cover once the letter is typed, the last
+    /// line's terminator included.
+    let expectedTableRun: NSRange?
+
+    init(_ c: RestyleBudget.Case, path: RestyleBudget.FallbackPath) {
+        let note = RestyleBudget.syntheticNote(bytes: c.bytes, variant: c.variant)
+        let fixture = ScrolledEditorFixture(text: note)
+        let at = RestyleBudget.insertionPoint(in: note)
+        var location = at
+        var run: NSRange?
+        switch path {
+        case .fenceOpen:
+            fixture.replace(NSRange(location: at, length: 0), with: "\n\n``")
+            location = at + 2
+        case .table:
+            fixture.replace(NSRange(location: at, length: 0), with: "\n\n" + Self.table)
+            let start = at + 2
+            let header = ("| a | b |\n| --- | --- |\n" as NSString).length
+            location = start + header + 3
+            // The table, the letter typed in it, and the terminator the original line already had.
+            run = NSRange(location: start, length: (Self.table as NSString).length + 1 + 1)
+        case .listEnter:
+            let ns = note as NSString
+            let middle = ns.length / 2
+            let item = ns.range(
+                of: "- primo punto con **forte**", options: [], range: NSRange(location: middle, length: ns.length - middle)
+            )
+            location = item.location == NSNotFound ? at : NSMaxRange(item)
+        }
+        fixture.openLikeTheApp()
+        self.fixture = fixture
+        self.path = path
+        self.location = location
+        expectedTableRun = run
+        baseLength = (fixture.textView.string as NSString).length
+    }
+
+    /// The measured keystroke.
+    func keystroke() {
+        switch path {
+        case .fenceOpen:
+            fixture.type("`", at: location)
+        case .table:
+            fixture.type("x", at: location)
+        case .listEnter:
+            fixture.textView.setSelectedRange(NSRange(location: location, length: 0))
+            fixture.textView.doCommand(by: #selector(NSTextView.insertNewline(_:)))
+        }
+    }
+
+    /// Takes back whatever the keystroke inserted, so the next run starts from the prepared note.
+    /// Nothing when the note is as it was prepared.
+    func restore() {
+        let extra = (fixture.textView.string as NSString).length - baseLength
+        guard extra > 0 else { return }
+        fixture.replace(NSRange(location: location, length: extra), with: "")
+    }
+
+    /// One keystroke, and how it moved the styling counters; the note is restored afterwards.
+    func outcome() -> Outcome {
+        restore()
+        let before = fixture.coordinator.restyleLog
+        keystroke()
+        let after = fixture.coordinator.restyleLog
+        restore()
+        return Outcome(before: before, after: after)
     }
 }

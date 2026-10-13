@@ -76,7 +76,7 @@ private func makePlace(
 
 @MainActor
 @Test func destinationOnTheWorkspacePaneNamesTheBoardTheControllerShows() async throws {
-    // PG-392, ADR-0092 §D4 (R-08): the path is read off the controller the vault owns, not from
+    // PG-392, ADR-0095 §D4 (R-08): the path is read off the controller the vault owns, not from
     // a copy the view pushed up once it had mounted.
     let vault = try TemporaryVault()
     let (place, _, vaultController, navigation) = try await makePlace(vault)
@@ -92,7 +92,7 @@ private func makePlace(
 
 @MainActor
 @Test func destinationIsThePaneOnceALeaveReleasedTheBoard() async throws {
-    // The stale-mirror defect of ADR-0092 §Context: a released board must stop being the place.
+    // The stale-mirror defect of ADR-0095 §Context: a released board must stop being the place.
     let vault = try TemporaryVault()
     let (place, _, vaultController, navigation) = try await makePlace(vault)
     let board = try CanvasStore(root: vault.root).createBoard(named: "Piano", in: "")

@@ -117,6 +117,11 @@ private final class ViewBlockAttachmentViewProvider: NSTextAttachmentViewProvide
     /// measured content within that range, which is what keeps a small result set from
     /// leaving a big empty box while a large one still scrolls internally past the cap
     /// instead of pushing the rest of the note down.
+    ///
+    /// The width is the column between the fence line's own indents, never wider than what
+    /// TextKit offers (ADR-0081 §D7): the proposed line fragment is the container less its
+    /// padding and does not exclude the indents, so with the gutter it ran the block into the
+    /// right-hand margin (`GutterRevealGeometryTests`).
     override func attachmentBounds(
         for attributes: [NSAttributedString.Key: Any],
         location: any NSTextLocation,
@@ -126,9 +131,17 @@ private final class ViewBlockAttachmentViewProvider: NSTextAttachmentViewProvide
     ) -> CGRect {
         let raw = hostView?.measuredHeight.height ?? ViewBlockAttachment.unmeasuredHeight
         let height = min(max(raw, ViewBlockAttachment.minimumHeight), ViewBlockAttachment.maximumHeight)
+        var width = proposedLineFragment.width
+        if let textContainer {
+            let column = EditorGutter.columnSpan(
+                containerWidth: textContainer.size.width, padding: textContainer.lineFragmentPadding,
+                style: attributes[.paragraphStyle] as? NSParagraphStyle
+            )
+            width = min(width, column.width)
+        }
         return CGRect(
             origin: .zero,
-            size: CGSize(width: proposedLineFragment.width, height: height)
+            size: CGSize(width: width, height: height)
         )
     }
 }

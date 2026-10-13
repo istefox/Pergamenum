@@ -431,6 +431,168 @@ def pratiche_links(binary, vault, check):
         server.close()
 
 
+def linked_note(body, related=None, bullet=None):
+    """A note in the closed four-key frontmatter, with one structural link when asked: the
+    `related` entry and its `## Note correlate` bullet, the two halves «Scollega» removes."""
+    related_lines = 'related:\n  - "[[%s]]"\n' % related if related else ""
+    section = "\n## Note correlate\n\n- [[%s]] — %s\n" % (bullet[0], bullet[1]) if bullet else ""
+    return "---\ndate: 2026-10-07\ntags:\n  - type-note\n%s---\n\n%s\n%s" % (related_lines, body, section)
+
+
+def note_links(binary, vault, check):
+    """ADR-0084 §D3, §D4, R-26, R-27: «Collega» and «Scollega» are reachable from MCP, absent
+    without --allow-write, and a dryRun call changes no byte.
+
+    What lands - the rewrite, the guarded writes, the half-done removal - is
+    `Tests/ConnectorLinkWritesTests.swift`'s job; what only a real server shows is that the two
+    tool names are declared, gated and callable, with the safe default.
+    """
+    print("collegamenti fra note")
+    files = {
+        "Curva.md": linked_note("Corpo."),
+        "Altra.md": linked_note("Si parla di Curva qui."),
+        "Origine.md": linked_note("Origine.", "Destinazione", ("Destinazione", "usa i dati")),
+        "Destinazione.md": linked_note("Destinazione.", "Origine", ("Origine", "fornisce i dati")),
+    }
+    for name, text in files.items():
+        with open(os.path.join(vault, name), "w", encoding="utf-8") as handle:
+            handle.write(text)
+
+    def on_disk(name):
+        with open(os.path.join(vault, name), encoding="utf-8") as handle:
+            return handle.read()
+
+    read_server = Server(binary, vault, allow_write=False)
+    try:
+        names = [tool["name"] for tool in read_server.send("tools/list", {})["result"]["tools"]]
+        check("link_mention" not in names and "remove_structural_link" not in names,
+              "link_mention e remove_structural_link non sono elencati senza --allow-write")
+        refusal = read_server.payload("link_mention", {"path": "Altra.md", "title": "Curva", "dryRun": False})
+        check(refusal.get("isError") is True, "chiamare link_mention in sola lettura è rifiutato")
+    finally:
+        read_server.close()
+
+    server = Server(binary, vault, allow_write=True)
+    try:
+        names = [tool["name"] for tool in server.send("tools/list", {})["result"]["tools"]]
+        check("link_mention" in names and "remove_structural_link" in names,
+              "link_mention e remove_structural_link ci sono con --allow-write")
+
+        rehearsal = server.payload("link_mention", {"path": "Altra.md", "title": "Curva"})
+        check(rehearsal.get("applied") is False, "link_mention senza dryRun non applica")
+        check("[[Curva]]" in (rehearsal.get("diff") or ""), "la prova di link_mention torna il diff")
+        check(on_disk("Altra.md") == files["Altra.md"], "Altra.md è identica dopo la prova")
+
+        rehearsal = server.payload("remove_structural_link", {"path": "Origine.md", "target": "Destinazione.md"})
+        check(isinstance(rehearsal, list) and len(rehearsal) == 2
+              and all(summary["applied"] is False for summary in rehearsal),
+              "remove_structural_link senza dryRun torna due diff e non applica")
+        check(on_disk("Origine.md") == files["Origine.md"] and on_disk("Destinazione.md") == files["Destinazione.md"],
+              "le due note sono identiche dopo la prova")
+
+        linked = server.payload("link_mention", {"path": "Altra.md", "title": "Curva", "dryRun": False})
+        check(linked.get("applied") is True, "link_mention con dryRun false scrive")
+        check("Si parla di [[Curva]] qui." in on_disk("Altra.md"), "il link è sul file")
+
+        removed = server.payload(
+            "remove_structural_link", {"path": "Origine.md", "target": "Destinazione.md", "dryRun": False})
+        check(isinstance(removed, list) and len(removed) == 2, "remove_structural_link scrive entrambe le note")
+        check("[[Destinazione]]" not in on_disk("Origine.md") and "[[Origine]]" not in on_disk("Destinazione.md"),
+              "nessuna delle due note tiene più il legame in related")
+    finally:
+        server.close()
+
+
+CAPTURE_NOTE = """---
+date: 2026-10-01
+tags:
+  - type-note
+  - status-inbox
+---
+
+Pensiero.
+"""
+
+EXTRACT_SOURCE = """---
+date: 2026-10-01
+tags:
+  - type-note
+  - topic-a
+---
+
+Uno
+
+Due
+"""
+
+
+def note_birth(binary, vault, check):
+    """ADR-0085 §D10 and ADR-0086 §D6, R-05, R-10, R-15: `classify_note` and `extract_to_note`
+    are absent without --allow-write, a call with no dryRun changes no byte and returns its diff,
+    and `create_note` refuses an unknown template naming the ones that exist.
+
+    The rule, the two-write door and the template resolution are `Tests/NoteBirth*Tests.swift`'s
+    job; what only a real server shows is that the names are declared, gated and callable with
+    the safe default.
+    """
+    print("nascita di una nota")
+    inbox = os.path.join(vault, "00 Inbox")
+    templates = os.path.join(vault, "Templates")
+    os.makedirs(inbox)
+    os.makedirs(templates)
+    files = {
+        "00 Inbox/Idea.md": CAPTURE_NOTE,
+        "Fonte.md": EXTRACT_SOURCE,
+        "Templates/Riunione.md": "---\ntags:\n  - type-note\n---\n\n# {{title}}\n\n{{cursor}}\n",
+    }
+    for name, text in files.items():
+        with open(os.path.join(vault, name), "w", encoding="utf-8") as handle:
+            handle.write(text)
+
+    def on_disk(name):
+        with open(os.path.join(vault, name), encoding="utf-8") as handle:
+            return handle.read()
+
+    read_server = Server(binary, vault, allow_write=False)
+    try:
+        names = [tool["name"] for tool in read_server.send("tools/list", {})["result"]["tools"]]
+        check("classify_note" not in names and "extract_to_note" not in names,
+              "classify_note e extract_to_note non sono elencati senza --allow-write")
+    finally:
+        read_server.close()
+
+    server = Server(binary, vault, allow_write=True)
+    try:
+        names = [tool["name"] for tool in server.send("tools/list", {})["result"]["tools"]]
+        check("classify_note" in names and "extract_to_note" in names,
+              "classify_note e extract_to_note ci sono con --allow-write")
+
+        rehearsal = server.payload("classify_note", {"path": "00 Inbox/Idea.md", "topics": "materiali"})
+        check(rehearsal.get("applied") is False, "classify_note senza dryRun non applica")
+        check("status-inbox" in (rehearsal.get("diff") or ""), "la prova di classify_note nomina status-inbox")
+        check(on_disk("00 Inbox/Idea.md") == CAPTURE_NOTE, "la cattura è identica dopo la prova")
+
+        classified = server.payload(
+            "classify_note", {"path": "00 Inbox/Idea.md", "topics": "materiali", "dryRun": False})
+        check(classified.get("applied") is True, "classify_note con dryRun false scrive")
+        text = on_disk("00 Inbox/Idea.md")
+        check("topic-materiali" in text and "status-inbox" not in text, "la cattura è classificata sul file")
+
+        rehearsal = server.payload(
+            "extract_to_note", {"path": "Fonte.md", "fromLine": 10, "toLine": 10, "title": "Estratto"})
+        check(rehearsal.get("applied") is False, "extract_to_note senza dryRun non applica")
+        check("[[Estratto]]" in (rehearsal.get("sourceDiff") or ""), "la prova di extract_to_note torna il diff")
+        check(on_disk("Fonte.md") == EXTRACT_SOURCE and not os.path.exists(os.path.join(vault, "Estratto.md")),
+              "niente è scritto dopo la prova di extract_to_note")
+
+        refusal = server.payload("create_note", {"title": "Nuova", "template": "Assente", "dryRun": False})
+        check(refusal.get("isError") is True, "create_note con un modello che non c'è è rifiutato")
+        check("Riunione" in json.dumps(refusal, ensure_ascii=False), "il rifiuto elenca i modelli che ci sono")
+        check(not os.path.exists(os.path.join(vault, "Nuova.md")), "il rifiuto non crea la nota")
+    finally:
+        server.close()
+
+
 def pratiche_anchors(binary, vault, check):
     """ADR-0076 §D10, R-22: an entry anchored to a message follows it in the `pratica`
     payload with `anchorState` "anchored", one naming a Message-ID no message carries sits at
@@ -646,8 +808,8 @@ def main(argv):
 
     failures = []
     check = make_check(failures)
-    for stage in (read_only, writing, views, pratiche, pratiche_links, pratiche_anchors, categories,
-                  resources, hardening):
+    for stage in (read_only, writing, views, pratiche, pratiche_links, note_links, note_birth,
+                  pratiche_anchors, categories, resources, hardening):
         vault = tempfile.mkdtemp(prefix="pergamenum-smoke-")
         try:
             with open(os.path.join(vault, "Nota.md"), "w", encoding="utf-8") as handle:

@@ -19,8 +19,7 @@ struct DiaryView: View {
     // Internal, not private: read by `DiaryView+Conflict.swift`.
     @Environment(\.theme) var theme
     @Environment(VaultController.self) private var vault
-    @Environment(Navigation.self) private var navigation
-    /// Where a Cmd+clicked tag or date in the diary leads (n1-seams R-12, R-13).
+    /// Where a Cmd+clicked link, tag or date in the diary leads (ADR-0083 §D5, n1-seams R-12, R-13).
     @Environment(CommandActions.self) private var commandActions
     // Internal, not private: read by `DiaryView+Conflict.swift`.
     @Environment(DiaryController.self) var controller
@@ -130,17 +129,18 @@ struct DiaryView: View {
                 onOpenDay: { commandActions.open(day: $0) },
                 onDropFile: { url in vault.importFileIntoVault(url, near: fileLabel) },
                 onPasteImage: { data in vault.importPastedImage(data, near: fileLabel) }
-            )
+            ),
+            // The diary's text is written before anything is followed (ADR-0083 §D5).
+            links: commandActions.linkInputs(from: fileLabel, column: nil) { controller.flush() }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("diary-editor")
     }
 
-    /// A wikilink in the diary goes to the note it names, in the pane that shows notes.
+    /// A wikilink in the diary goes to the note it names, in the pane that shows notes, through
+    /// the open-link door: a shared title is a choice, never the first match (ADR-0083 §D5).
     private func follow(_ title: String) {
-        guard let path = vault.index.resolve(title: title).first else { return }
         controller.flush()
-        vault.openNote(at: path)
-        navigation.pane = .notes
+        commandActions.open(link: title, from: fileLabel)
     }
 }

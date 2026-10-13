@@ -322,7 +322,7 @@ final class QuitCoordinator {
     /// uncovered, or a scheda edit whose write did not land, is revealed and cancels the quit
     /// (§D7, ADR-0089 §D4). No line for an uncovered board or day: its own conflict recorded one.
     /// A covered conflicted board the reveal switches away from gets no line either: the vault
-    /// controller keeps it, still conflicted, for the next quit to name (ADR-0092 §D7).
+    /// controller keeps it, still conflicted, for the next quit to name (ADR-0095 §D7).
     private func lastCheck(covering covered: QuitReview) -> Bool {
         let left = covered.uncoveredWork(in: current)
         if !left.isEmpty {

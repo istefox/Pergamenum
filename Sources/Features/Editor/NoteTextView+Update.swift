@@ -17,6 +17,10 @@ extension NoteTextView {
         textView.boardTitles = boardTitles
         textView.tagSuggestions = tagSuggestions
         textView.editorCommands = editorCommands
+        // The `[[` popup's «Crea «X»» row exists only where something can act on it (ADR-0083 §D6).
+        textView.offerCreation = links.offerCreation
+        // Attached once, and only where there is something to preview (ADR-0083 §D7).
+        if links.preview != nil { coordinator.linkPreview.attach(to: textView) }
         // Re-applied on every update rather than only at build time: turning the checker on
         // in Impostazioni has to reach the note already open, not the next one.
         apply(spellCheck, to: textView)
@@ -28,10 +32,16 @@ extension NoteTextView {
 
         // Compared and recorded on every update, read only inside the branch below. Claimed
         // ahead of the text sync rather than after it: nothing the sync triggers reads it.
-        let isNoteSwitch = coordinator.requests.claimNotePath(vault.notePath)
+        let isNoteSwitch = coordinator.requests.claimNotePath(vault.notePath, tab: vault.tabID)
+        // A preview of a link in the note that was there is a preview of nothing now (ADR-0083 §D7).
+        if isNoteSwitch, links.preview != nil { coordinator.linkPreview.noteChanged() }
         // Only touch the text when the model diverges from what is on screen:
         // reassigning it unconditionally would reset the cursor on every keystroke.
-        if textView.string != text {
+        // Not read at all when the view wrote this very text and nothing has edited it since: the
+        // compare is linear in the note, and SwiftUI updates the view after every keystroke
+        // (ADR-0094 §D9).
+        let viewHoldsTheModel = textView.textStorage?.delegate === coordinator && coordinator.modelSync.viewHolds(text)
+        if !viewHoldsTheModel, textView.string != text {
             // This view is one persistent instance per editor column (never rebuilt per
             // note), so a genuine note switch and the same note's content changing
             // externally (undo, sync) both land here. Carrying the old raw offset forward
@@ -52,14 +62,16 @@ extension NoteTextView {
 
     /// Step 2: the passes, in the order each depends on the one before.
     func runPasses(on textView: CompletingTextView, coordinator: Coordinator) {
-        coordinator.applyStyling(to: textView, theme: theme)
+        // The dirty range, nothing, or the whole note (ADR-0091 §D8): the second pass of a
+        // keystroke `textDidChange` already styled finds nothing to do.
+        coordinator.applyStylingIfNeeded(to: textView, theme: theme)
         coordinator.applyEmbeds(to: textView)
         coordinator.applyTransclusions(to: textView, theme: theme)
         coordinator.applyFolding(
             to: textView, folded: outline.foldedEntries, hidesFrontmatter: outline.hidesFrontmatter, theme: theme
         )
-        // After the styling, always: `applyStyling` rewrites every attribute in the storage
-        // and invalidates the layout with them, so a highlight painted before it would be
+        // After the styling, always: a styling rewrites the attributes it covers and
+        // invalidates the layout with them, so a highlight painted before it would be
         // gone by the time anything was drawn.
         coordinator.applyMatches(
             to: textView, matches: find.matches, current: find.currentMatch, theme: theme
@@ -69,6 +81,18 @@ extension NoteTextView {
         // already accounted for.
         coordinator.applyReveal(to: textView)
         coordinator.growToFitTheText(textView)
+        // After the restyle: a note switch puts the caret at 0 on text that is not styled yet, so
+        // the selection notification reported no link, and the styled one has the caret's link
+        // only now (ADR-0083 §D3). The ledger drops it when nothing changed.
+        coordinator.reportLinkAtCaret(in: textView)
+        // And the selection the switch left behind: the ledger was reset with the note, so this
+        // reports the new note's selection (none, after the caret went to 0) to the tab that is
+        // active now, clearing a range its tab kept from when it was last in front. A no-op
+        // everywhere else: one comparison, no write on a bare caret (PG-401).
+        coordinator.reportSelection(in: textView)
+        // And the index entry, for the same switch: a same-note tab switch fires no selection
+        // notification, so the incoming tab's `currentOutlineEntry` would stay what it last held.
+        coordinator.reportOutlineEntryAfterSwitch(in: textView)
     }
 
     /// Step 3: applies the Inserisci menu's text at the cursor, and opens the query builder
@@ -135,5 +159,7 @@ extension NoteTextView {
             coordinator.scroll(textView, to: scrollRequest.range)
             outline.onScrollApplied()
         }
+
+        coordinator.applyCaretRequest(in: textView)
     }
 }

@@ -101,7 +101,7 @@ final class WorkspaceController {
     /// problem list of its own, so a recoverable failure is reported where the app
     /// already shows them (Impostazioni → Problemi, `SettingsView`).
     ///
-    /// Weak and observation-ignored: the vault controller owns this board (ADR-0092 §D1), so
+    /// Weak and observation-ignored: the vault controller owns this board (ADR-0095 §D1), so
     /// a strong back-reference would make the two hold each other, and nothing redraws when
     /// it changes.
     @ObservationIgnored private weak var vault: VaultController?
@@ -147,7 +147,7 @@ final class WorkspaceController {
     /// report to.
     ///
     /// Resets the board, so it runs when a vault opens (`VaultController.rebindBoard`), never
-    /// on a pane appearance, which would wipe a board the pane's leave kept (ADR-0092 §D2).
+    /// on a pane appearance, which would wipe a board the pane's leave kept (ADR-0095 §D2).
     /// It registers nothing: `VaultController.openBoard` is owned, not assigned here.
     func attach(
         to store: CanvasStore,
@@ -176,13 +176,13 @@ final class WorkspaceController {
 
     /// Points the board at the vault's current thumbnail cache and touches nothing else. For the
     /// open vault reopened, where `VaultController.open(_:)` builds a new `ThumbnailStore` but
-    /// does not rebind, so the board and a conflict on it stay (ADR-0092 §D2).
+    /// does not rebind, so the board and a conflict on it stay (ADR-0095 §D2).
     func useThumbnails(_ thumbnails: ThumbnailStore?) {
         self.thumbnails = thumbnails
     }
 
     /// Lets go of the vault's store. Called by the vault controller that owns this board when
-    /// another vault opens and when it closes (ADR-0092 §D2), never by a view. Idempotent: with
+    /// another vault opens and when it closes (ADR-0095 §D2), never by a view. Idempotent: with
     /// no store attached there is nothing to leave, and a second call records nothing.
     func detach() {
         guard store != nil else { return }
@@ -194,7 +194,7 @@ final class WorkspaceController {
         settleBoardEditing()
         // A conflicted board is not written - `save()` skips it, since it would attempt exactly
         // the write already refused (ADR-0054 §D5). The conflict is read after the flush, so a
-        // flush its own refusal turned conflicted is reported too (ADR-0092 §D2): this is the
+        // flush its own refusal turned conflicted is reported too (ADR-0095 §D2): this is the
         // one exit where an unresolved conflict's edit disappears, reported rather than
         // blocked, since refusing to leave over an autosave conflict would be worse than the
         // loss it prevents.
@@ -215,7 +215,7 @@ final class WorkspaceController {
         setContents(.init(subfolders: [], unplaced: []))
         board = ""
         // With the board gone nothing is unsaved, so a detached controller never reads as
-        // conflicted or pending (ADR-0092 §D2).
+        // conflicted or pending (ADR-0095 §D2).
         saveState = .saved
         current = nil
         selection = []

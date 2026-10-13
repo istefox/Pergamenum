@@ -18,6 +18,9 @@ enum CompletionItem: Identifiable, Equatable {
     /// The one row that draws a glyph instead of an SF Symbol, because what it is offering
     /// *is* the glyph. SPEC §11.2's single stated exception.
     case emoji(glyph: String, name: String)
+    /// The `[[` popup's «Crea «X»» row, offered when nothing matches and the typed text is a
+    /// valid title (ADR-0083 §D6). Choosing it closes the link and offers the note to the composer.
+    case createNote(title: String)
 
     var id: String {
         switch self {
@@ -25,6 +28,7 @@ enum CompletionItem: Identifiable, Equatable {
         case .text(let value, _): "txt:\(value)"
         case .wikilink(let candidate): "lnk:\(candidate.id)"
         case .emoji(let glyph, _): "emo:\(glyph)"
+        case .createNote(let title): "new:\(title)"
         }
     }
 
@@ -34,6 +38,7 @@ enum CompletionItem: Identifiable, Equatable {
         case .text(let value, _): value
         case .wikilink(let candidate): candidate.label
         case .emoji(_, let name): name
+        case .createNote(let title): "Crea «\(title)»"
         }
     }
 
@@ -45,6 +50,7 @@ enum CompletionItem: Identifiable, Equatable {
         // Never drawn - `CompletionPanelView` reaches for the glyph on this case - and
         // answered rather than trapped, so a future row that asks is not a crash.
         case .emoji: "face.smiling"
+        case .createNote: "plus.square"
         }
     }
 
@@ -52,7 +58,7 @@ enum CompletionItem: Identifiable, Equatable {
     var shortcutCaption: String? {
         switch self {
         case .command(let command): command.shortcutCaption
-        case .text, .wikilink, .emoji: nil
+        case .text, .wikilink, .emoji, .createNote: nil
         }
     }
 

@@ -1,15 +1,44 @@
 #!/usr/bin/env bash
 #
 # Runs the keystroke budget alone and prints its six measurements as a table (ADR-0082 §D5,
-# plan docs/plans/pg-385-n2-page.md, PG-385 R-15).
+# plan docs/plans/pg-385-n2-page.md, PG-385 R-15), then the fallback rows as a second table
+# (ADR-0091 §D11, plan docs/plans/per-paragraph-restyle.md Task 6, R-12), and with `--structural` a
+# third table of the structural rows (ADR-0093 §D9, plan docs/plans/scoped-layout-followup.md Task 7,
+# R-13), and with `--jump` a fourth table of the keystroke after a caret jump (ADR-0094 §D1, plan
+# docs/plans/sublinear-offset-state-pg-405.md Task 1, R-06).
 #
-#   scripts/editor-restyle-bench.sh [--large|--large-only] [--runs N] [--no-warmup]
+#   scripts/editor-restyle-bench.sh [--large|--large-only] [--runs N] [--no-warmup] [--structural] [--jump]
 #
 # It runs only `PergamenumTests/EditorRestyleBudgetTests`, greps the `restyle-budget` lines
 # the test prints (one per size and variant: `size=<bytes> variant=<prose|fences>
 # cpu_ms=<min> wall_ms=<min> runs=<K>`), and prints them as a table. Milliseconds of the main
 # thread's CPU time per keystroke, the minimum of K runs after a warm-up; wall time is shown
 # for reading and is never what the test asserts.
+#
+# The second table comes from the lines that start `restyle-budget-fallback` (`size=<bytes>
+# variant=<prose|fences> path=<fence-open|table|list-enter> cpu_ms=<min> wall_ms=<min> runs=<K>`):
+# a keystroke that opens a fence, one in a table, Return in a list, each for the same cases as the
+# first table. They are printed and never asserted on time; the test only asserts that each
+# keystroke took the path it names.
+#
+# The third table (only with `--structural`) comes from the lines that start `restyle-budget-structural`
+# (`size=<bytes> variant=<prose|fences> path=<fence-open-last|fence-open-above|wikilink-open|
+# wikilink-close-far> cpu_ms=<min> wall_ms=<min> dirty=<utf16 length> runs=<K>`): a fence opened with no
+# fence below, a fence opened above later fences, `[[` typed with no `]]` below, `]]` typed with the last
+# `]]` far above. `dirty` is the length the restyle covered, the note's length for a full restyle. Printed
+# and never asserted; the test only asserts that each keystroke took the path it names.
+#
+# The fourth table (only with `--jump`) comes from the lines that start `restyle-budget-jump`
+# (`size=<bytes> variant=<prose|fences> cpu_ms=<min> wall_ms=<min> crossed=<lines> runs=<K>`): the first
+# keystroke at the middle paragraph after the caret typed once at the top of the note, from
+# `PergamenumTests/EditorRestyleJumpTests`. `crossed` is the number of lines between the two places. Printed
+# and never asserted; the test only asserts that both places restyle by range.
+#
+# Every run also adds `PergamenumTests/OffsetStoreHostedCounterTests` (ADR-0094 §D5, plan
+# docs/plans/sublinear-offset-state-pg-405.md Task 4, R-05): the touched-entries counters on the real editor,
+# asserted where they can be afforded (the 200 KB rows on every run but `--large-only`, the 1 MB rows with
+# `--large` and `--large-only`). The `offset-store-counter` lines they print (`size=<bytes> variant=<v>
+# store=<name> touched=<n> copies=<n>`) come out as a last table, because the log is deleted on exit.
 #
 # The exit status is `xcodebuild`'s own: a red assertion (a measurement above its ceiling) is
 # exit 65 and still prints the table, because the numbers are the point of running it.
@@ -24,12 +53,18 @@
 #   RESTYLE_BUDGET_RUNS=N        N measured runs per case instead of 5 (3 at 1 MB).
 #   RESTYLE_BUDGET_NO_WARMUP=1   no warm-up keystroke.
 #   RESTYLE_BUDGET_50KB=0        no 50 KB rows; the CI workflow sets it (the ceilings are this machine's).
+#   RESTYLE_BUDGET_FALLBACK=1    the three fallback rows for every case that runs; set on every run
+#                                here. The per-turn suite leaves it unset and measures none of them.
+#   RESTYLE_BUDGET_STRUCTURAL=1  the four structural rows for every case that runs; set by --structural
+#                                only. The per-turn suite measures none of them.
+#   RESTYLE_BUDGET_JUMP=1        the caret-jump row for every case that runs; set by --jump only. The
+#                                per-turn suite measures none of it.
 #
 # It builds into its own DerivedData (`build/restyle-bench-dd`), never the default one the
 # Stop hook's unit build uses: two xcodebuilds on one `build.db` produce "database is locked"
 # reds that are nobody's defect (PG-183). It refuses to start beside another xcodebuild on this
-# project, as `scripts/uitests.sh` does: a measurement taken while another build holds the CPU
-# is not one to read.
+# project (the same refusal `scripts/uitests.sh` makes, with a narrower match, see below): a
+# measurement taken while another build holds the CPU is not one to read.
 #
 # bash 3.2 (macOS): no `mapfile`, no associative arrays.
 
@@ -43,7 +78,11 @@ cd "$root" || exit 2
 # --large-only  only the two 1 MB cases
 # --runs N      N measured runs per case instead of 5 (3 at 1 MB)
 # --no-warmup   skip the warm-up keystroke (only for a case where one keystroke takes minutes)
+# --structural  also measure the four structural rows (a third table)
+# --jump        also measure the keystroke after a caret jump (a fourth table)
 export TEST_RUNNER_RESTYLE_BUDGET_200KB=1
+export TEST_RUNNER_RESTYLE_BUDGET_FALLBACK=1
+extra=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --large) export TEST_RUNNER_RESTYLE_BUDGET_1MB=1 ;;
@@ -55,13 +94,28 @@ while [ $# -gt 0 ]; do
             esac
             export TEST_RUNNER_RESTYLE_BUDGET_RUNS="$1" ;;
         --no-warmup) export TEST_RUNNER_RESTYLE_BUDGET_NO_WARMUP=1 ;;
+        --structural) export TEST_RUNNER_RESTYLE_BUDGET_STRUCTURAL=1 ;;
+        --jump)
+            export TEST_RUNNER_RESTYLE_BUDGET_JUMP=1
+            extra+=("-only-testing:PergamenumTests/EditorRestyleJumpTests") ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift
 done
 
-if other=$(pgrep -fl 'xcodebuild.*Pergamenum' 2>/dev/null) && [ -n "$other" ]; then
-    printf 'editor-restyle-bench: another xcodebuild is running:\n%s\n' "$other" >&2
+# Only a process whose name is `xcodebuild` counts, then only one whose arguments name this
+# project. `pgrep -f` on the pattern alone also matched a shell whose command text merely
+# mentions `xcodebuild ... Pergamenum` (another session polling for a run to finish) and
+# refused with nothing building.
+other=""
+for pid in $(pgrep -x xcodebuild 2>/dev/null || true); do
+    args=$(ps -o args= -p "$pid" 2>/dev/null || true)
+    case "$args" in
+        *Pergamenum*) other="${other}${pid} ${args}"$'\n' ;;
+    esac
+done
+if [ -n "$other" ]; then
+    printf 'editor-restyle-bench: another xcodebuild is running:\n%s' "$other" >&2
     echo "wait for it to finish and run again" >&2
     exit 2
 fi
@@ -72,7 +126,8 @@ trap 'rm -f "$log"' EXIT
 
 xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergamenum -destination 'platform=macOS' \
     -derivedDataPath "$root/build/restyle-bench-dd" \
-    -only-testing:PergamenumTests/EditorRestyleBudgetTests test > "$log" 2>&1 || code=$?
+    -only-testing:PergamenumTests/EditorRestyleBudgetTests \
+    -only-testing:PergamenumTests/OffsetStoreHostedCounterTests ${extra[@]+"${extra[@]}"} test > "$log" 2>&1 || code=$?
 
 lines=$(grep -E '^restyle-budget size=' "$log" || true)
 
@@ -97,6 +152,60 @@ printf '%s\n' "$lines" | while IFS= read -r line; do
     runs=$(field runs "$line")
     printf '%-10s %-8s %10s %10s %5s\n' "$((size / 1024)) KB" "$variant" "$cpu" "$wall" "$runs"
 done
+
+fallback=$(grep -E '^restyle-budget-fallback size=' "$log" || true)
+if [ -n "$fallback" ]; then
+    echo
+    echo "fallback paths (printed, never asserted):"
+    printf '%-10s %-8s %-11s %10s %10s %5s\n' "size" "variant" "path" "cpu_ms" "wall_ms" "runs"
+    printf '%-10s %-8s %-11s %10s %10s %5s\n' "----------" "--------" "-----------" "----------" "----------" "-----"
+    printf '%s\n' "$fallback" | while IFS= read -r line; do
+        size=$(field size "$line")
+        printf '%-10s %-8s %-11s %10s %10s %5s\n' "$((size / 1024)) KB" "$(field variant "$line")" \
+            "$(field path "$line")" "$(field cpu_ms "$line")" "$(field wall_ms "$line")" "$(field runs "$line")"
+    done
+    echo
+fi
+
+structural=$(grep -E '^restyle-budget-structural size=' "$log" || true)
+if [ -n "$structural" ]; then
+    echo "structural paths (printed, never asserted):"
+    printf '%-10s %-8s %-18s %10s %10s %9s %5s\n' "size" "variant" "path" "cpu_ms" "wall_ms" "dirty" "runs"
+    printf '%-10s %-8s %-18s %10s %10s %9s %5s\n' "----------" "--------" "------------------" "----------" "----------" "---------" "-----"
+    printf '%s\n' "$structural" | while IFS= read -r line; do
+        size=$(field size "$line")
+        printf '%-10s %-8s %-18s %10s %10s %9s %5s\n' "$((size / 1024)) KB" "$(field variant "$line")" \
+            "$(field path "$line")" "$(field cpu_ms "$line")" "$(field wall_ms "$line")" \
+            "$(field dirty "$line")" "$(field runs "$line")"
+    done
+    echo
+fi
+
+jump=$(grep -E '^restyle-budget-jump size=' "$log" || true)
+if [ -n "$jump" ]; then
+    echo "after a caret jump (printed, never asserted):"
+    printf '%-10s %-8s %10s %10s %8s %5s\n' "size" "variant" "cpu_ms" "wall_ms" "crossed" "runs"
+    printf '%-10s %-8s %10s %10s %8s %5s\n' "----------" "--------" "----------" "----------" "--------" "-----"
+    printf '%s\n' "$jump" | while IFS= read -r line; do
+        size=$(field size "$line")
+        printf '%-10s %-8s %10s %10s %8s %5s\n' "$((size / 1024)) KB" "$(field variant "$line")" \
+            "$(field cpu_ms "$line")" "$(field wall_ms "$line")" "$(field crossed "$line")" "$(field runs "$line")"
+    done
+    echo
+fi
+
+counters=$(grep -E '^offset-store-counter size=' "$log" || true)
+if [ -n "$counters" ]; then
+    echo "offset-store counters (asserted in the test):"
+    printf '%-10s %-8s %-20s %8s %7s\n' "size" "variant" "store" "touched" "copies"
+    printf '%-10s %-8s %-20s %8s %7s\n' "----------" "--------" "--------------------" "--------" "-------"
+    printf '%s\n' "$counters" | while IFS= read -r line; do
+        size=$(field size "$line")
+        printf '%-10s %-8s %-20s %8s %7s\n' "$((size / 1024)) KB" "$(field variant "$line")" \
+            "$(field store "$line")" "$(field touched "$line")" "$(field copies "$line")"
+    done
+    echo
+fi
 
 total=$( { grep -E '^restyle-budget-total ' "$log" || true; } | sed -n 's/.*total_wall_ms=\([0-9]*\).*/\1/p' | awk '{ s += $1 } END { if (NR) printf "%.1f", s / 1000 }')
 if [ -n "$total" ]; then

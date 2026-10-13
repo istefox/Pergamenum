@@ -8,7 +8,7 @@ import Testing
 ///
 /// The real `WorkspaceView` is hosted here, not a replica: the modifier under test lives in its
 /// `body`, so only the production view can pin it. Its `WorkspaceController` is the one the
-/// vault controller owns, reached through `VaultController.openBoard` (ADR-0092 §D1, which
+/// vault controller owns, reached through `VaultController.openBoard` (ADR-0095 §D1, which
 /// replaced the weak reference `attach` set, ADR-0066 §D5; PG-392 plan Task 2, G4). The boards
 /// hold file cards only: a text card needs `CommandActions` and through it `EventKitStore`,
 /// which the hosted-view harness keeps out (R-15).

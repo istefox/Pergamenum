@@ -25,11 +25,24 @@ enum Help {
                            --limit <n> per fermarsi prima (200 di default)
 
       note new <titolo>                 [--folder <cartella>] [--topic <tag>] [--date <data>]
+                                        [--template <percorso|titolo>]
                                         senza topic la nota nasce come cattura (status-inbox)
+                                        il modello è una nota di Templates/; {{cursor}} sparisce
       note append <percorso> <testo>    aggiunge in fondo, dopo una riga vuota
       note rename <percorso> <titolo>   rinomina, riscrivendo i link e le board che puntano
       note move <percorso> <cartella>   sposta; cartella vuota per portarla alla radice
       note trash <percorso>             al cestino; segnala chi resta senza link
+      note link-mention <percorso> <titolo>
+                                        la prima menzione non collegata di <titolo> diventa
+                                        [[Titolo]], o [[Titolo|testo]] se il testo è diverso
+      note unlink-related <percorso> <percorso-destinazione>
+                                        toglie il legame strutturale da entrambe le note
+      note classify <percorso> --topic <a,b>   [--folder <cartella>]
+                                        classifica: toglie status-inbox, aggiunge i topic,
+                                        poi sposta se c'è --folder (non per una scheda)
+      note extract <percorso> --lines <A-B> --title <titolo>   [--folder <cartella>] [--topic <a,b>]
+                                        le righe A-B (da 1, incluse, frontmatter compreso)
+                                        diventano una nota; al loro posto resta [[titolo]]
 
     CATTURA
       capture <testo>      [--dest note|task|today|note:PERCORSO]  (note)
@@ -37,6 +50,8 @@ enum Help {
                                   (reso un nome valido se non lo è)
                                   [--folder <cartella>]  la cartella inbox
                                   (00 Inbox se non impostata)
+                                  [--template <percorso|titolo>]  il testo va al
+                                  {{cursor}} del modello, o dopo il suo corpo
                            task   una riga di task nell'inbox
                                   [--scheduled <data>] [--due <data>]
                            today  in fondo alla nota di oggi, creata se manca

@@ -234,7 +234,7 @@ func theReasonIsReadAfterAnyOfTheFourSeparators(nl: String) {
     await session.rescan()
 
     let outcome = await session.addStructuralLink(
-        from: "Origine.md", to: "Destinazione", reason: "usa i dati", reverseReason: "fornisce i dati"
+        from: "Origine.md", toNoteAt: "Destinazione.md", reason: "usa i dati", reverseReason: "fornisce i dati"
     )
 
     #expect(outcome.created)

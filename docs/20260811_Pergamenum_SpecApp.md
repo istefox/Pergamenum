@@ -199,6 +199,16 @@ L'architettura harness vigente (ADR 20/07/2026, emendata 30/07/2026) assegna i t
   vista esattamente come prima. È un'impostazione della cartella note
   (`VaultSettings.readableWidth`, attiva di default) e vale su tutte e tre le superfici che
   disegnano l'editor: Nota, Diario e Oggi.
+- *Emendato 2026-10-10 (ADR-0081, ADR-0082).* **I marcatori di blocco si rivelano nel margine**:
+  quando il cursore entra in una voce d'elenco, in un titolo o in una citazione, il marcatore
+  (`- `, `1. `, `## `, `> `) compare nel margine a sinistra della colonna e il testo non si
+  sposta. Alla larghezza di lettura la colonna resta dov'era; sotto quella soglia si sposta una
+  volta verso destra. Nelle card del Workspace, che non hanno margine, solo gli elenchi restano
+  fermi.
+- **Il costo di un tasto è un numero misurato**: un test della suite misura in tempo CPU la
+  ristilizzazione di note sintetiche da 50 KB, 200 KB e 1 MB, con e senza blocchi di codice e
+  viste; le righe da 50 KB girano a ogni turno, le altre a richiesta, e il test fallisce sopra il
+  tetto registrato in ADR-0082 §D9.
 - **Il carattere della nota si sceglie in Impostazioni → Editor**: famiglia fra quelle
   installate più «Sistema», corpo da 12 a 24. La scelta è scritta come override dei token
   `font.prose` e `font.proseTitle` in `.pergamenum/themes/personalizzato.json`, attraverso lo
@@ -218,13 +228,13 @@ L'architettura harness vigente (ADR 20/07/2026, emendata 30/07/2026) assegna i t
   resta aperta e mostra il loro avviso; «Non salvare» esce lasciando i file su disco come sono. Il
   salvataggio automatico continuo di §6.1 (~1 s) vale per le board del Workspace, non per le
   note.
-  *Emendato 2026-10-07 (ADR-0092).* Una board in conflitto sopravvive al cambio di pannello:
+  *Emendato 2026-10-07 (ADR-0095).* Una board in conflitto sopravvive al cambio di pannello:
   quell'avviso la nomina anche se il Workspace non è a schermo, e la nomina anche l'avviso che
   precede l'apertura di un'altra cartella note.
 - Requisiti minimi:
   - CommonMark + tabelle GFM + task list `- [ ]`
   - Liste puntate e numerate rese con glifo/ordinale al posto del marcatore, nidificazione
-    inclusa (ADR-0028, 2026-09-01); Invio continua la lista e rinumera quelle ordinate; una
+    inclusa (ADR-0028, 2026-09-01); Invio continua la lista e rinumera l'elenco ordinato modificato; una
     riga `- [ ]` resta una checkbox, mai un elemento di lista
   - Wikilink con autocompletamento su `[[` (titoli esatti dal vault; gli alias F-07 servono la
     ricerca, mai il primo segmento del link, W-01)
@@ -377,6 +387,8 @@ Comportamento identico al Finder, implementato con `QLPreviewPanel` (framework Q
 
 *Emendato 2026-09-16 (ADR-0047, riapre ADR-0013 §D6 per addizione, non per sostituzione).* Le cinque viste restano cinque e restano invariate. La sidebar "Attività" guadagna, accanto a loro, una sezione "Categorie": righe per le categorie registrate e per quelle implicite (un tag `#project-*` mai registrato), con colore, simbolo, conteggio degli aperti e progresso a rollup, ciascuna apribile nella propria vista di categoria. La sezione è un'aggiunta, non una sesta vista.
 
+*Emendato 2026-10-12 (ADR-0085 §D1/§D12, PG-387).* Accanto alle cinque viste task, il gruppo LAVORO della barra laterale ha il pannello «Da classificare», subito dopo Attività: elenca le note che portano `status-inbox`, schede del Contenitore comprese, dalla più recente, con il filtro per cartella e «Classifica…» su ogni riga. Non è una sesta vista task, e «Inbox» qui continua a voler dire task.
+
 ---
 
 ## 8. Calendario e integrazione Apple
@@ -388,6 +400,7 @@ Comportamento identico al Finder, implementato con `QLPreviewPanel` (framework Q
 - Struttura vista giorno: (1) area riferimenti: task `>data` e backlink alla data; (2) corpo della nota; (3) timeline oraria laterale.
 - *Emendato 2026-08-20 (ADR-0013 §D4 e §D2, M12).* **Giorno, settimana e mese sono tre scale della stessa vista**, scelte dalla barra strumenti e ancorate allo stesso giorno: muoversi nella settimana e tornare al giorno porta sul giorno che la settimana teneva evidenziato. La griglia della settimana disegna quattro sorgenti e non una quinta - eventi EventKit, task pianificati, scadenze, time block - e la daily note è l'intestazione della colonna, non una sorgente: un giorno non è una nota che ha una settimana, è un giorno che ha una nota.
 - *Emendato 2026-08-20 (ADR-0013 §D2 e §D3, M12).* **Note evento**: da un evento della timeline si crea `YYYYMMDD-<slug>.md` **nella stessa cartella delle daily note**, accanto a `YYYYMMDD.md`. Non è una cartella riservata nuova. La nota nasce nella forma di una cattura, `type-note` + `status-inbox`, con l'ora e i partecipanti stampati nel corpo e un wikilink dalla daily note del giorno; il backlink risponde già alla domanda «di che giorno era questa riunione» senza indicizzare niente di nuovo.
+- *Emendato 2026-10-12 (ADR-0086 §D3/§D4/§D9, PG-387).* **Il template della daily note** è una nota sotto `Templates/` scelta in Impostazioni › Convenzioni («Modello della nota del giorno», «Nessuno» per nessuno) e salvata nel vault come `dailyTemplate`. Il giorno nasce da quel template con `{{date}}`, `{{time}}` e `{{title}}` risolti; `{{cursor}}` non viene mai scritto e diventa il punto in cui la nota appena creata apre il cursore. Solo la chiamata che crea il giorno posiziona il cursore: riaprire un giorno che esiste già non lo sposta. Un percorso che non nomina più un template è ignorato e segnalato tra i problemi.
 
 ### 8.2 EventKit
 
@@ -438,6 +451,8 @@ Ogni nota, canvas e card espone "Copia link Pergamenum" nel menu contestuale, pe
 **Inserisci**: Wikilink [[ · Tag # (autocompletamento vincolato) · Task (- [ ]) · Data pianificata > · Scadenza ! · Promemoria @remind · Nota correlata… (flusso W-04/W-05) · Tabella · Immagine/file… · Link email da Mail (legge la selezione corrente di Mail via AppleScript e inserisce `message://`)
 
 **Vista**: Indietro (Cmd+[) · Avanti (Cmd+]) · un pannello per voce: Note · Workspace · Oggi · Diario · Attività · Tag · Preferite · Viste · Registrazioni · Pratiche · Contenitore (Ctrl+Cmd+1, 2, 3, 6, 4, 7, 9, 8, 0, P, C, ADR-0002) · Vai alla nota… (Cmd+O) · Cronologia… (Cmd+Shift+H) · Dividi l'editor · Chiudi la colonna · Ispettore (Cmd+Opt+I) · Pannello Workspace · Concentrazione Workspace · Nascondi albero Workspace · Concentrazione Note · Nascondi albero Note · Ripiega la sezione (Cmd+Opt+←) · Espandi tutto (Cmd+Opt+→) · Mostra/Nascondi il frontmatter (Cmd+Opt+Y, ADR-0078) · Aggiorna registrazioni (Cmd+R) · Aggiungi alle/Togli dalle preferite (Cmd+Shift+S) · Applica un template… (Ctrl+Cmd+T) · Anteprima rapida (Spazio, §6.6) · Tema (chiaro/scuro/sistema, temi installati §11) · più le voci standard macOS (barra laterale, barra strumenti, schermo intero)
+
+*Emendato 2026-10-12 (ADR-0085 §D6/§D12, PG-387).* File guadagna «Classifica…», accanto ad «Applica un template…»: agisce sulla riga scelta in «Da classificare», sulla selezione del Contenitore quando quel pannello è davanti, altrimenti sulla nota aperta. Modifica guadagna «Estrai in una nota», attiva con una selezione non vuota nella tab in primo piano. Vista guadagna «Vai a Da classificare» (Ctrl+Cmd+I). Il menu contestuale della riga nota guadagna «Classifica…».
 
 **Task**: Completa/riapri (Cmd+Invio) · Pianifica oggi (Cmd+0) · domani (Cmd+1) · +2 giorni (Cmd+2) · settimana prossima (Cmd+3) · Scegli data… · Aggiungi scadenza · Aggiungi promemoria · Collega una board… (§7.2, ADR-0039) · Annulla task · Vai alla nota di origine · Vai alla board collegata
 
@@ -501,6 +516,7 @@ Valutazione richiesta (CSS/HTML): un sistema di stili CSS/HTML non è applicabil
   Watcher FSEvents sul vault: modifiche esterne (anche da Obsidian) recepite in tempo reale.
   Le viste (§17) interrogano lo stesso indice, mai una loro copia.
 - Impostazioni: Generali (vault, lingua, tema) · Editor · Canvas (griglia, snap, import copia/riferimento) · Task (orario default promemoria) · Calendario (calendari visibili, calendario di scrittura, fascia timeline) · Convenzioni (cartella daily, cartella inbox, percorso repo harness per import vocabolari) · Avanzate (rigenera indice, svuota cache, log).
+- *Emendato 2026-10-12 (ADR-0085 §D5/§D12 e ADR-0086 §D9, PG-387).* Convenzioni guadagna «Modello della nota del giorno» (§8.1). Nel quick switcher «crea nota chiamata X» non scrive più una nota nella radice del vault: apre il compositore della nuova nota con il titolo già scritto, lo stesso di Cmd+N, dove si scelgono cartella, tag e template prima di «Crea». La nota creata dal compositore apre il cursore dove il template lo chiede e offre per qualche secondo «Nota creata · Annulla» in fondo all'editor.
 
 ---
 
@@ -583,6 +599,11 @@ chiamava "globale" una cattura in realtà legata alla finestra (Cmd+Shift+N).*
   Il pannello mostra sempre «Titolo: …» prima dell'invio, anche quando coincide con la riga; un
   titolo già preso è rifiutato con la frase del compositore e non scrive nulla. Oltre a questo,
   solo una cattura vuota è rifiutata.
+- *Emendato 2026-10-12 (ADR-0086 §D6/§D9, PG-387).* Solo la destinazione «Nota nuova» offre un
+  menu del template, accanto alla cartella, ricordato come la destinazione. Con un template scelto
+  la nota nasce da esso: il titolo derivato riempie `{{title}}` e il testo catturato va dove era
+  `{{cursor}}` (in fondo, se il template non lo ha), in un'unica scrittura. Le altre tre
+  destinazioni ignorano il template.
 - **Un'unica scrittura condivisa**: il pannello, la route `pergamenum://capture` (§9),
   `perg capture` e il tool MCP passano tutti per lo stesso punto in `Sources/Connector/`
   (ADR-0007 §D2/§D4) — stessa cartella di destinazione, stesso frontmatter, giornalata e

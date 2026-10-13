@@ -81,6 +81,8 @@ extension WorkspaceController.Tool {
         case createFreeText
         /// A naming sheet, which creates the item once confirmed.
         case sheet(NewCanvasItemSheet.Kind)
+        /// The note composer in its sheet host, the folder fixed to the board's (ADR-0085 §D7).
+        case composeDocument
         case importPanel
         /// Drawn by dragging rather than by tapping: a tap does nothing *and* the tool
         /// is not reset afterwards, which would end the gesture in progress.
@@ -96,7 +98,7 @@ extension WorkspaceController.Tool {
         case .text: .createFreeText
         case .folder: .sheet(.folder)
         case .link: .sheet(.link)
-        case .document: .sheet(.note)
+        case .document: .composeDocument
         case .image: .importPanel
         // The drawing layer takes over the board while its tool is active; the arrow is
         // drawn by dragging between two cards.

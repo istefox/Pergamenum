@@ -58,10 +58,11 @@ extension VaultAPI {
     /// Creates a note through `VaultSession.createNote`, for `perg note create` and MCP
     /// `create_note`. With no `topic` the note is born a capture, `type-note` plus
     /// `status-inbox` (ADR-0080 §D1). An invalid title is refused with the validator's
-    /// reason, never corrected.
+    /// reason, never corrected. `template` names a note under `Templates/` by path or title.
     @MainActor
     static func createNote(
-        _ session: VaultSession, title: String, folder: String?, topic: String?, date: String?
+        _ session: VaultSession, title: String, folder: String?, topic: String?, date: String?,
+        template: String? = nil
     ) async throws -> WriteSummary {
         guard !title.isEmpty else {
             throw ConnectorError("serve un titolo per la nota", usage: true)
@@ -73,14 +74,14 @@ extension VaultAPI {
             return [tag]
         } ?? []
 
-        do {
-            let result = try await session.createNote(
-                title: title, in: folder ?? "", date: try day(date), topics: topics
-            )
-            return summarise(result, session: session)
-        } catch let refusal as VaultSession.CreationError {
-            throw ConnectorError("\(refusal)")
-        }
+        let createdOn = try day(date)
+        // ADR-0086 §D6: a template by path or title, its `{{cursor}}` removed (no caret here).
+        let body = try template.map {
+            try resolvedTemplate(session, reference: $0, title: title, date: createdOn).body
+        } ?? ""
+        return try await createNoteWritten(
+            session, title: title, folder: folder ?? "", topics: topics, date: createdOn, body: body
+        )
     }
 
     @MainActor
@@ -90,7 +91,7 @@ extension VaultAPI {
         guard !text.isEmpty else {
             throw ConnectorError("serve il testo da aggiungere", usage: true)
         }
-        guard session.exists(path) else { throw ConnectorError("«\(path)» non esiste") }
+        try requireNote(session, path)
 
         switch await session.append(text: text, to: path) {
         case .written(let result):
@@ -189,9 +190,14 @@ extension VaultAPI {
         if let note {
             // The inbox is created on demand; any other note has to exist, because
             // inventing one from a task is how a vault fills with files nobody meant to
-            // make (SPEC §7.4).
-            guard session.exists(note) else {
-                throw ConnectorError("«\(note)» non esiste: un task va in una nota che c'è, o nell'inbox")
+            // make (SPEC §7.4). And it has to be an indexed note: a `.canvas` or a settings
+            // JSON that exists is refused too, in the session's own words (PG-398). A missing
+            // path keeps the session's sentence and gains the inbox hint the CLI help and the
+            // MCP description give; the non-note refusal passes through untouched.
+            do {
+                try requireNote(session, note)
+            } catch let refusal as ConnectorError where !session.exists(note) {
+                throw ConnectorError("\(refusal.description): un task va in una nota che c'è, o nell'inbox")
             }
             draft.destination = .note(note)
         }

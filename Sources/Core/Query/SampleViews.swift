@@ -19,7 +19,7 @@ enum SampleViews {
         var relativePath: String { "\(NoteTemplate.folder)/\(name).md" }
     }
 
-    static let all: [Sample] = [clients, projects, readings, orphans, deadlines, weeklyReview]
+    static let all: [Sample] = [clients, projects, readings, orphans, deadlines, weeklyReview, unresolvedLinks]
 
     private static func sample(_ name: String, _ prose: String, _ block: String) -> Sample {
         Sample(
@@ -102,6 +102,23 @@ enum SampleViews {
         sort: title
         render: list
         columns: [title, tags, modified]
+        """
+    )
+
+    /// The vault-wide list the inspector used to show under every note (ADR-0084 §D2): under a
+    /// note it answered a question about other notes, as a view it is one query the person can
+    /// sort and keep. The inspector now shows the open note's own.
+    private static let unresolvedLinks = sample(
+        "Vista - Link non risolti",
+        """
+        I link che non portano a nessuna nota: l'inspector mostra quelli della nota aperta, questa
+        vista quelli di tutto il vault.
+        """,
+        """
+        where: has(unresolved)
+        sort: title
+        render: table
+        columns: [title, unresolved]
         """
     )
 

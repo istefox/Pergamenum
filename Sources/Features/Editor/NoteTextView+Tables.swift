@@ -27,8 +27,10 @@ extension NoteTextView.Coordinator {
     /// `TableBlockController.apply(to:runs:markers:commit:)`, kept here under the name
     /// `applyStyling` calls in its sequence (ADR-0074 §D5). A grid commits through
     /// `commitTable`, which stays on the Coordinator because it owns no state.
-    func applyTables(to textView: NSTextView, runs: [NSRange], markers: inout [Int: [HiddenMarker]]) {
-        tables.apply(to: textView, runs: runs, markers: &markers) { [weak self] edit, header, textView in
+    func applyTables(
+        to textView: NSTextView, runs: [NSRange], markers: inout [Int: [HiddenMarker]], within dirty: NSRange? = nil
+    ) {
+        tables.apply(to: textView, runs: runs, markers: &markers, within: dirty) { [weak self] edit, header, textView in
             self?.commitTable(edit, at: header, in: textView) ?? false
         }
     }
@@ -111,6 +113,10 @@ final class TableBlockController {
     /// Where the caret has to go once that transaction closes, when a row it was sitting in
     /// has just left the layout (`FoldController.rescueCaret`'s table twin, §D5).
     private(set) var pendingCaret: Int?
+    /// The commit and text view the last pass bound the grids to, so `shift(by:)` can re-bind a
+    /// grid that moved without a pass running over it (ADR-0091 §D6).
+    private var commit: ((TableEdit, Int, NSTextView) -> Bool)?
+    private weak var boundTextView: NSTextView?
 
     init(parent: @escaping () -> NoteTextView?, decorations: EditorDecorationDelegate) {
         self.parent = parent
@@ -134,18 +140,27 @@ final class TableBlockController {
     ///
     /// `commit` is what a grid's `onCommit` calls with the header offset, i.e.
     /// `Coordinator.commitTable(_:at:in:)`.
+    ///
+    /// `dirty` is the incremental restyle's range (ADR-0091 §D4): `runs` are then only the tables
+    /// inside it, and every table outside it keeps its grid, its rows and its entry as the shift
+    /// left them. Nil is the full pass, which decides the whole set.
     func apply(
         to textView: NSTextView, runs: [NSRange], markers: inout [Int: [HiddenMarker]],
+        within dirty: NSRange? = nil,
         commit: @escaping (TableEdit, Int, NSTextView) -> Bool
     ) {
         guard parent()?.hidesMarkup == true else {
             clear()
             return
         }
+        self.commit = commit
+        boundTextView = textView
 
         let text = textView.string as NSString
         var found: [(header: Int, table: GFMTable)] = []
-        var rows: Set<Int> = []
+        // Outside the restyled range, what the shift left: kept, not recomputed.
+        let kept = dirty.map { range in drawn.filter { !NSLocationInRange($0.key, range) } } ?? [:]
+        var rows: Set<Int> = dirty.map { range in hiddenRows.filter { !NSLocationInRange($0, range) } } ?? []
         var headerOfRow: [Int: Int] = [:]
 
         for run in runs {
@@ -165,19 +180,12 @@ final class TableBlockController {
             }
         }
 
-        let views = grids.views(for: found.map(\.header), in: textView)
+        let views = grids.views(for: Array(kept.keys) + found.map(\.header), in: textView)
         decorations.apply(tableViews: views)
-        var drawn: [Int: DrawnTable] = [:]
+        var drawn = kept
         for entry in found {
             guard let grid = views[entry.header] else { continue }
-            // Re-set on every pass rather than once at build time: the closure carries the
-            // header offset, and an edit above the table moves it. A grid holding last
-            // pass's offset would commit against a range that has since become someone
-            // else's - which D8's guard would refuse, correctly and uselessly.
-            grid.onCommit = { [weak textView] edit in
-                guard let textView else { return false }
-                return commit(edit, entry.header, textView)
-            }
+            bind(grid, header: entry.header, in: textView, commit: commit)
             drawn[entry.header] = DrawnTable(grid: grid, table: entry.table)
         }
         self.drawn = drawn
@@ -188,6 +196,20 @@ final class TableBlockController {
         pendingCaret = caretRescue(in: textView, rows: rows, headers: headerOfRow)
     }
 
+    /// Re-set on every pass rather than once at build time: the closure carries the header
+    /// offset, and an edit above the table moves it. A grid holding last pass's offset would
+    /// commit against a range that has since become someone else's - which D8's guard would
+    /// refuse, correctly and uselessly.
+    private func bind(
+        _ grid: TableGridView, header: Int, in textView: NSTextView,
+        commit: @escaping (TableEdit, Int, NSTextView) -> Bool
+    ) {
+        grid.onCommit = { [weak textView] edit in
+            guard let textView else { return false }
+            return commit(edit, header, textView)
+        }
+    }
+
     /// Draws each grid the note currently holds, and takes the caret out of a row that has
     /// just left the layout.
     ///
@@ -195,8 +217,11 @@ final class TableBlockController {
     /// storage - a grid resizes itself, and a caret rescue moves the selection - and doing
     /// either while an editing transaction is open asks TextKit to lay out a document it has
     /// been told is mid-change.
-    func refresh(in textView: NSTextView, theme: Theme) {
-        for table in drawn.values {
+    ///
+    /// `dirty` limits the update to the grids inside the incremental restyle's range: a grid
+    /// outside it draws a table whose text and theme did not change (ADR-0091 §D4).
+    func refresh(in textView: NSTextView, theme: Theme, within dirty: NSRange? = nil) {
+        for (header, table) in drawn where dirty.map({ NSLocationInRange(header, $0) }) ?? true {
             table.grid.update(with: table.table, theme: theme)
         }
         guard let offset = pendingCaret else { return }
@@ -222,5 +247,22 @@ final class TableBlockController {
         guard !hiddenRows.isEmpty else { return }
         hiddenRows = []
         decorations.apply(tableRows: [])
+    }
+}
+
+extension TableBlockController {
+    /// Re-keys the drawn tables, their hidden rows and their grids past `edit` (ADR-0091 §D6), and
+    /// re-binds each moved grid's commit to its new header offset: a grid outside the restyled
+    /// range is not handed a new closure by the next pass, and a commit against the old offset
+    /// would be refused by the reload guard.
+    func shift(by edit: StorageEdit) {
+        drawn = edit.shiftedKeys(drawn)
+        hiddenRows = edit.shiftedKeys(hiddenRows)
+        pendingCaret = pendingCaret.flatMap(edit.shiftedKey)
+        grids.shift(by: edit)
+        guard let commit, let textView = boundTextView else { return }
+        for (header, table) in drawn {
+            bind(table.grid, header: header, in: textView, commit: commit)
+        }
     }
 }

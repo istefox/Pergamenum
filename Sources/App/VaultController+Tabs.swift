@@ -337,7 +337,7 @@ extension VaultController {
 /// now is: the two entry points differ in *where the note lands* and in nothing else, which is
 /// why they share `readForEditing` instead of each doing the read themselves.
 extension VaultController {
-    func openNote(at relativePath: String) {
+    func openNote(at relativePath: String, caret: Int? = nil) {
         rememberRecent(relativePath)
         // Already open somewhere in this column: go to that tab rather than loading a second
         // copy of the same note. Found on screen on 2026-08-19, with the note in two tabs at
@@ -345,10 +345,13 @@ extension VaultController {
         // unsaved edits, and this would quietly drop them.
         if let existing = tabs.first(where: { $0.note.relativePath == relativePath }) {
             focusTab(existing.id)
+            requestCaretInFocusedTab(caret)
             return
         }
         guard let note = readForEditing(relativePath) else { return }
         show(note)
+        // A day born from its template (ADR-0086 §D4): placed once, by the editor.
+        requestCaretInFocusedTab(caret)
         isComposingNote = false
     }
 
@@ -372,10 +375,14 @@ extension VaultController {
 
     /// Opens a note beside the ones already open instead of over the focused one
     /// (ADR-0012 D2). Cmd+T and a Cmd+click in the list are the gestures that reach it.
-    func openNoteInNewTab(at relativePath: String) {
+    ///
+    /// `caret` is a note just born from a template (ADR-0086 §D4): the new tab asks the editor
+    /// to put the caret there once, through `takePendingCaret(forColumn:)`.
+    func openNoteInNewTab(at relativePath: String, caret: Int? = nil) {
         rememberRecent(relativePath)
         guard let note = readForEditing(relativePath) else { return }
         openTab(showing: note)
+        requestCaretInFocusedTab(caret)
         isComposingNote = false
     }
 

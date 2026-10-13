@@ -131,7 +131,26 @@ private func session(_ vault: borrowing TemporaryVault) async throws -> VaultSes
     let total = SampleViews.all.reduce(0) { running, sample in
         running + ViewBlock.blocks(in: NoteDocument.parse(sample.text).body).count
     }
-    #expect(total == 9)
+    // 9 -> 10: the seventh sample, «Vista - Link non risolti» (ADR-0084 §D2), is one block. The
+    // pin moved because a sample was added on purpose, not because it was loosened.
+    #expect(total == 10)
+}
+
+/// ADR-0084 §D2, SPEC R-25: the vault-wide list of unresolved links leaves the inspector and
+/// becomes the seventh sample view, installed like the other six when the person asks.
+@Test func theSeventhSampleIsTheVaultWideUnresolvedLinksView() throws {
+    #expect(SampleViews.all.count == 7)
+    let sample = try #require(SampleViews.all.last)
+    #expect(sample.name == "Vista - Link non risolti")
+    #expect(sample.relativePath == "\(NoteTemplate.folder)/Vista - Link non risolti.md")
+
+    let blocks = ViewBlock.blocks(in: NoteDocument.parse(sample.text).body)
+    #expect(blocks.count == 1)
+    let block = try #require(blocks.first).get()
+    #expect(block.columns == [.title, .unresolved])
+    #expect(sample.text.contains("where: has(unresolved)"))
+    #expect(sample.text.contains("sort: title"))
+    #expect(sample.text.contains("render: table"))
 }
 
 /// They are notes, so the linter judges them like any other. One that shipped non-conformant

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// PG-392, ADR-0092 §D8 (gate G1, approved 2026-10-08), plan Task 6 (R-02): a rename, a trash or
+// PG-392, ADR-0095 §D8 (gate G1, approved 2026-10-08), plan Task 6 (R-02): a rename, a trash or
 // a move of the folder that holds a *kept* conflicted board - one the vault controller still
 // owns after the Workspace pane was left - is refused, naming the board, because the verb would
 // move the file out from under a conflict `Mantieni`/`Ricarica` could then no longer read. The

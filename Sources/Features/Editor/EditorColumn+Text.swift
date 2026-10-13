@@ -72,6 +72,16 @@ extension EditorColumnView {
             onRunCommand: commandActions.run,
             onFollowLink: follow(title:),
             vault: vaultInputs(for: note),
+            // ADR-0083: the click variants, the choice, the preview and the caret link, each
+            // focusing this column before it acts.
+            links: commandActions.linkInputs(from: note.relativePath, column: columnIndex),
+            // The caret a new note was born with, and the selection «Estrai in una nota» reads
+            // (ADR-0086 §D4, ADR-0085 §D8).
+            selection: .init(
+                caretRequest: caretRequest,
+                onCaretApplied: { caretRequest = nil },
+                onSelectionChanged: { range in vault.recordSelection(range, inColumn: columnIndex) }
+            ),
             insertion: pendingInsertion,
             onInsertionApplied: { pendingInsertion = nil },
             find: findInputs(for: note),
@@ -93,7 +103,7 @@ extension EditorColumnView {
     /// function body length.
     private func vaultInputs(for note: VaultController.OpenNote) -> NoteTextView.VaultInputs {
         .init(
-            vaultRoot: vault.root, notePath: note.relativePath, thumbnails: vault.thumbnails,
+            vaultRoot: vault.root, notePath: note.relativePath, tabID: tab?.id, thumbnails: vault.thumbnails,
             // The same source Lettura uses, so the two surfaces cannot resolve the same
             // `![[nota]]` to two different notes (ADR-0010 §D3).
             transclusions: transclusionSource,

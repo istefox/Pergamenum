@@ -3,7 +3,8 @@ import AppKit
 // The one-shot request bookkeeping `updateNSView` keeps between passes (ADR-0074 §D2).
 
 /// The last focus, scroll and match-jump requests, the last replacement batch, the last note
-/// path and the last outline entry, with one claim method per request.
+/// path, the last outline entry, the last caret request and the last selection reported, with one
+/// claim method per request.
 ///
 /// **Two orders are load-bearing.** Every claim compares first and records second, so a request
 /// that repeats is refused. The replacement batch is the exception on purpose: `apply(_:to:)`
@@ -40,9 +41,22 @@ final class RequestLedger {
     /// view is one persistent instance per editor column, never rebuilt per note, so
     /// there is no other signal available for "this is a different note now."
     private(set) var lastNotePath: String?
+    /// The tab in front when `lastNotePath` was recorded; see `claimNotePath(_:tab:)`.
+    private(set) var lastTab: UUID?
     /// The index entry the caret was last reported to be in. Kept so the callback
     /// fires when it *changes*, not on every arrow key.
     private(set) var lastOutlineEntry: Int??
+    /// The followable link at the caret last reported (ADR-0083 §D3), for the same reason. Nil
+    /// until the first report and again after a note switch, whose tab starts with no link.
+    private(set) var lastCaretLink: URL??
+    /// The caret request already applied, by id (ADR-0086 §D4).
+    private(set) var lastCaretRequest: Int?
+    /// The selection last reported (ADR-0085 §D8): `.some(nil)` is "reported as none", `nil` is
+    /// "not reported for this note yet". The second is the state after a note switch, so the first
+    /// report of the new note always goes out, including the collapse that clears the previous
+    /// tab's range (PG-387 review: one persistent view serves every tab of a column, and a
+    /// collapsing nil reported while another tab was active left the old tab's range behind).
+    private(set) var lastSelection: NSRange??
 
     init(parent: @escaping () -> NoteTextView?) {
         self.parent = parent
@@ -69,16 +83,46 @@ final class RequestLedger {
         return true
     }
 
-    /// Whether `path` differs from the one last seen - a note switch - recording it either way.
-    func claimNotePath(_ path: String?) -> Bool {
-        let isNew = path != lastNotePath
+    /// Whether `path` or `tab` differs from the pair last seen - a note switch - recording both
+    /// either way. The tab counts because two tabs of one column can show the same note: switching
+    /// between them leaves path and text unchanged, yet the front tab is another one and has to be
+    /// told the selection the shared view shows (PG-387 review).
+    func claimNotePath(_ path: String?, tab: UUID? = nil) -> Bool {
+        let isNew = path != lastNotePath || tab != lastTab
         lastNotePath = path
+        lastTab = tab
+        if isNew {
+            lastCaretLink = nil
+            lastSelection = nil
+            lastOutlineEntry = nil
+        }
         return isNew
     }
 
     func claimOutlineEntry(_ entry: Int?) -> Bool {
         guard lastOutlineEntry != .some(entry) else { return false }
         lastOutlineEntry = entry
+        return true
+    }
+
+    func claimCaretLink(_ url: URL?) -> Bool {
+        guard lastCaretLink != .some(url) else { return false }
+        lastCaretLink = url
+        return true
+    }
+
+    /// Whether `request` is new by its id; records it when it is.
+    func claimCaret(_ request: NoteTextView.SelectionInputs.CaretRequest) -> Bool {
+        guard request.id != lastCaretRequest else { return false }
+        lastCaretRequest = request.id
+        return true
+    }
+
+    /// Whether `range` differs from the selection last reported; records it when it does. Nothing
+    /// is reported until the note switch's reset, so a bare caret moving reports nothing.
+    func claimSelection(_ range: NSRange?) -> Bool {
+        guard lastSelection != .some(range) else { return false }
+        lastSelection = range
         return true
     }
 

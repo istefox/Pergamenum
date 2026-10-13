@@ -28,9 +28,12 @@ extension VaultAPI {
         guard let record = session.index.note(at: path) else {
             throw ConnectorError("«\(path)» non è nell'indice")
         }
+        // One derivation: what is not unresolved is resolved, in the targets' own order.
+        let unresolved = UnresolvedTargets.of(record.linkTargets, resolving: session.index.resolve(title:))
+        let unresolvedSet = Set(unresolved)
         return LinkSummary(
-            resolved: record.linkTargets.filter { !session.index.resolve(title: $0).isEmpty },
-            unresolved: record.linkTargets.filter { session.index.resolve(title: $0).isEmpty }
+            resolved: record.linkTargets.filter { !unresolvedSet.contains($0) },
+            unresolved: unresolved
         )
     }
 

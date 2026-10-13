@@ -24,6 +24,12 @@ private final class UpdateModel {
     var notePath = "a.md"
     var replacements: [(range: NSRange, text: String)]?
     var focusRequest = 0
+    /// The inputs a styling reads, for the restyle pins below (R-08). Defaults are what the editor
+    /// was built with before they were model state, so no other pin changes.
+    var theme: Theme = .emergency
+    var hidesMarkup = false
+    var revealsInlineSpans = false
+    var thumbnails: ThumbnailStore?
     var scrollRequest: Navigation.OutlineJump?
     var matchJump: NSRange?
     /// Bumped to force an update that changes no input under test.
@@ -45,11 +51,13 @@ private struct EditorRoot: View {
         let model = model
         return NoteTextView(
             text: Binding(get: { model.text }, set: { model.text = $0 }),
-            theme: .emergency,
+            theme: model.theme,
             noteTitles: model.tick.isMultiple(of: 2) ? [] : ["x"],
             tagSuggestions: [],
+            hidesMarkup: model.hidesMarkup,
+            revealsInlineSpans: model.revealsInlineSpans,
             onFollowLink: { _ in },
-            vault: .init(notePath: model.notePath),
+            vault: .init(notePath: model.notePath, thumbnails: model.thumbnails),
             find: .init(
                 replacements: model.replacements,
                 onReplacementsApplied: { model.replacementsApplied += 1 },
@@ -265,6 +273,127 @@ private struct Harness {
         await harness.settle()
         #expect(textView.string == "abc")
         #expect(textView.selectedRange() == NSRange(location: 3, length: 0))
+        #expect(harness.host.refusals.isEmpty)
+        #expect(harness.host.neverShown)
+        harness.host.tearDown()
+    }
+
+    // MARK: R-08, the styling that follows a keystroke
+
+    /// The coordinator the hosted text view reports to.
+    private func coordinator(of textView: CompletingTextView) throws -> NoteTextView.Coordinator {
+        try #require(textView.delegate as? NoteTextView.Coordinator)
+    }
+
+    private func darkTheme() throws -> Theme {
+        let url = try #require(Bundle.pergamenumResources.tokenFileURL(named: "pergamenum-dark"))
+        let document = try DesignTokenDocument(data: try Data(contentsOf: url), fallbackName: "pergamenum-dark")
+        return Theme(document: document, id: "pergamenum-dark", inheriting: .emergency)
+    }
+
+    // (per-paragraph-restyle R-08) A keystroke is styled once. `textDidChange` styles the dirty range,
+    // SwiftUI then runs `updateNSView`, and the styling `runPasses` asks for over the same text is
+    // counted as skipped and not run again.
+    @Test func theStylingAfterAKeystrokeIsSkipped() async throws {
+        let (harness, textView) = try await started()
+        let coordinator = try coordinator(of: textView)
+        let before = coordinator.restyleLog
+
+        textView.setSelectedRange(NSRange(location: 5, length: 0))
+        textView.insertText("x", replacementRange: NSRange(location: NSNotFound, length: 0))
+        await harness.settle()
+
+        #expect(textView.string == "hellox world")
+        #expect(harness.model.text == "hellox world", "the keystroke did not reach the model, so no update followed it")
+        let after = coordinator.restyleLog
+        #expect(after.incremental == before.incremental + 1, "the keystroke was not styled by the dirty range: \(after)")
+        #expect(after.skipped == before.skipped + 1, "the styling after the keystroke was not skipped: \(after)")
+        #expect(after.full == before.full, "something styled the whole note: \(after)")
+        #expect(harness.host.refusals.isEmpty)
+        #expect(harness.host.neverShown)
+        harness.host.tearDown()
+    }
+
+    // (R-08) A theme change is a styling: the same update that would otherwise be skipped restyles.
+    @Test func aThemeChangeIsAStyling() async throws {
+        let (harness, textView) = try await started()
+        let coordinator = try coordinator(of: textView)
+        let before = coordinator.restyleLog
+
+        harness.model.theme = try darkTheme()
+        await harness.settle()
+
+        let after = coordinator.restyleLog
+        #expect(after.full + after.incremental == before.full + before.incremental + 1, "\(before) then \(after)")
+        #expect(after.skipped == before.skipped, "the styling a new theme asks for was skipped: \(after)")
+        #expect(harness.host.refusals.isEmpty)
+        #expect(harness.host.neverShown)
+        harness.host.tearDown()
+    }
+
+    // (R-08) Flipping `hidesMarkup` is a styling.
+    @Test func aHidesMarkupFlipIsAStyling() async throws {
+        let (harness, textView) = try await started()
+        let coordinator = try coordinator(of: textView)
+        let before = coordinator.restyleLog
+
+        harness.model.hidesMarkup = true
+        await harness.settle()
+
+        let after = coordinator.restyleLog
+        #expect(after.full + after.incremental == before.full + before.incremental + 1, "\(before) then \(after)")
+        #expect(after.skipped == before.skipped, "the styling a `hidesMarkup` flip asks for was skipped: \(after)")
+        #expect(harness.host.refusals.isEmpty)
+        #expect(harness.host.neverShown)
+        harness.host.tearDown()
+    }
+
+    // (R-08) Flipping `revealsInlineSpans` is a styling.
+    @Test func aRevealsInlineSpansFlipIsAStyling() async throws {
+        let (harness, textView) = try await started()
+        let coordinator = try coordinator(of: textView)
+        let before = coordinator.restyleLog
+
+        harness.model.revealsInlineSpans = true
+        await harness.settle()
+
+        let after = coordinator.restyleLog
+        #expect(after.full + after.incremental == before.full + before.incremental + 1, "\(before) then \(after)")
+        #expect(after.skipped == before.skipped, "the styling a `revealsInlineSpans` flip asks for was skipped: \(after)")
+        #expect(harness.host.refusals.isEmpty)
+        #expect(harness.host.neverShown)
+        harness.host.tearDown()
+    }
+
+    // (R-08) A new thumbnail store is a full styling, so the embed pass after it resolves the whole
+    // note through the new store. The store is compared by identity: a second, distinct store over the
+    // same vault root restyles in full too, and an update that keeps the store is skipped.
+    @Test func aNewThumbnailStoreIsAStyling() async throws {
+        let (harness, textView) = try await started()
+        let coordinator = try coordinator(of: textView)
+        let root = FileManager.default.temporaryDirectory.appending(path: "pergamenum-pins-\(UUID().uuidString)")
+        let before = coordinator.restyleLog
+
+        harness.model.thumbnails = ThumbnailStore(root: root, directory: root.appending(path: "cache"))
+        await harness.settle()
+
+        let after = coordinator.restyleLog
+        #expect(after.full == before.full + 1, "a first thumbnail store was not a full styling: \(before) then \(after)")
+        #expect(after.skipped == before.skipped, "the styling a new thumbnail store asks for was skipped: \(after)")
+
+        // A distinct store over the same root, and the same cache directory: only its identity moved.
+        let first = coordinator.restyleLog
+        harness.model.thumbnails = ThumbnailStore(root: root, directory: root.appending(path: "cache"))
+        await harness.settle()
+        let second = coordinator.restyleLog
+        #expect(second.full == first.full + 1, "a second, distinct store was not a full styling: \(first) then \(second)")
+        #expect(second.incremental == first.incremental)
+
+        // The same store again is not: the update after it is skipped.
+        await harness.update()
+        let again = coordinator.restyleLog
+        #expect(again.full + again.incremental == second.full + second.incremental, "\(second) then \(again)")
+        #expect(again.skipped > second.skipped, "the update that kept the store was not skipped: \(second) then \(again)")
         #expect(harness.host.refusals.isEmpty)
         #expect(harness.host.neverShown)
         harness.host.tearDown()

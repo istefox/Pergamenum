@@ -116,6 +116,12 @@ struct IndexSnapshot: Sendable {
         titleIndex[title.lowercased()] ?? []
     }
 
+    /// The link targets of one note that name no note, in `linkTargets` order (ADR-0084 §D2):
+    /// the inspector's list, through the derivation the query field and `VaultAPI.links` share.
+    func unresolvedTargets(of path: String) -> [String] {
+        UnresolvedTargets.of(notes[path]?.linkTargets ?? [], resolving: resolve(title:))
+    }
+
     func backlinks(toTitle title: String) -> [NoteRecord] {
         (backlinkIndex[title.lowercased()] ?? []).compactMap { notes[$0] }
             .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }

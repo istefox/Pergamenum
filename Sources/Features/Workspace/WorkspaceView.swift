@@ -30,7 +30,7 @@ struct WorkspaceView: View {
     /// Internal rather than `private`: `WorkspaceView+FolderVerbs` is another file, and
     /// `private` is file scope.
     @Environment(\.undoManager) var undoManager
-    /// The vault controller's board, never one of this view's own (ADR-0092 §D1): the quit,
+    /// The vault controller's board, never one of this view's own (ADR-0095 §D1): the quit,
     /// the vault switch and the window history read the same object, and it outlives the pane.
     var workspace: WorkspaceController { vault.openBoard }
     // Not `private`, on this property and the two below: the board that writes and reads
@@ -102,7 +102,7 @@ struct WorkspaceView: View {
                 }
                 // The board outlives this view: `leavePane()` settles and flushes it, keeps a
                 // conflicted one for the quit and the vault switch, and releases a saved one
-                // (ADR-0092 §D3).
+                // (ADR-0095 §D3).
                 .onDisappear { workspace.leavePane() }
                 // `pergamenum://canvas?file=…&node=…` parks its target on the controller,
                 // and this is what acts on it. Nothing did before: the route reported
@@ -248,7 +248,7 @@ struct WorkspaceView: View {
     /// same position-less default `pendingWorkspacePlacement` uses below.
     private func checkPendingNewBoard() {
         guard vault.consumePendingNewBoard() else { return }
-        newItemDraft = NewItemDraft(kind: .folder, point: CGPoint(x: 60, y: 60))
+        newItemDraft = NewItemDraft(kind: .item(.folder), point: CGPoint(x: 60, y: 60))
     }
 
     /// Named out of the `ImportSheet` closure: an inline `for` loop there pushed the

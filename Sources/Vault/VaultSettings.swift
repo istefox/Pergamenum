@@ -145,6 +145,10 @@ struct VaultSettings: Codable, Equatable, Sendable {
     /// because `settings.json` is a file a person or another tool can edit.
     var inboxFolder: String
 
+    /// The note under `Templates/` every day's note is born from (ADR-0086 §D2), a vault-relative
+    /// path. Absent or empty means none; any other value is ignored with a recorded problem.
+    var dailyTemplate: String?
+
     /// Named so the memberwise initialiser can default to it without repeating the
     /// string in every test that builds settings by hand.
     static let defaultDiaryFolder = "Diario"
@@ -282,6 +286,9 @@ struct VaultSettings: Codable, Equatable, Sendable {
         // decodes to `00 Inbox` and no vault migrates. Resolved where it is read, not here.
         inboxFolder = try container.decodeIfPresent(String.self, forKey: .inboxFolder)
             ?? fallback.inboxFolder
+        // ADR-0086 §D2: additive and optional, so an older `settings.json` decodes to no daily
+        // template. Validated where it is read (`dailyNoteBirth`), not here.
+        dailyTemplate = try container.decodeIfPresent(String.self, forKey: .dailyTemplate)
     }
 
     init(
@@ -303,7 +310,8 @@ struct VaultSettings: Codable, Equatable, Sendable {
         vaultID: String? = nil,
         pratiche: PraticheSettings = .default,
         contenitore: ContenitoreSettings = .default,
-        inboxFolder: String = VaultSettings.defaultInboxFolder
+        inboxFolder: String = VaultSettings.defaultInboxFolder,
+        dailyTemplate: String? = nil
     ) {
         self.dailyFolder = dailyFolder
         self.diaryFolder = diaryFolder
@@ -324,5 +332,6 @@ struct VaultSettings: Codable, Equatable, Sendable {
         self.pratiche = pratiche
         self.contenitore = contenitore
         self.inboxFolder = inboxFolder
+        self.dailyTemplate = dailyTemplate
     }
 }

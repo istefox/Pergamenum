@@ -12,10 +12,6 @@ struct VaultBrowser: View {
     /// Read for the key combinations the slash menu shows beside each app command.
     @Environment(ShortcutStore.self) var shortcuts
     @Environment(ThemeEngine.self) private var themeEngine
-    /// The inspector's two index-derived lists, kept while the index and their input stay the
-    /// same: the inspector redraws on every keystroke (ADR-0072 §D4).
-    @State private var backlinksMemo = IndexKeyedMemo<String, [NoteRecord]>()
-    @State private var unresolvedMemo = IndexKeyedMemo<Int, [(target: String, sources: [NoteRecord])]>()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,6 +25,7 @@ struct VaultBrowser: View {
                         .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
                 }
                 editor
+                    .modifier(NoteBirthPresentation())
                     .frame(minWidth: 360)
                 if navigation.isShowingInspector && !navigation.isNotesFocused {
                     inspector
@@ -66,16 +63,9 @@ struct VaultBrowser: View {
     /// Cmd+T asked for a tab of its own (ADR-0012 D5), which is why `openChosenNote` and not
     /// `openNote`.
     ///
-    /// The switcher closes first, except for «Crea la nota»: that one closes only once the note
-    /// exists, and a refused title leaves the switcher open with the sentence under its field
-    /// (`createNoteFromQuickOpen`, n1-seams R-18).
+    /// «Crea la nota» writes nothing here: it opens the composer prefilled with the title and
+    /// closes the switcher (ADR-0085 §D7, R-11), so the composer stays the one naming surface.
     private func open(_ choice: QuickSwitcher.Choice) {
-        if case .createNote(let title) = choice {
-            Task { @MainActor in
-                if await vault.createNoteFromQuickOpen(title: title) { vault.isShowingQuickSwitcher = false }
-            }
-            return
-        }
         vault.isShowingQuickSwitcher = false
         switch choice {
         case .note(let path):
@@ -86,9 +76,8 @@ struct VaultBrowser: View {
                     vault.recordProblem(ConformanceText.creationFailure(error))
                 }
             }
-        case .createNote:
-            // Handled above, before the switcher closes.
-            break
+        case .createNote(let title):
+            vault.offerNoteFromQuickOpen(title: title)
         case .heading(let path, let range, let ordinal):
             vault.openChosenNote(at: path)
             // One turn later, so the column has the note before the jump reaches it. Sent in
@@ -210,13 +199,14 @@ struct VaultBrowser: View {
                     star(note)
                     categoryLink(note)
                     history(note)
-                    backlinks(note)
+                    BacklinksSection(note: note)
                     // Under the backlinks, chosen from the mockup: the two answer the same
                     // question a step apart - who points here, and who talks about this
                     // without pointing.
                     UnlinkedMentionsSection(notePath: note.relativePath)
+                    WhereNoteAppearsSection(notePath: note.relativePath)
                     LinkedTasksPanel(title: note.title, emptyText: "nessun task linka questa nota")
-                    unresolved
+                    UnresolvedLinksSection(note: note)
                 }
                 .padding(theme.spacing(.m))
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -289,54 +279,13 @@ struct VaultBrowser: View {
             AssignCategoryMenu(notePath: note.relativePath)
         }
     }
-
-    private func backlinks(_ note: VaultController.OpenNote) -> some View {
-        let records = backlinksMemo.value(generation: vault.indexGeneration, input: note.title) {
-            vault.index.backlinks(toTitle: note.title)
-        }
-        let header = InspectorSection.backlinks(count: records.count)
-        return TraySection(
-            title: header.title,
-            badge: nil,
-            accessibilityLabel: header.accessibilityLabel,
-            identifier: header.identifier,
-            isEmpty: header.isEmpty,
-            emptyText: header.emptyText
-        ) {
-            ForEach(records, id: \.relativePath) { record in
-                Button(record.title) { vault.openNote(at: record.relativePath) }
-                    .buttonStyle(.plain)
-                    .themedText(.body, color: .accentPrimary)
-            }
-        }
-    }
-
-    private var unresolved: some View {
-        let links = unresolvedMemo.value(generation: vault.indexGeneration, input: 10) {
-            vault.index.unresolvedLinks(limit: 10)
-        }
-        let header = InspectorSection.unresolved(shown: links.count)
-        return TraySection(
-            title: header.title,
-            badge: nil,
-            accessibilityLabel: header.accessibilityLabel,
-            identifier: header.identifier,
-            isEmpty: header.isEmpty,
-            emptyText: header.emptyText
-        ) {
-            ForEach(Array(links), id: \.target) { entry in
-                Text("\(entry.target) · \(entry.sources.count)")
-                    .themedText(.caption, color: .textSecondary)
-                    .help(entry.sources.map(\.title).joined(separator: "\n"))
-            }
-        }
-    }
 }
 
 extension VaultBrowser {
-    /// What the inspector's backlink and unresolved-link sections hand `TraySection`, as one
-    /// pure value per section (PG-380): SwiftUI's accessibility tree is one childless group
-    /// in-process, so a test feeds these the same count the view does rather than hosting it.
+    /// What the inspector's backlink, unresolved-link and «Dove compare» sections hand
+    /// `TraySection`, as one pure value per section (PG-380): SwiftUI's accessibility tree is one
+    /// childless group in-process, so a test feeds these the same count the view does rather
+    /// than hosting it.
     struct InspectorSection: Equatable {
         let title: String
         let accessibilityLabel: String
@@ -354,15 +303,29 @@ extension VaultBrowser {
             )
         }
 
-        /// `shown` is the length of the capped list the section draws, not the vault's total,
-        /// so the spoken label says «mostrati».
-        static func unresolved(shown: Int) -> InspectorSection {
+        /// `count` is the open note's own dangling targets, deduplicated (ADR-0084 §D2): no
+        /// longer a capped vault-wide sample, so the spoken label says «in questa nota».
+        static func unresolved(count: Int) -> InspectorSection {
             InspectorSection(
                 title: "LINK NON RISOLTI",
-                accessibilityLabel: "Link non risolti mostrati: \(shown)",
+                accessibilityLabel: "Link non risolti in questa nota: \(count)",
                 identifier: "inspector-unresolved-links",
-                isEmpty: shown == 0,
-                emptyText: "nessuno"
+                isEmpty: count == 0,
+                emptyText: "nessun link non risolto in questa nota"
+            )
+        }
+
+        /// «Dove compare» (ADR-0084 §D6): `found` is nil until the person asks, then the number of
+        /// boards and pratiche the note appears in. The resting label carries no number: a zero
+        /// before the scan would be a number nobody computed.
+        static func whereAppears(found: Int?) -> InspectorSection {
+            InspectorSection(
+                title: "DOVE COMPARE",
+                accessibilityLabel: found.map { "Board e pratiche in cui compare questa nota: \($0)" }
+                    ?? "Dove compare: non ancora cercato",
+                identifier: "inspector-where-appears",
+                isEmpty: found == 0,
+                emptyText: "non compare in nessuna board né pratica"
             )
         }
     }

@@ -41,6 +41,10 @@ final class Navigation {
         /// (all, «Da classificare», the sub-container tree), list or grid, and inspector.
         /// Appended like `pratiche`; its sidebar row sits before Pratiche (`SidebarItem`).
         case contenitore
+        /// «Da classificare» of ADR-0085 §D1 (PG-387, N4): the notes that still carry
+        /// `status-inbox`. Appended last like `contenitore`; its row sits right after Attività
+        /// in LAVORO (`SidebarItem`).
+        case unfiled
 
         var id: String { rawValue }
 
@@ -57,6 +61,7 @@ final class Navigation {
             case .recordings: "Registrazioni"
             case .pratiche: "Pratiche"
             case .contenitore: "Contenitore"
+            case .unfiled: "Da classificare"
             }
         }
 
@@ -77,6 +82,9 @@ final class Navigation {
             // coordinator's own named fallback rather than a guess.
             case .pratiche: "folder.badge.person.crop"
             case .contenitore: "archivebox"
+            // The symbol is gate M's to confirm (plan Task 1); the sidebar row and the pane
+            // heading share it.
+            case .unfiled: "tray"
             }
         }
 
@@ -110,11 +118,22 @@ final class Navigation {
             case .pratiche: .panePratiche
             // Ctrl+Cmd+C (ADR-0071 §D11), the same modifier pair as Pratiche's.
             case .contenitore: .paneContenitore
+            // Ctrl+Cmd+I (ADR-0085 §D1).
+            case .unfiled: .paneUnfiled
             }
         }
     }
 
     var pane: Pane = .notes
+
+    /// The subject of the open «Classifica…» sheet, or nil (ADR-0085 §D5). A note and a scheda
+    /// share the one sheet; `ContenitoreController.classifying` keeps the scheda's own redirect
+    /// (ADR-0071 §D12).
+    var classifying: ClassificaSheet.Subject?
+
+    /// The path of the row selected in «Da classificare», or nil (ADR-0085 §D1). On the
+    /// navigation because the File menu's «Classifica…» has to read it.
+    var unfiledSelection: String?
 
     /// Whether the pane on screen is running its own "concentrazione" (2026-08-28,
     /// toolbar parity chain: Note gained its own flag alongside Workspace's).
@@ -242,6 +261,10 @@ final class Navigation {
     /// timeline and the inspector alike, and `RootView` is the one place a sheet reaches
     /// every surface from.
     var praticaLinkRequest: PraticaLinkRequest?
+
+    /// The choice a shared title or a dangling link put in front of the person from a surface
+    /// with no live point to anchor a menu to (ADR-0083 §D5), hosted by `RootView`.
+    var linkChoice: LinkChoiceRequest?
 
     /// The task `TaskCommand.assignCategory` opened `CategoryPicker` for (ADR-0047 §D5),
     /// held the same way and for the same reason as `taskPickingBoard` above: the command

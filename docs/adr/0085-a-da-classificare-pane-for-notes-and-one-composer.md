@@ -1,14 +1,30 @@
 # ADR-0085: A «Da classificare» pane for notes, one «Classifica» verb, and one composer
 
-- Status: **planned**. Written before the implementation, for `PG-387`/#889 (N4 of the
-  note-workflow chain).
-- Date: 2026-10-04. Written against `48a2d912`. Every line number below was read there.
+- Status: **accepted**. Implemented by PR #992 (`32cd8ed2`, 2026-10-13), N4's one code PR: the
+  pane, «Classifica» on notes, the composer's hosts and tag field, «Estrai», the creation toast, the
+  connectors and §D11's GUI test. The same PR carried the mockup scenes (`NoteBirthMockup.swift`):
+  the separate mockup PR R-18 asked for was not opened, and gate M was skipped by the person's
+  choice. Milestone N4 of the note-workflow chain (`PG-387`/#889), SPEC R-01 to R-05 and R-11 to
+  R-17, flipped by R-18. Every decision was re-read against the code of PR #992 at the flip; where
+  the build differs, the text is amended in place (§D1, §D3, §D4, §D5, §D6, §D7, §D8) and the
+  Implementation notes below list each difference. Open at the flip, per the plan's build result:
+  the gallery's «N4, approvato» label (`MockupGalleryView.swift:102`, pinned by
+  `MockupGalleryLayoutTests.swift:93`) is unconfirmed; §D11's GUI test has no recorded verdict and
+  no `scripts/uitests.sh --affected` run is recorded for the merge; the build's last fix round (the
+  toast's offer and the extract draft dropped on a vault switch) was not re-reviewed; and
+  `Navigation.classifying` is not reset on a vault switch (Implementation notes).
+- Date: 2026-10-04. Written against `48a2d912`. Every line number below was read there; the build
+  ran on `c8f63e5d`, where several had moved (Implementation notes).
 - Number: `0085` was reserved for this record by the chain's dispatch. It was checked free on every
   ref on 2026-10-04 (`git log --all -- 'docs/adr/0085*'` printed nothing). Check again immediately
   before the merge (`docs/adr/README.md` rule 1).
-- Source: root `SPEC.md` (Approved 2026-10-04), milestone N4, R-29, R-30, R-32, R-33 and R-34.
-  Plans: `docs/plans/note-workflow-n4-mockup.md` (mockup PR) and `docs/plans/note-workflow-n4.md`.
-  Companion record: ADR-0086 (templates), the other half of N4.
+- Source: `docs/archive/specs/pg-387-n4-birth-of-note.SPEC.md` (root `SPEC.md` while N4 was built,
+  Approved 2026-10-06), R-01 to R-05 and R-11 to R-18. *Repointed 2026-10-13, at the flip: this
+  record was written against the chain SPEC approved 2026-10-04 (R-29, R-30, R-32, R-33, R-34),
+  which the N4 SPEC renumbers locally and maps to those ids (its Decision "Existing artefacts are
+  kept").* Plans: `docs/plans/note-workflow-n4-mockup.md` and `docs/plans/note-workflow-n4.md`,
+  written against the chain SPEC, and `docs/plans/pg-387-n4-birth-of-note.md`, the plan the build
+  followed. Companion record: ADR-0086 (templates), the other half of N4.
 - Depends on ADR-0080 (N1): `TagRules.initialTags(for:topics:)` gives `status-inbox` to every note
   born with no `topic-*` tag (§D1 there), `VaultSettings.inboxFolder` (§D6 there), and
   `CaptureTitle.derive(fromTypedLine:now:calendar:)` (§D3 there). Depends on ADR-0083 (N3): a
@@ -78,6 +94,14 @@ note", a scheda is a `.md` note in the index, and the Note pane already lists sc
 scheda row carries a document glyph and its «Classifica…» opens the scheda form (D5). Templates and
 event notes carrying `status-inbox` are listed like any other note, because nothing exempts them.
 
+*Amended 2026-10-13, at the flip, as built in PR #992: `paneUnfiled` is declared before the three
+link commands rather than appended last, because
+`ShortcutTests.theLinkCommandsAreAppendedAfterEveryExistingOne` pins those three as the catalogue's
+tail; its raw value is new, so no stored override moves. The rows are not read through
+`notes(carryingAll:)`: `UnfiledListModel.rows(from:folder:)` filters `index.allNotes` on the
+frontmatter's `status-inbox` on every body pass, still never cached. A scheda row carries the
+`archivebox` glyph and «Contenitore · <cartella>» under its title; a note row carries `doc.text`.*
+
 **D2. Rows follow the list rules this repository already paid for.**
 
 - Flat rows in `List(selection:)` (ADR-0024). The row's context menu is attached to the row, with
@@ -108,6 +132,15 @@ classification still works". `ClassificationRefusal` keeps its cases. Topics are
 from the topics already in use. The closed families are checked against the vocabulary wherever
 they are typed.
 
+*Amended 2026-10-13, at the flip, as built in PR #992: `ClassificationRefusal` does not keep its
+cases. It gains `dateTopic(Tag)`, which both rules return for a date-shaped topic (R-02), and its
+`sentence` moves out of `ContenitoreInspectorModel` into Core beside the rule, byte-identical for
+the five existing cases, so the connectors word a refusal as the sheet does. A malformed topic never
+reaches the rule, because `[Tag]` holds only what `Tag.init?` accepted: it is refused where text
+becomes a tag (`TagEntry.check`, the connectors' topic list). `classify` takes `vocabulary` and does
+not read it. The scheda form's topic field keeps its own parse (`ClassificaSheet.addTopic`), not
+`TagEntry`; the rule still refuses a date-shaped topic typed there.*
+
 **D4. One session door, one guarded write, then an optional move.**
 `VaultSession.classifyNote(at:topics:toFolder:) async throws -> NoteClassifyOutcome`, in a new
 shared file `Sources/Vault/VaultSession+NoteBirth.swift` (named in `sharedSources`):
@@ -116,8 +149,17 @@ shared file `Sources/Vault/VaultSession+NoteBirth.swift` (named in `sharedSource
 2. Apply D3.
 3. Write the frontmatter change once, with `expecting:` set to that hash. A refusal throws before
    anything moved.
-4. When a folder is given and differs, move through `moveNote(at:toFolder:)`. A scheda moves as a
-   pair (ADR-0071 §D6).
+4. When a folder is given and differs, move through `moveNote(at:toFolder:)`. A folder asked for
+   on a Contenitore scheda is refused right after step 1's read, before the rule runs or anything
+   is written (`NoteClassifyRefusal.schedaHasNoFolder`, «Un documento del Contenitore resta nel
+   Contenitore: classificalo senza cartella.»), because a scheda's place is the Contenitore's (D5,
+   ADR-0071 §D7).
+
+*Amended 2026-10-13, at the flip, as built in PR #992: step 4 said "a scheda moves as a pair
+(ADR-0071 §D6)", which disagreed with D5. The plan's gate G-S was answered "refuse", for the session
+door and both connectors alike. A move that throws leaves `movedTo == nil` and «classificata, ma
+non spostata in «F»: …» in `moveProblem`; a move that lands but leaves a board unrepointed sets
+`movedTo` and names the boards in `moveProblem`.*
 
 The write comes before the move on purpose. A failed move then leaves a classified note where it
 was, which is harmless. A move first and a refused write would leave an unfiled note out of the
@@ -145,6 +187,13 @@ The note subject is presented by `RootView+Sheets.swift` from `Navigation.classi
 surface reaches it. The Contenitore keeps presenting its own `.scheda` sheet from
 `contenitore.classifying`, so `ContenitoreController`'s vault-switch reset is untouched.
 
+*Amended 2026-10-13, at the flip, as built in PR #992: `Navigation.classifying` carries either
+subject. «Classifica…» on a scheda from «Da classificare», from a note row or with the scheda open
+in the editor is the scheda form, presented by `RootView+Sheets.swift`
+(`CommandActions.classifySubject(for:)` picks the subject from the index record); only the
+Contenitore pane still presents its own. The note subject is its own view, `NoteClassificaForm`,
+with the preview in `ClassificaPreview`.*
+
 **D6. The verb is reachable from four places.**
 
 - The pane (Return and the row menu).
@@ -156,6 +205,13 @@ surface reaches it. The Contenitore keeps presenting its own `.scheda` sheet fro
   two.
 
 `canRun(.classifyNote)` holds when a note is open.
+
+*Amended 2026-10-13, at the flip, as built in PR #992: the menu entry sits in the Vista menu, beside
+«Applica un template…», which `ViewCommands` already hosts there (SPEC (app) §10 lists it under
+Vista); the command's catalogue section stays `.file`. `canRun(.classifyNote)` follows the pane in
+front (`CommandActions.canClassify`): the selected «Da classificare» row when that pane is, the
+Contenitore's selection through the pane's own `.classify` when that one is, otherwise the open
+note.*
 
 **D7. One composer, two hosts, and the host performs the creation.**
 `NewNoteComposer(draft:host:perform:onCreated:onCancel:)`.
@@ -177,7 +233,7 @@ surface reaches it. The Contenitore keeps presenting its own `.scheda` sheet fro
     edited. Neither case edits the new note next: the Workspace places a card, and «Estrai» leaves
     the source in front.
   - The sheet host parks no draft.
-  - `NewCanvasItemSheet` keeps its folder, link and sticky kinds and loses `.note`.
+  - `NewCanvasItemSheet` keeps its folder and link kinds and loses `.note`.
 - **The topic field becomes a tag field.**
   - One pure door, `TagEntry` in `Sources/Core/Conventions/TagEntry.swift`:
     - `check` turns typed text into a `Tag` or a refusal. Bare text reads as `topic-…`. A
@@ -190,6 +246,28 @@ surface reaches it. The Contenitore keeps presenting its own `.scheda` sheet fro
   - Before «Crea» is enabled, the tags the rule would write pass `TagRules.validate`.
   - `NoteDraft` gains `tags: [Tag] = []`. `topic` stays as the text being typed, so
     `NewNoteDraftTests` keeps compiling and passing.
+
+*Amended 2026-10-13, at the flip, as built in PR #992:*
+
+- *`NewNoteComposer.Host` has three cases, `.pane`, `.sheet(folder:)` and
+  `.extract(VaultController.ExtractionDraft)`: «Estrai»'s mode is a host of its own, presented as a
+  sheet by `ExtractNoteSheet` and parking no draft, as this section says of the sheet host.*
+- *The text said `NewCanvasItemSheet` kept a sticky kind. It never had one: `Kind` was
+  `folder, link, note` at `48a2d912`, and is `folder, link` now.*
+- *«Crea» is gated by `NoteComposition.blockingProblems(vocabulary:)`, not by `TagRules.validate`:
+  each chosen tag is asked again through `TagEntry.check`, the field's own rule, and the seven-tag
+  limit is counted on `TagRules.initialTags(for: .note, topics:)`.*
+- *`TagEntry.check(_:allowing:vocabulary:)` takes the families it accepts. The composer passes every
+  family but `type` and `status`, and the connectors' topic list and the note form pass `topic`
+  only, so `type-*` and `status-*` are refused by the caller's set rather than inside the door.*
+- *The `client-` and `project-` values are offered as completions while text is typed, most used
+  first (`IndexSnapshot.tagUsage()`), with the vocabulary's values for the closed families; no row
+  of chips is drawn before typing. The field's identifier is `new-note-tags`.*
+- *By the build, Quick Open's create row no longer wrote at the vault root as the Context says: it
+  went through `VaultController.createNoteFromQuickOpen(title:)`, leaving a refusal on
+  `quickSwitcherProblem` (n1-seams R-18). Both are deleted; `offerNoteFromQuickOpen(title:)` is the
+  row's door, and the five `QuickOpenCreationTests` were re-pointed at it and at
+  `createComposedNote`.*
 
 **D8. «Estrai in una nota» is the composer in extract mode over a two-write session door.**
 
@@ -234,6 +312,19 @@ surface reaches it. The Contenitore keeps presenting its own `.scheda` sheet fro
 - **Afterwards.** The source stays in front, its tab adopts the landed text through ADR-0067's
   door, and the new note is not opened. The replacement is not on the editor's undo stack. Undoing
   an extract is opening the new note and pasting back.
+
+*Amended 2026-10-13, at the flip, as built in PR #992:*
+
+- *The composer opens in its own `.extract` host (D7), not the sheet host in a mode.*
+- *The title is `CaptureTitle.derive` of the selection's first non-empty line with its leading `#`
+  run removed, so a selected heading titles the note without its markers.*
+- *«Salva ed estrai» and «Salva e classifica» save every dirty tab showing the note through
+  `saveTab(_:)`, then ask again after the `await` (ADR-0043 §D7) that no tab showing it is dirty and
+  that the session is the one they started on (`VaultController.settledSession`). The check that the
+  selected text is still at the range is not a re-read of the tab: the session door re-reads the
+  file and refuses `textChanged` before anything is created, with the draft's text as
+  `expectedText`.*
+- *Both writes run in one gesture, `transaction("note extract")`.*
 
 **D9. The creation toast covers creations whose whole effect is one new file (gate G3).**
 
@@ -371,10 +462,69 @@ Neutral:
 - Opening the note from a note row's «Classifica…» before the sheet is the existing row-command
   pattern. The pane's own «Classifica…» does not open the note.
 
+## Implementation notes
+
+Written at the flip to `accepted`, 2026-10-13 (`PG-411`), against `origin/main` at `db999487`,
+reading the code PR #992 merged in `32cd8ed2`. Each decision was re-read against that code; nothing
+below about the code was taken from the plan or the PR without being found in it.
+
+**Gates.** G1, G2 and G3 were settled as recommended by the N4 SPEC on 2026-10-06: schede listed
+and classified through their own form, «Salva e classifica»/«Salva ed estrai», the toast on the
+pane-host composer only. The plan's gate G-S was answered "refuse" (D4). Gate M was skipped by the
+person's choice, so no mockup variant was approved: the scenes ship in `NoteBirthMockup.swift`,
+and the gallery page that hosts them carries a «N4, approvato» label, set in
+`MockupGalleryView.swift:102` and pinned by `MockupGalleryLayoutTests.swift:93`, that is still to
+be confirmed.
+
+**Where the build differs, amended in place.**
+
+- D1: `paneUnfiled` sits before the link commands, the rows filter `index.allNotes` in
+  `UnfiledListModel`, a scheda row's glyph is `archivebox`.
+- D3: `ClassificationRefusal` gains `dateTopic`, its `sentence` moves to Core, and the scheda form's
+  field does not read through `TagEntry`.
+- D4: a folder on a scheda is refused, not moved as a pair (gate G-S).
+- D5: `Navigation.classifying` presents the scheda form too, for every surface but the Contenitore.
+- D6: «Classifica…» is in the Vista menu, and its enablement follows the pane in front.
+- D7: three host cases, no sticky kind to keep, «Crea» gated by `blockingProblems` rather than
+  `TagRules.validate`, completions rather than standing chips, and the Quick Open door the build
+  actually replaced.
+- D8: the `.extract` host, the heading-stripped title, and the range re-verified by the session door
+  rather than by re-reading the tab.
+
+**Elaborations, not departures.**
+
+- D2: a row's Return and double click both reach the list's `primaryAction`, told apart by the
+  event that delivered it (`NSApp.currentEvent?.type == .keyDown` classifies); the list takes focus
+  on appear as well as on a selection change. No count is drawn on the sidebar row.
+- D9: a vault switch and `close()` drop the offer and the extract draft with the folder's other
+  transients, so neither resolves against the next session.
+- D10: `ExtractSummary` also carries `applied` and `note`; `perg note extract --topic` takes a
+  comma-separated list, as `perg note classify` does.
+- D11: the test seeds an already-filed note in `03 Risorse`, because the folder menu lists the
+  folders of indexed notes (`VaultSession.folders`) and would not offer an empty directory, and it
+  asserts that no `unfiled-row` is left.
+
+**Open, found at the flip.** A vault switch does not reset `Navigation.classifying`
+(`Sources/App/Navigation.swift:132`), the subject of the open «Classifica…» sheet (D5). The switch
+in `VaultController+VaultSwitch.swift:91-99` drops `creationUndo` and `extraction` with the
+folder's other transients (D9). The property is written only by the three sites that open the sheet
+(`CommandActions+NoteBirth.swift:50` and `:58`, `UnfiledPane.swift:160`) and cleared only by the
+sheet's own binding (`RootView+Sheets.swift:43`) when it is dismissed. Read at `db999487`; no
+decision is taken on it here.
+
+**Facts corrected without a decision changing.** The «Source» line is repointed to the N4 SPEC
+(R-01..R-18). The line numbers in the Context were read at `48a2d912` and several had moved by the
+build's base `c8f63e5d` (the composer's call in `VaultBrowser.swift` went from `:184` to `:190`);
+they are left as written, as the state this record answered.
+
+**SPEC (app).** PR #992 landed D12's three notes, dated 2026-10-12. The §10 note says File gains
+«Classifica…», while the entry sits in Vista (D6); that note is not corrected here.
+
 ## References
 
-- SPEC.md (root), N4: R-29, R-30, R-32, R-33, R-34. Decisions, Constraints, Edge cases, Test seams 4
-  and 6.
+- `docs/archive/specs/pg-387-n4-birth-of-note.SPEC.md` (root `SPEC.md` while built), R-01 to R-05
+  and R-11 to R-18 (chain R-29, R-30, R-32, R-33, R-34). Decisions, Constraints, Edge cases, Test
+  seams. `docs/plans/pg-387-n4-birth-of-note.md`, the plan the build followed.
 - `docs/20261003_Pergamenum_NoteWorkflowRoadmap.md` §N4. `docs/20261002_Pergamenum_NoteWorkflowReport.md`
   I-2, I-5, I-6, I-9.
 - ADR-0003 §D1, ADR-0007 §D2/§D4/§D6, ADR-0023 §D1, ADR-0024, ADR-0043 §D7/§D8, ADR-0058 §D1,

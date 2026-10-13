@@ -24,6 +24,13 @@ final class CompletingTextView: NSTextView {
     var editorCommands: [EditorCommand] = []
     /// Runs a command the app owns. The text view never performs one itself.
     var onRunCommand: ((ShortcutCommand) -> Void)?
+    /// The text a `/` typed over a selection replaced, and where, so a command that takes the
+    /// selection («Estrai in una nota») can put it back first (ADR-0085 §D8, the one-shot stash of
+    /// the SPEC's edge cases). Stored here because an extension cannot hold it; read and written in
+    /// `CompletingTextView+SlashSelection.swift`.
+    var slashSelectionStash: (location: Int, text: String)?
+    /// Offers a dangling `[[` title to the composer (ADR-0083 §D6); nil hides the «Crea «X»» row.
+    var offerCreation: ((String) -> Void)?
     /// The panel every completion is drawn in. Owned here because it lives and dies with
     /// the text view it opens over, and configured lazily so that choosing a row by mouse
     /// lands in the same place as choosing it by Return.
@@ -105,6 +112,9 @@ final class CompletingTextView: NSTextView {
     /// `claimsCheckbox` in `Sources/Features/Workspace/FormattingTextView+Clicks.swift` were
     /// written against, on the Workspace card surface).
     var onToggleCheckbox: ((CGPoint) -> Bool)?
+
+    /// Called after every `setMarkedText` (ADR-0093 §D7, `CompletingTextView+Composition.swift`).
+    var onComposedTextChanged: (() -> Void)?
 
     /// Claims a keyboard command before the ordinary editing behaviour gets it, while the
     /// completion panel is closed - the panel's own keys in `doCommand(by:)` below still
@@ -191,6 +201,8 @@ final class CompletingTextView: NSTextView {
     /// - Escape closed it for exactly as long as the user did not type.
     func dismissCompletion() {
         dismissedLocation = triggerLocation()
+        // The replaced selection stays replaced, as typing left it (Cmd+Z restores it).
+        slashSelectionStash = nil
         completionPanel.hide()
     }
 
@@ -219,6 +231,7 @@ final class CompletingTextView: NSTextView {
             // Out of every context: forget the dismissal too, so the next trigger opens the
             // panel as the first one did.
             dismissedLocation = nil
+            slashSelectionStash = nil
             completionPanel.hide()
             return
         }
@@ -229,7 +242,7 @@ final class CompletingTextView: NSTextView {
         switch context {
         case .slash(let prefix):
             query = String(prefix.dropFirst())
-            items = EditorCommand.matching(query, in: editorCommands).map(CompletionItem.command)
+            items = EditorCommand.matching(query, in: slashCandidates).map(CompletionItem.command)
         case .emoji(let prefix):
             query = String(prefix.dropFirst())
             items = EmojiCatalogue.matching(query).map { .emoji(glyph: $0.glyph, name: $0.name) }
@@ -237,7 +250,7 @@ final class CompletingTextView: NSTextView {
             query = prefix
             // The candidate itself, not its string: the row reads its `label` (a note found
             // through an alias names it) and `apply` closes the link (n1-seams R-07, R-08).
-            items = wikilinkCandidates(matching: prefix).map(CompletionItem.wikilink)
+            items = wikilinkItems(matching: prefix)
         case .section(_, let prefix), .tag(let prefix):
             query = prefix
             let symbol = context.symbol
@@ -302,6 +315,15 @@ final class CompletingTextView: NSTextView {
         let range = rangeForUserCompletion
         completionPanel.hide()
 
+        // A command that takes the selection gets it back first, in place of `/prefisso`, so it
+        // runs on what was selected (ADR-0085 §D8). Any other choice drops the stash.
+        if case .command(let command) = item, case .app(let appCommand) = command.action,
+           appCommand.takesSelection, restoreSlashSelection(replacing: range) {
+            onRunCommand?(appCommand)
+            return
+        }
+        slashSelectionStash = nil
+
         switch item {
         // The bare string, which is what AppKit's list inserted: a heading replaces only what
         // follows the `#` and leaves `[[Nota#Sezione` open, a tag only what follows its `#`.
@@ -315,6 +337,9 @@ final class CompletingTextView: NSTextView {
         // and nothing shortcode-shaped is left in the file for Obsidian to read differently.
         case .emoji(let glyph, _):
             insertText(glyph, replacementRange: range)
+        // The link closed by the candidate's rule, then the title offered (ADR-0083 §D6).
+        case .createNote(let title):
+            createNote(title, replacing: range)
         case .command(let command):
             switch command.action {
             case .insert(let text, let cursorBack):
@@ -337,24 +362,6 @@ final class CompletingTextView: NSTextView {
     override func resignFirstResponder() -> Bool {
         completionPanel.hide()
         return super.resignFirstResponder()
-    }
-
-    override var rangeForUserCompletion: NSRange {
-        // The default is a word range, which stops at the space inside "Curva di
-        // trasmissibilità" and would complete against the last word only.
-        guard let context = completionContext() else { return super.rangeForUserCompletion }
-        let cursor = selectedRange().location
-        let length: Int = switch context {
-        case .wikilink(let prefix): prefix.count
-        // Only what follows the `#`: the note's name is already right, and replacing it
-        // too would delete what the completion is a completion *of*.
-        case .section(_, let prefix): prefix.count
-        case .tag(let prefix): prefix.count
-        case .slash(let prefix): prefix.count
-        // The `:` goes too, as the tag's `#` does: what is written is the glyph alone.
-        case .emoji(let prefix): prefix.count
-        }
-        return NSRange(location: cursor - length, length: length)
     }
 
     override func completions(

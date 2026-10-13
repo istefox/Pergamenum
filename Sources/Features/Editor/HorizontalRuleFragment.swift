@@ -19,18 +19,32 @@ final class HorizontalRuleFragment: NSTextLayoutFragment {
 
     private static let thickness: CGFloat = 1
 
-    /// The width to draw across: the text container's, minus the padding a line fragment
-    /// hangs at on each side.
+    /// How far to draw across, from the fragment's own origin: the column between the
+    /// paragraph's own indents inside the text container, less the padding a line fragment
+    /// hangs at on each side (`EditorGutter.columnSpan`, ADR-0081 §D7) - so a rule in the note
+    /// editor stays out of the gutter on both sides.
+    ///
+    /// Only the width, never the span's `leading`: TextKit places this fragment at
+    /// `lineFragmentPadding + indent` from the container's edge (measured, `Tests/GutterRevealGeometryTests.swift`,
+    /// `aFragmentStartsAtTheColumnNotAtTheContainersEdge`), so the origin already is the column's start and
+    /// adding `leading` to it counts the padding and the indent twice, pushing the rule's right
+    /// end out over the margin.
     ///
     /// Not `layoutFragmentFrame.width`, which is the *text's* width and, for a paragraph
     /// whose `---` has just been collapsed to `collapsedFont`, is very nearly zero - a rule
-    /// drawn at it would be invisible. The container is the only thing here that knows how
-    /// wide a column is, and it is read at drawing time rather than pushed in for the reason
-    /// ADR-0019 §D2 gives for `attachmentBounds`: a number handed over from outside goes
-    /// stale on the next window resize.
+    /// drawn at it would be invisible. The container and the paragraph's own style are the
+    /// only things here that know how wide a column is, and both are read at drawing time
+    /// rather than pushed in for the reason ADR-0019 §D2 gives for `attachmentBounds`: a
+    /// number handed over from outside goes stale on the next window resize.
     private var ruleWidth: CGFloat {
         guard let container = textLayoutManager?.textContainer else { return layoutFragmentFrame.width }
-        return max(0, container.size.width - container.lineFragmentPadding * 2)
+        let paragraph = (textElement as? NSTextParagraph)?.attributedString
+        let style = (paragraph?.length ?? 0) > 0
+            ? paragraph?.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+            : nil
+        return EditorGutter.columnSpan(
+            containerWidth: container.size.width, padding: container.lineFragmentPadding, style: style
+        ).width
     }
 
     /// Wide enough for the line, or the drawing is clipped at the collapsed text's own

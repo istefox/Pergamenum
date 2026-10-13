@@ -20,7 +20,7 @@ enum Destination: Equatable, Sendable {
     /// The Workspace, with this board open - by vault-relative path, the same identity
     /// `WorkspaceController.board` itself uses. ADR-0015 §D1 originally left the Workspace
     /// anchorless because its board lived only on a `WorkspaceController` the window could not
-    /// read; amended into §D1, `VaultController.openBoardPath` closes that gap. Since ADR-0092
+    /// read; amended into §D1, `VaultController.openBoardPath` closes that gap. Since ADR-0095
     /// §D4 it is no mirror: the vault controller owns the board and the path is read off it.
     case workspaceBoard(String)
     /// The Oggi pane, at a day and a scale. Both, because ADR-0013 §D4 makes the three scales
