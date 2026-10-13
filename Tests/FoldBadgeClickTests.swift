@@ -18,14 +18,17 @@ import Testing
         folded: Set<Int>,
         onToggleFold: @escaping (Int) -> Void
     ) -> (NSTextView, NoteTextView.Coordinator) {
-        let ranges = NoteOutline.entries(in: note).map { NSRange($0.range, in: note) }
         let view = NoteTextView(
             text: .constant(note),
             theme: .emergency,
             noteTitles: [],
             tagSuggestions: [],
             onFollowLink: { _ in },
-            outline: .init(outlineRanges: ranges, foldedEntries: folded, onToggleFold: onToggleFold)
+            // Restated for ADR-0095 §D7 (PG-406, plan Task 4): `OutlineInputs` no longer carries the
+            // entries' ranges or the folded ordinals, so the scenario passes the folded heading's offset
+            // instead. `# Uno` is at offset 0, so `folded` (entry 0) and its offset are the same number,
+            // and the scenario and its expectations are as they were.
+            outline: .init(onToggleFold: onToggleFold, foldedOffsets: folded)
         )
         let coordinator = view.makeCoordinator()
         let textView = CompletingTextView(usingTextLayoutManager: true)

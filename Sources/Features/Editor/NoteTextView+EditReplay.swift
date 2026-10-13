@@ -26,6 +26,11 @@ extension NoteTextView.Coordinator {
         parent.text = written
         modelSync.wrote(written)
         applyStylingIfNeeded(to: textView, theme: parent.theme)
+        // The binding was written first, so the stamp is the revision this keystroke made; and an edit
+        // that made or unmade an entry above the caret is reported now, not at the next caret move
+        // (ADR-0095 §D6, §D7). The ledger drops a repeat.
+        stampOutline(in: textView)
+        reportOutlineEntry(in: textView)
         linksDidChange(in: textView)
         applyEmbeds(to: textView)
         applyTransclusions(to: textView, theme: parent.theme)

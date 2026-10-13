@@ -82,7 +82,10 @@ extension VaultController {
             }
         }
         rememberTabs()
+        // As `close()`: no settle of the folder being left, and no store of a column now gone.
+        typingPause.cancel()
         columns = [EditorColumn()]
+        resetOutlineStores()
         focusedColumnIndex = 0
         // What belongs to the folder being left and names its files: the composer's draft
         // (as `close()` does), the tabs reopenable with «riapri ultima tab», the quick

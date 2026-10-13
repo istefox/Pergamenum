@@ -94,7 +94,7 @@ struct QuitReview: Equatable, Sendable {
             + failedSchede.map { Scheda(path: $0, problem: .writeFailed) }
         entries = columns.flatMap { column in
             column.tabs.compactMap { tab -> Entry? in
-                guard tab.note.hasUnsavedChanges else { return nil }
+                guard tab.note.differsFromSaved else { return nil }
                 return Entry(
                     tabID: tab.id,
                     relativePath: tab.note.relativePath,

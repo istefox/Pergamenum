@@ -84,8 +84,10 @@ private struct SelectionRoot: View {
                     if let tab = model.tabID { model.selectionByTab[tab] = range }
                 }
             ),
+            // Restated for ADR-0095 §D6 and §D7 (PG-406, plan Task 5): `OutlineInputs` no longer carries the
+            // entries' ranges. The coordinator's own store, built from the same text, answers the caret's
+            // entry; the scenario and its expected reports are unchanged.
             outline: .init(
-                outlineRanges: NoteOutline.entries(in: model.text).map { NSRange($0.range, in: model.text) },
                 onOutlineEntryChanged: { entry in
                     model.outlineReports.append(entry)
                     if let tab = model.tabID { model.outlineByTab[tab] = .some(entry) }

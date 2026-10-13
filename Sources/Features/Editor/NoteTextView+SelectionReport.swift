@@ -19,8 +19,7 @@ extension NoteTextView.Coordinator {
 
     /// Reports the index entry the caret is in, when it changed since the last report.
     func reportOutlineEntry(in textView: NSTextView) {
-        let caret = textView.selectedRange().location
-        let entry = parent.outline.outlineRanges.lastIndex { $0.location <= caret }
+        let entry = outlineEntry(atCaretOf: textView)
         guard requests.claimOutlineEntry(entry) else { return }
         parent.outline.onOutlineEntryChanged?(entry)
     }

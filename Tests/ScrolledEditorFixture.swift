@@ -149,15 +149,19 @@ extension ScrolledEditorFixture {
         coordinator.parent.runPasses(on: textView, coordinator: coordinator)
     }
 
-    /// The fold the model would hold for `heading`: the index of that heading among the outline's
-    /// entries in the text as it is now (`NoteFolding` reads `foldedEntries` as outline indices), or
-    /// nothing when the heading is no longer there.
+    /// The fold the model would hold for `heading`: that heading's UTF-16 offset in the text as it is
+    /// now (the key `NoteTab.foldedEntries` keeps), or nothing when the heading is no longer there.
+    ///
+    /// Restated for ADR-0095 §D7 (PG-406, plan Task 4): this wrote the heading's ordinal into
+    /// `outline.foldedEntries`, which the input no longer carries; the coordinator turns the offset into
+    /// an ordinal itself. Which heading is folded, and when, is as it was.
     func fold(heading: String?) {
         guard let heading else { return }
         let text = textView.string
         let entries = NoteOutline.entries(in: text)
-        let index = entries.firstIndex { text[$0.range.lowerBound...].hasPrefix(heading) }
-        coordinator.parent.outline.foldedEntries = index.map { [$0] } ?? []
+        let offset = entries.first { text[$0.range.lowerBound...].hasPrefix(heading) }
+            .map { text.utf16.distance(from: text.startIndex, to: $0.range.lowerBound) }
+        coordinator.parent.outline.foldedOffsets = offset.map { [$0] } ?? []
     }
 
     /// An edit the way a paste or a programmatic change makes it: `shouldChangeText`, the storage
@@ -451,6 +455,9 @@ struct RestyleTwin {
         check("foldLayout", left.foldLayout, right.foldLayout)
         check("revealed", left.revealed, right.revealed)
         check("revealedSpans", left.revealedSpans, right.revealedSpans)
+        // ADR-0095 §D6 (plan Task 4): the outline the coordinator's store keeps is derived state too, and
+        // the full-restyle twin rebuilds it after every edit, so it is the oracle.
+        check("outline", left.outline, right.outline)
         return found
     }
 
@@ -477,6 +484,7 @@ struct RestyleTwin {
         if snapshot.transclusionRenditions.isEmpty { empty.append("transclusionRenditions") }
         if snapshot.foldLayout.hiddenLineOffsets.isEmpty { empty.append("foldLayout.hiddenLineOffsets") }
         if snapshot.revealed.isEmpty { empty.append("revealed") }
+        if snapshot.outline.isEmpty { empty.append("outline") }
         return empty
     }
 }

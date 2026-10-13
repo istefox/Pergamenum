@@ -74,6 +74,10 @@ private func below(_ snapshot: DerivedStateSnapshot, from boundary: Int) -> Deri
     layout.hiddenLineOffsets = offsets(layout.hiddenLineOffsets)
     layout.foldedHeadings = layout.foldedHeadings.filter { $0.key >= boundary }
     copy.foldLayout = layout
+    // The outline map (ADR-0095 §D6, plan Task 4): entries below the edited paragraph only, like every
+    // other offset-keyed field here. The edited line's own entry is re-read by the splice, which this
+    // test does not run (it calls `shiftDerivedState` by hand), so it is not the shift's to produce.
+    copy.outline = snapshot.outline.filter { $0.range.location >= boundary }
     // The two reveal sets that hold paragraph offsets (`revealedParagraphs` above, `revealed`) are
     // left out, and the reason is the test's own setup, not the shift: the raw `replaceCharacters`
     // moves the caret, and the selection change that follows already reruns `applyReveal` over the

@@ -103,7 +103,7 @@ extension VaultController {
     /// salvare / Annulla» dialog - the same one the chip's close button raises.
     func requestCloseFocusedTab() {
         guard let tab = focusedTab else { return }
-        if tab.note.hasUnsavedChanges {
+        if tab.note.differsFromSaved {
             closeRequest = tab.id
         } else {
             closeTab(tab.id)
@@ -228,7 +228,9 @@ extension VaultController {
     /// own; everything else goes through `splitEditor`.
     func addColumn() {
         guard columns.count == 1 else { return }
-        columns.append(EditorColumn())
+        let column = EditorColumn()
+        columns.append(column)
+        _ = outlineStore(forColumn: column.id)
     }
 
     // `closeColumn(_:ask:saveAll:)` lives in `VaultController+ColumnClose.swift`: it asks about the

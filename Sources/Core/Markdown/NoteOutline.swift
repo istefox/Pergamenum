@@ -43,26 +43,13 @@ enum NoteOutline {
         for line in lineRanges(in: text, from: start) {
             guard !fences.contains(where: { $0.range.overlaps(line) }) else { continue }
             let trimmed = text[line].trimmingCharacters(in: .whitespaces)
-
-            if let level = headingLevel(of: trimmed) {
+            guard let entry = entry(inLine: trimmed) else { continue }
+            switch entry.kind {
+            case .heading(let level):
                 enclosingLevel = level
-                result.append(Entry(
-                    kind: .heading(level: level),
-                    title: plainText(of: String(trimmed.dropFirst(level)).trimmingCharacters(in: .whitespaces)),
-                    range: line,
-                    level: level
-                ))
-                continue
-            }
-            // Only an embed on a line of its own. One inside a paragraph is an
-            // illustration in a sentence, not a section of the note.
-            if let embed = Attachment.embed(inLine: trimmed), !Attachment.isRemote(embed.target) {
-                result.append(Entry(
-                    kind: .embed,
-                    title: embed.alt ?? embed.target,
-                    range: line,
-                    level: min(enclosingLevel + 1, 6)
-                ))
+                result.append(Entry(kind: entry.kind, title: entry.title, range: line, level: level))
+            case .embed:
+                result.append(Entry(kind: .embed, title: entry.title, range: line, level: min(enclosingLevel + 1, 6)))
             }
         }
         return result
@@ -104,5 +91,32 @@ enum NoteOutline {
             lineStart = text.index(after: lineEnd)
         }
         return ranges
+    }
+}
+
+// MARK: - The rule for one line (ADR-0095 §D6, PG-406)
+
+extension NoteOutline {
+    /// What one trimmed line says about the outline: a heading with its level and plain title, or an
+    /// embed on a line of its own with its alt text or target; no level for an embed, which depends on
+    /// the heading above it.
+    struct LineEntry: Equatable, Sendable {
+        var kind: Entry.Kind
+        var title: String
+    }
+
+    /// The per-line half of `entries(in:)`, which calls it, so the rule exists once: an ATX heading
+    /// by `headingLevel(of:)`, or an embed on a line of its own that is not remote, or nothing.
+    /// Only an embed on a line of its own: one inside a paragraph is an illustration in a
+    /// sentence, not a section of the note.
+    static func entry(inLine trimmed: String) -> LineEntry? {
+        if let level = headingLevel(of: trimmed) {
+            let title = plainText(of: String(trimmed.dropFirst(level)).trimmingCharacters(in: .whitespaces))
+            return LineEntry(kind: .heading(level: level), title: title)
+        }
+        if let embed = Attachment.embed(inLine: trimmed), !Attachment.isRemote(embed.target) {
+            return LineEntry(kind: .embed, title: embed.alt ?? embed.target)
+        }
+        return nil
     }
 }

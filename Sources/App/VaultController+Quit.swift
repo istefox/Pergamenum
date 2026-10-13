@@ -28,7 +28,7 @@ extension VaultController {
     func saveForQuit(_ review: QuitReview) async -> QuitSaveReport {
         var report = QuitSaveReport()
         for entry in review.entries {
-            guard let tab = tab(withID: entry.tabID), tab.note.hasUnsavedChanges else { continue }
+            guard let tab = tab(withID: entry.tabID), tab.note.differsFromSaved else { continue }
             // `saveTab` refuses a previous vault's tab and records the problem itself; the flag
             // only decides which list the refusal goes on.
             let foreign = tab.isFromPreviousVault

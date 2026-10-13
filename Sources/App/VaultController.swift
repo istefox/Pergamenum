@@ -207,14 +207,29 @@ final class VaultController {
     /// is worth the door sitting in an unexpected file.
     var pinnedTags: [Tag] = []
 
+    /// The "typing stopped" signal that settles the unsaved marks (ADR-0095 §D4, PG-406); injected
+    /// so a test fires it by hand instead of waiting on a timer. Never observed.
+    @ObservationIgnored let typingPause: any PauseScheduler
+    /// How many tabs `settleUnsavedMarks()` has checked, a counter for the tests; never observed.
+    /// The setter is internal, not `private(set)`, because its one writer is
+    /// `VaultController+UnsavedMarks.swift` (ADR-0045).
+    @ObservationIgnored var unsavedMarkChecks = 0
+    /// The outline store of each column, made with the column and dropped with it (ADR-0095 §D6,
+    /// PG-406). Never observed: a store is itself observable. Written by
+    /// `VaultController+OutlineStores.swift` (ADR-0045).
+    @ObservationIgnored var outlineStores: [EditorColumn.ID: OutlineStore] = [:]
+
     init(
         recents: RecentVaults = RecentVaults(),
         openTabs: OpenTabsStore = OpenTabsStore(),
-        pinnedTags: PinnedTagsStore = PinnedTagsStore()
+        pinnedTags: PinnedTagsStore = PinnedTagsStore(),
+        typingPause: any PauseScheduler = TaskPauseScheduler()
     ) {
         self.recents = recents
         self.openTabs = openTabs
         self.pinnedTagsStore = pinnedTags
+        self.typingPause = typingPause
+        resetOutlineStores()
     }
 
     // MARK: Opening
@@ -317,7 +332,10 @@ final class VaultController {
         indexGenerationBase = indexGeneration + 1
         session = nil
         thumbnails = nil
+        // The pending settle walks the columns being dropped; the old columns' stores go with them.
+        typingPause.cancel()
         columns = [EditorColumn()]
+        resetOutlineStores()
         focusedColumnIndex = 0
         // A draft names a folder in the vault being closed, and the composer would
         // otherwise still be sitting in the editor column of a vault that is gone.
@@ -369,6 +387,9 @@ final class VaultController {
             $0.note.text = text
             $0.isPreview = false
         }
+        // The mark goes on at once; whether an undo back cleared it is asked when typing pauses
+        // (ADR-0095 §D4), never on the keystroke.
+        typingPause.restart { [weak self] in self?.settleUnsavedMarks() }
     }
 
     /// Records a problem for the UI to show without interrupting what the user is

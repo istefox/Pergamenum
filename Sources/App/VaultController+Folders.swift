@@ -28,7 +28,7 @@ extension VaultController {
         let folder = relativePath.trimmingCharacters(in: .pathSlashes)
         let hasDirtyTab = columns.contains { column in
             column.tabs.contains { tab in
-                tab.note.hasUnsavedChanges
+                tab.note.differsFromSaved
                     && (tab.note.relativePath == folder || tab.note.relativePath.hasPrefix("\(folder)/"))
             }
         }

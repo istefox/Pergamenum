@@ -48,7 +48,7 @@ extension VaultController {
     private func caughtUp(with result: VaultSession.WriteResult, savedBy origin: UUID?) {
         updateTabs(showing: result.path) { tab in
             if let origin, tab.id == origin {
-                tab.note.savedText = result.text
+                tab.note.recordWrite(result.text)
                 tab.note.externalChangePending = nil
             } else {
                 tab.note.catchUp(to: .text(result.text))
@@ -73,7 +73,7 @@ extension VaultController {
         let title = fresh?.title
             ?? NoteName.title(fromFileName: (newPath as NSString).lastPathComponent)
         updateTabs(showing: oldPath) { tab in
-            if let fresh, !tab.note.hasUnsavedChanges {
+            if let fresh, !tab.note.differsFromSaved {
                 tab = tab.showing(fresh)
             } else {
                 tab.note.relativePath = newPath

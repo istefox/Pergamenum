@@ -12,7 +12,10 @@ struct BacklinksSection: View {
     @Environment(VaultController.self) private var vault
     @Environment(CommandActions.self) private var commandActions
 
-    let note: VaultController.OpenNote
+    /// The open note's title and path, and not the buffer (ADR-0095 §D5): typing changes neither,
+    /// so a keystroke does not invalidate the section.
+    let title: String
+    let relativePath: String
 
     /// The row «Scollega» asks about; the dialog hands it to its button as a parameter.
     @State private var unlinking: BacklinkRow?
@@ -21,7 +24,7 @@ struct BacklinksSection: View {
     @State private var unlinkRefused: String?
 
     var body: some View {
-        let rows = vault.backlinkRows(toTitle: note.title)
+        let rows = vault.backlinkRows(toTitle: title)
         let header = VaultBrowser.InspectorSection.backlinks(count: rows.count)
         TraySection(
             title: header.title,
@@ -49,7 +52,7 @@ struct BacklinksSection: View {
             Button("Scollega", role: .destructive) { unlink(row) }
             Button("Annulla", role: .cancel) { unlinking = nil }
         } message: { row in
-            Text("Il legame fra «\(note.title)» e «\(row.title)» e i due motivi spariscono da entrambe le note.")
+            Text("Il legame fra «\(title)» e «\(row.title)» e i due motivi spariscono da entrambe le note.")
         }
         .alert(
             "Scollega",
@@ -117,7 +120,7 @@ struct BacklinksSection: View {
     /// here.
     private func context(_ line: String) -> AttributedString {
         var attributed = AttributedString(line)
-        let wanted = note.title.lowercased()
+        let wanted = title.lowercased()
         for link in WikilinkParser.links(in: line) where link.target.lowercased() == wanted {
             guard let lower = AttributedString.Index(link.range.lowerBound, within: attributed),
                   let upper = AttributedString.Index(link.range.upperBound, within: attributed)
@@ -147,7 +150,7 @@ struct BacklinksSection: View {
     /// The row arrives as the dialog's parameter and is captured before the `Task`: the dialog
     /// nils `unlinking` on its way out (`.claude/rules/swiftui-views.md`).
     private func unlink(_ row: BacklinkRow) {
-        let source = note.relativePath
+        let source = relativePath
         unlinking = nil
         Task { @MainActor in
             unlinkRefused = await vault.unlinkStructuralLink(from: source, toNoteAt: row.path)
