@@ -34,6 +34,8 @@ extension VaultAPI {
         _ session: VaultSession, at path: String, topics: String, folder: String?
     ) async throws -> ClassifySummary {
         guard !path.isEmpty else { throw ConnectorError("serve il percorso della nota", usage: true) }
+        // A readable file is not enough: frontmatter goes into an indexed note only (PG-398).
+        try requireNote(session, path)
         guard let before = try? session.read(path).text else { throw ConnectorError("«\(path)» non esiste") }
         let chosen = try parsedTopics(topics, session: session)
         do {
@@ -69,6 +71,8 @@ extension VaultAPI {
         guard fromLine <= toLine else {
             throw ConnectorError("righe \(fromLine)-\(toLine): la prima viene dopo l'ultima", usage: true)
         }
+        // The source gets `[[title]]` written into it, so it has to be an indexed note (PG-398).
+        try requireNote(session, path)
         guard let text = try? session.read(path).text else { throw ConnectorError("«\(path)» non esiste") }
         let range: NSRange
         switch NoteExtraction.range(ofLines: fromLine...toLine, in: text) {
