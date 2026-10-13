@@ -1,12 +1,14 @@
 # ADR-0095: The Workspace board controller lives with the vault, not with its pane
 
-- Status: **proposed**. Not on `main`: written with its plan, before the implementation.
+- Status: **accepted**. Merged to `main` via PR #1000 (`5ead20db`, 2026-10-13), built from
+  `docs/plans/pg-392-board-controller-vault-lifetime.md`: unit suite green on the merged tree (6698
+  tests, CI green). The hand checks R-02 to R-08 are not yet run (ledger `PG-414`).
 - Date: 2026-10-07. Written against `29bb3aa0`, which is both `origin/main` and the tip of
   `feature/pg-392-board-controller-vault-lifetime`. Every line number below was read from that
   tree.
-- **Numbering note.** `0090` is the highest ADR on `origin/main`. No local or remote-tracking ref
-  holds a `docs/adr/0091*` file (checked 2026-10-07 with `git ls-tree` over every ref). This record
-  takes `0091`. Check again immediately before the merge (`docs/adr/README.md` §1).
+- **Numbering note.** Written as `0091`, renumbered to `0095` on 2026-10-13 before the merge: `main`
+  took `0091` for the keystroke-restyle ADR meanwhile, and `0092` is held there by an unpublished
+  file. The plan keeps the number it was written under, with a note.
 - Source: `SPEC.md` "A conflicted Workspace board outlives the pane and the window (PG-392,
   #918)", Approved 2026-10-07, R-01 to R-10. Plan:
   `docs/plans/pg-392-board-controller-vault-lifetime.md`. No brainstorm or UX blueprint belongs to
