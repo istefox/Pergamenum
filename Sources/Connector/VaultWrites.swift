@@ -91,7 +91,7 @@ extension VaultAPI {
         guard !text.isEmpty else {
             throw ConnectorError("serve il testo da aggiungere", usage: true)
         }
-        guard session.exists(path) else { throw ConnectorError("«\(path)» non esiste") }
+        try requireNote(session, path)
 
         switch await session.append(text: text, to: path) {
         case .written(let result):
@@ -190,9 +190,14 @@ extension VaultAPI {
         if let note {
             // The inbox is created on demand; any other note has to exist, because
             // inventing one from a task is how a vault fills with files nobody meant to
-            // make (SPEC §7.4).
-            guard session.exists(note) else {
-                throw ConnectorError("«\(note)» non esiste: un task va in una nota che c'è, o nell'inbox")
+            // make (SPEC §7.4). And it has to be an indexed note: a `.canvas` or a settings
+            // JSON that exists is refused too, in the session's own words (PG-398). A missing
+            // path keeps the session's sentence and gains the inbox hint the CLI help and the
+            // MCP description give; the non-note refusal passes through untouched.
+            do {
+                try requireNote(session, note)
+            } catch let refusal as ConnectorError where !session.exists(note) {
+                throw ConnectorError("\(refusal.description): un task va in una nota che c'è, o nell'inbox")
             }
             draft.destination = .note(note)
         }

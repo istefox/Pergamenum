@@ -228,6 +228,9 @@ L'architettura harness vigente (ADR 20/07/2026, emendata 30/07/2026) assegna i t
   resta aperta e mostra il loro avviso; «Non salvare» esce lasciando i file su disco come sono. Il
   salvataggio automatico continuo di §6.1 (~1 s) vale per le board del Workspace, non per le
   note.
+  *Emendato 2026-10-07 (ADR-0095).* Una board in conflitto sopravvive al cambio di pannello:
+  quell'avviso la nomina anche se il Workspace non è a schermo, e la nomina anche l'avviso che
+  precede l'apertura di un'altra cartella note.
 - Requisiti minimi:
   - CommonMark + tabelle GFM + task list `- [ ]`
   - Liste puntate e numerate rese con glifo/ordinale al posto del marcatore, nidificazione

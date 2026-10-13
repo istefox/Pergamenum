@@ -451,6 +451,10 @@ the change in the test file.
   the splice, which this test does not run (D6).
 - `Tests/SelectionReportHostedTests.swift` (plan Task 5): no ranges are handed in; the coordinator's own store,
   built from the same text, answers the caret's entry (D6, D7).
+- `Tests/UnsavedMarkSourceGuardTests.swift`, `aDecisionSiteReadsTheExactAnswer` (merge with `origin/main`, 2026-10-13):
+  a line naming `openBoard.hasUnsavedChanges` is no longer counted as a note decision site. `VaultController+Folders.swift`
+  gained it from PG-392 (ADR-0095): it is the Workspace board's own mark, not an `OpenNote`'s. The note site beside it
+  (`folderRefusal`) now reads `differsFromSaved`, and the guard still requires it.
 - `Tests/UnsavedMarkTests.swift`, `everyAssignmentToTheTextMakesANewRevision` (plan Task 6): the red-phase step
   required a new revision after `catchUp(to: .text("c"))` on a dirty buffer. Departure 15 (ADR-0073, kept by D3)
   answers `.asked` there and assigns nothing, so the revision stays; the step now asserts that, and the catch-ups

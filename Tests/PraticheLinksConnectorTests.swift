@@ -42,6 +42,9 @@ Buongiorno,
 
 private let messagePath = "\(praticaFolder)/email/msg.md"
 
+/// PG-398: vault files that exist and are readable but are not indexed notes.
+private let messageNonNotePaths = ["Lavagna.canvas", ".pergamenum/appunti.json"]
+
 @MainActor
 private func openVaultWithOnePratica(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
     try vault.write(minimalPraticaNote, to: "\(praticaFolder)/pratica.md")
@@ -257,6 +260,98 @@ private func openVaultWithOnePratica(_ vault: borrowing TemporaryVault) async th
         ))
         let link = try VaultAPI.praticaMessageLink(session, at: messagePath)
         #expect(link?.state == "unique")
+    }
+
+    // MARK: - PG-398: a message door takes an indexed note and nothing else
+
+    /// Vault files that exist and are readable but are not indexed notes.
+    private func openVaultWithNonNotes(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
+        try vault.write(#"{"nodes":[],"edges":[]}"#, to: "Lavagna.canvas")
+        try vault.write(#"{"testo": "Offerta 2026"}"#, to: ".pergamenum/appunti.json")
+        return try await openVaultWithOnePratica(vault)
+    }
+
+    @Test(arguments: messageNonNotePaths)
+    func readingTheLinkOfAFileThatIsNotANoteIsRefused(path: String) async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithNonNotes(vault)
+
+        let error = #expect(throws: ConnectorError.self) {
+            _ = try VaultAPI.praticaMessageLink(session, at: path)
+        }
+
+        #expect(error?.description == "«\(path)» non è una nota del vault")
+    }
+
+    @Test(arguments: messageNonNotePaths)
+    func linkingAndUnlinkingAMessageNoteOnAFileThatIsNotANoteIsRefusedAndWritesNothing(path: String) async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithNonNotes(vault)
+        let before = try bytes(vault, path)
+
+        VaultAPI.arm(session, command: "message_link_note", dryRun: false)
+        let link = await #expect(throws: ConnectorError.self) {
+            _ = try await VaultAPI.linkMessageNote(session, message: path, title: "Offerta 2026")
+        }
+        VaultAPI.arm(session, command: "message_unlink_note", dryRun: false)
+        let unlink = await #expect(throws: ConnectorError.self) {
+            _ = try await VaultAPI.unlinkMessageNote(session, message: path)
+        }
+
+        #expect(link?.description == "«\(path)» non è una nota del vault")
+        #expect(unlink?.description == "«\(path)» non è una nota del vault")
+        #expect(try bytes(vault, path) == before)
+    }
+
+    @Test(arguments: messageNonNotePaths)
+    func creatingAndLinkingAMessageNoteOnAFileThatIsNotANoteCreatesNothing(path: String) async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithNonNotes(vault)
+        let before = try bytes(vault, path)
+        let journalBefore = try journalIDs(vault)
+
+        VaultAPI.arm(session, command: "message_create_note", dryRun: false)
+        let error = await #expect(throws: ConnectorError.self) {
+            _ = try await VaultAPI.createAndLinkMessageNote(session, message: path, title: "Preventivo 2026")
+        }
+
+        #expect(error?.description == "«\(path)» non è una nota del vault")
+        #expect(!FileManager.default.fileExists(
+            atPath: vault.root.appending(path: "Preventivo 2026.md").path(percentEncoded: false)
+        ), "il rifiuto viene prima della creazione: nessuna nota orfana")
+        #expect(try bytes(vault, path) == before)
+        #expect(try journalIDs(vault) == journalBefore)
+    }
+
+    @Test func eachMessageDoorRefusesAMissingPathWithTheSessionsSentence() async throws {
+        let vault = try TemporaryVault()
+        let session = try await openVaultWithOnePratica(vault)
+        let missing = "\(praticaFolder)/email/assente.md"
+        let sentence = "nessuna nota in «\(missing)»"
+        #expect(session.linkEndRefusal(missing) == sentence)
+
+        let read = #expect(throws: ConnectorError.self) {
+            _ = try VaultAPI.praticaMessageLink(session, at: missing)
+        }
+        VaultAPI.arm(session, command: "message_link_note", dryRun: false)
+        let link = await #expect(throws: ConnectorError.self) {
+            _ = try await VaultAPI.linkMessageNote(session, message: missing, title: "Offerta 2026")
+        }
+        VaultAPI.arm(session, command: "message_unlink_note", dryRun: false)
+        let unlink = await #expect(throws: ConnectorError.self) {
+            _ = try await VaultAPI.unlinkMessageNote(session, message: missing)
+        }
+        VaultAPI.arm(session, command: "message_create_note", dryRun: false)
+        let create = await #expect(throws: ConnectorError.self) {
+            _ = try await VaultAPI.createAndLinkMessageNote(session, message: missing, title: "Preventivo 2026")
+        }
+
+        for error in [read, link, unlink, create] {
+            #expect(error?.description == sentence)
+        }
+        #expect(!FileManager.default.fileExists(
+            atPath: vault.root.appending(path: "Preventivo 2026.md").path(percentEncoded: false)
+        ))
     }
 
     // MARK: - ADR-0063 §D4/§D6: the board goes through the session's door, and every

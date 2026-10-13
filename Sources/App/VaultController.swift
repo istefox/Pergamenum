@@ -71,14 +71,6 @@ final class VaultController {
     /// person is looking at", which is exactly what it still returns. The type changed shape
     /// underneath; its published surface did not.
     var openNote: OpenNote? { focusedTab?.note }
-    /// The Workspace board currently open, by vault-relative path - nil with none open.
-    ///
-    /// The one value `WindowPlace.destination` (ADR-0015 §D1 amendment) needs to give the
-    /// Workspace a `Destination.workspaceBoard` anchor, the same way `openNote` already gives
-    /// the Note pane one - pushed up from `WorkspaceView`'s own `.onChange(of: workspace.
-    /// board)` rather than read from `WorkspaceController` directly, which lives as `@State`
-    /// inside that view and stays unreachable from here.
-    var openBoardPath: String?
     /// The note being created, while it is still only a name being typed.
     ///
     /// Held here rather than in the browser because the New Note command is in the menu
@@ -167,13 +159,18 @@ final class VaultController {
     /// waiting to be reopened. `nil` in every test that builds a bare `VaultController`.
     @ObservationIgnored var didChangeExternally: ((String) -> Void)?
 
-    /// The Workspace board attached to this vault, so «Esci» can flush its ~1 s autosave
-    /// debounce (#506, ADR-0066). `WorkspaceController` is `@State` in `WorkspaceView`,
-    /// which `AppDelegate` cannot see; the board registers itself in `attach` and clears
-    /// this in `detach`. Weak: the view owns the board, not the vault.
-    @ObservationIgnored weak var openBoard: WorkspaceController?
+    /// The Workspace board of this vault: created once with the controller and never replaced
+    /// (ADR-0095 §D1). Strong, unlike the weak reference it replaces, so a conflicted board
+    /// outlives the pane that shows it. `openBoardPath` reads the path off it
+    /// (`VaultController+Board.swift`).
+    let openBoard: WorkspaceController
     /// Reopens the main window for a cancelled quit (ADR-0073 §D7); set by `RootView`'s `openWindow`.
     @ObservationIgnored var reopenMainWindow: (() -> Void)?
+    /// Shows the Workspace pane with the open board, for a cancelled vault switch that left a
+    /// conflicted board (ADR-0095 §D6). Its one production writer is `PergamenumApp`'s window
+    /// `.onAppear`, which points it at `AppDelegate.revealBoardAfterCancelledQuit()`; nil in
+    /// every test that does not set it.
+    @ObservationIgnored var revealOpenBoard: (() -> Void)?
     /// Where `open(_:)` resolves the derived-state base (ADR-0017). No production caller sets it;
     /// a test replaces it to make the resolution fail on this controller alone, which reaches
     /// `open(_:)`'s and `switchVault(to:ask:)`'s bail branches without touching the process-wide
@@ -228,6 +225,7 @@ final class VaultController {
         self.recents = recents
         self.openTabs = openTabs
         self.pinnedTagsStore = pinnedTags
+        self.openBoard = WorkspaceController()
         self.typingPause = typingPause
         resetOutlineStores()
     }
@@ -288,6 +286,9 @@ final class VaultController {
         // resolved one, and `standardizedFileURL` alone tells a link from its target.
         let incoming = url.vaultKey
         let outgoing = root?.resolvingSymlinksInPath().standardizedFileURL
+        // True on the first open and for another vault, false when the open vault reopens: the
+        // board, and a conflict on it, are then left untouched (ADR-0095 §D2).
+        let rebinds = outgoing?.vaultKey != incoming
         for column in columns.indices {
             for tab in columns[column].tabs.indices {
                 if let origin = columns[column].tabs[tab].previousVaultRoot {
@@ -304,6 +305,10 @@ final class VaultController {
         // embedded in a note. The cache directory comes from the same resolved state
         // the session just built, so both land in the same place (ADR-0017).
         thumbnails = ThumbnailStore(root: url, directory: newSession.state.thumbnails)
+        // In the same synchronous stretch as the two assignments above, before any `await`,
+        // whether or not the Workspace pane is mounted (ADR-0095 §D2).
+        // The same vault reopened keeps its board, and only the cache it renders through follows.
+        if rebinds { rebindBoard(to: url) } else { openBoard.useThumbnails(thumbnails) }
         // Recorded on open rather than on close, so a crash still leaves the vault
         // reachable from the recents menu next launch. A vault the `maximum` cap
         // silently evicts also loses its tab session here, or it would sit in
@@ -325,6 +330,9 @@ final class VaultController {
     }
 
     func close() {
+        // First, while the session is still here: a line `detach()` records lands in the
+        // closing vault's list (ADR-0095 §D2).
+        openBoard.detach()
         watcher?.stop()
         watcher = nil
         // ADR-0067 §D4: a session somebody else still holds must not keep calling back here.

@@ -38,7 +38,9 @@ private let decisionFiles: [(path: String, sites: Int)] = [
         let lines = try code(path)
         let expected = try #require(decisionFiles.first { $0.path == path }).sites
 
-        let marked = lines.filter { $0.contains("hasUnsavedChanges") }
+        // `openBoard.hasUnsavedChanges` is the Workspace board's own mark (PG-392, ADR-0095), not a note
+        // buffer's: `VaultController+Folders.swift` reads it beside the note check. The guard is about `OpenNote`.
+        let marked = lines.filter { $0.contains("hasUnsavedChanges") && !$0.contains("openBoard.hasUnsavedChanges") }
         let exact = lines.filter { $0.contains("differsFromSaved") }
         #expect(marked.isEmpty, "\(path) decides on the mark: \(marked)")
         #expect(exact.count >= expected, "\(path) reads differsFromSaved on \(exact.count) lines, expected \(expected)")

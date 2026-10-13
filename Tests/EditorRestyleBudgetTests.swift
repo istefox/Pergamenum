@@ -21,8 +21,8 @@ import Testing
 // ADR-0091 §D11 (per-paragraph-restyle plan Task 6, R-12) adds three fallback rows beside the six: a
 // keystroke that opens a fence, one in a table, Return in a list. They run behind
 // `RESTYLE_BUDGET_FALLBACK=1`, print `restyle-budget-fallback ...` lines and never assert a time; they
-// assert that the keystroke took the path it names. The six rows keep their ceilings until the person
-// fixes new ones at G-ceiling-2.
+// assert that the keystroke took the path it names. The six rows carry the ceilings the person fixed
+// at G-ceiling-2 on 2026-10-11.
 //
 // ADR-0093 §D9 (scoped-layout-followup plan, Task 7, R-13) adds four structural rows: a fence opened
 // with no fence below, a fence opened above later fences, `[[` typed with no `]]` below, and `]]`

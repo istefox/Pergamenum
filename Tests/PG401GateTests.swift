@@ -45,8 +45,12 @@ enum PG401Gates {
         return only == gate.key
     }
 
-    /// G-ceiling-2: milliseconds of thread CPU per keystroke, all six rows. The SPEC proposes 20.
-    static var ceilingMs: Double { Double(environment["PG401_CEILING_MS"] ?? "") ?? 20 }
+    /// G-ceiling-2: milliseconds of thread CPU per keystroke. Each row has the ceiling the person fixed
+    /// for it (`RestyleBudget.ceilings`); `PG401_CEILING_MS` replaces all six with one figure, to ask
+    /// what a different limit would say.
+    static func ceilingMs(for c: RestyleBudget.Case) -> Double {
+        Double(environment["PG401_CEILING_MS"] ?? "") ?? RestyleBudget.ceilings[c] ?? 20
+    }
     /// G-type: milliseconds of thread CPU per typed character, 95th percentile. One 60 Hz frame.
     static var typeLimitMs: Double { Double(environment["PG401_TYPE_MS"] ?? "") ?? 16 }
     /// G-grow: wall milliseconds one step of the sequence may take before it counts as a freeze.
@@ -152,10 +156,9 @@ enum PG401Gates {
     // MARK: G-ceiling-2
 
     // One keystroke in the middle of the note, measured as the budget test measures it, against the
-    // proposed 20 ms. The six ceilings in `RestyleBudget.ceilings` are not touched: fixing them is the
-    // person's decision, this only says which rows the proposal would hold on this build.
+    // row's ceiling in `RestyleBudget.ceilings` (fixed at G-ceiling-2, ADR-0091 §Gates).
     @Test(.enabled(if: PG401Gates.selected(.ceiling)), arguments: PG401Gates.ceilingCases)
-    func aKeystrokeStaysUnderTheProposedCeiling(_ c: RestyleBudget.Case) {
+    func aKeystrokeStaysUnderItsCeiling(_ c: RestyleBudget.Case) {
         let note = RestyleBudget.syntheticNote(bytes: c.bytes, variant: c.variant)
         let fixture = ScrolledEditorFixture(text: note)
         defer { fixture.window.orderOut(nil) }
@@ -168,8 +171,9 @@ enum PG401Gates {
 
         let name = "\(c.bytes / 1024)KB-\(c.variant.rawValue)"
         PG401Gates.report(.ceiling, case: name, metric: "wall_ms", value: measured.wallMs, limit: nil)
-        let ok = PG401Gates.report(.ceiling, case: name, metric: "cpu_ms", value: measured.cpuMs, limit: PG401Gates.ceilingMs)
-        #expect(ok, "\(c): \(measured.cpuMs) ms of thread CPU against \(PG401Gates.ceilingMs)")
+        let limit = PG401Gates.ceilingMs(for: c)
+        let ok = PG401Gates.report(.ceiling, case: name, metric: "cpu_ms", value: measured.cpuMs, limit: limit)
+        #expect(ok, "\(c): \(measured.cpuMs) ms of thread CPU against \(limit)")
     }
 
     // MARK: G-grow (R-14)

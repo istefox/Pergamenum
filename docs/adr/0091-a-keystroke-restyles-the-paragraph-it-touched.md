@@ -1,10 +1,10 @@
 # ADR-0091: A keystroke restyles the paragraph it touched, and a structural change restyles the note
 
-- Status: **planned**. It reached `main` with its plan (`docs/plans/per-paragraph-restyle.md`) ahead
+- Status: **accepted**. It reached `main` with its plan (`docs/plans/per-paragraph-restyle.md`) ahead
   of the code, in PR #966 (merge `86f1cb49`, 2026-10-11), where it still read `proposed`
-  (`docs/adr/README.md` rule 2). The implementation is on `feature/per-paragraph-restyle`; the record
-  flips to `accepted`, naming that PR, its merge commit and the date, in the first docs change after
-  the merge.
+  (`docs/adr/README.md` rule 2). The implementation landed in PR #971 (`18fb38e4`, 2026-10-11). The
+  three gates were answered on 2026-10-11 (see `## Gates`): the six ceilings are fixed, and G-grow and
+  G-type were checked by `scripts/pg-401-gates.sh` (PR #975) in place of a hand check.
 - Date: 2026-10-10. Written against `da38099d` (`origin/main` at the same commit). Every line number
   below was read there.
 - Number: `0091` is the highest number on `origin/main` (0090) plus one. No local or remote-tracking
@@ -523,8 +523,8 @@ A caret crossing a view-block fence still triggers a full `applyStyling`
 ### D11. The bench
 
 **The six rows** keep their cases and their method (ADR-0082 §D5). They stay asserted, against
-ceilings that gate G-ceiling-2 fixes from the measured "after" (the SPEC proposes 20 ms CPU). Until
-that gate, ADR-0082 §D9's ceilings stay in force.
+ceilings that G-ceiling-2 fixed on 2026-10-11 from the measured "after" (20, 20, 40, 75, 250 and
+1,800 ms of CPU; see `## Gates`). They replace ADR-0082 §D9's, which this record supersedes on that point.
 
 **Three fallback rows are added:**
 
@@ -677,8 +677,8 @@ Xcode 27.0, Debug build: milliseconds of main-thread CPU per keystroke, the mini
 warm-up. The first run is `--large` (K = 5, and 3 at 1 MB); the second is `--large --runs 9`, started
 after a quiet window of the Mac: another session's bench, run from a sibling worktree, was on the machine
 around the first run (the script's guard looks once, at the start). The two agree within 7% on every row,
-so the first run was not visibly disturbed. The ceilings in `RestyleBudget.ceilings` are ADR-0082 §D9's and are **not**
-changed here: the person fixes the new ones at G-ceiling-2.
+so the first run was not visibly disturbed. The ceilings in `RestyleBudget.ceilings` were ADR-0082 §D9's when this run was taken and
+were changed afterwards, at G-ceiling-2 (`## Gates`).
 
 The six rows, against ADR-0082 §D9's "after" (the full restyle with the `wikilinkSpans` fix):
 
@@ -693,8 +693,8 @@ The six rows, against ADR-0082 §D9's "after" (the full restyle with the `wikili
 
 That is 28 to 34 times less at 50 KB, 27 to 40 times at 200 KB and 22 to 51 times at 1 MB, and the six rows
 pass ADR-0082 §D9's ceilings with room (596, 677, 2735, 3200, 18927 and 35532 ms). The proposal of 20 ms
-holds at 50 KB only, in a Debug build; the Release app is faster, and G-type (R-15) is the hand check of
-that.
+holds at 50 KB only, in a Debug build. The Release build turned out not to be faster on these rows (see
+"Measured on Release").
 
 **The rows that miss 20 ms, and where the time goes.** A profile (`sample`, 1 ms, of the 1 MB fences row
 while it ran; the process was sampled for the whole of a `--runs 60` measurement) puts a keystroke's
@@ -731,16 +731,47 @@ about what the plain keystroke costs. In the same profile the structure map's bu
 a full restyle (`RestyleScope.init(text:)` against `MarkdownStyler.spans(in:)` and the attribute writes):
 the "full restyle gains the map's build pass" of the Consequences, measured.
 
+## Measured on Release
+
+Taken on 2026-10-11 by `scripts/pg-401-gates.sh` (PR #975): a Release build into its own DerivedData,
+`ENABLE_TESTABILITY=YES`, thread CPU time, the minimum of K runs after a warm-up, same Mac as above,
+screen scale 2.0. The run reported here is the third; the first two were CONTAMINATED by other sessions'
+builds (the script says so and exits 3), and agree with it within 25% on every row, the worst being
+1 MB fences at 770 and 907 ms against 568 ms.
+
+| Size | Variant | Release, ms CPU | Debug, K = 9 |
+| --- | --- | --- | --- |
+| 50 KB | prose | 4.52 | 5.81 |
+| 50 KB | fences | 5.84 | 7.35 |
+| 200 KB | prose | 18.04 | 22.55 |
+| 200 KB | fences | 31.81 | 37.59 |
+| 1 MB | prose | 97.20 | 121.96 |
+| 1 MB | fences | 568.20 | 522.68 |
+
+Release is no faster than Debug where the time is TextKit's own (the profile above: 39% range update,
+25% layout), so one set of ceilings serves both builds. G-grow: the six state checks pass on a 1 MB note
+(type at the end, type in the middle, Cmd+Down, scroll to the end, click low, layout complete). G-type:
+the 95th percentile of CPU per typed character in a 50 KB note is 8.43 ms (prose) and 11.01 ms (fences)
+against one 60 Hz frame, 16 ms; the maxima are 8.72 and 11.35 ms.
+
 ## Gates
 
-- **G-ceiling-2** (the person): look at the six "after" measurements and the three fallback rows,
-  then fix the six ceilings (the SPEC proposes 20 ms CPU). The numbers are in "Measured after"
-  (2026-10-11), and four of the six rows miss 20 ms in a Debug build; until the gate answers,
-  `RestyleBudget.ceilings` holds ADR-0082 §D9's.
-- **G-grow** (the person, R-14): on a Release build with a 1 MB note, type at the end and in the
-  middle, press Cmd+Down, scroll to the end, and click low in the pane.
-- **G-type** (the person, R-15): on a Release build with a 50 KB note, a typed sentence shows no
-  perceptible lag.
+- **G-ceiling-2** (the person): **decided 2026-10-11.** The six ceilings in `RestyleBudget.ceilings`
+  are about twice the Release measurements above, in ms of thread CPU per keystroke: 50 KB prose 20,
+  50 KB fences 20, 200 KB prose 40, 200 KB fences 75, 1 MB prose 250, 1 MB fences 1,800. They guard
+  against a regression and are not a target. 20 ms, the SPEC's proposal, is kept where it holds with
+  room; the 200 KB and 1 MB rows miss it by TextKit's cost (the profile above), which this design does
+  not touch (D10). `PG401GateTests` reads the same table.
+- **G-grow** (R-14): **passed 2026-10-11**, by `scripts/pg-401-gates.sh --gate grow`, which replaces
+  the hand check the SPEC named (type at the end and in the middle, Cmd+Down, scroll to the end, click
+  low, on a 1 MB note). It asserts that the view stays on the same text, the caret is where it was put
+  and no height is an estimate afterwards. The wall time of each step is printed and judged only when
+  `PG401_STEP_MS` names a limit; nobody has fixed one, and a number invented here would be one.
+- **G-type** (R-15): **passed 2026-10-11**, by `scripts/pg-401-gates.sh --gate type`, in place of "a
+  typed sentence shows no perceptible lag": the 95th percentile of CPU per character stays under one
+  60 Hz frame (16 ms). The display pass and the SwiftUI update after the binding write are outside that
+  measurement, so the substitution is a measured bound, not a verdict on how the app feels; it is
+  recorded as such.
 - **Not decided here, left to the person:** narrowing `claimsListCommand`'s write and the
   whole-text renumber from `0..<length` to the span that changes. That would make Enter in a list
   restyle the list run instead of the note.

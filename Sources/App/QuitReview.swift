@@ -74,8 +74,8 @@ struct QuitReview: Equatable, Sendable {
     /// ones first. Only the quit passes any: a vault switch and a column close never reach the
     /// Contenitore.
     let schede: [Scheda]
-    /// The open Workspace board when its save is in conflict (PG-336, ADR-0089 §D1). Only the
-    /// quit passes one.
+    /// The open Workspace board when its save is in conflict (PG-336, ADR-0089 §D1). The quit
+    /// and the vault switch pass one (ADR-0095 §D5); a column close never does.
     let board: Board?
     /// The diary day when its save is in conflict (PG-336, ADR-0089 §D1). Only the quit passes
     /// one.
@@ -223,7 +223,6 @@ struct QuitReview: Equatable, Sendable {
         let words = Self.words(for: occasion)
         let before = words.before
         let losing = words.losing
-        let staying = words.staying
         var paragraphs: [String] = []
         let message: String
         let saveLabel: String
@@ -245,7 +244,7 @@ struct QuitReview: Equatable, Sendable {
             paragraphs.append(listed.joined(separator: "\n"))
         }
         paragraphs.append(losing)
-        paragraphs += sentences(noteNames: noteNames, saveLabel: saveLabel, staying: staying)
+        paragraphs += sentences(noteNames: noteNames, saveLabel: saveLabel, words: words)
         return Copy(
             message: message,
             informative: paragraphs.joined(separator: "\n\n"),
@@ -256,11 +255,13 @@ struct QuitReview: Equatable, Sendable {
     }
 
     /// One sentence per item that needs one, in the items' order: the board, the conflicted and
-    /// the foreign notes, the diary, the schede.
-    private func sentences(noteNames: [String], saveLabel: String, staying: String) -> [String] {
+    /// the foreign notes, the diary, the schede. The notes' sentences open with `staying`, the
+    /// board's and the diary's carry `stayingClause` mid-sentence.
+    private func sentences(noteNames: [String], saveLabel: String, words: Words) -> [String] {
         let notes = notes
+        let staying = words.staying
         var result: [String] = []
-        if let board { result.append(board.sentence(saveLabel: saveLabel, staying: staying)) }
+        if let board { result.append(board.sentence(saveLabel: saveLabel, staying: words.stayingClause)) }
         for (note, name) in zip(notes, noteNames) where note.isConflicted {
             result.append(
                 "«\(name)» è cambiata anche su disco: "
@@ -273,7 +274,7 @@ struct QuitReview: Equatable, Sendable {
                     + "\(staying) se scegli di salvare."
             )
         }
-        if let diary { result.append(diary.sentence(saveLabel: saveLabel, staying: staying)) }
+        if let diary { result.append(diary.sentence(saveLabel: saveLabel, staying: words.stayingClause)) }
         for (scheda, name) in zip(schede, schede.map(\.name)) {
             result.append(Self.sentence(for: scheda, named: name, saveLabel: saveLabel))
         }
@@ -299,6 +300,9 @@ struct QuitReview: Equatable, Sendable {
         let before: String
         let losing: String
         let staying: String
+        /// `staying` in its mid-sentence form, for the board and diary sentences, which put it
+        /// after «con «Salva»» (ADR-0095 §D5). The quit's is the same bytes as `staying`.
+        let stayingClause: String
     }
 
     private static func words(for occasion: Occasion) -> Words {
@@ -307,19 +311,25 @@ struct QuitReview: Equatable, Sendable {
             Words(
                 before: "prima di uscire?",
                 losing: "Uscendo senza salvare, le modifiche vanno perse.",
-                staying: "Pergamenum resta aperto"
+                staying: "Pergamenum resta aperto",
+                stayingClause: "Pergamenum resta aperto"
             )
         case .vaultSwitch:
             Words(
                 before: "prima di aprire un'altra cartella note?",
                 losing: "Aprendo un'altra cartella note senza salvare, le modifiche vanno perse.",
-                staying: "La cartella note resta aperta"
+                staying: "La cartella note resta aperta",
+                stayingClause: "la cartella note resta aperta"
             )
         case .columnClose:
             Words(
                 before: "prima di chiudere la colonna?",
                 losing: "Chiudendo la colonna senza salvare, le modifiche vanno perse.",
-                staying: "La colonna resta aperta"
+                staying: "La colonna resta aperta",
+                // Never shown in production: the column close passes no board and no diary,
+                // the only sentences that read it. Kept so the switch stays exhaustive and the
+                // tests can pin it (plan, gate G2).
+                stayingClause: "la colonna resta aperta"
             )
         }
     }

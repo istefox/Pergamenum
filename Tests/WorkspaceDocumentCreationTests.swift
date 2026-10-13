@@ -48,8 +48,9 @@ private func fixture(_ root: borrowing TemporaryVault) async throws -> Fixture {
     let a = try store.createBoard(named: "A", in: "A")
     let b = try store.createBoard(named: "B", in: "B")
     let workspace = WorkspaceController()
-    // With the vault attached, as `WorkspaceView.attachWorkspace` does: `recordProblem` reports to
-    // `VaultController.problems` through it (note-workflow R-11).
+    // With the vault attached, as `VaultController.open(_:)` binds its own `openBoard` (ADR-0095
+    // §D2): `recordProblem` reports to `VaultController.problems` through it (note-workflow R-11).
+    // This controller is the test's own, not `openBoard`; only the `vault:` back-reference counts.
     workspace.attach(to: store, vault: vault)
     workspace.open(board: a)
     return Fixture(vault: vault, workspace: workspace, store: store, a: a, b: b)

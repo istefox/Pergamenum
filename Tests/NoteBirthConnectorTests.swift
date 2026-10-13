@@ -401,3 +401,107 @@ private func tags(of text: String) -> [String] {
     #expect(try disk("Nota.md", in: vault.root) == capture)
     #expect(!session.exists(session.dailyNotePath(for: .today)))
 }
+
+// MARK: - PG-398: classify and extract take an indexed note and nothing else
+
+/// Vault files that exist and are readable but are not indexed notes.
+private let nonNotePaths = ["Lavagna.canvas", ".pergamenum/appunti.json"]
+
+@MainActor
+private func openVaultWithNonNotes(_ vault: borrowing TemporaryVault) async throws -> VaultSession {
+    try vault.write(#"{"nodes":[],"edges":[]}"#, to: "Lavagna.canvas")
+    try vault.write("{\"testo\": \"Uno\"}\n{\"testo\": \"Due\"}\n", to: ".pergamenum/appunti.json")
+    return await openVault(vault)
+}
+
+@MainActor
+@Test(arguments: nonNotePaths)
+func aClassifyOfAFileThatIsNotANoteIsRefusedAndWritesNothing(path: String) async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVaultWithNonNotes(vault)
+    let before = try disk(path, in: vault.root)
+    let journalBefore = session.journalOnDisk.entries().count
+
+    VaultAPI.arm(session, command: "classify_note", dryRun: false)
+    let error = await #expect(throws: ConnectorError.self) {
+        _ = try await VaultAPI.classifyNote(session, at: path, topics: "x", folder: nil)
+    }
+
+    #expect(error?.description == "«\(path)» non è una nota del vault")
+    #expect(error?.isUsage == false)
+    #expect(try disk(path, in: vault.root) == before)
+    #expect(session.journalOnDisk.entries().count == journalBefore)
+}
+
+@MainActor
+@Test(arguments: nonNotePaths)
+func anExtractFromAFileThatIsNotANoteIsRefusedAndCreatesNothing(path: String) async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVaultWithNonNotes(vault)
+    let before = try disk(path, in: vault.root)
+    let journalBefore = session.journalOnDisk.entries().count
+
+    VaultAPI.arm(session, command: "extract_to_note", dryRun: false)
+    let error = await #expect(throws: ConnectorError.self) {
+        _ = try await VaultAPI.extractToNote(
+            session, at: path, fromLine: 1, toLine: 1, title: "Estratto", folder: "02 Estratti", topics: nil
+        )
+    }
+
+    #expect(error?.description == "«\(path)» non è una nota del vault")
+    #expect(error?.isUsage == false)
+    #expect(try disk(path, in: vault.root) == before)
+    #expect(!existsOnDisk("02 Estratti/Estratto.md", in: vault.root), "il rifiuto viene prima della creazione")
+    #expect(session.journalOnDisk.entries().count == journalBefore)
+}
+
+@MainActor
+@Test func classifyAndExtractRefuseAMissingPathWithTheSessionsSentence() async throws {
+    let vault = try TemporaryVault()
+    let session = await openVault(vault)
+    let sentence = "nessuna nota in «Assente.md»"
+    #expect(session.linkEndRefusal("Assente.md") == sentence)
+
+    VaultAPI.arm(session, command: "classify_note", dryRun: false)
+    let classify = await #expect(throws: ConnectorError.self) {
+        _ = try await VaultAPI.classifyNote(session, at: "Assente.md", topics: "x", folder: nil)
+    }
+    VaultAPI.arm(session, command: "extract_to_note", dryRun: false)
+    let extract = await #expect(throws: ConnectorError.self) {
+        _ = try await VaultAPI.extractToNote(
+            session, at: "Assente.md", fromLine: 1, toLine: 1, title: "Estratto", folder: nil, topics: nil
+        )
+    }
+
+    #expect(classify?.description == sentence)
+    #expect(extract?.description == sentence)
+    #expect(!existsOnDisk("Estratto.md", in: vault.root))
+}
+
+/// The usage guards still answer first, whatever the path is: an empty path on both doors, and on
+/// extract an empty title and a backwards range.
+@MainActor
+@Test func classifyAndExtractUsageErrorsComeBeforeThePathIsLookedAt() async throws {
+    let vault = try TemporaryVault()
+    let session = try await openVaultWithNonNotes(vault)
+
+    VaultAPI.arm(session, command: "classify_note", dryRun: false)
+    let noPath = await #expect(throws: ConnectorError.self) {
+        _ = try await VaultAPI.classifyNote(session, at: "", topics: "x", folder: nil)
+    }
+    VaultAPI.arm(session, command: "extract_to_note", dryRun: false)
+    let noTitle = await #expect(throws: ConnectorError.self) {
+        _ = try await VaultAPI.extractToNote(
+            session, at: "Lavagna.canvas", fromLine: 1, toLine: 1, title: "", folder: nil, topics: nil
+        )
+    }
+    let backwards = await #expect(throws: ConnectorError.self) {
+        _ = try await VaultAPI.extractToNote(
+            session, at: "Lavagna.canvas", fromLine: 2, toLine: 1, title: "Estratto", folder: nil, topics: nil
+        )
+    }
+
+    for error in [noPath, noTitle, backwards] {
+        #expect(error?.isUsage == true)
+    }
+}
