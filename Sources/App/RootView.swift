@@ -136,13 +136,14 @@ struct RootView: View {
                 }
                 .onAppear { vault.reopenMainWindow = { [openWindow] in openWindow(id: "main") } }
                 .contenitoreLifecycle()
+                // The tree's lit rows and the «Classifica…» sheet named the previous vault's
+                // paths (n1-seams R-11, PG-409).
+                .vaultScopedNavigation()
                 // The vault's own themes (SPEC §11.3). Without this the engine never
                 // looked at `.pergamenum/themes/` outside the test suite, so a theme file
                 // in a vault did nothing at all and the picker in Settings could only
                 // ever offer the two bundled themes.
                 .onChange(of: vault.root) { _, newRoot in
-                    // The tree's lit rows named the previous vault's paths (n1-seams R-11).
-                    navigation.noteTreeSelection = []
                     if let newRoot {
                         engine.attach(vaultRoot: newRoot)
                     } else {
