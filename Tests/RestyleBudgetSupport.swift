@@ -183,16 +183,18 @@ enum RestyleBudget {
         (ms * factor).rounded(.up)
     }
 
-    /// The six ceilings, in milliseconds of thread CPU time per keystroke: three times the "after"
-    /// column of ADR-0082 §D9 (the 2026-10-10 run with the `wikilinkSpans` fix), rounded up to a
-    /// whole millisecond, as fixed by the person at G-ceiling on 2026-10-10.
+    /// The six ceilings, in milliseconds of thread CPU time per keystroke, as fixed by the person at
+    /// G-ceiling-2 on 2026-10-11 (ADR-0091 §Gates): about twice the Release measurements of that day
+    /// (`scripts/pg-401-gates.sh`, a quiet run), rounded to a figure, and 20 ms, the SPEC's proposal,
+    /// where it holds with room (50 KB). They guard against a regression; they are not a target.
+    /// Release is no faster than Debug on these rows, the time being TextKit's, so one set serves both.
     static let ceilings: [Case: Double] = [
-        Case(bytes: 50 * kilobyte, variant: .prose): 596,  // before 1469.68 ms, after 198.43 ms
-        Case(bytes: 50 * kilobyte, variant: .fences): 677,  // before 1421.30 ms, after 225.34 ms
-        Case(bytes: 200 * kilobyte, variant: .prose): 2_735,  // before 21556.50 ms, after 911.37 ms
-        Case(bytes: 200 * kilobyte, variant: .fences): 3_200,  // before 19969.66 ms, after 1066.64 ms
-        Case(bytes: 1024 * kilobyte, variant: .prose): 18_927,  // before 646462.33 ms (one cold run), after 6308.79 ms
-        Case(bytes: 1024 * kilobyte, variant: .fences): 35_532,  // before 655081.13 ms (one cold run), after 11843.73 ms
+        Case(bytes: 50 * kilobyte, variant: .prose): 20,  // Release 4.52 ms, ADR-0082 §D9 ceiling was 596
+        Case(bytes: 50 * kilobyte, variant: .fences): 20,  // Release 5.84 ms, was 677
+        Case(bytes: 200 * kilobyte, variant: .prose): 40,  // Release 18.04 ms, was 2_735
+        Case(bytes: 200 * kilobyte, variant: .fences): 75,  // Release 31.81 ms, was 3_200
+        Case(bytes: 1024 * kilobyte, variant: .prose): 250,  // Release 97.20 ms, was 18_927
+        Case(bytes: 1024 * kilobyte, variant: .fences): 1_800,  // Release 568.20 ms (770 and 907 when a build overlapped), was 35_532
     ]
 
     /// `restyle-budget size=<bytes> variant=<prose|fences> cpu_ms=<min> wall_ms=<min> runs=<K>`,

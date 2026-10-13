@@ -7,7 +7,8 @@
 #   scripts/pg-401-gates.sh [--gate ceiling|grow|type] [--allow-debug] [--runs N]
 #
 #   G-ceiling-2  a keystroke in the middle of a note, thread CPU, all six rows (50 KB, 200 KB, 1 MB,
-#                prose and fences), against PG401_CEILING_MS (default 20, the SPEC's proposal).
+#                prose and fences), each against its ceiling in RestyleBudget.ceilings (fixed 2026-10-11);
+#                PG401_CEILING_MS replaces all six with one figure.
 #   G-grow       a 1 MB note: type at the end and in the middle, Cmd+Down, scroll to the end, click
 #                low; the view stays on the same text, the caret is where it was put, no height is
 #                an estimate afterwards. Wall times of the steps are printed, and judged only when
