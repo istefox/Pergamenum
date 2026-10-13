@@ -106,7 +106,24 @@ extension VaultController {
             )
             return
         }
+        // These refs were built by this undo, not by a Workspace browser row, so no
+        // `settleForVerb()` ran upstream, and the step can run from any pane while the board is
+        // kept (ADR-0091 §D3). The forward door's settle, before anything moves, asked only when
+        // the step carries the open board itself or a folder that holds it: a pending edit is
+        // flushed into the file before it leaves, a conflicted board refuses the step, and an
+        // unrelated open board is never asked, so it cannot consume this step.
+        let carriesBoard = current.contains { carriesOpenBoard($0.ref) }
+        if carriesBoard, !openBoard.settleForVerb() { return }
         guard refusal(forAll: current.map(\.ref)) == nil else { return }
+        // `settleForVerb()` refuses only a conflict: a flush whose write failed leaves the board
+        // pending. A folder holding it was refused just above by `folderRefusal`; a `.board` ref
+        // is refused here, with the same sentence, so the file does not move away from the
+        // unsaved edits that point at it.
+        if carriesBoard, openBoard.hasUnsavedChanges, let board = openBoardPath {
+            let name = ((board as NSString).lastPathComponent as NSString).deletingPathExtension
+            recordProblem(Self.unsavedBoardInFolderRefusal(named: name))
+            return
+        }
 
         registerInverse(VaultMoveBatch.inverse(of: moves), undo: undo)
         Task { @MainActor in
@@ -115,11 +132,15 @@ extension VaultController {
     }
 
     /// The actual disk work: `session.moveItems` per landing folder, following moved
-    /// notes into tabs and RECENTI, and reporting any failure. `attemptInverse` has
-    /// already resolved and cleared every item and already registered this step's redo/
-    /// undo swap by the time this runs.
+    /// notes into tabs and RECENTI and the open board to where it landed, and reporting any
+    /// failure. `attemptInverse` has already resolved and cleared every item and already
+    /// registered this step's redo/undo swap by the time this runs.
     private func performInverse(_ current: [(destination: String, ref: VaultItemRef)]) async {
         guard let session else { return }
+        // Read before the first suspension, as the forward door reads it (ADR-0043 §D7): the
+        // board the moves below may carry, followed to where it lands once they have run.
+        let openBefore = openBoard.board
+        var landed: [VaultMove] = []
 
         // One call per landing folder, because an inverse is the only batch whose items
         // can be going to different places: they return to wherever each came from.
@@ -144,7 +165,12 @@ extension VaultController {
             // already registered by `attemptInverse` before this ran, so a failure here
             // cannot cost it - only the failure report is at stake.
             follow(outcome)
+            landed.append(contentsOf: outcome.moves)
         }
+        // The forward door's landing rule (`WorkspaceView+FolderVerbs`): the open board, when a
+        // move carried it and it is still the one open, is reopened where it returned, so its
+        // next save is not aimed at a path that has gone. Whatever landed, failures or not.
+        openBoard.followMove(from: openBefore, moves: landed)
 
         guard failures.isEmpty else {
             for failure in failures {
@@ -152,6 +178,14 @@ extension VaultController {
             }
             return
         }
+    }
+
+    /// Whether moving `ref` carries the open board: the board itself, or a folder that holds
+    /// it, by `folderRefusal`'s prefix rule. False when no board is open.
+    private func carriesOpenBoard(_ ref: VaultItemRef) -> Bool {
+        guard let board = openBoardPath else { return false }
+        let path = ref.path.trimmingCharacters(in: .pathSlashes)
+        return board == path || board.hasPrefix("\(path)/")
     }
 
     // MARK: - The window's half
@@ -162,15 +196,24 @@ extension VaultController {
     /// re-reading `problems.last`.
     ///
     /// The two guards that already exist, each asked of the kind it was written for: a
-    /// note by its own path, a folder by the subtree it holds. A board is neither - the
-    /// editor cannot have a `.canvas` open with unsaved edits - so it is not asked. Both
-    /// guards test against the single `openNote`, so at most one reason can ever fire;
-    /// `allSatisfy`'s short-circuit was never hiding a second one.
+    /// note by its own path, a folder by the subtree it holds. A board is neither, and it is
+    /// not asked: a forward `.board` ref is built only by the Workspace browser's rows
+    /// (`WorkspaceBrowser+Tree.swift`, `WorkspaceRow+Move.swift`), whose move has already
+    /// passed `settleForVerb()` (`WorkspaceView+FolderVerbs.swift`) before it gets here, and
+    /// the undo/redo that builds one again runs that same settle first, and refuses a board its
+    /// flush left pending (`attemptInverse`). The first refusal ends the walk.
+    ///
+    /// A folder can be refused for a dirty note under it or, since ADR-0091 §D8, for the
+    /// Workspace board kept with unsaved edits under it: `folderRefusal(_:)` answers which
+    /// sentence, and that sentence is recorded and returned, never `problems.last` (PG-083).
     private func refusal(forAll items: [VaultItemRef]) -> String? {
         for item in items {
             switch item.kind {
             case .note where !canOperate(on: item.path): return Self.unsavedNoteRefusal
-            case .folder where !canOperateOnFolder(item.path): return Self.unsavedNoteInFolderRefusal
+            case .folder:
+                guard let refusal = folderRefusal(item.path) else { continue }
+                recordProblem(refusal)
+                return refusal
             default: continue
             }
         }

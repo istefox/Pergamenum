@@ -30,7 +30,9 @@ struct WorkspaceView: View {
     /// Internal rather than `private`: `WorkspaceView+FolderVerbs` is another file, and
     /// `private` is file scope.
     @Environment(\.undoManager) var undoManager
-    @State var workspace = WorkspaceController()
+    /// The vault controller's board, never one of this view's own (ADR-0091 §D1): the quit,
+    /// the vault switch and the window history read the same object, and it outlives the pane.
+    var workspace: WorkspaceController { vault.openBoard }
     // Not `private`, on this property and the two below: the board that writes and reads
     // them is in `WorkspaceView+Board.swift`, and `private` is file scope. `viewportSize` is
     // also read here, by `openPendingCanvas()`.
@@ -95,36 +97,19 @@ struct WorkspaceView: View {
                     workspace.requestRefit(focused ? .actualSize : .fit)
                 }
                 .onAppear {
-                    attachWorkspace()
+                    workspace.enterPane()
                     checkPendingNewBoard()
                 }
-                .onDisappear {
-                    // A conflicted board is not flushed here: flushing would attempt
-                    // exactly the write already refused, on the same stale expectation
-                    // (ADR-0054 §D5). `detach()` reports the loss only when the vault itself
-                    // changes; a pane switch or a window close drops the conflicted board's
-                    // edits with no problem line, because this view's controller goes with it
-                    // (ADR-0089 §D7).
-                    guard case .conflicted = workspace.saveState else {
-                        workspace.flushPendingSave()
-                        return
-                    }
-                }
+                // The board outlives this view: `leavePane()` settles and flushes it, keeps a
+                // conflicted one for the quit and the vault switch, and releases a saved one
+                // (ADR-0091 §D3).
+                .onDisappear { workspace.leavePane() }
                 // `pergamenum://canvas?file=…&node=…` parks its target on the controller,
                 // and this is what acts on it. Nothing did before: the route reported
                 // success and opened nothing at all. Checked on appear too, because a
                 // link that launches the app arrives before this view exists.
                 .task { openPendingCanvas() }
                 .onChange(of: vault.routeState.pendingCanvas?.path) { _, _ in openPendingCanvas() }
-                // The one value `Destination.workspaceBoard` (ADR-0015 §D1 amendment) needs
-                // the window to read - `workspace.board` itself is `@State` here and stays
-                // unreachable from `WindowPlace`, so it is mirrored up rather than exposed
-                // directly. `""` is "nothing open" on the controller
-                // (`WorkspaceController.board`); `nil` is the same on
-                // `VaultController.openBoardPath`.
-                .onChange(of: workspace.board) { _, board in
-                    vault.openBoardPath = board.isEmpty ? nil : board
-                }
         )
     }
 
@@ -140,7 +125,6 @@ struct WorkspaceView: View {
                 checkPendingNewBoard()
             }
             .onChange(of: vault.pendingWorkspacePlacement) { _, pending in placePendingNote(pending) }
-            .onChange(of: vault.root) { _, newRoot in reattachWorkspace(to: newRoot) }
             .sheet(item: $newItemDraft) { draft in newItemSheet(draft) }
             .sheet(isPresented: Binding(
                 get: { !importProposals.isEmpty },
@@ -196,20 +180,6 @@ struct WorkspaceView: View {
         }
         .background(theme.color(.backgroundPrimary))
         .toolbar { toolbar(previewURLs: previewURLs) }
-    }
-
-    private func attachWorkspace() {
-        guard let root = vault.root else { return }
-        workspace.attach(to: CanvasStore(root: root), thumbnails: vault.thumbnails, vault: vault)
-    }
-
-    /// Points the board at the vault that has just opened, letting go of the previous one.
-    private func reattachWorkspace(to newRoot: URL?) {
-        workspace.detach()
-        guard let newRoot else { return }
-        workspace.attach(
-            to: CanvasStore(root: newRoot), thumbnails: vault.thumbnails, vault: vault
-        )
     }
 
     /// Takes the Quick Look request the vault parked, and puts it down again so the next

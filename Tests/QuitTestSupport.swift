@@ -68,19 +68,18 @@ func withReadOnlyFolder<T>(
 
 // MARK: A conflicted board and a conflicted diary (PG-336, ADR-0089)
 
-/// A board named «Bacheca» at the vault root, attached to `controller` (which makes it
-/// `controller.openBoard`, a weak reference), opened, edited, and then refused into
-/// `.conflicted` because another store saved a diverged document first
-/// (`WorkspaceLifecycleTests.swift`'s `conflictedBoard` shape). The caller keeps the returned
-/// controller alive: `openBoard` is weak.
+/// A board named «Bacheca» at the vault root, opened on `controller.openBoard`, edited, and then
+/// refused into `.conflicted` because another store saved a diverged document first
+/// (`WorkspaceLifecycleTests.swift`'s `conflictedBoard` shape). `openBoard` is owned by the vault
+/// controller, not weak (ADR-0091 §D1), and `controller.open(_:)` has already bound it to the
+/// vault's store, so the helper builds no `WorkspaceController` and attaches nothing.
 @MainActor
 func quitConflictedBoard(
     _ vault: borrowing TemporaryVault, in controller: VaultController
 ) throws -> (board: WorkspaceController, path: String) {
     let store = CanvasStore(root: vault.root)
     let path = try store.createBoard(named: "Bacheca", in: "")
-    let board = WorkspaceController()
-    board.attach(to: store, vault: controller)
+    let board = controller.openBoard
     board.open(board: path)
     _ = board.addStickyNote("nota", at: .zero)
 

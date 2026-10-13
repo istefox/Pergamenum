@@ -16,10 +16,18 @@ extension VaultController {
     /// - «Salva» / «Salva tutto» saves through `saveForQuit`, into the folder the tabs belong
     ///   to, before the session changes.
     ///
+    /// The Workspace board is in the same question (ADR-0091 §D5), whichever pane is showing,
+    /// because the vault controller owns it: it is settled first, so a pending edit is written
+    /// into this folder, and a conflicted board is named. «Salva» never writes it, so a
+    /// conflicted board cancels the switch; «Non salvare» lets `open(_:)`'s rebind drop it. The
+    /// diary is not asked about here.
+    ///
     /// Anything the answer did not cover - a failed save, a conflicted tab the bulk save never
-    /// writes, text typed during the saves - cancels the switch, records a problem and brings
-    /// the first such tab to the front. Otherwise the arrangement is remembered for the folder
-    /// being left, so its tabs come back when it is opened again, `columns` starts empty (the
+    /// writes, text typed during the saves, a board still conflicted or changed since the
+    /// question - cancels the switch, records a line per kind of item and brings the first one
+    /// to the front: the board through `revealOpenBoard`, else the tab. Otherwise the
+    /// arrangement is remembered for the folder being left, so its tabs come back when it is
+    /// opened again, `columns` starts empty (the
     /// one writer of `columns` beside `close()` outside the tab doors), and `open(_:)` restores
     /// the new folder's own tabs.
     ///
@@ -61,23 +69,23 @@ extension VaultController {
             )
             return false
         }
-        let review = QuitReview(columns: columns)
+        // The board's save is synchronous: an edit inside its ~1 s debounce is written now, into
+        // the vault it belongs to, and a write refused now enters the question (ADR-0091 §D5).
+        openBoard.settleForTermination()
+        let review = QuitReview(columns: columns, board: openBoard.quitConflict)
         if !review.isEmpty {
             let answer = ask(review)
             if answer == .cancel { return false }
             if answer == .save { _ = await saveForQuit(review) }
             guard session === leaving else { return false }
-            // «Salva» covers nothing it did not save; «Non salvare» covers what it showed.
-            let now = QuitReview(columns: columns)
-            let left = answer == .save ? now.entries : review.uncovered(in: now)
-            if let first = left.first {
-                var paths: [String] = []
-                for entry in left where !paths.contains(entry.relativePath) { paths.append(entry.relativePath) }
-                recordProblem(
-                    "Apertura di un'altra cartella note annullata: note non salvate: "
-                        + paths.map { "«\($0)»" }.joined(separator: ", ")
-                )
-                revealTab(first.tabID)
+            // «Salva» covers nothing it did not save, and it never writes the board (ADR-0089
+            // §D5); «Non salvare» covers what it showed.
+            let now = QuitReview(columns: columns, board: openBoard.quitConflict)
+            let left = answer == .save
+                ? QuitReview.Uncovered(notes: now.entries, board: now.board, diary: nil)
+                : review.uncoveredWork(in: now)
+            if !left.isEmpty {
+                recordSwitchCancel(leaving: left)
                 return false
             }
         }
@@ -102,5 +110,25 @@ extension VaultController {
             return false
         }
         return root?.vaultKey == url.vaultKey
+    }
+
+    /// A cancelled switch: one line per kind of item left, then the first of them on screen,
+    /// in ADR-0089 §D6's order - the board through `revealOpenBoard`, a note through its tab
+    /// (ADR-0091 §D5/§D6).
+    private func recordSwitchCancel(leaving left: QuitReview.Uncovered) {
+        if !left.notes.isEmpty {
+            var paths: [String] = []
+            for entry in left.notes where !paths.contains(entry.relativePath) { paths.append(entry.relativePath) }
+            recordProblem(
+                "Apertura di un'altra cartella note annullata: note non salvate: "
+                    + paths.map { "«\($0)»" }.joined(separator: ", ")
+            )
+        }
+        if let board = left.board { recordProblem(board.leftProblem(for: .vaultSwitch)) }
+        switch left.firstReveal() {
+        case .board: revealOpenBoard?()
+        case .note(let id?): revealTab(id)
+        default: break
+        }
     }
 }

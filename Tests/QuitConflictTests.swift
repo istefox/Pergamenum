@@ -82,8 +82,7 @@ private let diaryPath = "Diario/20260811.md"
     let controller = try await quitController(vault)
     let store = CanvasStore(root: root)
     let path = try store.createBoard(named: "Bacheca", in: "")
-    let board = WorkspaceController()
-    board.attach(to: store, vault: controller)
+    let board = controller.openBoard
     board.open(board: path)
     let id = board.addStickyNote("appunto", at: .zero)
     let before = bytes(root, path)
