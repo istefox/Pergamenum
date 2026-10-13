@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// PG-392, ADR-0091 §D8 - (coverage). `BoardFolderVerbGuardTests` pins what the folder verbs do
+// PG-392, ADR-0092 §D8 - (coverage). `BoardFolderVerbGuardTests` pins what the folder verbs do
 // to a kept conflicted board. These pin how `folderRefusal(_:)` decides a board is *inside* a
 // folder, which no scenario there reaches: a sibling folder whose name merely starts with the
 // same letters, a deeper folder, a board file name with a dot, a pending board whose write

@@ -75,7 +75,7 @@ struct QuitReview: Equatable, Sendable {
     /// Contenitore.
     let schede: [Scheda]
     /// The open Workspace board when its save is in conflict (PG-336, ADR-0089 §D1). The quit
-    /// and the vault switch pass one (ADR-0091 §D5); a column close never does.
+    /// and the vault switch pass one (ADR-0092 §D5); a column close never does.
     let board: Board?
     /// The diary day when its save is in conflict (PG-336, ADR-0089 §D1). Only the quit passes
     /// one.
@@ -301,7 +301,7 @@ struct QuitReview: Equatable, Sendable {
         let losing: String
         let staying: String
         /// `staying` in its mid-sentence form, for the board and diary sentences, which put it
-        /// after «con «Salva»» (ADR-0091 §D5). The quit's is the same bytes as `staying`.
+        /// after «con «Salva»» (ADR-0092 §D5). The quit's is the same bytes as `staying`.
         let stayingClause: String
     }
 

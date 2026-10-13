@@ -368,7 +368,7 @@ struct PergamenumApp: App {
                 .onAppear {
                     appDelegate.vault = vault
                     // A cancelled vault switch reveals the board as a cancelled quit does
-                    // (ADR-0091 §D6). Weak: the facade holds no strong reference to the delegate.
+                    // (ADR-0092 §D6). Weak: the facade holds no strong reference to the delegate.
                     vault.revealOpenBoard = { [weak appDelegate] in
                         appDelegate?.revealBoardAfterCancelledQuit()
                     }

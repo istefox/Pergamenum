@@ -16,7 +16,7 @@ extension VaultController {
     /// - «Salva» / «Salva tutto» saves through `saveForQuit`, into the folder the tabs belong
     ///   to, before the session changes.
     ///
-    /// The Workspace board is in the same question (ADR-0091 §D5), whichever pane is showing,
+    /// The Workspace board is in the same question (ADR-0092 §D5), whichever pane is showing,
     /// because the vault controller owns it: it is settled first, so a pending edit is written
     /// into this folder, and a conflicted board is named. «Salva» never writes it, so a
     /// conflicted board cancels the switch; «Non salvare» lets `open(_:)`'s rebind drop it. The
@@ -70,7 +70,7 @@ extension VaultController {
             return false
         }
         // The board's save is synchronous: an edit inside its ~1 s debounce is written now, into
-        // the vault it belongs to, and a write refused now enters the question (ADR-0091 §D5).
+        // the vault it belongs to, and a write refused now enters the question (ADR-0092 §D5).
         openBoard.settleForTermination()
         let review = QuitReview(columns: columns, board: openBoard.quitConflict)
         if !review.isEmpty {
@@ -114,7 +114,7 @@ extension VaultController {
 
     /// A cancelled switch: one line per kind of item left, then the first of them on screen,
     /// in ADR-0089 §D6's order - the board through `revealOpenBoard`, a note through its tab
-    /// (ADR-0091 §D5/§D6).
+    /// (ADR-0092 §D5/§D6).
     private func recordSwitchCancel(leaving left: QuitReview.Uncovered) {
         if !left.notes.isEmpty {
             var paths: [String] = []

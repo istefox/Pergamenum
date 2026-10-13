@@ -2,7 +2,7 @@ import Foundation
 
 // PG-336, ADR-0089: the two conflict items of the quit review - a conflicted Workspace board and
 // a conflicted diary day - their words (§D3), what an answer covers (§D4) and where a cancel goes
-// (§D6). The quit passes both (§D1); the vault switch passes the board alone (ADR-0091 §D5);
+// (§D6). The quit passes both (§D1); the vault switch passes the board alone (ADR-0092 §D5);
 // «Chiudi la colonna» passes neither.
 
 extension QuitReview {
@@ -30,7 +30,7 @@ extension QuitReview {
         /// The problem line recorded when the quit is cancelled with this board left.
         var leftProblem: String { leftProblem(for: .quit) }
 
-        /// The problem line for a cancel on `occasion` with this board left (ADR-0091 §D5). The
+        /// The problem line for a cancel on `occasion` with this board left (ADR-0092 §D5). The
         /// quit's is `leftProblem`, byte-identical; the column close passes no board, so its
         /// line is never recorded and exists for completeness.
         func leftProblem(for occasion: QuitReview.Occasion) -> String {
@@ -109,7 +109,7 @@ extension QuitReview {
     /// diary, then the Contenitore schede. The board leads because it is the item listed first,
     /// and one order serves both the list and the reveal: `copy(for:)` lists the items in this
     /// same order, so a cancel shows the item the question named first. (It no longer leads to
-    /// save its controller from another pane's reveal: the vault controller owns it, ADR-0091
+    /// save its controller from another pane's reveal: the vault controller owns it, ADR-0092
     /// §D7.)
     /// `namingTab: false` is «Annulla»'s `reveal(nil)` (ADR-0073 §D7).
     static func firstReveal(

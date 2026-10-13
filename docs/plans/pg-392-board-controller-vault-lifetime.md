@@ -6,7 +6,7 @@
 Everything below was read on `29bb3aa0` on 2026-10-07. That commit is both `origin/main` and the
 tip of `feature/pg-392-board-controller-vault-lifetime`.
 
-**ADR outcome: one new ADR, `docs/adr/0091-the-board-controller-lives-with-the-vault.md`
+**ADR outcome: one new ADR, `docs/adr/0092-the-board-controller-lives-with-the-vault.md`
 (proposed), written with this plan.** It qualifies on all three counts:
 
 - **Hard to reverse.** The owner of a stateful controller moves from a view to the app's facade.
@@ -19,8 +19,9 @@ tip of `feature/pg-392-board-controller-vault-lifetime`.
 The override applies too. The record amends ADR-0089 §D7/§D8 and ADR-0066's attach/detach
 ownership, and SPEC R-10 asks for it.
 
-- **Number.** 0091 was checked free on every local and remote-tracking ref on 2026-10-07. The
-  highest on `main` is 0090. Check again immediately before the merge (`docs/adr/README.md` rule 1).
+- **Number.** Renumbered 0091 to 0092 on 2026-10-13: 0091 was free on 2026-10-07 and was taken on
+  `main` by "A keystroke restyles the paragraph it touched" before this merged. The highest on `main`
+  was 0090 when this was written. Check again immediately before the merge (`docs/adr/README.md` rule 1).
 - **What it amends.** ADR-0089 §D7, §D8 and its implementation note on "a covered board left by an
   uncovered reveal"; ADR-0066 §D2, §D5 and its Consequences bullet on the weak reference.
 - **What it extends.** ADR-0054 §D5, ADR-0060 §D3, ADR-0073 §D7, ADR-0089 §D1 to §D6. It reverses
@@ -32,7 +33,7 @@ ownership, and SPEC R-10 asks for it.
   - `SPEC.md` renamed to `docs/archive/specs/pg-219-pointer-feedback.SPEC.md`;
   - `docs/plans/pg-219-pointer-feedback.md` with its first line repointed to that archive.
 
-  The new `SPEC.md`, this plan and ADR-0091 are untracked. Committing the archive step, here or
+  The new `SPEC.md`, this plan and ADR-0092 are untracked. Committing the archive step, here or
   separately, is gate G0.
 - **No GUI test.** The SPEC rules it out. ADR-0089 added none, and the GUI suite is a bounded
   backstop (`CLAUDE.md`, merge gate).
@@ -68,7 +69,7 @@ ownership, and SPEC R-10 asks for it.
 - **`CanvasStore.save` is synchronous** (`WorkspaceController+Saving.swift:29-33`). The leave's
   flush has no suspension point, so the SPEC's "re-entry during the flush" is, in practice, SwiftUI
   delivering the new `onAppear` before the old `onDisappear`. The presenter count models exactly
-  that, and the decision is read after the flush (ADR-0091 §D3).
+  that, and the decision is read after the flush (ADR-0092 §D3).
 - **`attach` resets the board.** It must never run on a pane appearance again, or it would wipe
   the board the leave kept. `attachWorkspace()` runs on every `.onAppear` today
   (`WorkspaceView.swift:97-100`), and it is deleted.
@@ -78,7 +79,7 @@ ownership, and SPEC R-10 asks for it.
 - **The switch's words need a mid-sentence clause.** `QuitReview.Words.staying` for
   `.vaultSwitch` is «La cartella note resta aperta» (`QuitReview.swift:313-318`). The board
   sentence interpolates it mid-sentence (`QuitReview+Conflicts.swift:24-27`). Used as is, it
-  would read «con «Salva» La cartella note resta aperta». ADR-0091 §D5 adds a mid-sentence form
+  would read «con «Salva» La cartella note resta aperta». ADR-0092 §D5 adds a mid-sentence form
   and keeps the quit's bytes.
 - **`refusal(forAll:)` always answers the note's sentence** for a refused folder
   (`VaultController+Move.swift:173`). That matters only once D8 (gate G1) adds a second reason.
@@ -99,9 +100,9 @@ ownership, and SPEC R-10 asks for it.
   own `docs:` commit first. Run `tuist install` once per fresh worktree, and
   `tuist generate --no-open` after Tasks 1, 3 and 6 add files. Re-check ADR number 0091 before the
   merge. Land the plan and the ADR with the build, not in a docs-only PR first (PG-340).
-- **G1 (HITL): include ADR-0091 §D8?** It adds the folder-verb guard against stranding a kept
+- **G1 (HITL): include ADR-0092 §D8?** It adds the folder-verb guard against stranding a kept
   conflicted board. **Recommended: include** (Tasks 6 and 7). Declined: Tasks 6 and 7 do not run,
-  §D8 is struck, and the residual is named in ADR-0091 and filed as a ledger entry.
+  §D8 is struck, and the residual is named in ADR-0092 and filed as a ledger entry.
 - **G2 (HITL): the frozen Italian strings.**
   - Switch, message for a board alone: `Salvare le modifiche alla board «B» prima di aprire
     un'altra cartella note?` (`QuitReview.copy`'s existing composition, no new code).
@@ -121,14 +122,14 @@ ownership, and SPEC R-10 asks for it.
   **Recommended: yes.** It is documentation only (Task 8).
 - **G4 (HITL, explain before acting): five existing tests are changed on purpose, none disabled.**
   - `QuitBoardLifetimeHostedTests` is ADR-0089's premise pin. Its own header says that if it goes
-    red, the ADR needs another look. ADR-0091 is that look. The test is rewritten in place to pin
+    red, the ADR needs another look. ADR-0092 is that look. The test is rewritten in place to pin
     the inverse premise.
   - `QuitConflictScopeTests`' first test asserted that the switch never names a board. R-06
     reverses that.
   - `QuitConflictScopeTests`' third test detached the board so the switch would ask nothing. Its
     switch half becomes "a conflicted diary alone asks nothing".
   - `QuitConflictLastCheckTests.aCoveredBoardLeftByAnUncoveredRevealRecordsItsLine` asserted a
-    compensating line for a loss that no longer happens (ADR-0091 §D7).
+    compensating line for a loss that no longer happens (ADR-0092 §D7).
 
   Each change is stated in Task 2 with its reason.
 - **Commit, push, PR (HITL).** As always.
@@ -221,7 +222,7 @@ with `controller.close()`.
     - Make `openBoard` conflicted, then `openBoard.detach()`. One line is added, and `saveState`
       is `.saved`.
     - A second `openBoard.detach()` adds no line.
-13. `detachRecordsTheLossWhenItsOwnFlushIsRefused` (ADR-0091 §D2).
+13. `detachRecordsTheLossWhenItsOwnFlushIsRefused` (ADR-0092 §D2).
     - Open a board, add a card, and save a diverged document externally.
     - `openBoard.detach()` adds the refusal's line and the «…aveva un conflitto di salvataggio non
       risolto…» line.
@@ -238,7 +239,7 @@ with `controller.close()`.
   `navigation.pane = .workspace` and `openBoard.open(board: X)`. `destination ==
   .workspaceBoard(X)`.
 - `destinationIsThePaneOnceALeaveReleasedTheBoard`. Open X, enter, then leave. `destination ==
-  .pane(.workspace)`. This is the stale-mirror defect of ADR-0091 §Context.
+  .pane(.workspace)`. This is the stale-mirror defect of ADR-0092 §Context.
 - `aHistoryStepToABoardOpensItThroughThePendingRoute`.
   - `place.apply(.workspaceBoard(X))`, then what the view's `openPendingCanvas()` does:
     `consumePendingCanvasRoute()` and `openBoard.openRoute((X, nil), viewport: .zero)`.
@@ -315,7 +316,7 @@ Red: yes
    - `!controller.problems.contains { $0.contains(boardProblem) }`.
    - `controller.openBoard.quitConflict != nil`.
    - The bytes are unchanged and the reveal is not `.board`.
-5. **`QuitBoardLifetimeHostedTests`, rewritten in place (G4).** The header states that ADR-0091
+5. **`QuitBoardLifetimeHostedTests`, rewritten in place (G4).** The header states that ADR-0092
    inverts the premise this file pinned. The hosted harness allows file cards only, using
    `placeFile` as `WorkspaceFitOnOpenHostedTests` does. Text cards need `CommandActions`, and
    through it `EventKitStore`.
@@ -395,7 +396,7 @@ Red: yes
    - Answer `.discard`. The switch returns true and the root is B.
    - A's board file is byte-identical. `openBoard` is bound to B with `board == ""` and
      `.saved`.
-   - B's problems contain `detach()`'s loss line (ADR-0091 §Consequences, neutral, pinned).
+   - B's problems contain `detach()`'s loss line (ADR-0092 §Consequences, neutral, pinned).
 8. **`aBoardChangedDuringTheQuestionCancelsTheSwitch`.** The `ask` closure adds a card, then
    returns `.discard`. The switch returns false, the line is recorded and `revealed == 1`.
 9. **`aPendingBoardIsWrittenBeforeTheQuestionAndAsksNothing`.** A pending card only. Nothing is
@@ -434,7 +435,7 @@ Signatures:
 - WorkspaceView.workspace — `var workspace: WorkspaceController { vault.openBoard }` (replaces `@State var workspace = WorkspaceController()`)
 Red: no
 
-**ADR-0091 §D1 to §D4.**
+**ADR-0092 §D1 to §D4.**
 
 - **`VaultController.open(_:)`.**
   - Compute `let rebinds = outgoing?.vaultKey != incoming` beside `outgoing`
@@ -468,9 +469,9 @@ Red: no
     `.onDisappear { workspace.leavePane() }`.
   - Delete `attachWorkspace()`, `reattachWorkspace(to:)` and `.onChange(of: vault.root)`.
   - Replace the disappear comment (`:102-107`) with one sentence pointing at `leavePane()` and
-    ADR-0091 §D3. R-10 names this comment.
+    ADR-0092 §D3. R-10 names this comment.
   - `.task { openPendingCanvas() }` and its `onChange` stay.
-- **Doc comments (ADR-0091 §D7).**
+- **Doc comments (ADR-0092 §D7).**
   - `VaultController.openBoard` and `openBoardPath`.
   - `WorkspaceController.vault` (`:99-105`): the vault owns the board now; the back-reference is
     weak to avoid a cycle.
@@ -493,7 +494,7 @@ Signatures:
 - VaultController.revealOpenBoard — `@ObservationIgnored var revealOpenBoard: (() -> Void)?` (wired in `PergamenumApp`)
 Red: no
 
-**ADR-0091 §D5 to §D7.**
+**ADR-0092 §D5 to §D7.**
 
 - **`switchVault(to:ask:)`**, after the preflight (`VaultController+VaultSwitch.swift:58-63`):
   1. Call `openBoard.settleForTermination()`.
@@ -580,7 +581,7 @@ Signatures:
 - VaultController.folderRefusal — `func folderRefusal(_ relativePath: String) -> String?` (new, internal, in `VaultController+Folders.swift`; answers the sentence without recording it, read by `canOperateOnFolder` and by `refusal(forAll:)` in `+Move`)
 Red: no
 
-**Runs only if G1 is approved. ADR-0091 §D8.**
+**Runs only if G1 is approved. ADR-0092 §D8.**
 
 - **`folderRefusal(_:)`.**
   - Return the note's sentence when a dirty tab lies in the folder. That check is first, and
@@ -598,34 +599,34 @@ Red: no
 
 ### Task 8 — Coder: the record, the amendments, verification (R-09, R-10)
 Owner: coder
-Files: docs/adr/0091-the-board-controller-lives-with-the-vault.md, docs/adr/0089-a-conflicted-board-or-diary-is-asked-about-at-quit.md, docs/adr/0066-workspace-board-lifecycle-one-reset-door.md, docs/adr/0073-quit-reviews-unsaved-notes.md, docs/adr/INDEX.md, CLAUDE.md, docs/20260811_Pergamenum_SpecApp.md, docs/plans/pg-392-board-controller-vault-lifetime.md
+Files: docs/adr/0092-the-board-controller-lives-with-the-vault.md, docs/adr/0089-a-conflicted-board-or-diary-is-asked-about-at-quit.md, docs/adr/0066-workspace-board-lifecycle-one-reset-door.md, docs/adr/0073-quit-reviews-unsaved-notes.md, docs/adr/INDEX.md, CLAUDE.md, docs/20260811_Pergamenum_SpecApp.md, docs/plans/pg-392-board-controller-vault-lifetime.md
 Tests: VaultSwitchBoardTests.swift, BoardControllerLifetimeTests.swift, QuitConflictOffScreenTests.swift
 Signatures:
-- ADR-0091 — `docs/adr/0091-the-board-controller-lives-with-the-vault.md`, status `proposed` until the merge, then `accepted` with the merge hash (docs/adr/README.md rule 2)
-- head note — `**Amended 2026-10-07 (ADR-0091):** …` (the form ADR-0089 already uses on the ADRs it amends)
+- ADR-0092 — `docs/adr/0092-the-board-controller-lives-with-the-vault.md`, status `proposed` until the merge, then `accepted` with the merge hash (docs/adr/README.md rule 2)
+- head note — `**Amended 2026-10-07 (ADR-0092):** …` (the form ADR-0089 already uses on the ADRs it amends)
 Red: no
 
 **Documentation (R-10, no test).**
 
 - **Head notes,** each body untouched:
   - **ADR-0089.** §D7's residual is closed, because the controller lives with the vault. §D8's
-    "the vault switch is unchanged" and "`detach()` is untouched" are superseded by ADR-0091
+    "the vault switch is unchanged" and "`detach()` is untouched" are superseded by ADR-0092
     §D2/§D5. §D6's "destroys its controller" rationale is replaced by §D7's. The implementation
     note on a covered board left by an uncovered reveal no longer records a line.
   - **ADR-0066.** §D5: `openBoard` is owned, not weak, and is neither set by `attach` nor cleared
-    by `detach`. §D2 gains the pane leave (ADR-0091 §D3). The Consequences bullet "weak and serves
+    by `detach`. §D2 gains the pane leave (ADR-0092 §D3). The Consequences bullet "weak and serves
     the quit path alone" is superseded.
   - **ADR-0073.** The last sentence of G-c ("still lost; it is ledger entry `PG-392`") is closed by
-    ADR-0091.
+    ADR-0092.
 - **`docs/adr/INDEX.md`.**
   - Correct ADR-0089's summary (`:116`, "its ledger entry to be filed (ADR-0089 §D7)") to say the
-    residual is `PG-392`, closed by ADR-0091.
-  - Append one long-form ADR-0091 summary at the end of "Chain decision index".
-- **`CLAUDE.md` `## ADR index`.** Paste the ADR-0091 line `scripts/adr-index.py` prints, and
+    residual is `PG-392`, closed by ADR-0092.
+  - Append one long-form ADR-0092 summary at the end of "Chain decision index".
+- **`CLAUDE.md` `## ADR index`.** Paste the ADR-0092 line `scripts/adr-index.py` prints, and
   confirm with `scripts/adr-index.py --check`.
 - **G3, if approved.** One dated sentence in `docs/20260811_Pergamenum_SpecApp.md` §5, beside the
   ADR-0089 sentence (`:208-220`).
-- **ADR-0091 Implementation notes.** Record:
+- **ADR-0092 Implementation notes.** Record:
   - the G1/G2/G3 outcomes;
   - the `HostedView` `onDisappear` measurement;
   - Task 1 test 14's outcome;
@@ -688,7 +689,7 @@ The top bar reads «Conflitto» with its two buttons.
 - **The HostedView `onDisappear` delivery is unverified.** Task 2's step 0 measures it. Whatever
   the answer, the release is pinned at the controller level (Task 1).
 - **The appear/disappear pairing is SwiftUI's.** An unpaired `onAppear` keeps a clean board instead
-  of releasing it. That is the safe direction (ADR-0091 §Consequences), and the hand check R-03
+  of releasing it. That is the safe direction (ADR-0092 §Consequences), and the hand check R-03
   would show it.
 - **`attach` on appear would wipe a kept board.** Task 4 deletes the call. A reviewer should grep
   `attach(to:` in `WorkspaceView*.swift` and find nothing.
@@ -758,7 +759,7 @@ attempted the write cannot pass it.
 **Green phase (Tasks 4, 5, 7, 8, 2026-10-08).** Test (c),
 `aCleanBoardIsReleasedToTheEmptyStateOnLeave`, passes once Task 4 wires `.onDisappear` to
 `leavePane()`: `WorkspaceView`'s own disappear reaches the leave in the hosted harness. Departures
-from the plan's text, each recorded in ADR-0091's Implementation notes:
+from the plan's text, each recorded in ADR-0092's Implementation notes:
 
 - `detach()` calls `flushPendingSave()` unconditionally (`save()` already skips a conflicted
   board), then reads the conflict.
@@ -779,9 +780,9 @@ Deferred: 1 (needs-spec 1)
 Dropped: 10 (fix-hunk 3, post-sweep 3, nit 4)
 Dispatch: Round 0 (red): tester — Task 1, tester — Task 2, tester — Task 3, tester — Task 6
 Dispatch: Round 1: coder — WorkspaceController+Lifecycle.swift:134 (reviewer: sonnet, opus), debugger — WorkspaceController+Lifecycle.swift:558 (reviewer: sonnet), coder — VaultController+Move.swift:165 (reviewer: opus)
-Dispatch: Round 2: coder — ADR-0091.md:144 (reviewer: sonnet, opus), coder — BoardControllerLifetimeTests.swift:137 (reviewer: sonnet), coder — VaultController.swift:281, VaultController.swift:262, VaultController+Move.swift:179, WorkspaceView.swift:240, WorkspaceController+Lifecycle.swift:156, BoardLifetimeCoverageTests.swift:37 (reviewer: opus)
+Dispatch: Round 2: coder — ADR-0092.md:144 (reviewer: sonnet, opus), coder — BoardControllerLifetimeTests.swift:137 (reviewer: sonnet), coder — VaultController.swift:281, VaultController.swift:262, VaultController+Move.swift:179, WorkspaceView.swift:240, WorkspaceController+Lifecycle.swift:156, BoardLifetimeCoverageTests.swift:37 (reviewer: opus)
 Dispatch: Round 1 (sweep): coder — C1, C2, C3 and every AUTO line
-Dispatch: Round 2 (sweep): coder — VaultController+Move.swift:113 (3 MINOR, reviewer: sonnet, opus), ADR-0091.md:476 (reviewer: sonnet), VaultController+Move.swift:121 (follow-up: coder)
+Dispatch: Round 2 (sweep): coder — VaultController+Move.swift:113 (3 MINOR, reviewer: sonnet, opus), ADR-0092.md:476 (reviewer: sonnet), VaultController+Move.swift:121 (follow-up: coder)
 WARN: R-10 has a stale (no-test: …) exemption in SPEC.md, a test names it
 WARN: debugger report for round 1 lost to an API error (the fix is in the tree, the suite is green)
 INFO: review escalated, size: 38 changed files, threshold 20
@@ -789,16 +790,16 @@ NEXT: /ship
 
 ```text
 DEFER	needs-spec	**MINOR** [other] Tests/QuitConflictScopeTests.swift:118-137 — A conflicted diary at a vault switch is now pinned as "asks nothing and proceeds" with no ledger entry for the deferral the SPEC promised. Fix: file the ticket and cite it from the test comment. (reviewer: opus)
-FIX	swept	**NIT** docs/20260811_Pergamenum_SpecApp.md:221 — The reflowed autosave sentence trails the ADR-0091 amendment and leaves a 134-character line where the file wraps at about 98. (reviewer: sonnet, opus)
-FIX	swept	**NIT** docs/adr/INDEX.md:116 — ADR-0089 entry still says only the quit passes the board, never the vault switch, and keeps the "another pane destroys the controller" rationale, both superseded by ADR-0091 D5 and D7. (reviewer: sonnet)
+FIX	swept	**NIT** docs/20260811_Pergamenum_SpecApp.md:221 — The reflowed autosave sentence trails the ADR-0092 amendment and leaves a 134-character line where the file wraps at about 98. (reviewer: sonnet, opus)
+FIX	swept	**NIT** docs/adr/INDEX.md:116 — ADR-0089 entry still says only the quit passes the board, never the vault switch, and keeps the "another pane destroys the controller" rationale, both superseded by ADR-0092 D5 and D7. (reviewer: sonnet)
 FIX	swept	**NIT** Sources/App/VaultController+Folders.swift:57-58 — The doc still says canOperateOnFolder records this exact sentence, now one of two. Say "the note's sentence". (reviewer: opus)
 FIX	swept	**NIT** Sources/App/VaultController+Folders.swift:65-66 — The refusal sentence says "prima di rinominare o eliminare la cartella" but is also returned for a move; it mirrors the note sentence's existing mismatch, so changing it is a copy decision. (reviewer: opus)
-FIX	swept	**MINOR** [style] Sources/App/VaultController+Folders.swift:40-42 — "never refused twice" is false when settleForVerb flush fails and leaves .pending: the new hasUnsavedChanges branch then refuses the Workspace own verb. Fix: state that case in the comment and in ADR-0091 D8, or decide explicitly whether .pending should refuse there. (reviewer: opus)
+FIX	swept	**MINOR** [style] Sources/App/VaultController+Folders.swift:40-42 — "never refused twice" is false when settleForVerb flush fails and leaves .pending: the new hasUnsavedChanges branch then refuses the Workspace own verb. Fix: state that case in the comment and in ADR-0092 D8, or decide explicitly whether .pending should refuse there. (reviewer: opus)
 FIX	swept	**NIT** Sources/App/QuitReview+Conflicts.swift:132 — The .columnClose branch of leftProblem(for:) and the columnClose stayingClause are unreachable in production (column close passes no board) and exist only for tests. (reviewer: sonnet)
-FIX	swept	**MINOR** [style] docs/adr/0091-the-board-controller-lives-with-the-vault.md:155 — ADR cites CLAUDE.md for the "precondition before an await is a filter" rule (also line 329 for the willTerminateNotification warning), but both live in .claude/rules/vault-writes.md. Fix: cite that file. (reviewer: sonnet)
+FIX	swept	**MINOR** [style] docs/adr/0092-the-board-controller-lives-with-the-vault.md:155 — ADR cites CLAUDE.md for the "precondition before an await is a filter" rule (also line 329 for the willTerminateNotification warning), but both live in .claude/rules/vault-writes.md. Fix: cite that file. (reviewer: sonnet)
 FIX	swept	**MINOR** [style] Sources/App/QuitReview.swift:77-78 — board doc comment still says only the quit passes one, contradicted by switchVault and the amended QuitReview+Conflicts header. Fix: say the quit and the vault switch pass one. (reviewer: opus)
 FIX	swept	**NIT** Tests/WorkspaceDocumentCreationTests.swift:51 — Comment cites WorkspaceView.attachWorkspace, deleted by this change. Say the vault controller open(_:) binds the board. (reviewer: sonnet)
-FIX	swept	**NIT** docs/adr/0091-the-board-controller-lives-with-the-vault.md:125-129 — D3 list of what the release does omits the leavePane tool/isToolLocked reset, which only Departures mentions. (reviewer: opus)
+FIX	swept	**NIT** docs/adr/0092-the-board-controller-lives-with-the-vault.md:125-129 — D3 list of what the release does omits the leavePane tool/isToolLocked reset, which only Departures mentions. (reviewer: opus)
 FIX	swept	**NIT** Sources/App/AppDelegate+QuitReveal.swift:23-25 — The doc names only the cancelled quit and the quit reader; the cancelled vault switch now calls it through revealOpenBoard. (reviewer: opus)
 DROP	post-sweep	**MINOR** [other] Sources/App/PergamenumApp.swift:204 — init of PergamenumApp is 62 lines against 50, pre-existing (follow-up: coder)
 FIX	swept	**MINOR** [other] Sources/App/PergamenumApp.swift:368-373 — the vault.revealOpenBoard wiring and AppDelegate.revealBoardAfterCancelledQuit() are glue no automated test reaches; hand check R-06 covers the real path (follow-up: tester)
@@ -807,13 +808,13 @@ FIX	swept	**MINOR** [other] Sources/Features/Editor/NoteListPane.swift:536 — p
 FIX	swept	**MINOR** [other] Sources/App/VaultController.swift:221 — line of 125 characters over line_length, already like that before this task (follow-up: coder)
 FIX	swept	**MINOR** [other] Tests/BoardControllerLifetimeTests.swift:473 — file_length warning (limit 400), grown with the four round-2 tests (follow-up: coder)
 FIX	swept	**MINOR** [wrong-behaviour] Sources/App/VaultController+Move.swift:113 — settleForVerb() refuses only a conflict, so a failed flush leaves the board pending and the undo still moves its file (refusal(forAll:) ignores .board refs), stranding the unsaved edits; the comment and ADR claim the pending edit is written before the move. Fix: also refuse when openBoard.hasUnsavedChanges and openBoard.board is one of the step .board refs, or document the failed-write case; add a read-only-folder test. (reviewer: sonnet)
-FIX	swept	**MINOR** [other] docs/adr/0091-the-board-controller-lives-with-the-vault.md:476 — The Fixed paragraph says the edit is written before the file moves, but the move runs in a later Task { await performInverse } with awaits between destination groups, so the settle is a filter, not a guard; the batch residual does not cover the undo path. Fix: name the Task hop and the inter-group awaits as a residual. (reviewer: sonnet)
+FIX	swept	**MINOR** [other] docs/adr/0092-the-board-controller-lives-with-the-vault.md:476 — The Fixed paragraph says the edit is written before the file moves, but the move runs in a later Task { await performInverse } with awaits between destination groups, so the settle is a filter, not a guard; the batch residual does not cover the undo path. Fix: name the Task hop and the inter-group awaits as a residual. (reviewer: sonnet)
 FIX	swept	**MINOR** [other] Sources/App/VaultController+Move.swift:113 — The settle triggers only for .board refs; a .folder ref holding the open board with a pending edit is refused by folderRefusal instead of flushed, and the undo step is consumed. Fix: settle whenever any ref in the step contains openBoard.board. (reviewer: sonnet)
 FIX	swept	**MINOR** [other] Sources/App/VaultController+Move.swift:113 — The undo settle/refusal is asked of whichever board is open, so an unrelated kept conflicted board consumes the undo step and records a line naming it. Fix: scope the check to the moved board. (reviewer: opus)
-FIX	swept	**MINOR** [other] Sources/App/VaultController+Move.swift:121 — performInverse: undoing a move does not re-open the open board on the path where the file returns; the forward path calls followMove, the undo does not, so the board stays on a path that is gone and its next edit turns conflicted unresolvably; predates ADR-0091 (follow-up: coder)
+FIX	swept	**MINOR** [other] Sources/App/VaultController+Move.swift:121 — performInverse: undoing a move does not re-open the open board on the path where the file returns; the forward path calls followMove, the undo does not, so the board stays on a path that is gone and its next edit turns conflicted unresolvably; predates ADR-0092 (follow-up: coder)
 DROP	post-sweep	**MINOR** [other] Sources/App/VaultController.swift:455 — file_length 455 against 400, already 444 on HEAD (follow-up: coder)
-DROP	fix-hunk	**MINOR** [other] docs/adr/0091-the-board-controller-lives-with-the-vault.md:467 — The undo-settle Residual says the autosave can land on the path just left, but CanvasStore.save(expecting:) refuses a missing file, so the board stays pending and followMove open(board:) then replaces the document and drops the in-window edit with only a write-failure line. Fix: rewrite the paragraph with the real mechanism and loss. (reviewer: sonnet)
+DROP	fix-hunk	**MINOR** [other] docs/adr/0092-the-board-controller-lives-with-the-vault.md:467 — The undo-settle Residual says the autosave can land on the path just left, but CanvasStore.save(expecting:) refuses a missing file, so the board stays pending and followMove open(board:) then replaces the document and drops the in-window edit with only a write-failure line. Fix: rewrite the paragraph with the real mechanism and loss. (reviewer: sonnet)
 DROP	fix-hunk	**MINOR** [other] Tests/BoardMoveUndoSettleTests.swift:200 — No test pins performInverse followMove after a multi-group undo where one group fails, the sibling-prefix boundary of carriesOpenBoard (Progetti vs Progetti-altro), or the refusal path on redo. Fix: add those three tests. (reviewer: sonnet)
-DROP	fix-hunk	**MINOR** [other] Sources/App/VaultController+Move.swift:116 — A refused inverse consumes the undo step (NSUndoManager popped it, nothing re-registers), so after the conflict is resolved the move can never be undone and the next Cmd+Z reverses an earlier move. Fix: name it in ADR-0091 Residual list, or keep the step on the undo stack across a refusal. (reviewer: opus)
+DROP	fix-hunk	**MINOR** [other] Sources/App/VaultController+Move.swift:116 — A refused inverse consumes the undo step (NSUndoManager popped it, nothing re-registers), so after the conflict is resolved the move can never be undone and the next Cmd+Z reverses an earlier move. Fix: name it in ADR-0092 Residual list, or keep the step on the undo stack across a refusal. (reviewer: opus)
 DROP	post-sweep	**MINOR** [other] Sources/Features/Workspace/WorkspaceView+FolderVerbs.swift:41 — the forward path has the same hole as the undo had: if settleForVerb() lets a pending board through because the flush failed, moving a .board ref goes ahead and refusal(forAll:) ignores .board, so the file moves away from the unsaved edits (follow-up: coder)
 ```

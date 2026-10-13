@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// PG-392, ADR-0091 §D1-§D4, plan Task 1 (R-01, R-02, R-03, R-04, R-07, R-08): the Workspace
+// PG-392, ADR-0092 §D1-§D4, plan Task 1 (R-01, R-02, R-03, R-04, R-07, R-08): the Workspace
 // board controller is created with the `VaultController` and owned by it, bound to the open
 // vault whether or not the Workspace pane is mounted, and a pane leave settles it by state:
 // saved is released, pending is flushed and then judged, conflicted is kept.
@@ -334,7 +334,7 @@ private func isConflicted(_ board: WorkspaceController) -> Bool {
     controller.close()
 }
 
-// MARK: ADR-0091 §D2: detach is idempotent and reports a loss once
+// MARK: ADR-0092 §D2: detach is idempotent and reports a loss once
 
 @MainActor
 @Test func aSecondDetachRecordsNothing() async throws {

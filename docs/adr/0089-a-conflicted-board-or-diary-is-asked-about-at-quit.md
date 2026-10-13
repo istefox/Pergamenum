@@ -15,12 +15,12 @@
 - Extends ADR-0073 (§D1, §D2, §D5, §D6, §D7) and ADR-0066 §D5. Amends none. ADR-0054 §D5,
   ADR-0057 §D6 and ADR-0060 §D2 are unchanged.
 
-**Amended 2026-10-07 (ADR-0091):** the Workspace board controller now lives with the vault
+**Amended 2026-10-07 (ADR-0092):** the Workspace board controller now lives with the vault
 controller, not with its pane. §D7's residual (a board whose pane left the screen before the quit)
 is closed: the quit names it whichever pane is showing. §D8's "the vault switch is unchanged" and
-"`detach()` is untouched" are superseded by ADR-0091 §D5 (the switch names a conflicted board) and
+"`detach()` is untouched" are superseded by ADR-0092 §D5 (the switch names a conflicted board) and
 §D2 (`detach()` is idempotent and reads the conflict after its flush). §D6's order stands, but its
-"showing any other pane destroys its controller" rationale is replaced by ADR-0091 §D7's: the board
+"showing any other pane destroys its controller" rationale is replaced by ADR-0092 §D7's: the board
 leads because it is listed first. The implementation note on a covered board left by an uncovered
 reveal no longer holds: no line is recorded, because the board is kept. Body untouched.
 

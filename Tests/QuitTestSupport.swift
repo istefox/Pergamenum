@@ -71,7 +71,7 @@ func withReadOnlyFolder<T>(
 /// A board named «Bacheca» at the vault root, opened on `controller.openBoard`, edited, and then
 /// refused into `.conflicted` because another store saved a diverged document first
 /// (`WorkspaceLifecycleTests.swift`'s `conflictedBoard` shape). `openBoard` is owned by the vault
-/// controller, not weak (ADR-0091 §D1), and `controller.open(_:)` has already bound it to the
+/// controller, not weak (ADR-0092 §D1), and `controller.open(_:)` has already bound it to the
 /// vault's store, so the helper builds no `WorkspaceController` and attaches nothing.
 @MainActor
 func quitConflictedBoard(

@@ -4,13 +4,13 @@ import SwiftUI
 import Testing
 @testable import Pergamenum
 
-/// PG-392, ADR-0091, plan Task 2 (R-01, R-02, R-03, R-08): the premise pin, inverted.
+/// PG-392, ADR-0092, plan Task 2 (R-01, R-02, R-03, R-08): the premise pin, inverted.
 ///
 /// PG-336 (ADR-0089 G1, §D7) pinned here that a `WorkspaceController` existed only while
 /// `WorkspaceView` was on screen: `VaultController.openBoard` was a weak reference to the
 /// view's `@State`, so a board in conflict on a pane the person had left was already gone
 /// before Cmd+Q. That file's header said that if the premise went red, the ADR needed another
-/// look, not the test an edit. ADR-0091 is that look (G4, 2026-10-08): the controller is
+/// look, not the test an edit. ADR-0092 is that look (G4, 2026-10-08): the controller is
 /// created with the `VaultController` and owned by it, so the premise is inverted and this file
 /// is rewritten in place to pin the inverse. None of the old assertions is disabled; the one
 /// that asserted the controller's disappearance now asserts its survival.

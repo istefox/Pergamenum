@@ -26,7 +26,7 @@ extension VaultController {
     /// trashed under it with no dialogue beforehand.
     ///
     /// It also refuses while the Workspace board has unsaved edits inside the folder
-    /// (ADR-0091 §D8): `folderRefusal(_:)` says which sentence, and this records it.
+    /// (ADR-0092 §D8): `folderRefusal(_:)` says which sentence, and this records it.
     func canOperateOnFolder(_ relativePath: String) -> Bool {
         guard let refusal = folderRefusal(relativePath) else { return true }
         recordProblem(refusal)
@@ -35,7 +35,7 @@ extension VaultController {
 
     /// Why a folder verb may not touch `relativePath`, nil when it may; records nothing. A dirty
     /// note tab under the folder comes first and answers the note's sentence. Otherwise the
-    /// vault controller's board, kept off screen with a pending or conflicted edit (ADR-0091
+    /// vault controller's board, kept off screen with a pending or conflicted edit (ADR-0092
     /// §D3), answers its own: moving its `.canvas` would leave `board` naming a path neither
     /// «Mantieni le mie modifiche» nor «Ricarica dal disco» can read (§D8). The Workspace's own
     /// verbs reach here after `settleForVerb()` has flushed or refused, so a healthy board is
@@ -61,7 +61,7 @@ extension VaultController {
     static let unsavedNoteInFolderRefusal = "salva la nota prima di rinominare o eliminare la cartella"
 
     /// The sentence a folder verb records when the Workspace board kept by the vault controller
-    /// has unsaved edits inside the folder (ADR-0091 §D8). `name` is the board's file name
+    /// has unsaved edits inside the folder (ADR-0092 §D8). `name` is the board's file name
     /// without `.canvas`, as `QuitReview.Board.name` spells it. It names only a rename or a
     /// trash although a move returns it too, mirroring `unsavedNoteInFolderRefusal`'s wording;
     /// the copy is frozen (gate G2).

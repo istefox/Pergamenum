@@ -108,7 +108,7 @@ extension VaultController {
         }
         // These refs were built by this undo, not by a Workspace browser row, so no
         // `settleForVerb()` ran upstream, and the step can run from any pane while the board is
-        // kept (ADR-0091 §D3). The forward door's settle, before anything moves, asked only when
+        // kept (ADR-0092 §D3). The forward door's settle, before anything moves, asked only when
         // the step carries the open board itself or a folder that holds it: a pending edit is
         // flushed into the file before it leaves, a conflicted board refuses the step, and an
         // unrelated open board is never asked, so it cannot consume this step.
@@ -203,7 +203,7 @@ extension VaultController {
     /// the undo/redo that builds one again runs that same settle first, and refuses a board its
     /// flush left pending (`attemptInverse`). The first refusal ends the walk.
     ///
-    /// A folder can be refused for a dirty note under it or, since ADR-0091 §D8, for the
+    /// A folder can be refused for a dirty note under it or, since ADR-0092 §D8, for the
     /// Workspace board kept with unsaved edits under it: `folderRefusal(_:)` answers which
     /// sentence, and that sentence is recorded and returned, never `problems.last` (PG-083).
     private func refusal(forAll items: [VaultItemRef]) -> String? {

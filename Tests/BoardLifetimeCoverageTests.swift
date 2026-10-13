@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// PG-392, ADR-0091 - (coverage). Business logic the diff touches that the requirement tests do
+// PG-392, ADR-0092 - (coverage). Business logic the diff touches that the requirement tests do
 // not reach: the staying clause of the board and diary sentences on every occasion, the
 // derivation of `openBoardPath`, what `detach()` writes and what it never does, and how a
 // cancelled vault switch records and reveals when the board is not the only thing left. Each
@@ -58,7 +58,7 @@ private func column(_ tabs: [NoteTab]) -> EditorColumn {
 }
 
 @Test func theNotesKeepTheirCapitalisedStayingSentenceOnEveryOccasion() {
-    // Items without a board or a diary are byte-identical to before ADR-0091 (§D5): the notes'
+    // Items without a board or a diary are byte-identical to before ADR-0092 (§D5): the notes'
     // sentences open with the capitalised `staying`, not the clause.
     var conflicted = tab("Nexion.md")
     conflicted.note.externalChangePending = .text("da fuori")

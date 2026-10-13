@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// PG-392, ADR-0091 §D1/§D3/§D7, plan Task 3 (R-05): the quit reaches a conflicted Workspace
+// PG-392, ADR-0092 §D1/§D3/§D7, plan Task 3 (R-05): the quit reaches a conflicted Workspace
 // board whose pane is not on screen. PG-336 (ADR-0089 §D7) lost that board with the view that
 // held its controller; the controller now lives with the vault, so the question names it, the
 // answers behave as for a board on screen, and a cancel shows it. `leavePane()` stands for the

@@ -2,19 +2,19 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// PG-336, ADR-0089 §D1, plan Task 5 (R-09), amended by PG-392 / ADR-0091 §D5 (R-06): the quit
+// PG-336, ADR-0089 §D1, plan Task 5 (R-09), amended by PG-392 / ADR-0092 §D5 (R-06): the quit
 // passes a board and a diary day to the review. The vault switch passes the board and never the
 // diary, and «Chiudi la colonna» passes neither, so a conflicted diary - present and conflicted
 // here - never reaches the switch's or the column close's question, words or answer, and a
 // conflicted board reaches the switch's only.
 //
 // G4 (2026-10-08): the first test below asserted that the switch never names a board, and the
-// third detached the board so the switch would ask nothing. ADR-0091 reverses the first and
+// third detached the board so the switch would ask nothing. ADR-0092 reverses the first and
 // makes the second premise moot; both are rewritten to assert the new contract, none disabled.
 
 @MainActor
 @Test func theVaultSwitchQuestionNamesTheNotesAndTheBoardNeverTheDiary() async throws {
-    // G4: this test asserted that the switch never names a board. ADR-0091 §D5 (R-06) reverses
+    // G4: this test asserted that the switch never names a board. ADR-0092 §D5 (R-06) reverses
     // that: the board is asked about, the diary is not.
     let a = try TemporaryVault()
     let b = try TemporaryVault()
@@ -117,7 +117,7 @@ import Testing
 @MainActor
 @Test func aConflictedDiaryAloneAsksNothingAtAVaultSwitch() async throws {
     // G4: the third test used to detach the board so the switch asked nothing. The board now
-    // asks (ADR-0091 §D5), so the half that stays true is the diary's (R-09): a vault with a
+    // asks (ADR-0092 §D5), so the half that stays true is the diary's (R-09): a vault with a
     // conflicted diary only and no board.
     let a = try TemporaryVault()
     let b = try TemporaryVault()

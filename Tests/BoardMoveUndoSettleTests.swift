@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// PG-392, ADR-0091 implementation notes: the undo of a batch move rebuilds a `.board` ref that
+// PG-392, ADR-0092 implementation notes: the undo of a batch move rebuilds a `.board` ref that
 // no Workspace browser row built, so `WorkspaceView+FolderVerbs`' `settleForVerb()` never ran for
 // it. `VaultController.attemptInverse` runs that settle itself, before the file moves back: a
 // pending edit on the open board is written into the file first, and a conflicted board refuses

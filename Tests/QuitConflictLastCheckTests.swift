@@ -40,7 +40,7 @@ private let diaryPath = "Diario/20260811.md"
 @Test func aCoveredBoardLeftByAnUncoveredRevealStaysConflictedAndRecordsNothing() async throws {
     // G4: this test asserted a compensating problem line for a board the cancel's reveal left,
     // because showing another pane destroyed the board's controller. The controller now lives
-    // with the vault (ADR-0091 §D1, §D7), so nothing is lost and no line is owed: the board
+    // with the vault (ADR-0092 §D1, §D7), so nothing is lost and no line is owed: the board
     // stays conflicted, and the line is gone with the loss it recorded.
     let vault = try TemporaryVault()
     let root = vault.root

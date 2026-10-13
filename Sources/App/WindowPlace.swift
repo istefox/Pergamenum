@@ -30,7 +30,7 @@ struct WindowPlace {
         case .workspace:
             // Read the *requested* path before the real one confirms it (ADR-0015 §D1
             // amendment) - `vault.openBoardPath`, read off the board the vault controller owns
-            // (ADR-0091 §D4), only names it once `WorkspaceView` has mounted and consumed the
+            // (ADR-0092 §D4), only names it once `WorkspaceView` has mounted and consumed the
             // route, a render pass later than `navigation.pane` itself changing. A board the
             // pane's leave released reads nil, so this is `.pane(.workspace)`, what the screen
             // shows. Falling back to it only after `pendingCanvas` clears is what

@@ -415,4 +415,4 @@ Every ADR is `docs/adr/NNNN-<slug>.md`; the title below is that file's own headi
 - ADR-0088 — One word-boundary truncator, and a capture title the panel always shows
 - ADR-0089 — A conflicted board or diary is asked about at quit
 - ADR-0090 — The editor's pointer is decided and drawn by AppKit, from two overrides
-- ADR-0091 — The Workspace board controller lives with the vault, not with its pane
+- ADR-0092 — The Workspace board controller lives with the vault, not with its pane

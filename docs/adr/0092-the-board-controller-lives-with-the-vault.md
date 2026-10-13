@@ -1,4 +1,4 @@
-# ADR-0091: The Workspace board controller lives with the vault, not with its pane
+# ADR-0092: The Workspace board controller lives with the vault, not with its pane
 
 - Status: **proposed**. Not on `main`: written with its plan, before the implementation.
 - Date: 2026-10-07. Written against `29bb3aa0`, which is both `origin/main` and the tip of

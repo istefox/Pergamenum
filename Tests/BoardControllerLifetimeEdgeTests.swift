@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Pergamenum
 
-// PG-392, ADR-0091 §D2, §D3 and §D9: the edges of the vault-owned board controller found in
+// PG-392, ADR-0092 §D2, §D3 and §D9: the edges of the vault-owned board controller found in
 // review, moved out of `BoardControllerLifetimeTests` (file_length) with their bodies unchanged:
 // a reopened vault re-points the kept board's thumbnails, a vault switch disarms the drawing
 // tool, a draft open at a pane leave is written, and a canvas route is refused while a kept board
@@ -108,7 +108,7 @@ private func isConflicted(_ board: WorkspaceController) -> Bool {
     let missingKept = board.openRoute((path: other, nodeID: keptCard), viewport: .zero)
     let missingAbsent = board.openRoute((path: other, nodeID: "assente"), viewport: .zero)
 
-    // ADR-0091 §D9: refused with ADR-0060's line, and nothing is resolved on the kept board.
+    // ADR-0092 §D9: refused with ADR-0060's line, and nothing is resolved on the kept board.
     #expect(missingKept == nil)
     #expect(missingAbsent == nil)
     #expect(board.selection.isEmpty)
