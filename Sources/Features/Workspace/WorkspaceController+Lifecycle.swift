@@ -94,6 +94,10 @@ extension WorkspaceController {
     /// and needs no `.terminateLater` for it. A conflicted board is not flushed - the write
     /// was already refused and was reported when it entered `.conflicted` (ADR-0054 §D5);
     /// quitting does not overwrite the other writer's bytes.
+    ///
+    /// Since ADR-0095 it is also the first half of a pane leave (`leavePane()`) and of a vault
+    /// switch (§D5): the board belongs to the vault controller, so all three reach it whichever
+    /// pane is on screen.
     func settleForTermination() {
         settleBoardEditing()
         if case .conflicted = saveState { return }
@@ -117,6 +121,40 @@ extension WorkspaceController {
         settleBoardEditing()
         flushPendingSave()
         return canLeaveOpenBoardForVerb()
+    }
+
+    /// A Workspace pane appeared over this board (ADR-0095 §D3). `WorkspaceView`'s `onAppear`
+    /// is the one caller.
+    func enterPane() {
+        panePresenters += 1
+    }
+
+    /// A Workspace pane disappeared from over this board (ADR-0095 §D3): settles and flushes
+    /// like every leave path, then releases the board only when no appearance is left and it is
+    /// saved. A conflicted board is kept, and the quit and the vault switch name it. A pending
+    /// one whose write failed is kept too but named by neither, since `quitConflict` answers
+    /// only for `.conflicted`: it carries its own write-failure line, and a quit or a switch
+    /// retries the write and lets it go if that fails again (ADR-0095 §D3, a named residual).
+    /// `WorkspaceView`'s `onDisappear` is the one caller.
+    ///
+    /// The count exists because SwiftUI can deliver a remount's new `onAppear` before the old
+    /// `onDisappear`: the board must not be released under the appearance that just arrived.
+    /// It never goes below zero. Both the count and the state are read after the flush, on the
+    /// same side as the release, with no `await` anywhere in between.
+    func leavePane() {
+        panePresenters = max(0, panePresenters - 1)
+        settleForTermination()
+        guard panePresenters == 0, saveState == .saved else { return }
+        // `select(nil)`'s folder/nil branch: reached only for a saved board, so its conflict
+        // guard cannot fire. The store, the thumbnails and the vault stay attached.
+        select(nil)
+        // The pane used to re-enter on a fresh controller, so a tool locked by a double click
+        // never outlived a leave. The controller is kept now, and a drawing tool still armed
+        // on the empty re-entry would draw on the next board opened. The wikilink title lists
+        // and `emailHeaders` also persist, but the first is reapplied on every pane appearance
+        // and the second is a parse of an immutable file, so neither is reset here.
+        tool = .select
+        isToolLocked = false
     }
 
     /// Drops a reframing owed to the board being left (#569 point 7). A deferred refit that

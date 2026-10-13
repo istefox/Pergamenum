@@ -143,7 +143,7 @@ final class QuitCoordinator {
 
         // 1. The board: its save is not async, so an edit inside its autosave debounce is
         // written before anything here decides whether to wait (#506, ADR-0066).
-        vault?.openBoard?.settleForTermination()
+        vault?.openBoard.settleForTermination()
 
         // 2. The notes, and the scheda edits whose write cannot land (PG-341) or already failed
         // (PG-373).
@@ -154,7 +154,7 @@ final class QuitCoordinator {
             columns: vault?.columns ?? [],
             vanishedSchede: pane?.vanishedSchedaEdits ?? [],
             failedSchede: pane?.failedSchedaEdits ?? [],
-            board: vault?.openBoard?.quitConflict,
+            board: vault?.openBoard.quitConflict,
             diary: diary()?.quitConflict
         )
         guard let vault, !review.isEmpty else { return diaryPhase(covering: review) }
@@ -171,7 +171,7 @@ final class QuitCoordinator {
             // is a board or diary day that changed or became conflicted (ADR-0089 §D4).
             let left = review.uncoveredWork(in: current)
             if !left.isEmpty {
-                showUncovered(left)
+                show(left.firstReveal())
                 return .cancel
             }
             contenitore()?.discardEdits(at: review.schede.map(\.path))
@@ -321,12 +321,12 @@ final class QuitCoordinator {
     /// board or diary day, is covered and the Contenitore inspector owes nothing. Anything
     /// uncovered, or a scheda edit whose write did not land, is revealed and cancels the quit
     /// (§D7, ADR-0089 §D4). No line for an uncovered board or day: its own conflict recorded one.
-    /// A covered conflicted board the reveal switches away from gets its `leftProblem` line, in
-    /// `showUncovered` (ADR-0089, implementation notes).
+    /// A covered conflicted board the reveal switches away from gets no line either: the vault
+    /// controller keeps it, still conflicted, for the next quit to name (ADR-0095 §D7).
     private func lastCheck(covering covered: QuitReview) -> Bool {
         let left = covered.uncoveredWork(in: current)
         if !left.isEmpty {
-            showUncovered(left)
+            show(left.firstReveal())
             return false
         }
         if let owed = contenitore(), owed.hasUnsettledEdits {
@@ -350,7 +350,7 @@ final class QuitCoordinator {
     private var current: QuitReview {
         let vault = vault()
         return QuitReview(
-            columns: vault?.columns ?? [], board: vault?.openBoard?.quitConflict, diary: diary()?.quitConflict
+            columns: vault?.columns ?? [], board: vault?.openBoard.quitConflict, diary: diary()?.quitConflict
         )
     }
 
@@ -370,17 +370,6 @@ final class QuitCoordinator {
         case .scheda(let path): revealContenitore(path)
         case nil: break
         }
-    }
-
-    /// Reveals what an answer left uncovered. A conflicted board the answer covered is not in
-    /// `left`, so a reveal of a note, the diary or a scheda can switch the pane away from it and
-    /// destroy its controller; that loss gets its own problem line (ADR-0089 §D5's wording).
-    private func showUncovered(_ left: QuitReview.Uncovered) {
-        let item = left.firstReveal()
-        if item != .board, let board = vault()?.openBoard?.quitConflict {
-            vault()?.recordProblem(board.leftProblem)
-        }
-        show(item)
     }
 
     private static func names(of review: QuitReview) -> String {

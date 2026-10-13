@@ -155,6 +155,9 @@ extension WorkspaceController {
         // open the board this route names and the link would silently do nothing.
         // `current` is the value that answers "is this board on screen".
         if current != .board(path: route.path) { open(board: route.path) }
+        // A refused open (a kept conflicted board, ADR-0095 §D9) or a failed read has recorded
+        // its own line and left another board on screen: the node is not looked up on that one.
+        guard current == .board(path: route.path) else { return nil }
 
         guard let nodeID = route.nodeID else { return nil }
         guard let node = document.nodes.first(where: { $0.id == nodeID }) else { return nodeID }

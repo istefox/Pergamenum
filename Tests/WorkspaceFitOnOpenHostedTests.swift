@@ -7,10 +7,11 @@ import Testing
 /// not `workspace.folder`. Two boards in one folder each open framed on their own content.
 ///
 /// The real `WorkspaceView` is hosted here, not a replica: the modifier under test lives in its
-/// `body`, so only the production view can pin it. Its `WorkspaceController` is `@State` inside
-/// the view and reached through `VaultController.openBoard`, the weak reference `attach` sets
-/// (ADR-0066 §D5). The boards hold file cards only: a text card needs `CommandActions` and
-/// through it `EventKitStore`, which the hosted-view harness keeps out (R-15).
+/// `body`, so only the production view can pin it. Its `WorkspaceController` is the one the
+/// vault controller owns, reached through `VaultController.openBoard` (ADR-0095 §D1, which
+/// replaced the weak reference `attach` set, ADR-0066 §D5; PG-392 plan Task 2, G4). The boards
+/// hold file cards only: a text card needs `CommandActions` and through it `EventKitStore`,
+/// which the hosted-view harness keeps out (R-15).
 ///
 /// Red against the pre-fix `.onChange(of: workspace.folder)`: both boards share folder `F`, so
 /// opening the second changed nothing the modifier watched, and its card, thousands of points
@@ -72,7 +73,7 @@ struct WorkspaceFitOnOpenHostedTests {
         defer { host.tearDown() }
         await host.settle()
 
-        let workspace = try #require(controller.openBoard)
+        let workspace = controller.openBoard
         let viewport = CGRect(origin: .zero, size: Self.size)
 
         workspace.open(board: first.path)

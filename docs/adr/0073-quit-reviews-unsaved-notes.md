@@ -2,6 +2,10 @@
 
 - Status: **accepted**. Merged to `main` via PR #707 (`cd3d9b15`, 2026-09-30), for `PG-326`/#693.
   The issue stays open until P1, P2, R-18 and the hand checks M1–M8 are verified (R-17).
+- **Amended 2026-10-07 (ADR-0095):** the last sentence of G-c ("A board whose pane left the
+  screen before the quit is still lost; it is ledger entry `PG-392`") is closed by ADR-0095: the
+  board controller lives with the vault controller, so the quit names a conflicted board whichever
+  pane is showing. Body untouched.
 - Date: 2026-09-29. Written before the implementation, against `9df450b9` (`origin/main` and
   `fix/pg-326-quit-unsaved-notes` are the same commit). Every line number below was read from that
   tree.

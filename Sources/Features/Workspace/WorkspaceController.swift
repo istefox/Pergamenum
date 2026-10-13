@@ -101,8 +101,9 @@ final class WorkspaceController {
     /// problem list of its own, so a recoverable failure is reported where the app
     /// already shows them (Impostazioni → Problemi, `SettingsView`).
     ///
-    /// Weak and observation-ignored: the vault outlives the board and nothing redraws
-    /// when it changes.
+    /// Weak and observation-ignored: the vault controller owns this board (ADR-0095 §D1), so
+    /// a strong back-reference would make the two hold each other, and nothing redraws when
+    /// it changes.
     @ObservationIgnored private weak var vault: VaultController?
 
     /// Strokes being drawn right now, before they are written to their SVG, and the
@@ -123,6 +124,9 @@ final class WorkspaceController {
     /// Not `private`: `scheduleSave()` and `flushPendingSave()` in
     /// `WorkspaceController+Saving.swift` own it; `detach()` here cancels it.
     var saveTask: Task<Void, Never>?
+    /// How many appearances of the Workspace pane are currently mounted over this board.
+    /// Written only by `enterPane()` and `leavePane()` in `WorkspaceController+Lifecycle.swift`.
+    var panePresenters = 0
     /// The reframing owed to a viewport that is still changing size, and the debounce
     /// waiting for it to settle. Stored here rather than as three `@State` flags in the
     /// view because it is viewport-framing policy; the behaviour lives in
@@ -141,6 +145,10 @@ final class WorkspaceController {
     /// `vault` is nil for the same reason and with the same effect on `recordProblem`:
     /// a board attached without one still works, its failures simply have nobody to
     /// report to.
+    ///
+    /// Resets the board, so it runs when a vault opens (`VaultController.rebindBoard`), never
+    /// on a pane appearance, which would wipe a board the pane's leave kept (ADR-0095 §D2).
+    /// It registers nothing: `VaultController.openBoard` is owned, not assigned here.
     func attach(
         to store: CanvasStore,
         thumbnails: ThumbnailStore? = nil,
@@ -149,9 +157,6 @@ final class WorkspaceController {
         self.store = store
         self.thumbnails = thumbnails
         self.vault = vault
-        // The one reference `AppDelegate` can reach this `@State`-held board through, so
-        // «Esci» can flush its autosave debounce (#506). Weak on the vault's side.
-        vault?.openBoard = self
         // ADR-0024's "loaded, not chosen" becomes "not loaded at all" (ADR-0025 §D4):
         // there is no root board to read (§D1) and nothing ever needed the load - the
         // board area draws only while `isShowingBoard`, which is false until something
@@ -169,28 +174,39 @@ final class WorkspaceController {
         history.reset()
     }
 
+    /// Points the board at the vault's current thumbnail cache and touches nothing else. For the
+    /// open vault reopened, where `VaultController.open(_:)` builds a new `ThumbnailStore` but
+    /// does not rebind, so the board and a conflict on it stay (ADR-0095 §D2).
+    func useThumbnails(_ thumbnails: ThumbnailStore?) {
+        self.thumbnails = thumbnails
+    }
+
+    /// Lets go of the vault's store. Called by the vault controller that owns this board when
+    /// another vault opens and when it closes (ADR-0095 §D2), never by a view. Idempotent: with
+    /// no store attached there is nothing to leave, and a second call records nothing.
     func detach() {
+        guard store != nil else { return }
         // Settles then flushes, like every leave path (ADR-0066), and in that order while
         // `current`/`store`/`board` still name the board being left. A crop mode left open
         // when the vault closes must not be silently lost (ADR-0020 Consequences), and a
         // crop confirmed a moment ago only scheduled the ~1 s autosave: cancelling that
         // below without writing it first lost `pergamenum-crop` (PG-255, #569 point 1).
         settleBoardEditing()
-        // A conflicted board is not flushed - it would attempt exactly the write already
-        // refused (ADR-0054 §D5) - so this is the one path left where an unresolved
-        // conflict's edit still disappears: reported, not blocked, since refusing to close
-        // over an autosave conflict would be worse than the loss it prevents.
+        // A conflicted board is not written - `save()` skips it, since it would attempt exactly
+        // the write already refused (ADR-0054 §D5). The conflict is read after the flush, so a
+        // flush its own refusal turned conflicted is reported too (ADR-0095 §D2): this is the
+        // one exit where an unresolved conflict's edit disappears, reported rather than
+        // blocked, since refusing to leave over an autosave conflict would be worse than the
+        // loss it prevents.
+        flushPendingSave()
         if case .conflicted = saveState {
             recordProblem(
                 "«\(board)» aveva un conflitto di salvataggio non risolto: le ultime modifiche non sono state salvate"
             )
-        } else {
-            flushPendingSave()
         }
         saveTask?.cancel()
         saveTask = nil
         cancelPendingRefit()
-        if vault?.openBoard === self { vault?.openBoard = nil }
         store = nil
         thumbnails = nil
         vault = nil
@@ -198,8 +214,15 @@ final class WorkspaceController {
         replaceDocument(.empty, origin: .none)
         setContents(.init(subfolders: [], unplaced: []))
         board = ""
+        // With the board gone nothing is unsaved, so a detached controller never reads as
+        // conflicted or pending (ADR-0095 §D2).
+        saveState = .saved
         current = nil
         selection = []
+        // As on a releasing `leavePane()`: the controller outlives the vault now, and a drawing
+        // tool still armed would draw on the next vault's first board.
+        tool = .select
+        isToolLocked = false
         // The settle above records a history step for whatever it committed; a step on a
         // board that is no longer open must not be undoable into the next one (ADR-0066).
         history.reset()

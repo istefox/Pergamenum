@@ -24,24 +24,51 @@ extension VaultController {
     /// in any column through the `.moved`/`.trashed` changes the session announces (ADR-0067
     /// §D1), so a dirty tab this check missed in another column would have its file moved or
     /// trashed under it with no dialogue beforehand.
+    ///
+    /// It also refuses while the Workspace board has unsaved edits inside the folder
+    /// (ADR-0095 §D8): `folderRefusal(_:)` says which sentence, and this records it.
     func canOperateOnFolder(_ relativePath: String) -> Bool {
-        let folder = relativePath.trimmingCharacters(in: .pathSlashes)
-        let hasDirtyTab = columns.contains { column in
-            column.tabs.contains { tab in
-                tab.note.hasUnsavedChanges
-                    && (tab.note.relativePath == folder || tab.note.relativePath.hasPrefix("\(folder)/"))
-            }
-        }
-        guard !hasDirtyTab else {
-            recordProblem(Self.unsavedNoteInFolderRefusal)
-            return false
-        }
-        return true
+        guard let refusal = folderRefusal(relativePath) else { return true }
+        recordProblem(refusal)
+        return false
     }
 
-    /// The exact sentence `canOperateOnFolder(_:)` records, kept as one value for the
+    /// Why a folder verb may not touch `relativePath`, nil when it may; records nothing. A dirty
+    /// note tab under the folder comes first and answers the note's sentence. Otherwise the
+    /// vault controller's board, kept off screen with a pending or conflicted edit (ADR-0095
+    /// §D3), answers its own: moving its `.canvas` would leave `board` naming a path neither
+    /// «Mantieni le mie modifiche» nor «Ricarica dal disco» can read (§D8). The Workspace's own
+    /// verbs reach here after `settleForVerb()` has flushed or refused, so a healthy board is
+    /// never refused twice. One exception: `settleForVerb()` refuses only `.conflicted`, so a
+    /// flush whose write fails leaves the board `.pending` and this refuses the verb with the
+    /// board's sentence. That is the safe direction: the file stays where the edits point.
+    func folderRefusal(_ relativePath: String) -> String? {
+        let folder = relativePath.trimmingCharacters(in: .pathSlashes)
+        let isInside = { (path: String) in path == folder || path.hasPrefix("\(folder)/") }
+        let hasDirtyTab = columns.contains { column in
+            column.tabs.contains { tab in tab.note.hasUnsavedChanges && isInside(tab.note.relativePath) }
+        }
+        if hasDirtyTab { return Self.unsavedNoteInFolderRefusal }
+        if openBoard.hasUnsavedChanges, !openBoard.board.isEmpty, isInside(openBoard.board) {
+            let name = ((openBoard.board as NSString).lastPathComponent as NSString).deletingPathExtension
+            return Self.unsavedBoardInFolderRefusal(named: name)
+        }
+        return nil
+    }
+
+    /// The note's sentence `canOperateOnFolder(_:)` records, kept as one value for the
     /// same reason as `unsavedNoteRefusal` in `VaultController+Files.swift`.
     static let unsavedNoteInFolderRefusal = "salva la nota prima di rinominare o eliminare la cartella"
+
+    /// The sentence a folder verb records when the Workspace board kept by the vault controller
+    /// has unsaved edits inside the folder (ADR-0095 §D8). `name` is the board's file name
+    /// without `.canvas`, as `QuitReview.Board.name` spells it. It names only a rename or a
+    /// trash although a move returns it too, mirroring `unsavedNoteInFolderRefusal`'s wording;
+    /// the copy is frozen (gate G2).
+    static func unsavedBoardInFolderRefusal(named name: String) -> String {
+        "risolvi le modifiche non salvate della board «\(name)» nel Workspace "
+            + "prima di rinominare o eliminare la cartella"
+    }
 
     /// Renames a folder and repoints every card that pointed inside it (R-05, R-06,
     /// R-07). It renames no board file: that is `renameBoard` below (ADR-0025 §D6).

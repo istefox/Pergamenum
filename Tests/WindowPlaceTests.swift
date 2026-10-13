@@ -74,6 +74,55 @@ private func makePlace(
     vaultController.close()
 }
 
+@MainActor
+@Test func destinationOnTheWorkspacePaneNamesTheBoardTheControllerShows() async throws {
+    // PG-392, ADR-0095 §D4 (R-08): the path is read off the controller the vault owns, not from
+    // a copy the view pushed up once it had mounted.
+    let vault = try TemporaryVault()
+    let (place, _, vaultController, navigation) = try await makePlace(vault)
+    let board = try CanvasStore(root: vault.root).createBoard(named: "Piano", in: "")
+
+    navigation.pane = .workspace
+    #expect(place.destination == .pane(.workspace))
+    vaultController.openBoard.open(board: board)
+
+    #expect(place.destination == .workspaceBoard(board))
+    vaultController.close()
+}
+
+@MainActor
+@Test func destinationIsThePaneOnceALeaveReleasedTheBoard() async throws {
+    // The stale-mirror defect of ADR-0095 §Context: a released board must stop being the place.
+    let vault = try TemporaryVault()
+    let (place, _, vaultController, navigation) = try await makePlace(vault)
+    let board = try CanvasStore(root: vault.root).createBoard(named: "Piano", in: "")
+    navigation.pane = .workspace
+    vaultController.openBoard.open(board: board)
+    vaultController.openBoard.enterPane()
+    #expect(place.destination == .workspaceBoard(board))
+
+    vaultController.openBoard.leavePane()
+
+    #expect(place.destination == .pane(.workspace))
+    vaultController.close()
+}
+
+@MainActor
+@Test func aHistoryStepToABoardOpensItThroughThePendingRoute() async throws {
+    let vault = try TemporaryVault()
+    let (place, _, vaultController, _) = try await makePlace(vault)
+    let board = try CanvasStore(root: vault.root).createBoard(named: "Piano", in: "")
+
+    place.apply(.workspaceBoard(board))
+    // What `WorkspaceView.openPendingCanvas()` does once the pane mounts.
+    let route = try #require(vaultController.consumePendingCanvasRoute())
+    vaultController.openBoard.openRoute(route, viewport: .zero)
+
+    #expect(vaultController.openBoardPath == board)
+    #expect(place.destination == .workspaceBoard(board))
+    vaultController.close()
+}
+
 // MARK: `isDrift` (§D3)
 
 @MainActor

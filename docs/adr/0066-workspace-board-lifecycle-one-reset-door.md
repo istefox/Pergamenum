@@ -5,6 +5,13 @@
 **Accepted**. Merged to `main` via PR #598 (`1ec9d558`, 2026-09-27), closing `PG-255`/#569
 (Audit Fable chain 2) and #506.
 
+**Amended 2026-10-07 (ADR-0095):** §D5's `VaultController.openBoard` is now owned by the vault
+controller, created with it and never replaced, not a weak reference; `attach` no longer sets it
+and `detach` no longer clears it. Attach and detach follow the vault, not the pane (ADR-0095 §D2).
+§D2 gains one leave path, the pane leave (`leavePane()`, ADR-0095 §D3), which settles, flushes and
+then releases only a saved board. The Consequences bullet calling the reference "weak and serves
+the quit path alone" is superseded. Body untouched.
+
 ## Context
 
 `WorkspaceController` holds two kinds of state: what belongs to the vault (store, thumbnails,

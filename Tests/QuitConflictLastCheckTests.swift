@@ -37,7 +37,11 @@ private let diaryPath = "Diario/20260811.md"
 }
 
 @MainActor
-@Test func aCoveredBoardLeftByAnUncoveredRevealRecordsItsLine() async throws {
+@Test func aCoveredBoardLeftByAnUncoveredRevealStaysConflictedAndRecordsNothing() async throws {
+    // G4: this test asserted a compensating problem line for a board the cancel's reveal left,
+    // because showing another pane destroyed the board's controller. The controller now lives
+    // with the vault (ADR-0095 §D1, §D7), so nothing is lost and no line is owed: the board
+    // stays conflicted, and the line is gone with the loss it recorded.
     let vault = try TemporaryVault()
     let root = vault.root
     let controller = try await quitController(vault)
@@ -56,7 +60,8 @@ private let diaryPath = "Diario/20260811.md"
     #expect(probe.shown.count == 1)
     #expect(probe.shown.first != .board)
     #expect(probe.replies.isEmpty)
-    #expect(controller.problems.contains { $0.contains(boardProblem) })
+    #expect(!controller.problems.contains { $0.contains(boardProblem) })
+    #expect(controller.openBoard.quitConflict != nil)
     #expect(bytes(root, path) == before)
     board.detach()
     controller.close()

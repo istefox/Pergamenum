@@ -2,7 +2,8 @@ import Foundation
 
 // PG-336, ADR-0089: the two conflict items of the quit review - a conflicted Workspace board and
 // a conflicted diary day - their words (§D3), what an answer covers (§D4) and where a cancel goes
-// (§D6). Only the quit passes them (§D1): the vault switch and «Chiudi la colonna» never do.
+// (§D6). The quit passes both (§D1); the vault switch passes the board alone (ADR-0095 §D5);
+// «Chiudi la colonna» passes neither.
 
 extension QuitReview {
     /// The open board, conflicted, as the question showed it (ADR-0089 §D1).
@@ -27,7 +28,20 @@ extension QuitReview {
         }
 
         /// The problem line recorded when the quit is cancelled with this board left.
-        var leftProblem: String { "Uscita annullata: \(listLine) ha un conflitto di salvataggio non risolto" }
+        var leftProblem: String { leftProblem(for: .quit) }
+
+        /// The problem line for a cancel on `occasion` with this board left (ADR-0095 §D5). The
+        /// quit's is `leftProblem`, byte-identical; the column close passes no board, so its
+        /// line is never recorded and exists for completeness.
+        func leftProblem(for occasion: QuitReview.Occasion) -> String {
+            let cancelled = switch occasion {
+            case .quit: "Uscita annullata"
+            case .vaultSwitch: "Apertura di un'altra cartella note annullata"
+            // Never reached in production (no board at a column close); tests only.
+            case .columnClose: "Chiusura della colonna annullata"
+            }
+            return "\(cancelled): \(listLine) ha un conflitto di salvataggio non risolto"
+        }
     }
 
     /// The diary day, conflicted, as the question showed it (ADR-0089 §D1).
@@ -92,9 +106,11 @@ extension QuitReview {
     }
 
     /// The one place the items' order lives (ADR-0089 §D6, gate G1): the board, the notes, the
-    /// diary, then the Contenitore schede. The board comes first because showing any other pane
-    /// destroys its controller, and with it the edits the question protected. `copy(for:)`
-    /// lists the items in this same order, so a cancel shows the item the question named first.
+    /// diary, then the Contenitore schede. The board leads because it is the item listed first,
+    /// and one order serves both the list and the reveal: `copy(for:)` lists the items in this
+    /// same order, so a cancel shows the item the question named first. (It no longer leads to
+    /// save its controller from another pane's reveal: the vault controller owns it, ADR-0095
+    /// §D7.)
     /// `namingTab: false` is «Annulla»'s `reveal(nil)` (ADR-0073 §D7).
     static func firstReveal(
         board: Board?, notes: [Entry], diary: DiaryDay?, schede: [Scheda], namingTab: Bool
