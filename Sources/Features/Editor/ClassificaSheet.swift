@@ -11,8 +11,30 @@ struct ClassificaSheet: View {
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
     @Environment(VaultController.self) private var vault
-    let schedaPath: String
-    let actions: ContenitoreCommandActions
+    /// What «Classifica…» is asked about (ADR-0085 §D5): a note of the vault or a Contenitore
+    /// scheda. A note gets `NoteClassificaForm`; a scheda keeps the form below, unchanged.
+    enum Subject: Identifiable, Equatable {
+        case note(String)
+        case scheda(String)
+
+        var id: String {
+            switch self {
+            case .note(let path): "note:\(path)"
+            case .scheda(let path): "scheda:\(path)"
+            }
+        }
+    }
+
+    let subject: Subject
+
+    init(subject: Subject) {
+        self.subject = subject
+    }
+
+    private var schedaPath: String {
+        if case .scheda(let path) = subject { return path }
+        return ""
+    }
 
     @State private var topics: [Tag] = []
     @State private var type: Tag?
@@ -25,6 +47,16 @@ struct ClassificaSheet: View {
     @State private var model: ContenitoreInspectorModel?
 
     var body: some View {
+        switch subject {
+        case .scheda:
+            schedaBody
+        case .note(let path):
+            NoteClassificaForm(path: path)
+        }
+    }
+
+    @ViewBuilder
+    private var schedaBody: some View {
         let model = self.model
         let result = model.map { model in
             ContenitoreClassification.classify(

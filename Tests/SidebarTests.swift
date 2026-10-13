@@ -68,6 +68,20 @@ import Testing
     }
 }
 
+// PG-387 (N4), ADR-0085 §D1, plan docs/plans/pg-387-n4-birth-of-note.md, Task 4 - R-01:
+// «Da classificare» sits in LAVORO right after «Attività» (SPEC R-01). Red until Task 5 adds
+// `.pane(.unfiled)` to `SidebarItem.Group.work.items` - the placement fact is declared here.
+@Test func unfiledSitsInLavoroRightAfterTasks() {
+    let work = SidebarItem.Group.work.items
+    #expect(work.contains(.pane(.unfiled)), "«Da classificare» non è nel gruppo LAVORO")
+
+    let tasksIndex = work.firstIndex(of: .pane(.tasks))
+    let unfiledIndex = work.firstIndex(of: .pane(.unfiled))
+    if let tasksIndex, let unfiledIndex {
+        #expect(unfiledIndex == tasksIndex + 1, "«Da classificare» deve seguire immediatamente «Attività» in LAVORO")
+    }
+}
+
 // MARK: - Il catalogo delle viste
 
 private let catalogueNote = """

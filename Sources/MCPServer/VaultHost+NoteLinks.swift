@@ -17,7 +17,7 @@ extension VaultHost {
                 session, from: try arguments.required("path"), to: try arguments.required("target")
             ))
         default:
-            return nil
+            return try await writeNoteBirth(name, arguments)
         }
     }
 }

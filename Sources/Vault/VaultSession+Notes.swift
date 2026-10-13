@@ -125,18 +125,11 @@ extension VaultSession {
     }
 
     /// The path of a day's note, created when it is not there yet with the daily
-    /// frontmatter (`type-note` alone) and an empty body; there is no daily template
-    /// (SPEC §8.1).
+    /// frontmatter (`type-note` alone) and the daily template's body, or an empty one when
+    /// the vault names no template (ADR-0086 §D3, through `dailyNoteBirth`).
     @discardableResult
     func dailyNote(for date: CalendarDate) async throws -> String {
-        let relativePath = dailyNotePath(for: date)
-        if exists(relativePath) { return relativePath }
-        return try await createNote(
-            title: date.compactForm,
-            in: settings.dailyFolder,
-            date: date,
-            category: .daily
-        ).path
+        try await dailyNoteBirth(for: date, at: Date()).path
     }
 
     // MARK: Files brought in

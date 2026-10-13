@@ -72,7 +72,8 @@ extension VaultAPI {
         to destination: CaptureDestination,
         text: String,
         scheduled: String? = nil,
-        due: String? = nil
+        due: String? = nil,
+        template: String? = nil
     ) async throws -> WriteSummary {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else {
@@ -81,6 +82,14 @@ extension VaultAPI {
         if case .task = destination {} else if scheduled != nil || due != nil {
             throw ConnectorError(
                 "le date valgono solo per un task: usa --dest task, oppure toglile",
+                usage: true
+            )
+        }
+        // ADR-0086 §D5: a template shapes a note being born, so it is refused rather than
+        // dropped on the three destinations that write into an existing note or a task.
+        if case .newNote = destination {} else if template != nil {
+            throw ConnectorError(
+                "un modello vale solo per una nota nuova: usa la destinazione note, oppure toglilo",
                 usage: true
             )
         }
@@ -93,15 +102,15 @@ extension VaultAPI {
         case .note(let path):
             return try await appendToNote(session, at: path, text: body)
         case .newNote(let folder):
-            return try await captureAsNote(session, text: body, folder: folder)
+            return try await captureAsNote(session, text: body, folder: folder, template: template)
         }
     }
 
     // MARK: Today
 
     /// Today's daily note, created when the day has none (the daily frontmatter,
-    /// `type-note` alone, and an empty body: there is no daily template), then the text on
-    /// the end of it.
+    /// `type-note` alone, and the daily template's body when the vault names one, ADR-0086
+    /// §D3), then the text on the end of it.
     ///
     /// Two writes for one capture, and the summary describes the second: the first is
     /// the note coming into existence, which `dailyNote(for:)` has always done on
@@ -140,9 +149,12 @@ extension VaultAPI {
     /// from it, and the whole text, first line included, becomes the body, so nothing
     /// typed is lost (ADR-0080 §D3). `createNote` still refuses an invalid title; it is
     /// never handed one. A derived title already taken is refused like a typed one.
+    ///
+    /// With a `template` the note is written once: the template resolved for the derived title,
+    /// the rest of the text at its `{{cursor}}` or after its body (ADR-0086 §D5).
     @MainActor
     private static func captureAsNote(
-        _ session: VaultSession, text: String, folder: String?
+        _ session: VaultSession, text: String, folder: String?, template: String? = nil
     ) async throws -> WriteSummary {
         // Split at the first line break as the typed line reads one (`CaptureTitle.endsTypedLine`):
         // `"\r\n"` is one `Character`, so a split on `"\n"` left its `"\r"` on the title and in
@@ -157,6 +169,15 @@ extension VaultAPI {
             : firstBreak
                 .map { String(text[text.index(after: $0)...]) }?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if let template {
+            let resolved = try resolvedTemplate(session, reference: template, title: derived.title, date: .today)
+            let body = rest.isEmpty ? resolved.body : NoteTemplate.composing(captured: rest, into: resolved)
+            return try await createNoteWritten(
+                session, title: derived.title, folder: folder ?? session.inboxFolder, topics: [],
+                date: .today, body: body
+            )
+        }
 
         let created = try await createNote(
             session,

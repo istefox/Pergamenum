@@ -14,7 +14,8 @@ enum WriteCommands {
             title: arguments.rest(from: 2),
             folder: arguments["folder"],
             topic: arguments["topic"],
-            date: arguments["date"]
+            date: arguments["date"],
+            template: arguments["template"]
         )
         Writing.report(summary, arguments: arguments)
         return Writing.finish(session)
@@ -103,7 +104,8 @@ enum WriteCommands {
             to: destination,
             text: arguments.rest(from: 1),
             scheduled: arguments["scheduled"],
-            due: arguments["due"]
+            due: arguments["due"],
+            template: arguments["template"]
         )
         Writing.report(summary, arguments: arguments)
         return Writing.finish(session)

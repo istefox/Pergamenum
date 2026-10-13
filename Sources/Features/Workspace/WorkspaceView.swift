@@ -278,7 +278,7 @@ struct WorkspaceView: View {
     /// same position-less default `pendingWorkspacePlacement` uses below.
     private func checkPendingNewBoard() {
         guard vault.consumePendingNewBoard() else { return }
-        newItemDraft = NewItemDraft(kind: .folder, point: CGPoint(x: 60, y: 60))
+        newItemDraft = NewItemDraft(kind: .item(.folder), point: CGPoint(x: 60, y: 60))
     }
 
     /// Named out of the `ImportSheet` closure: an inline `for` loop there pushed the

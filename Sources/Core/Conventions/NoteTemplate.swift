@@ -45,14 +45,110 @@ enum NoteTemplate {
         return String(body)
     }
 
-    /// Substitutes the two placeholders v1 knows, and only those.
+    /// Substitutes the placeholders, and only those it knows.
     ///
     /// An unrecognised `{{…}}` is left exactly as written. Silently emptying it would
     /// destroy text the person typed on the strength of a guess about what they meant;
     /// left visible, it is a question they can answer themselves.
+    ///
+    /// A forward to `resolve` since ADR-0086 §D1. Production code resolves through `resolve`;
+    /// this one is kept, with the same signature, because the `NoteTemplateTests` assertions pin
+    /// it. `{{time}}` reads `00:00` here and `{{cursor}}` is removed, since nothing on this path
+    /// places a caret.
     static func substituting(title: String, date: CalendarDate, in body: String) -> String {
-        body
-            .replacingOccurrences(of: "{{title}}", with: title)
-            .replacingOccurrences(of: "{{date}}", with: date.description)
+        resolve(body, title: title, date: date, time: TaskTime(hour: 0, minute: 0)).body
+    }
+
+    // MARK: - `{{time}}` and `{{cursor}}` (PG-387, ADR-0086 §D1)
+
+    /// The placeholder that marks where the caret goes; never written.
+    static let cursorMarker = "{{cursor}}"
+
+    /// A template's body with its placeholders resolved, and where `{{cursor}}` stood.
+    struct Resolved: Equatable, Sendable {
+        var body: String
+        /// UTF-16 offset of the first `{{cursor}}` in `body`, nil when the template had none.
+        var caretOffset: Int?
+
+        /// The absolute caret offset once `body` is written at the end of `text` (the frontmatter
+        /// and its separating line break come first). Nil without a marker, or when `text` does
+        /// not end with `body`.
+        func caret(inWritten text: String) -> Int? {
+            guard let caretOffset, text.hasSuffix(body) else { return nil }
+            return text.utf16.count - body.utf16.count + caretOffset
+        }
+
+        /// How many UTF-16 units lie between the caret and the end of `body`.
+        var cursorBack: Int? { caretOffset.map { body.utf16.count - $0 } }
+    }
+
+    /// `{{title}}`, `{{date}}` and `{{time}}` resolved, `{{cursor}}` located and removed.
+    ///
+    /// The marker is located in the template before any other substitution, so a title that
+    /// contains it is typed text and is written as typed. The first marker gives the caret; the
+    /// others are removed.
+    static func resolve(_ template: String, title: String, date: CalendarDate, time: TaskTime) -> Resolved {
+        func substitute(_ segment: String) -> String {
+            segment
+                .replacingOccurrences(of: cursorMarker, with: "")
+                .replacingOccurrences(of: "{{title}}", with: title)
+                .replacingOccurrences(of: "{{date}}", with: date.description)
+                .replacingOccurrences(of: "{{time}}", with: TimeOfDay.formatted(hour: time.hour, minute: time.minute))
+        }
+        guard let marker = template.range(of: cursorMarker) else {
+            return Resolved(body: substitute(template), caretOffset: nil)
+        }
+        let before = substitute(String(template[..<marker.lowerBound]))
+        let after = substitute(String(template[marker.upperBound...]))
+        return Resolved(body: before + after, caretOffset: before.utf16.count)
+    }
+
+    /// A capture's text put at the marker, or after the body with one blank line.
+    static func composing(captured: String, into resolved: Resolved) -> String {
+        let body = resolved.body as NSString
+        if let offset = resolved.caretOffset, offset <= body.length {
+            return body.replacingCharacters(in: NSRange(location: offset, length: 0), with: captured)
+        }
+        var trimmed = resolved.body
+        while trimmed.last == "\n" || trimmed.last == "\r" { trimmed.removeLast() }
+        return trimmed.isEmpty ? captured : trimmed + "\n\n" + captured
+    }
+
+    /// A template by path, by title or by `Titolo.md`, among the templates' paths.
+    ///
+    /// An exact path wins; otherwise the file name decides, and two templates sharing it in two
+    /// subfolders are ambiguous rather than picked by order.
+    static func reference(
+        _ reference: String, among templatePaths: [String]
+    ) -> Result<String, TemplateReferenceError> {
+        let trimmed = reference.trimmingCharacters(in: .whitespaces)
+        let withExtension = trimmed.hasSuffix(".md") ? trimmed : trimmed + ".md"
+        if let exact = templatePaths.first(where: { $0 == trimmed || $0 == withExtension }) {
+            return .success(exact)
+        }
+        let fileName = (withExtension as NSString).lastPathComponent
+        let matches = templatePaths.filter { ($0 as NSString).lastPathComponent == fileName }
+        switch matches.count {
+        case 1: return .success(matches[0])
+        case 0: return .failure(.unknown(reference, available: templatePaths.sorted()))
+        default: return .failure(.ambiguous(reference, candidates: matches.sorted()))
+        }
+    }
+}
+
+/// Why a `--template` reference named no single template.
+enum TemplateReferenceError: Error, Equatable, Sendable {
+    case unknown(String, available: [String])
+    case ambiguous(String, candidates: [String])
+
+    var sentence: String {
+        switch self {
+        case .unknown(let name, let available):
+            available.isEmpty
+                ? "nessun modello «\(name)»: la cartella \(NoteTemplate.folder)/ non ne contiene"
+                : "nessun modello «\(name)». Modelli disponibili: \(available.joined(separator: ", "))"
+        case .ambiguous(let name, let candidates):
+            "«\(name)» indica più modelli, scegli il percorso: \(candidates.joined(separator: ", "))"
+        }
     }
 }

@@ -31,6 +31,13 @@ struct EditorColumnView: View {
     /// Bumped after a note is created, so the editor that replaces the composer opens with the
     /// cursor already in it.
     @State var focusRequest = 0
+    /// Where a note born from a template or a composed body puts the caret (ADR-0086 §D4), taken
+    /// once from the tab's `pendingCaret` and applied once by the text view.
+    @State var caretRequest: NoteTextView.SelectionInputs.CaretRequest?
+    /// The last id handed to `caretRequest`. Kept apart from it because the text view clears the
+    /// request once applied, and an id derived from the cleared value would restart at 1 and be
+    /// refused by a ledger that already claimed 1.
+    @State var caretRequestCount = 0
     /// The embedded file a click asked to see, and the panel that shows it. Empty until there
     /// is one: the Quick Look host takes first responder whenever it has a file.
     @State var previewURLs: [URL] = []
@@ -169,6 +176,13 @@ struct EditorColumnView: View {
         // column appears.
         .onChange(of: vault.editorFocusRequest, initial: true) { _, _ in
             if vault.takeEditorFocusRequest(forColumn: columnIndex) { focusRequest += 1 }
+        }
+        // A note just born with a caret (ADR-0086 §D4): taken from the front tab once, with a new
+        // id, so the text view places it once. `initial: true` for the reason above.
+        .onChange(of: tab?.pendingCaret, initial: true) { _, _ in
+            guard let offset = vault.takePendingCaret(forColumn: columnIndex) else { return }
+            caretRequestCount += 1
+            caretRequest = .init(id: caretRequestCount, offset: offset)
         }
     }
 

@@ -66,14 +66,24 @@ struct TemplateSheet: View {
               let text = try? vault.session?.read(template.relativePath).text
         else { return }
 
-        let body = NoteTemplate.substituting(
-            title: note.title,
-            date: .today,
-            in: NoteTemplate.body(of: text)
+        let clock = Calendar.current.dateComponents([.hour, .minute], from: Date())
+        let insertion = Self.insertion(
+            templateText: text, title: note.title, date: .today,
+            time: TaskTime(hour: clock.hour ?? 0, minute: clock.minute ?? 0)
         )
         // Through `Navigation`, which is how every other insertion reaches the editor:
         // the sheet has no reference to the text view, and giving it one would break the
         // moment the editor is rebuilt.
-        navigation.insert(body)
+        navigation.insert(insertion.text, cursorBack: insertion.cursorBack)
+    }
+
+    /// What the sheet writes at the caret and how far back from the end of it the caret goes
+    /// (ADR-0086 §D4, R-08): the template body resolved, `{{cursor}}` removed and turned into
+    /// `cursorBack` (0 without a marker, which leaves the caret at the end as before).
+    static func insertion(
+        templateText: String, title: String, date: CalendarDate, time: TaskTime
+    ) -> (text: String, cursorBack: Int) {
+        let resolved = NoteTemplate.resolve(NoteTemplate.body(of: templateText), title: title, date: date, time: time)
+        return (resolved.body, resolved.cursorBack ?? 0)
     }
 }

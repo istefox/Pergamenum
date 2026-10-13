@@ -23,6 +23,7 @@ extension ToolCatalogue {
                     "topic": ["type": "string", "description":
                         "un tag topic-*, es. topic-acustica; senza topic la nota nasce come cattura (status-inbox)"],
                     "date": ["type": "string", "description": "YYYY-MM-DD, oggi se omesso"],
+                    "template": templateProperty,
                     "dryRun": dryRunProperty,
                 ],
                 "required": ["title"],
@@ -138,6 +139,7 @@ extension ToolCatalogue {
                     ],
                     "scheduled": ["type": "string", "description": "solo con «task»: YYYY-MM-DD"],
                     "due": ["type": "string", "description": "solo con «task»: YYYY-MM-DD"],
+                    "template": templateProperty,
                     "dryRun": dryRunProperty,
                 ],
                 "required": ["text"],
