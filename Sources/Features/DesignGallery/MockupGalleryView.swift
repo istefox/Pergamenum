@@ -63,7 +63,8 @@ struct MockupGalleryView: View {
     enum Screen: String, CaseIterable, Identifiable {
         case capture, slash, code, outline, folding, transclusion, embed, find, format,
              history, template, tabs, tagBrowser, mentions, views, week, taskControls,
-             gutter, editor, workspace, today, tasks, linkPreview, inspectorLinks, noteBirth
+             gutter, editor, workspace, today, tasks, linkPreview, inspectorLinks, noteBirth,
+             callouts, constructs, embedsAndTables
 
         var id: String { rawValue }
 
@@ -100,6 +101,9 @@ struct MockupGalleryView: View {
             case .linkPreview: Page("Link", "N3, approvato", LinkPreviewMockup())
             case .inspectorLinks: Page("Ispettore: link", "N3, approvato", InspectorLinksMockup())
             case .noteBirth: Page("Nascita di una nota", "N4, approvato", NoteBirthMockup())
+            case .callouts: Page("Callout", "N5, da approvare", CalloutMockup())
+            case .constructs: Page("Codice, citazioni e chip", "N5, da approvare", PageConstructsMockup())
+            case .embedsAndTables: Page("Embed, transclusioni e tabelle", "N5, da approvare", PageEmbedsMockup())
             }
         }
     }

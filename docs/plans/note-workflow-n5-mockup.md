@@ -226,3 +226,14 @@ Checked on `d2be1588`, by grep of each named path and symbol:
 - **New, patched above:** the stale N2 gallery page and the existing quote column.
 - **Unchanged and still to be settled at the gate:** the eight values in Task 1 (re-measure only if
   the gate retunes them, with Task 2's thresholds as the bound).
+
+## Build result (2026-10-14)
+
+BUILD · DONE
+Files: 12 (tokens in TokenKeys.swift, Theme.swift and both theme JSONs; 3 new DesignGallery screens + MockupGalleryView.swift; NoteConstructTokenTests.swift new; DesignSystemTests.swift and MockupGalleryLayoutTests.swift updated)
+Tests: 6829 tests in 415 suites passed, 5 known issues pre-existing, 0 (coverage)
+Review: sonnet, safe
+Coverage: not run, the plan's requirement set is not SPEC.md (R-35 covered by NoteConstructTokenTests; R-36 to R-43 belong to note-workflow-n5.md)
+Dropped: 1 (dismissed 0, post-sweep 0, nit 0: the "InheritsThem" rename was judged not a typo and left, matching PraticaRailTokenTests.swift:78)
+Dispatch: Round 1 (sweep): coder — 4 NITs (line length, test name, 0.35 comment, sheetTrailingPadding)
+Human gate pending: Stefano approves the three N5 screens on the Debug build, light and dark, before docs/plans/note-workflow-n5.md starts.

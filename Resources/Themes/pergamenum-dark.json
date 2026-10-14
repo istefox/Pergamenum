@@ -63,7 +63,19 @@
       "string": { "$value": "#9CC49B" },
       "comment": { "$value": "#77726A" },
       "number": { "$value": "#79BDB8" },
-      "type": { "$value": "#8AB4E8" }
+      "type": { "$value": "#8AB4E8" },
+      "inlineBackground": { "$value": "#2B2925" }
+    },
+    "highlight": { "$value": "#5C4B1A" },
+    "quote": {
+      "bar": { "$value": "#6A655C" }
+    },
+    "callout": {
+      "note": { "$value": "#8AB4E8" },
+      "tip": { "$value": "#9CC49B" },
+      "important": { "$value": "#C79BC4" },
+      "warning": { "$value": "#E0B060" },
+      "caution": { "$value": "#F2867E" }
     },
     "sticky": {
       "yellow": { "$value": "#4A3F1E" },

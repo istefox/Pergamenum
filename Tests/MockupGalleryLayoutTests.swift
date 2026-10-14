@@ -110,4 +110,31 @@ struct MockupGalleryLayoutTests {
         let row = 2 * (InspectorLinksMockup.mirrorCellWidth + cellPadding) + rowSpacing
         #expect(row <= MockupGalleryView.rowWidth)
     }
+
+    // (note-workflow-n5-mockup Task 3, R-35) The three N5 pages are reachable from the picker and
+    // carry the milestone that marks them proposals, the shape of the N3 test above.
+    @Test func theN5PagesAreListedWithTheirTitleAndMilestone() {
+        let pages: [(MockupGalleryView.Screen, String)] = [
+            (.callouts, "Callout"),
+            (.constructs, "Codice, citazioni e chip"),
+            (.embedsAndTables, "Embed, transclusioni e tabelle"),
+        ]
+        for (screen, title) in pages {
+            #expect(MockupGalleryView.Screen.allCases.contains(screen))
+            #expect(screen.title == title)
+            #expect(screen.milestone == "N5, da approvare")
+        }
+    }
+
+    // (note-workflow-n5-mockup Task 3) The N5 sheets start their text at the gutter (`spacing.gutter`,
+    // 48) and pad `spacing.m` on the right, so the placeholder, the three table columns and the
+    // column menu must fit what is left of the row, or they are clipped at both edges.
+    @Test func theN5EmbedScenesFitTheTextColumn() {
+        let sheetTrailingPadding: CGFloat = 16 // `spacing.m`
+        let textColumn = MockupGalleryView.rowWidth - 48 - sheetTrailingPadding
+        #expect(PageEmbedsMockup.placeholderWidth > 0)
+        #expect(PageEmbedsMockup.placeholderWidth <= textColumn)
+        #expect(3 * PageEmbedsMockup.columnWidth <= textColumn)
+        #expect(PageEmbedsMockup.menuWidth <= 3 * PageEmbedsMockup.columnWidth)
+    }
 }

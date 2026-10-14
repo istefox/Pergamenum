@@ -137,6 +137,16 @@ func rejectsMalformedHex(_ input: String) {
             #expect(!theme.inheritedTokens.contains(path), "\(id) should define \(path)")
         }
 
+        // ADR-0087 §D4 (R-35): the page's remaining constructs. Contrast and values are pinned in
+        // `NoteConstructTokenTests`; the paths are named here so a red run says which is missing.
+        for path in [
+            "color.code.inlineBackground", "color.highlight", "color.quote.bar",
+            "color.callout.note", "color.callout.tip", "color.callout.important",
+            "color.callout.warning", "color.callout.caution",
+        ] {
+            #expect(!theme.inheritedTokens.contains(path), "\(id) should define \(path)")
+        }
+
         // The category dot's own saturated palette, distinct from `color.sticky.*`
         // (`CategoryColor+Token.swift`). Both bundled themes must define all five.
         #expect(!theme.inheritedTokens.contains("color.category.yellow"), "\(id) should define color.category.yellow")
