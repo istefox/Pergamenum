@@ -12,7 +12,8 @@
 - Number: `0087` was reserved for this record by the chain's dispatch and checked free on every
   ref on 2026-10-04 (`git log --all -- 'docs/adr/0087*'` printed nothing). Check again
   immediately before the merge (`docs/adr/README.md` rule 1).
-- Source: the root `SPEC.md` (Approved 2026-10-04), milestone N5, R-35 to R-43; background in
+- Source: `docs/specs/note-workflow-n5.spec.md` (Approved 2026-10-04, restored on 2026-10-14 from the
+  root `SPEC.md` of `f697b363`), milestone N5, R-35 to R-43; background in
   `docs/20261003_Pergamenum_NoteWorkflowRoadmap.md` §2 "N5" and
   `docs/20261002_Pergamenum_NoteWorkflowReport.md` R-3 to R-7 and R-10. Plans:
   `docs/plans/note-workflow-n5-mockup.md` (the mockup PR, first) and
@@ -28,7 +29,9 @@
   constructs that hide their syntax (§D1).
 - Depends on: ADR-0082 (the styler classifies through `MarkdownBlockParser` and
   `MarkdownInlineParser`, so a construct added there reaches the editor), ADR-0081 (the quote
-  content column a revealed `>` hangs left of) and N1's R-07 (Cmd+click on a `#tag` or a `>date`).
+  content column a revealed `>` hangs left of) and N1's R-12 and R-13 (Cmd+click on a `#tag` or a
+  `>date`; "R-07" in this record's first text was a wrong number). All three are on `main`: see
+  "Amendments before implementation (2026-10-14)".
 - No on-disk format change, no frontmatter key, no `IndexCache.schemaVersion` bump, no
   protected-interface change. `CompletingTextView+Pasteboard.swift` (protected as a whole) is not
   edited: every new click and menu hook goes through a closure or a delegate method it already
@@ -357,6 +360,50 @@ through `commitTable`.**
   inline code, a `swift` fence, `> [!avviso]-`, `==highlight==`, a nested quote, an inline
   `![[scheda.pdf]]`, a transclusion and a right-aligned column.
 
+## Amendments before implementation (2026-10-14)
+
+Re-read on `d2be1588` (`origin/main`) with the plan `docs/plans/note-workflow-n5.md`, which carries
+the task-level consequences. Status stays `planned`: nothing here is built. The decisions D1 to D12
+stand; what changed is the code they were written against, and one earlier record they now touch.
+
+1. **The parser seam is the token layer.** ADR-0082 landed (PR #956, `558db01c`) as
+   `MarkdownLineToken` and `MarkdownInlineToken` (`Sources/Core/Markdown/MarkdownTokens.swift`),
+   mapped to `Span` by `MarkdownStyler.blockSpans(of:)` and `spans(of:)`. §D2 and §D3's "the inline
+   parser", "the block parser" and the styler mapping are read as: a new `MarkdownInlineToken.Kind`
+   for `==`, a new line-token kind for a callout header and its body lines, and the styler mapping
+   them. The quote level is the existing `.quote(level:marker:)`'s.
+2. **The quote column is already measured.** ADR-0081 §D3 hangs a quote at
+   `EditorGutter.quoteColumn(level:font:gutter:)`, step `quoteStepInEms` = 0.75 em, for the concealed
+   bars and the revealed `>` run alike. §D7's "the step ADR-0081 fixed; `spacing.m` if it fixed
+   none" resolves to the first: `QuoteGeometry` delegates to `quoteColumn`. Only the `▏` substitution
+   is replaced; the hang, and the raw `>` run when the caret is in the line, stay.
+3. **Amends ADR-0091 §D3.** §D3 states that the blockquote has no row in the restyle widening rule
+   because "nothing joins two quote lines". A callout does: a body line is a body line because of a
+   header above it, and breaking the run changes the lines below. `MarkdownLineSignature` gains an
+   `isQuote` member and `RestyleScope` a row widening an edit that touches or adjoins a quote line
+   to its maximal run of quote lines (the tables row's shape). The property test that a scoped
+   restyle equals a full one gains a callout case, and `Tests/RestyleScopeTests.swift:287`
+   ("Blockquote (line-local)") is rewritten to the new rule.
+4. **ADR-0091 §D6 applies to every new offset-keyed holder** (shift where it lives, extend the hosted
+   twin test, join `shiftDerivedState`): pending embed entries, callout title offsets in the hidden
+   markers, the fold pass's hidden lines. `NoteTab.toggledCallouts` is model state of
+   `foldedEntries`' class: offsets read fresh against the text on each pass, so an edit above a
+   callout can drop its toggle, as it can drop a heading's fold. §Neutral's "a callout's fold is
+   lost when its tab closes" gains that sentence.
+5. **ADR-0096 owns the update path.** `OutlineInputs` carries `toggledCallouts` and
+   `onToggleCallout` in its declared equality, fed from `EditorColumn+Text.swift` beside
+   `onToggleFold`, so a toggle runs a pass and an unrelated keystroke does not.
+6. **ADR-0091 §D7 scopes the embed and transclusion passes to the dirty range.** §D9's `.pending`
+   placeholder and §D10's caption hold on a spliced range, with tests above and below the embed.
+7. **The keystroke budgets exist** (`EditorRestyleBudgetTests`, `EditorUpdatePathBudgetTests`). The
+   code PR runs them after each task and brings any ceiling change to Stefano.
+8. **N1's tag and date clicks** are N1 SPEC R-12 and R-13 (`clickURL(for:source:)`), not R-07.
+
+Facts in "What the code draws today" that are no longer true (measured at `48a2d912`, kept as
+history): `MarkdownBlocks.swift:198-199` is now `:203-205`; the reading view's quote bar is still
+`color.border.strong` (`MarkdownBlocksView.swift:105-108`); `MarkdownInline.swift:9-14` is
+unchanged for `MarkdownSpan.Style`. Every other claim in that section was re-read and holds.
+
 ## Alternatives considered
 
 - **Italian keywords in the file** (the roadmap's wording, `> [!avviso]` written by the app).
@@ -434,7 +481,8 @@ through `commitTable`.**
 
 ## References
 
-- Root `SPEC.md` (Approved 2026-10-04), milestone N5, R-35 to R-43; R-44 and R-45 chain-wide.
+- `docs/specs/note-workflow-n5.spec.md` (Approved 2026-10-04), milestone N5, R-35 to R-43; R-44 and
+  R-45 chain-wide.
 - `docs/20261003_Pergamenum_NoteWorkflowRoadmap.md` §2 N5 and §3; `docs/20261002_Pergamenum_NoteWorkflowReport.md`
   R-3 to R-7, R-10.
 - ADR-0018 (substitution at identical length), ADR-0019 (embed resize, §D8 handle guard),
