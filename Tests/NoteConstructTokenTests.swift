@@ -201,6 +201,16 @@ private let noteConstructBundledIDs = ["pergamenum-light", "pergamenum-dark"]
         #expect(ratio >= 4.5, "\(id) color.text.secondary on color.code.inlineBackground: \(ratio):1")
     }
 
+    /// PG-391: an H6 is drawn in `color.text.secondary` on the page (n1-seams R-15), so it has to
+    /// read as text, not as a hint, in the light theme as well as the dark one.
+    @Test(arguments: noteConstructBundledIDs)
+    func secondaryTextOnThePageMeetsFourPointFiveToOne(id: String) throws {
+        let engine = ThemeEngine(defaults: isolatedDefaults())
+        let theme = try bundled(id, in: engine)
+        let ratio = Self.contrast(theme.rawColor(.textSecondary), theme.rawColor(.backgroundPrimary))
+        #expect(ratio >= 4.5, "\(id) color.text.secondary on color.background.primary: \(ratio):1")
+    }
+
     @Test(arguments: noteConstructBundledIDs)
     func primaryTextOnTheHighlightMeetsFourPointFiveToOne(id: String) throws { // R-35
         let engine = ThemeEngine(defaults: isolatedDefaults())
