@@ -1,8 +1,10 @@
 # ADR-0087: The editor draws the remaining constructs
 
-- Status: **planned**. Written before the implementation (milestone N5 of the note-workflow
-  chain, issue #890). Flip to `accepted` with the merge commit of N5's code PR, per
-  `docs/adr/README.md` rule 2.
+- Status: **accepted**. Written before the implementation (milestone N5 of the note-workflow
+  chain, issue #890) and landed ahead of its code (`docs/adr/README.md` rule 2). The implementation
+  reached `main` in PR #1009 (merge `af380f6f`, 2026-10-15), with PR #1011 (`10403017`, 2026-10-15)
+  sweeping the kill-switch memo. The mockup gate for the three N5 screens was not passed before the
+  build: it is owed as `PG-421` and may retune the eight colour tokens.
 - Date: 2026-10-04. Written against `48a2d912` (`origin/main` at the same commit). Every line
   number below was read there. N5 is built last: by the time its code lands, N1 (ADR-0080) and N2
   (ADR-0081, ADR-0082) are on `main`, and N2 will have rewritten `MarkdownStyler.spans(in:)` over
