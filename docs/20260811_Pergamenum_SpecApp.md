@@ -183,10 +183,31 @@ L'architettura harness vigente (ADR 20/07/2026, emendata 30/07/2026) assegna i t
   nidificazione illimitata —, le parentesi di un link e di un wikilink, con il target risolto
   esposto come tooltip sull'etichetta, e la riga `---` resa come filetto orizzontale (ADR-0029).
   La regola non è più «i tre costrutti nominati»: ADR-0029 ne ha superato il confine di scope.
+  *Emendato 2026-10-14 (ADR-0087).* Si aggiungono, ognuno nascosto lontano dal cursore e
+  rivelato come sintassi quando il cursore lo raggiunge:
+  - il codice inline come pillola, con i backtick nascosti;
+  - l'evidenziato `==testo==`, con gli `==` nascosti; dentro il codice non è evidenziato;
+  - l'intestazione di un fence chiuso, con il linguaggio e il numero di righe, e la sua riga di
+    chiusura come filetto discreto; il menu contestuale dentro il blocco offre «Copia il blocco»,
+    che copia il corpo senza le righe del fence;
+  - il callout `> [!tipo] Titolo`: le parole chiave si scrivono in inglese (`note`, `tip`,
+    `important`, `warning`, `caution`), gli alias italiani sono letti, le etichette sono in
+    italiano e un tipo sconosciuto è neutro; `-` o `+` lo rende ripiegabile, e lo stato aperto o
+    chiuso vale per tab e non è mai scritto nel file. Un callout si ripiega solo dove lo si può
+    riaprire: nel Diario, in Oggi e con la sintassi visibile non c'è chevron e ogni callout è
+    disegnato aperto, anche con `-`;
+  - le citazioni rientrate per livello, con una barra a tutta altezza per livello;
+  - un embed riserva lo spazio della miniatura prima che arrivi; un embed in mezzo al testo o di
+    un file non disegnabile è un chip con il nome del file, e un clic lo apre in Anteprima;
+  - la riga sorgente di una transclusione diventa la didascalia «da «Nota» › Sezione»;
+  - tag e date come chip.
 - **Una tabella GFM è una griglia vera, editabile in posizione** (ADR-0029): un
   `NSTextAttachmentViewProvider` ancorato alla riga di intestazione, celle attraversabili con
   Tab, ogni cella riscritta nella sorgente markdown al commit — Tab, Invio o perdita del fuoco —
-  così che ogni `Cmd+Z` annulli esattamente un commit.
+  così che ogni `Cmd+Z` annulli esattamente un commit. *Emendato 2026-10-14 (ADR-0087).* Ogni
+  colonna ha un menu, dal controllo accanto ai pulsanti della colonna o dal clic destro
+  sull'intestazione: allinea a sinistra, al centro o a destra (riscrivendo la riga dei
+  delimitatori) e ordina le righe A→Z o Z→A, ognuno annullato da un solo `Cmd+Z`.
 - **La tipografia dell'editor è una pagina, non un buffer di codice** (ADR-0030,
   2026-09-04): il corpo della nota è reso con il token `font.prose` (Avenir Next 16,
   interlinea 1.4) e i titoli con la scala interpolata fra `font.proseTitle` e `font.prose` —

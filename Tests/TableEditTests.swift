@@ -108,6 +108,94 @@ private func fixtureTable() -> GFMTable? {
     }
 }
 
+// MARK: - Alignment and sort (ADR-0087 §D11, plan N5 Task 1, R-41)
+
+@Suite struct TableColumnEdits {
+    @Test func alignChangesOneColumnsAlignmentAndNothingElse() throws { // R-41
+        let table = try #require(fixtureTable())
+        let edited = TableEdit.align(column: 1, .trailing).applied(to: table)
+        #expect(edited.alignments == [.leading, .trailing])
+        #expect(edited.header == table.header)
+        #expect(edited.rows == table.rows)
+    }
+
+    @Test func aRightAlignedColumnSerialisesItsDelimiterRowWithTheTrailingColon() throws { // R-41
+        let table = try #require(fixtureTable())
+        let edited = TableEdit.align(column: 1, .trailing).applied(to: table)
+        let lines = edited.serialised().components(separatedBy: "\n")
+        #expect(lines.count == 4)
+        #expect(lines[1] == "|---|--:|")
+    }
+
+    @Test func centerWritesTheCenteredDelimiter() throws { // R-41
+        let table = try #require(fixtureTable())
+        let edited = TableEdit.align(column: 0, .center).applied(to: table)
+        #expect(edited.serialised().components(separatedBy: "\n")[1] == "|:-:|---|")
+    }
+
+    /// Setting the alignment a column already has is not an edit: the table comes back unchanged,
+    /// so `commitTable` refuses it as a no-op and no empty undo step is recorded.
+    @Test func aliningAColumnAsItAlreadyIsReturnsTheTableUnchanged() throws { // R-41
+        let table = try #require(fixtureTable())
+        #expect(TableEdit.align(column: 0, .leading).applied(to: table) == table)
+    }
+
+    @Test(arguments: [-1, 2, 7])
+    func alignRefusesAColumnOutOfRange(_ column: Int) throws { // R-41
+        let table = try #require(fixtureTable())
+        #expect(TableEdit.align(column: column, .center).applied(to: table) == table)
+    }
+
+    private static func table(_ rows: [[String]]) throws -> GFMTable {
+        let lines = ["| k | v |", "|---|---|"] + rows.map { "| \($0[0]) | \($0[1]) |" }
+        let parsed = try #require(GFMTable.parse(lines[...]))
+        // The fixture must read back as written, or the assertions below are about the parser.
+        #expect(parsed.rows == rows)
+        return parsed
+    }
+
+    @Test func sortOrdersBodyRowsByLocalizedStandardCompareSoTwoComesBeforeTen() throws { // R-41
+        let table = try Self.table([["10", "a"], ["2", "b"], ["1", "c"]])
+        #expect(TableEdit.sort(column: 0, ascending: true).applied(to: table).rows == [["1", "c"], ["2", "b"], ["10", "a"]])
+        #expect(TableEdit.sort(column: 0, ascending: false).applied(to: table).rows == [["10", "a"], ["2", "b"], ["1", "c"]])
+    }
+
+    @Test func emptyCellsComeLastInBothDirections() throws { // R-41
+        let lines = ["| k | v |", "|---|---|", "| 10 | a |", "|  | b |", "| 2 | c |"]
+        let table = try #require(GFMTable.parse(lines[...]))
+        #expect(table.rows[1] == ["", "b"], "the fixture's empty cell did not parse as empty")
+        #expect(TableEdit.sort(column: 0, ascending: true).applied(to: table).rows.map(\.[0]) == ["2", "10", ""])
+        #expect(TableEdit.sort(column: 0, ascending: false).applied(to: table).rows.map(\.[0]) == ["10", "2", ""])
+    }
+
+    @Test func theSortIsStableSoEqualKeysKeepTheirOrder() throws { // R-41
+        let table = try Self.table([["b", "1"], ["a", "2"], ["b", "3"], ["a", "4"]])
+        #expect(
+            TableEdit.sort(column: 0, ascending: true).applied(to: table).rows
+                == [["a", "2"], ["a", "4"], ["b", "1"], ["b", "3"]]
+        )
+        #expect(
+            TableEdit.sort(column: 0, ascending: false).applied(to: table).rows
+                == [["b", "1"], ["b", "3"], ["a", "2"], ["a", "4"]]
+        )
+    }
+
+    @Test func sortLeavesTheHeaderAndTheRowCountAlone() throws { // R-41
+        let table = try Self.table([["3", "x"], ["1", "y"], ["2", "z"]])
+        let sorted = TableEdit.sort(column: 1, ascending: false).applied(to: table)
+        #expect(sorted.header == table.header)
+        #expect(sorted.alignments == table.alignments)
+        #expect(sorted.rows.count == 3)
+        #expect(sorted.rows.map(\.[1]) == ["z", "y", "x"])
+    }
+
+    @Test(arguments: [-1, 2, 9])
+    func sortRefusesAColumnOutOfRange(_ column: Int) throws { // R-41
+        let table = try Self.table([["3", "x"], ["1", "y"]])
+        #expect(TableEdit.sort(column: column, ascending: true).applied(to: table) == table)
+    }
+}
+
 // MARK: - Committing back to the note (ADR-0029 §D7/§D8)
 
 @MainActor

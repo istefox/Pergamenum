@@ -77,7 +77,7 @@ extension NoteTextView {
         // (ADR-0096 §D7): nothing folded reads nothing.
         coordinator.applyFolding(
             to: textView, folded: coordinator.foldedOrdinals(of: outline.foldedOffsets, in: textView),
-            hidesFrontmatter: outline.hidesFrontmatter, theme: theme
+            hidesFrontmatter: outline.hidesFrontmatter, toggledCallouts: outline.toggledCallouts, theme: theme
         )
         // After the styling, always: a styling rewrites the attributes it covers and
         // invalidates the layout with them, so a highlight painted before it would be

@@ -196,7 +196,18 @@ struct EditGenerator {
     static let structuralTokens: [String] = [
         "```", "~~~", "```pergamenum-view\n", "---", "[[", "]]", "![[", "| --- |", "- ", "1. ", "> ", "\t", "\r\n",
         "\u{2028}", "\r", "*", "_", "~", "!", "| a | b |\n", "- [ ] ", "  - ", "# ", "**",
+        // A closed code span. Since ADR-0087 §D5 a backtick run closes only at a run of the same length
+        // (CommonMark), so the alphabet's lone backticks stopped pairing into spans on their own and
+        // most texts held none: the non-vacuity floor of `expectEqualToFullRestyle` failed on five seeds.
+        // This restores the generator's coverage of inline code; no assertion moved. `==x==` is the
+        // other span ADR-0087 added to the inline grammar, and the closed emphasis runs are the spans
+        // the same texts carry, so the alphabet draws them whole as well.
+        "`x`", "==x==", "**x**", "*x*", "~~x~~",
     ]
+    /// The text a structural run starts from: a closed code span, a highlight, strong and emphasis
+    /// runs, so the first steps compare styled texts and not empty span lists (`proseStart`'s reason).
+    /// Nothing here opens a fence, a table, a link or frontmatter: the run's edits do that.
+    static let structuralStart = "`uno` ==due== **tre** *quattro*\n\n> citazione\n"
     /// Prose only: nothing here opens a fence, a table, a link or a block of frontmatter, so every edit
     /// is a local one. Lists, headings, quotes, emphasis and tags are line-local and stay in.
     static let proseAtoms: [String] = [

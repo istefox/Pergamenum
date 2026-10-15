@@ -5,32 +5,30 @@ import AppKit
 /// own the way `+ListRendering.swift` and `+CheckboxRendering.swift` already are - one
 /// self-contained concern, one `extension` file (`type_body_length`).
 extension EditorDecorationDelegate {
-    /// The blockquote branch of the substitution in `textContentStorage(_:textParagraphWith:)`:
-    /// meant to draw a `>`/`>>`/`>>>` run as one `▏` per nesting level, character for
-    /// character - the file's own `>` count *is* the depth (R-03, unbounded), so a bar is a
-    /// straight one-for-one substitution and never a computed indent the way `.list`'s glyph
-    /// is. `Self.survivors(among:of:in:)` is what the coder reuses here to collapse any other
-    /// marker sharing the same paragraph (a bold run inside a quote, the SPEC's coexistence
-    /// case) - the same reuse `listParagraph(at:storage:)` already makes.
+    /// The blockquote branch of the substitution in `textContentStorage(_:textParagraphWith:)`.
+    /// `Self.survivors(among:of:in:)` collapses any other marker sharing the paragraph (a bold run
+    /// inside a quote, the SPEC's coexistence case), the reuse `listParagraph(at:storage:)` makes.
     ///
-    /// At a gutter (ADR-0081 §D3, the note editor only) the quote also hangs: its content sits
-    /// at `EditorGutter.quoteColumn`, and the run displayed before it - the bars concealed, the
-    /// file's `>` run revealed - hangs from that column, so the content does not move when the
-    /// caret enters the line. The revealed paragraph is then the source with that style and no
-    /// substitution. Without a gutter (a card, §D6) nothing changes: no style concealed, nil
-    /// revealed.
+    /// At a gutter (the note editor) the concealed `>` run is collapsed and the content hangs at
+    /// `EditorGutter.quoteColumn`, one `QuoteGeometry` step per level, while `QuoteBarFragment` draws
+    /// the bars (ADR-0087 §D7). Revealed, the file's `>` run hangs from that same column, so the
+    /// content does not move when the caret enters the line (ADR-0081 §D3). Without a gutter (a
+    /// card, §D6) the run is still drawn one `▏` per `>`, character for character, with no style,
+    /// and a revealed quote is nil.
     ///
-    /// Nil - leaving the raw `>` source on screen exactly as today - whenever there is
-    /// nothing to draw: no blockquote marker at this offset, the paragraph revealed because
-    /// the caret is in it (ADR-0018 §D2) with no gutter to hang in, the setting off, or the
-    /// marker gone stale against the real characters since the last styling pass.
+    /// A callout's title line carries no blockquote marker: it is handed to
+    /// `calloutTitleParagraph(at:storage:)`. Nil - leaving the raw source on screen - whenever there
+    /// is nothing to draw: no marker at this offset, the paragraph revealed with no gutter to hang
+    /// in, the setting off, or the marker gone stale against the real characters.
     func quoteParagraph(at range: NSRange, storage: NSTextStorage) -> NSTextParagraph? {
         // Its own guard rather than the caller's: `textContentStorage(_:textParagraphWith:)`
         // already refuses at its first line without the setting, but this branch is reached
         // directly too, and ADR-0018 §D10's switch has to mean off wherever it is asked.
         let revealed = revealedParagraphs.contains(range.location)
         guard hidesMarkup, !revealed || gutter > 0 else { return nil }
-        guard let marker = marker(of: .blockquote, at: range) else { return nil }
+        guard let marker = marker(of: .blockquote, at: range) else {
+            return calloutTitleParagraph(at: range, storage: storage)
+        }
 
         let text = storage.string as NSString
         let markerRange = NSRange(
@@ -48,24 +46,27 @@ extension EditorDecorationDelegate {
         }
 
         let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
-        // One bar per `>`, character for character: the substitution is the same length as
-        // what it replaces, which is `NSTextContentManager.h:120`'s constraint and the whole
-        // reason nesting is unbounded here (R-03) - there is no depth to cap because there
-        // is no table to keep, the file's own characters are the count.
-        copy.replaceCharacters(
-            in: NSRange(location: marker.range.location, length: level),
-            with: String(repeating: Self.quoteBar, count: level)
-        )
-        // The single space after the last `>`, when the line wrote one: collapsed rather
-        // than kept, so the quoted text sits against its bars instead of one space further
-        // right than the line above it (ADR-0029 §D1).
-        if marker.range.length > level {
-            copy.addAttribute(
-                .font, value: Self.collapsedFont,
-                range: NSRange(
-                    location: marker.range.location + level, length: marker.range.length - level
-                )
+        if gutter > 0 {
+            // At a gutter the run is collapsed and `QuoteBarFragment` draws the bars, one per level
+            // over the fragment's full height (ADR-0087 §D7, amending ADR-0029 §D1's bullet): a glyph
+            // per `>` cannot span a wrapped paragraph.
+            copy.addAttribute(.font, value: Self.collapsedFont, range: marker.range)
+        } else {
+            // A card (gutter 0, ADR-0081 §D6) keeps the bars it always drew: one `▏` per `>`,
+            // character for character, the substitution the same length as what it replaces
+            // (`NSTextContentManager.h:120`), which is why nesting is unbounded (R-03).
+            copy.replaceCharacters(
+                in: NSRange(location: marker.range.location, length: level),
+                with: String(repeating: Self.quoteBar, count: level)
             )
+            // The single space after the last `>`, when the line wrote one: collapsed rather
+            // than kept, so the quoted text sits against its bars (ADR-0029 §D1).
+            if marker.range.length > level {
+                copy.addAttribute(
+                    .font, value: Self.collapsedFont,
+                    range: NSRange(location: marker.range.location + level, length: marker.range.length - level)
+                )
+            }
         }
         // The paragraph's other markers, collapsed exactly as the generic path in the main
         // file would have collapsed them: this branch returns early, and a quoted line whose
@@ -73,31 +74,42 @@ extension EditorDecorationDelegate {
         // the hook is allowed to hand back - the reuse `listParagraph` already makes.
         let markers = hiddenMarkers[range.location] ?? []
         for other in Self.survivors(among: markers.filter { $0.kind != .blockquote }, of: range, in: text) {
-            copy.addAttribute(.font, value: Self.collapsedFont, range: other.range)
+            collapse(other, in: copy)
         }
         for tooltip in Self.linkTooltips(
             among: Self.survivors(among: markers, of: range, in: text), of: range, in: text
         ) {
             copy.addAttribute(.toolTip, value: tooltip.target, range: tooltip.range)
         }
-        // The bars alone: the space after them is collapsed above and draws as nothing.
-        if gutter > 0 {
-            hangQuote(copy, level: level, displayedRun: String(repeating: Self.quoteBar, count: level))
-        }
+        // Nothing is displayed before the content: it starts at the column, as the revealed run's does.
+        if gutter > 0 { hangQuote(copy, level: level, displayedRun: "") }
         return NSTextParagraph(attributedString: copy)
     }
 
     /// Hangs `displayedRun` from the quote's column over the whole displayed paragraph (ADR-0081
     /// §D3): wrapped lines at `quoteColumn`, the first line `w` before it, clamped at zero. Composed
     /// on the style the paragraph already carries, so the page's line height, the gutter's tail
-    /// indent and the paragraph gap survive.
-    private func hangQuote(_ copy: NSMutableAttributedString, level: Int, displayedRun: String) {
+    /// indent and the paragraph gap survive. `inset` moves the content further in, past what a
+    /// fragment draws before it (a callout title's symbol).
+    func hangQuote(_ copy: NSMutableAttributedString, level: Int, displayedRun: String, inset: CGFloat = 0) {
         let style = NSMutableParagraphStyle()
         if let base = Self.bodyParagraphStyle(of: copy) { style.setParagraphStyle(base) }
-        let column = EditorGutter.quoteColumn(level: level, font: proseFont, gutter: gutter)
+        let column = EditorGutter.quoteColumn(level: level, font: proseFont, gutter: gutter) + inset
         style.headIndent = column
         style.firstLineHeadIndent = max(0, column - markerWidths.width(of: displayedRun, in: proseFont))
         copy.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: copy.length))
+    }
+
+    /// Colours a quote line's text, from the end of its `>` run to the end of its line, in `color`
+    /// (`color.text.secondary`, ADR-0087 §D7). Called by the styling pass at the marker's span, so
+    /// the spans after it on the line (a link, a tag) keep their own colours.
+    static func colourQuoteText(after marker: NSRange, in storage: NSTextStorage, color: NSColor) {
+        let text = storage.string as NSString
+        let line = text.paragraphRange(for: NSRange(location: marker.location, length: 0))
+        let start = NSMaxRange(marker)
+        let length = NSMaxRange(line) - start
+        guard length > 0 else { return }
+        storage.addAttribute(.foregroundColor, value: color, range: NSRange(location: start, length: length))
     }
 
     /// U+258F LEFT ONE EIGHTH BLOCK - the bar a `>` is drawn as. One character wide, which

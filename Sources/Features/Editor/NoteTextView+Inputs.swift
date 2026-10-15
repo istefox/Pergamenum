@@ -62,6 +62,15 @@ extension NoteTextView {
         /// `NoteFolding` reads through the store's map, against the text it just styled, so an edit
         /// that moves a heading cannot re-target the wrong section (ADR-0096 §D7).
         var foldedOffsets: Set<Int> = []
+        /// The callouts whose fold the person flipped (`NoteTab.toggledCallouts`, ADR-0087 §D8), as
+        /// their title lines' offsets, read fresh against the text by the fold pass.
+        var toggledCallouts: Set<Int> = []
+        /// Called with a callout's title offset when its chevron is clicked (`VaultController.
+        /// toggleCallout`). Nil in the Diario and Oggi editors, which draw each file's default.
+        var onToggleCallout: ((Int) -> Void)?
+        /// Called with the flipped callouts' title offsets once an edit moved them, so the tab keeps
+        /// them on the titles they were set on (`VaultController.setToggledCallouts`, ADR-0091 §D6).
+        var onCalloutsMoved: ((Set<Int>) -> Void)?
     }
 
     /// What the editor needs to follow, preview and offer a link (ADR-0083 §D2, §D3, §D6, §D7),

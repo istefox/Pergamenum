@@ -60,7 +60,7 @@ extension EditorDecorationDelegate {
             // paragraph the hook is allowed to hand back.
             let markers = hiddenMarkers[range.location] ?? []
             for other in Self.survivors(among: markers.filter { $0.kind != .list }, of: range, in: text) {
-                copy.addAttribute(.font, value: Self.collapsedFont, range: other.range)
+                collapse(other, in: copy)
             }
         }
         if item.indent > 0 {

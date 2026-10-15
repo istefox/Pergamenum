@@ -39,13 +39,13 @@ import Testing
 
     // (n2-page R-18) A quote with a space after its marker stays a quote, date or not.
     @Test func aDateAfterAQuoteMarkerAndASpaceStaysAQuote() {
-        #expect(MarkdownBlockParser.blocks(in: "> 2026-10-04 riunione") == [.quote(["2026-10-04 riunione"])])
-        #expect(MarkdownBlockParser.blocks(in: ">citato") == [.quote(["citato"])])
+        #expect(MarkdownBlockParser.blocks(in: "> 2026-10-04 riunione") == [.quote([.init(level: 1, text: "2026-10-04 riunione")])])
+        #expect(MarkdownBlockParser.blocks(in: ">citato") == [.quote([.init(level: 1, text: "citato")])])
     }
 
     // (n2-page R-18) An invalid date right after the caret is no scheduling token: still a quote.
     @Test func anInvalidDateRightAfterTheCaretStaysAQuote() {
-        #expect(MarkdownBlockParser.blocks(in: ">2026-02-31") == [.quote(["2026-02-31"])])
+        #expect(MarkdownBlockParser.blocks(in: ">2026-02-31") == [.quote([.init(level: 1, text: "2026-02-31")])])
     }
 
     // (n2-page R-18) ADR-0082 §D4's second export change: a single `*` steps over the `**` pair

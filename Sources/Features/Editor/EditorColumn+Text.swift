@@ -166,7 +166,12 @@ extension EditorColumnView {
             store: vault.columns.indices.contains(columnIndex)
                 ? vault.registeredOutlineStore(forColumn: vault.columns[columnIndex].id) : nil,
             currentRevision: { tab?.note.revision },
-            foldedOffsets: tab?.foldedEntries ?? []
+            foldedOffsets: tab?.foldedEntries ?? [],
+            // A callout's chevron (ADR-0087 §D8): the title offset, straight from the fragment.
+            toggledCallouts: tab?.toggledCallouts ?? [],
+            onToggleCallout: { offset in focused { vault.toggleCallout(offset) } },
+            // The tab's flips follow the edits like its text does: the same tab the binding writes.
+            onCalloutsMoved: { offsets in vault.setToggledCallouts(offsets, inColumn: columnIndex) }
         )
     }
 

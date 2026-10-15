@@ -45,6 +45,11 @@ final class EmbedAttachment: NSTextAttachment {
     /// it at `guard case .drawn` (§D8).
     var handleColor: NSColor?
 
+    /// Set for a `.pending` embed (ADR-0087 §D9): the box drawn while the thumbnail renders, sized by
+    /// `EmbedPlaceholder` from `written`, never from a picture there is not yet. Gets no
+    /// `handleColor`, so nothing is composited over it, as for `.missing`.
+    var placeholder: EmbedPlaceholder.Look?
+
     /// The last picture `image(for:…)` built, kept so a second pass at the same bounds
     /// hands back the same object instead of allocating another. One slot rather than a
     /// dictionary keyed by size: probe 6 measured that one draw pass asks an attachment
@@ -66,12 +71,11 @@ final class EmbedAttachment: NSTextAttachment {
         // `proposedLineFragment` and `position` are deliberately unread - the resolved
         // size depends on the note's own run and the live column, and on nothing about
         // where in the line this attachment happens to sit.
-        CGRect(
-            origin: .zero,
-            size: EmbedResize.resolved(
-                written: written, natural: natural, column: EmbedResize.column(of: textContainer)
-            )
-        )
+        let column = EmbedResize.column(of: textContainer)
+        if placeholder != nil {
+            return CGRect(origin: .zero, size: EmbedPlaceholder.size(written: written, column: column))
+        }
+        return CGRect(origin: .zero, size: EmbedResize.resolved(written: written, natural: natural, column: column))
     }
 
     override func image(
@@ -80,6 +84,13 @@ final class EmbedAttachment: NSTextAttachment {
         location: any NSTextLocation,
         textContainer: NSTextContainer?
     ) -> NSImage? {
+        if let placeholder {
+            let size = bounds.size
+            guard size.width.isFinite, size.height.isFinite, size.width >= 1, size.height >= 1 else { return nil }
+            if let redrawn, redrawn.size == size { return redrawn }
+            redrawn = EmbedPlaceholder.image(of: placeholder, size: size)
+            return redrawn
+        }
         guard let source = image else { return nil }
         let size = bounds.size
         // A bounds nothing can be drawn into - zero, negative, infinite, NaN - gives the

@@ -453,6 +453,9 @@ struct RestyleTwin {
         check("embedRenditions", left.embedRenditions, right.embedRenditions)
         check("transclusionRenditions", left.transclusionRenditions, right.transclusionRenditions)
         check("foldLayout", left.foldLayout, right.foldLayout)
+        // N5 Realignment 4: the folded-callouts memo is offset-keyed and shifted, so it is compared too
+        // (the flips ride in `decorations`).
+        check("calloutFolds", left.calloutFolds, right.calloutFolds)
         check("revealed", left.revealed, right.revealed)
         check("revealedSpans", left.revealedSpans, right.revealedSpans)
         // ADR-0096 §D6 (plan Task 4): the outline the coordinator's store keeps is derived state too, and

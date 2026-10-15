@@ -11,6 +11,8 @@ struct MarkdownSpan: Equatable, Sendable {
         case emphasis
         case code
         case strikethrough
+        /// `==testo==` (ADR-0087 §D2): opened and closed by `~~`'s rule, never inside a code span.
+        case highlight
     }
 
     enum Link: Equatable, Sendable {
@@ -107,7 +109,8 @@ enum MarkdownInlineParser {
         // Code first: inside backticks nothing else is markup.
         // An embed before the wikilink and link fallbacks: neither reads `![[`, so the `!` was
         // left behind as plain text beside a note link (ADR-0065 §D9.2, R-17).
-        if let node = code(at: rest) ?? embed(at: rest) ?? wikilink(at: rest, conventions: conventions)
+        if let node = code(at: rest, after: previous) ?? embed(at: rest)
+            ?? wikilink(at: rest, conventions: conventions)
             ?? link(at: rest, conventions: conventions)
             ?? emphasis(at: rest, after: previous, conventions: conventions) {
             return node
@@ -126,12 +129,25 @@ enum MarkdownInlineParser {
         ))
     }
 
-    private static func code(at rest: Substring) -> Node? {
-        guard rest.hasPrefix("`"), let close = rest.dropFirst().range(of: "`") else { return nil }
-        let open = rest.startIndex..<rest.dropFirst().startIndex
-        return Node(token: MarkdownInlineToken(
-            range: rest.startIndex..<close.upperBound, kind: .code(delimiters: [open, close])
-        ))
+    /// A code span opens with a run of backticks and closes at the next run of exactly as many,
+    /// CommonMark's rule, so ``` `` a ` b `` ``` is one span whose delimiters are the two `` `` ``
+    /// runs (ADR-0087 §D5). A run with no partner is text, as a whole: the scanner's next step is
+    /// inside that run, and `previous` refuses it there.
+    private static func code(at rest: Substring, after previous: Character?) -> Node? {
+        guard rest.first == "`", previous != "`" else { return nil }
+        let open = rest.prefix(while: { $0 == "`" })
+        var search = rest[open.endIndex...]
+        while let found = search.firstIndex(of: "`") {
+            let close = search[found...].prefix(while: { $0 == "`" })
+            if close.count == open.count {
+                return Node(token: MarkdownInlineToken(
+                    range: rest.startIndex..<close.endIndex,
+                    kind: .code(delimiters: [open.startIndex..<open.endIndex, close.startIndex..<close.endIndex])
+                ))
+            }
+            search = search[close.endIndex...]
+        }
+        return nil
     }
 
     /// A wikilink's interior is scanned for the emphasis it may carry (`[[**Nota**]]`, issue #188),
@@ -177,6 +193,7 @@ enum MarkdownInlineParser {
         let kind: MarkdownInlineToken.Kind = switch style {
         case .strong: .strong(delimiters: delimiters)
         case .strikethrough: .strikethrough(delimiters: delimiters)
+        case .highlight: .highlight(delimiters: delimiters)
         default: .emphasis(delimiters: delimiters)
         }
         // Nested runs keep their own styling: **testo con *corsivo*** is one strong
@@ -185,15 +202,6 @@ enum MarkdownInlineParser {
             token: MarkdownInlineToken(range: rest.startIndex..<close.upperBound, kind: kind),
             children: scan(rest[open.upperBound..<close.lowerBound], conventions: conventions, startsAtBoundary: true)
         )
-    }
-
-    private static func emphasisMarker(at rest: Substring) -> (String, MarkdownSpan.Style)? {
-        if rest.hasPrefix("**") { return ("**", .strong) }
-        if rest.hasPrefix("__") { return ("__", .strong) }
-        if rest.hasPrefix("~~") { return ("~~", .strikethrough) }
-        if rest.hasPrefix("*") { return ("*", .emphasis) }
-        if rest.hasPrefix("_") { return ("_", .emphasis) }
-        return nil
     }
 
     // MARK: The app's own conventions
@@ -282,10 +290,12 @@ enum MarkdownInlineParser {
                 linked.link = .url(url)
                 return linked
             }
-        case .strong(let delimiters), .emphasis(let delimiters), .strikethrough(let delimiters):
+        case .strong(let delimiters), .emphasis(let delimiters), .strikethrough(let delimiters),
+             .highlight(let delimiters):
             let style: MarkdownSpan.Style = switch node.token.kind {
             case .strong: .strong
             case .strikethrough: .strikethrough
+            case .highlight: .highlight
             default: .emphasis
             }
             return project(node.children, over: text[delimiters[0].upperBound..<delimiters[1].lowerBound]).map { span in
@@ -299,63 +309,7 @@ enum MarkdownInlineParser {
         }
     }
 
-    // MARK: Delimiter rules
-
-    /// Whether a marker opens a span at all.
-    ///
-    /// `2 * 3 * 4` is arithmetic, not emphasis: a marker followed by a space opens
-    /// nothing. Without this the parser ate both asterisks and rendered "2  3  4",
-    /// which is the one thing a reading view must never do - lose the text.
-    ///
-    /// `_` and `__` also open nothing inside a word, CommonMark's intraword rule: `file_name_here`
-    /// is a file name, not `file` *`name`* `here` (ADR-0077 §D5). `*` keeps today's rule.
-    private static func opensEmphasis(_ rest: Substring, marker: String, after previous: Character?) -> Bool {
-        guard let next = rest.dropFirst(marker.count).first else { return false }
-        if marker.hasPrefix("_"), let previous, isWordCharacter(previous) { return false }
-        return !next.isWhitespace
-    }
-
-    private static func isWordCharacter(_ character: Character) -> Bool {
-        character.isLetter || character.isNumber
-    }
-
-    /// Finds the marker that closes a span.
-    ///
-    /// A run longer than the marker closes at the END of the run: in
-    /// `**forte con *corsivo***` the first `**` found sits inside the final `***`,
-    /// and stopping there would leave a stray asterisk and lose the inner emphasis.
-    ///
-    /// A single marker steps over a strong run nested inside it: in
-    /// `*corsivo con **forte** dentro*` the `**` pair is the inner span, and neither of its
-    /// asterisks closes the outer one.
-    private static func closingRange(of marker: String, in haystack: Substring) -> Range<String.Index>? {
-        var search = haystack
-        while let found = search.range(of: marker) {
-            if marker.count == 1, let nested = nestedStrongEnd(at: found.lowerBound, in: haystack) {
-                search = haystack[nested...]
-                continue
-            }
-            // A marker preceded by a space closes nothing, symmetrically with the
-            // opening rule.
-            if haystack[..<found.lowerBound].last?.isWhitespace == true {
-                search = haystack[found.upperBound...]
-                continue
-            }
-            guard let markerCharacter = marker.first else { return found }
-            var end = found.upperBound
-            while end < haystack.endIndex, haystack[end] == markerCharacter {
-                end = haystack.index(after: end)
-            }
-            // The closing half of the intraword rule: `_lieve_mente` does not close at `_m`.
-            if markerCharacter == "_", end < haystack.endIndex, isWordCharacter(haystack[end]) {
-                search = haystack[end...]
-                continue
-            }
-            guard haystack.distance(from: found.lowerBound, to: end) > marker.count else { return found }
-            return haystack.index(end, offsetBy: -marker.count)..<end
-        }
-        return nil
-    }
+    // MARK: Links
 
     /// `[label](target)`, and where it ends.
     private struct ParsedLink {
@@ -372,27 +326,5 @@ enum MarkdownInlineParser {
         else { return nil }
         let target = String(afterLabel.dropFirst()[..<close.lowerBound])
         return ParsedLink(label: label, target: target, end: close.upperBound)
-    }
-}
-
-// `closingRange`'s nested-strong rule, outside the enum's body only for SwiftLint's length limit.
-extension MarkdownInlineParser {
-    /// Where a strong run opening at `start` ends, when exactly two marker characters sit there,
-    /// open by `opensEmphasis`'s rule and are closed by a pair further on; nil otherwise, which
-    /// leaves `closingRange` reading the characters as it always has. The pair closes at the first
-    /// `**` (or `__`) not preceded by a space, so `*a **b***` keeps its last asterisk for the outer
-    /// span.
-    private static func nestedStrongEnd(at start: String.Index, in haystack: Substring) -> String.Index? {
-        let character = haystack[start]
-        let run = haystack[start...].prefix(while: { $0 == character })
-        guard run.count == 2 else { return nil }
-        let previous = start > haystack.startIndex ? haystack[haystack.index(before: start)] : nil
-        guard opensEmphasis(haystack[start...], marker: String(run), after: previous) else { return nil }
-        var search = haystack[run.endIndex...]
-        while let close = search.range(of: String(run)) {
-            if haystack[..<close.lowerBound].last?.isWhitespace != true { return close.upperBound }
-            search = haystack[close.upperBound...]
-        }
-        return nil
     }
 }

@@ -48,6 +48,14 @@ enum NoteExport {
         pre { background: #f2f2f7; padding: 1em; border-radius: 6px; overflow-x: auto; }
         pre code { background: none; padding: 0; }
         blockquote { margin: 0; padding-left: 1em; border-left: 3px solid #d1d1d6; color: #48484a; }
+        mark { background: #F9E7A1; padding: 0 0.15em; border-radius: 3px; }
+        aside { margin: 1em 0; padding: 0.6em 1em; border-left: 3px solid #958D80; \
+        border-radius: 6px; background: #F2EFE9; }
+        aside.callout-note { border-color: #3B6EA5; background: #EFF3F8; }
+        aside.callout-tip { border-color: #3F7A45; background: #F0F4F0; }
+        aside.callout-important { border-color: #7E4B7A; background: #F5F1F4; }
+        aside.callout-warning { border-color: #94600F; background: #F6F2EC; }
+        aside.callout-caution { border-color: #B3261E; background: #F9EEED; }
         table { border-collapse: collapse; }
         th, td { border: 1px solid #d1d1d6; padding: 0.4em 0.7em; text-align: left; }
         </style>

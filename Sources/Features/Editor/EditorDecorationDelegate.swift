@@ -92,6 +92,8 @@ struct HiddenMarker: Equatable, Sendable {
         /// a fence has no equivalent - it ends at a line of backticks that must leave the
         /// layout too, or it would sit under the drawn attachment as stray text).
         case viewBlock
+        /// ADR-0087's six: collapsed on the generic path and drawn by their own fragments.
+        case inlineCode, highlight, fenceOpening, fenceClosing, calloutMarker, embedChip
     }
 
     let range: NSRange
@@ -112,8 +114,9 @@ extension HiddenMarker.Kind {
     /// Plan: `2026-09-08-word-grained-markdown-reveal-on-caret-in`, Task 3.
     var isInline: Bool {
         switch self {
-        case .emphasis, .strikethrough, .link: true
-        case .heading, .embed, .list, .checkbox, .blockquote, .rule, .messageAnchor, .table, .viewBlock: false
+        case .emphasis, .strikethrough, .link, .inlineCode, .highlight, .embedChip: true
+        case .heading, .embed, .list, .checkbox, .blockquote, .rule, .messageAnchor, .table, .viewBlock,
+             .fenceOpening, .fenceClosing, .calloutMarker: false
         }
     }
 }
@@ -183,13 +186,21 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// `ProseTypography.gutterMarker(_:)` the way `checkboxFont` is. Nil - the default - leaves a
     /// heading as it is today.
     nonisolated(unsafe) var markerFont: NSFont?
+    /// What ADR-0087's fragments draw with (pills, fence chrome, quotes), pushed beside `proseFont`.
+    nonisolated(unsafe) var constructStyle = EditorConstructStyle()
+    /// The tab's flipped callouts (`NoteTab.toggledCallouts`), pushed by the fold pass: a title's chevron.
+    nonisolated(unsafe) var toggledCallouts: Set<Int> = []
+    /// Whether a callout can be folded here: the markup is hidden and a toggle is wired, pushed by the
+    /// fold pass. Off, every callout is open and no title draws a chevron, since a body hidden with
+    /// no chevron to open it would be lost (the Diario and Oggi editors wire no toggle).
+    nonisolated(unsafe) var foldsCallouts = false
     /// The measured widths the list, quote and heading branches hang their runs by (ADR-0081
     /// §D2), memoised per (run, face) behind a lock.
     let markerWidths = MarkerRunWidths()
     /// A transcluded note, by the UTF-16 offset of the line that names it. Measured and
     /// styled on the main actor and handed over as a value, because this object cannot be
     /// `@MainActor` - Swift 6 refuses both conformances if it is.
-    nonisolated(unsafe) private var renditions: [Int: TranscludedRendition] = [:]
+    nonisolated(unsafe) private(set) var renditions: [Int: TranscludedRendition] = [:]
     /// An embed's resolved picture, or the fact that it could not be drawn, by the
     /// paragraph offset of the line that names it - the same key space `hiddenMarkers`
     /// below uses. `EmbedTable` (ADR-0018 slice 3, Step 2) measures and resolves it on the
@@ -209,7 +220,12 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// Not `private`: `listParagraph(at:storage:)` in `EditorDecorationDelegate+ListRendering.swift`
     /// reads it too (ADR-0028, Task 3). An `OffsetTable`, so an edit moves a step rather than every
     /// key below it (ADR-0094 §D7); `hiddenMarkers[x]` is the exact lookup every reader makes.
-    nonisolated(unsafe) var hiddenMarkers = OffsetTable<[HiddenMarker]>()
+    nonisolated(unsafe) var hiddenMarkers = OffsetTable<[HiddenMarker]>() {
+        didSet { calloutRunHeads.removeAll(keepingCapacity: true) }
+    }
+    /// Each quote line's callout title, as its paragraph start (nil inside a plain quote), found by
+    /// `calloutTitle(above:in:)` and kept until the markers it was read from change.
+    nonisolated(unsafe) var calloutRunHeads: [Int: Int?] = [:]
     /// Paragraphs currently drawn in full, because the caret's paragraph, a non-empty
     /// selection, an active IME composition or the find bar's current match touches them
     /// (ADR-0018 §D2). Keyed the same way as `headingMarkers`.
@@ -423,11 +439,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         let start = offset(of: location, in: manager)
 
         if let rendition = renditions[start] {
-            let fragment = TranscludedLineFragment(
-                textElement: textElement, range: textElement.elementRange
-            )
-            fragment.rendition = rendition
-            return fragment
+            return transclusionFragment(for: textElement, rendition: rendition, at: start)
         }
 
         // A rule is the one ADR-0029 construct a length-preserving substitution cannot
@@ -464,9 +476,12 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
             return fragment
         }
 
-        guard let hidden = foldedHeadings[start] else { return standard }
+        guard let hidden = foldedHeadings[start] else {
+            return constructFragment(for: textElement, at: start) ?? standard
+        }
         let fragment = FoldedHeadingFragment(textElement: textElement, range: textElement.elementRange)
         fragment.hiddenLines = hidden
+        fragment.chipMetrics = constructStyle.chip
         // Carried so a click on the badge can say which section it means (PG-021).
         fragment.headingOffset = start
         fragment.badgeColor = badgeColor
@@ -494,7 +509,8 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // reaching it, would fight the redraw one character at a time instead of meeting
         // a picture to delete whole (ADR-0018 slice 3, Step 3; Step 4 is what makes the
         // caret and Backspace actually treat it that way).
-        if let embedded = embedParagraph(at: range, storage: storage) {
+        if let embedded = embedParagraph(at: range, storage: storage)
+            ?? transclusionParagraph(at: range, storage: storage) { // ADR-0087 §D10
             return embedded
         }
 
@@ -607,7 +623,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
 
         let copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
         for marker in collapsing {
-            copy.addAttribute(.font, value: Self.collapsedFont, range: marker.range)
+            collapse(marker, in: copy)
         }
         // Over the whole run and not only over the brackets: what is left on screen once
         // they are collapsed is the label, and the label is what a person hovers (R-04). Fed
@@ -692,8 +708,8 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
     /// found TextKit 2 actually recognises (`EmbedAttachmentProbeTests` - an `.attachment`
     /// attribute kept over the original `!` is never asked for its bounds or its image at
     /// all). Nil, leaving the raw syntax on screen exactly as today, whenever there is
-    /// nothing yet to draw: no embed marker at this offset, no rendition yet because
-    /// `EmbedTable`'s render is still in flight, or the marker gone stale against the real
+    /// nothing to draw: no embed marker at this offset, no rendition (an in-flight render is
+    /// `.pending`, a box of its size, ADR-0087 §D9), or the marker gone stale against the real
     /// characters since the last styling pass.
     private func embedParagraph(at range: NSRange, storage: NSTextStorage) -> NSTextParagraph? {
         guard let rendition = embedRenditions[range.location],
@@ -716,23 +732,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         // from the live `NSTextContainer` at layout time, which is why it can, and this
         // cannot.
         let attachment = EmbedAttachment()
-        switch rendition {
-        case .drawn(let image):
-            attachment.image = image
-            // The written size and the handle are both a *picture's* affordances, and they
-            // are set in the one branch that has a picture. A `.missing` placeholder is
-            // refused by the same `guard case .drawn` the hit test uses, so the paint, the
-            // hit target and the drawn size cannot disagree (ADR-0019 §D8) - and a note
-            // that says `![[foto.png|900]]` about a file the vault no longer has draws the
-            // 28-point broken-image glyph at 28 points, not that glyph blown up to 900.
-            // `natural` for this branch is the placeholder's own size, and a `written` of
-            // nil is what makes `EmbedResize.resolved` hand it back untouched.
-            attachment.written = EmbedResize.written(inRun: text.substring(with: markerRange))
-            attachment.handleColor = handleColor
-        case .missing:
-            attachment.image = Self.missingEmbedImage
-        }
-        attachment.natural = attachment.image?.size ?? .zero
+        configure(attachment, for: rendition, run: text.substring(with: markerRange))
 
         // A substitution, not an insertion (`substituteAttachment(_:over:in:)`): the
         // paragraph's own length unmoved - `NSTextContentManager.h:120`'s own constraint, the
@@ -781,26 +781,6 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         return markerRange
     }
 
-    /// A minimal placeholder for a `.missing` embed - already decided for this slice: a
-    /// file the vault does not have is drawn as broken, not left as raw syntax, which
-    /// already means "still rendering" everywhere else in this file. `secondaryLabelColor`
-    /// for the same reason `badgeColor` defaults to it: a themed tint can replace this
-    /// later without this delegate gaining a dependency it does not otherwise need.
-    private static let missingEmbedImage: NSImage = {
-        let size = NSSize(width: 28, height: 28)
-        guard let symbol = NSImage(systemSymbolName: "photo.badge.exclamationmark", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 20, weight: .regular))
-        else { return NSImage(size: size) }
-        symbol.isTemplate = true
-        let tinted = NSImage(size: size)
-        tinted.lockFocus()
-        symbol.draw(in: NSRect(origin: .zero, size: size), from: .zero, operation: .sourceOver, fraction: 1)
-        NSColor.secondaryLabelColor.set()
-        NSRect(origin: .zero, size: size).fill(using: .sourceAtop)
-        tinted.unlockFocus()
-        return tinted
-    }()
-
     private static func stillSpells(_ kind: HiddenMarker.Kind, _ text: NSString, at range: NSRange) -> Bool {
         switch kind {
         case .heading: stillSpellsAHeadingMarker(text, at: range)
@@ -836,6 +816,9 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         case .strikethrough: stillSpellsAStrikethroughMarker(text, at: range)
         case .link: stillSpellsALinkDelimiter(text, at: range)
         case .rule: stillSpellsARule(text, at: range)
+        // ADR-0087's six, collapsed here and drawn by their own fragments (`+Chips.swift`).
+        case .inlineCode, .highlight, .fenceOpening, .fenceClosing, .calloutMarker, .embedChip:
+            stillSpellsAConstructMarker(kind, text, at: range)
         // The rule's twin (ADR-0076 §D9): collapsed here, the marker drawn by
         // `MessageAnchorFragment` at layout time.
         case .messageAnchor: stillSpellsAMessageAnchor(text, at: range)
@@ -855,7 +838,7 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
 
     /// Whether `range` still spells a whole embed line - `![[file.est]]` or
     /// `![alt](file.est)` - read from the text as it is right now, and, for a rendition
-    /// already known to be `.missing`, that it still names the same file: the one case
+    /// that is `.missing` or `.pending`, that it still names the same file: the two cases
     /// this delegate can check identity for, since a `.drawn` rendition carries no name of
     /// its own to compare against (`EmbedRendition`, ADR-0018 slice 3, Step 2).
     private static func stillSpellsAnEmbed(
@@ -864,7 +847,10 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         guard range.location >= 0, NSMaxRange(range) <= text.length,
               let embed = Attachment.embed(inLine: text.substring(with: range))
         else { return nil }
-        if case .missing(let name) = rendition, embed.target != name { return nil }
+        switch rendition {
+        case .missing(let name), .pending(let name): if embed.target != name { return nil }
+        case .drawn: break
+        }
         return embed
     }
 
@@ -938,7 +924,8 @@ extension EditorDecorationDelegate {
             revealedParagraphs: revealedParagraphs,
             revealedSpanKeys: revealedSpans.keys.sorted(),
             tableViewKeys: tableViews.keys.sorted(),
-            viewBlockHostKeys: viewBlockHosts.keys.sorted()
+            viewBlockHostKeys: viewBlockHosts.keys.sorted(),
+            toggledCallouts: toggledCallouts
         )
     }
 

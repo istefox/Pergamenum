@@ -74,8 +74,22 @@ import Testing
 }
 
 @Test func quotesAndRulesAreTheirOwnBlocks() {
-    #expect(MarkdownBlockParser.blocks(in: "> citata\n> ancora") == [.quote(["citata", "ancora"])])
+    // ADR-0087 §D2 (plan N5, Task 1): a quote line carries its nesting level, and a level-1 quote's
+    // texts are the strings it always had.
+    #expect(MarkdownBlockParser.blocks(in: "> citata\n> ancora") == [
+        .quote([.init(level: 1, text: "citata"), .init(level: 1, text: "ancora")]),
+    ])
     #expect(MarkdownBlockParser.blocks(in: "---") == [.rule])
+}
+
+@Test func aNestedQuoteKeepsItsLevelPerLine() { // R-39
+    #expect(MarkdownBlockParser.blocks(in: "> esterna\n>> interna\n> di nuovo esterna") == [
+        .quote([
+            .init(level: 1, text: "esterna"),
+            .init(level: 2, text: "interna"),
+            .init(level: 1, text: "di nuovo esterna"),
+        ]),
+    ])
 }
 
 @Test func frontmatterIsNotPartOfTheBody() {

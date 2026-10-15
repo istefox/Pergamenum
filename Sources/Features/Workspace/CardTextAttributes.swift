@@ -105,7 +105,30 @@ enum CardTextAttributes {
             // date span carries no payload: the link only, over the colour above.
             let click = MarkdownAttributedText.clickAttributes(for: styled.span, source: text[styled.range])
             if !click.isEmpty { storage.addAttributes(click, range: range) }
+            if case .calloutMarker(let kind, _) = styled.span {
+                colourCalloutTitle(after: range, kind: kind, in: storage, theme: theme)
+            }
         }
+    }
+
+    /// A callout's title on a card: the rest of its line in the type colour, and nothing else about
+    /// it changes - `[!type]` stays as written and nothing is concealed (ADR-0087 §D8, R-38). A
+    /// neutral callout's title takes `color.quote.bar`, as its marker does. Spans after the marker
+    /// on the line (a link in the title) keep their own colours.
+    private static func colourCalloutTitle(
+        after marker: NSRange, kind: CalloutKind, in storage: NSMutableAttributedString, theme: Theme
+    ) {
+        let text = storage.string as NSString
+        let line = text.paragraphRange(for: NSRange(location: marker.location, length: 0))
+        var end = NSMaxRange(line)
+        while end > NSMaxRange(marker), let scalar = UnicodeScalar(text.character(at: end - 1)),
+              CharacterSet.newlines.contains(scalar) {
+            end -= 1
+        }
+        guard end > NSMaxRange(marker) else { return }
+        let color = NSColor(theme.color(kind.colorToken ?? .quoteBar))
+        let title = NSRange(location: NSMaxRange(marker), length: end - NSMaxRange(marker))
+        storage.addAttribute(.foregroundColor, value: color, range: title)
     }
 
     /// One span's attributes. Same signature shape as
@@ -148,10 +171,14 @@ enum CardTextAttributes {
             // The mono token's face at the *prose* size, passed explicitly: the two tokens carry
             // different point sizes, and code set at the chrome size beside 16pt prose reads as a
             // different paragraph rather than as a run inside one.
+            // The editor's pill colour as a plain background (ADR-0087 §D5): a card has no painter.
             [
                 .font: ProseTypography.mono(theme, size: ProseTypography.prose(theme).pointSize),
                 .foregroundColor: NSColor(theme.color(.textSecondary)),
+                .backgroundColor: NSColor(theme.color(.codeInlineBackground)),
             ]
+        case .highlight:
+            [.backgroundColor: NSColor(theme.color(.highlight))]
         case .codeBlock:
             // A monospaced face and a background; the colour is left to whatever grammar found
             // something inside, exactly as the note editor's own table leaves it.
@@ -235,6 +262,14 @@ enum CardTextAttributes {
         case .taskMarker(let state): state == .done ? .taskDone : .taskOpen
         case .scheduled: .taskScheduled
         case .due: .taskOverdue
+        // ADR-0087: a card conceals none of these (§D17 stands), so each is a colour only. A callout's
+        // title line takes its type colour (R-38), the neutral bar for an unknown type.
+        case .inlineCodeMarker: .textSecondary
+        case .highlight, .fenceOpening, .fenceClosing: .textPrimary
+        case .highlightMarker, .embedChipMarker: .textTertiary
+        case .calloutMarker(let kind, _): kind.colorToken ?? .quoteBar
+        // Its body reads as the quote it was before N5: nothing else about a callout changes on a card.
+        case .calloutBody: .textPrimary
         }
     }
 }

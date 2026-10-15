@@ -241,14 +241,16 @@ struct NoteTextView: NSViewRepresentable {
             guard let textView else { return nil }
             return coordinator.embedMenu(at: point, in: textView)
         }
-        // Three decorations, asked in turn: whoever claims the click keeps it. They
+        // Five decorations, asked in turn: whoever claims the click keeps it. They
         // cannot both claim one - a folded heading's line is not a transclusion's line,
-        // and neither is a drawn embed's.
+        // and neither is a callout's title, a drawn embed's or an embed chip's pill.
         textView.onClickInMargin = { [weak textView] point in
             guard let textView else { return false }
             return coordinator.openTransclusion(at: point, in: textView)
                 || coordinator.unfold(at: point, in: textView)
+                || coordinator.toggleCallout(at: point, in: textView)
                 || coordinator.selectEmbed(at: point, in: textView)
+                || coordinator.previewChip(at: point, in: textView)
         }
         // A click on a task line's checkbox glyph (PG-101-adjacent, checkbox size + click
         // chain): asked in `mouseDown` after the margin claimants above and before `super`,

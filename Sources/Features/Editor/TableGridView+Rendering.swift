@@ -48,6 +48,7 @@ extension TableGridView {
         applyCellValues()
         applyFonts()
         applyColours()
+        refreshColumnMenus()
         layoutGrid()
         if regainsFocus { restoreFocus(near: previous) }
     }
@@ -140,13 +141,13 @@ extension TableGridView {
         // than centred under it - the row of pills reads as belonging to the table only when
         // it starts where the table itself starts.
         var x: CGFloat = 0
-        // "Riga" [+][-]  ␣  "Colonna" [+][-] - the label goes in front of the pair it names,
+        // "Riga" [+][-]  ␣  "Colonna" [+][-][…] - the label goes in front of the buttons it names,
         // not above or below it, so no second line is needed and the row stays `controlRow`
         // tall regardless of which font the system hands back for it.
         (x, rowPillRect) = layout(label: rowLabel, buttons: [addRowButton, removeRowButton], startingAt: x, y: y)
         x += Metrics.controlGroupGap
         (_, columnPillRect) = layout(
-            label: columnLabel, buttons: [addColumnButton, removeColumnButton], startingAt: x, y: y
+            label: columnLabel, buttons: [addColumnButton, removeColumnButton, columnMenuButton], startingAt: x, y: y
         )
         invalidateIntrinsicContentSize()
         let size = intrinsicContentSize

@@ -65,7 +65,7 @@ extension EditorDecorationDelegate {
         if !revealedParagraphs.contains(range.location) {
             let markers = hiddenMarkers[range.location] ?? []
             for other in Self.survivors(among: markers.filter { $0.kind != .checkbox }, of: range, in: text) {
-                copy.addAttribute(.font, value: Self.collapsedFont, range: other.range)
+                collapse(other, in: copy)
             }
         }
         return NSTextParagraph(attributedString: copy)

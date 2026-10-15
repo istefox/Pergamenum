@@ -154,17 +154,24 @@ private let clock = ContinuousClock()
 // MARK: - R-02: random edits from the structural alphabet
 
 // (R-02, R-04) Ten fixed seeds, two hundred edits each: inserts, deletes, multi-line pastes, undos and
-// edits at the two ends and into an empty text.
+// edits at the two ends and into an empty text (a wholesale delete empties it). The run starts from
+// `structuralStart` and not from "": started empty, the alphabet drifts through dozens of plain-letter
+// texts before its first closed span (seed 1 held almost none in its first sixty steps), the same drift
+// `proseStart` was written for.
 @Test(arguments: seeds)
 func randomStructuralEditsStyleLikeAFullRestyle(_ seed: UInt64) {
     var stats = Stats()
     let elapsed = clock.measure {
         stats = drive(
-            from: "", seed: seed, edits: editsPerSeed,
+            from: EditGenerator.structuralStart, seed: seed, edits: editsPerSeed,
             atoms: EditGenerator.structuralAtoms, tokens: EditGenerator.structuralTokens, label: "seed \(seed)"
         )
     }
-    print("incremental-property structural seed=\(seed) restyles=\(stats.restyles) lines=\(stats.lines) full=\(stats.full) reasons=\(stats.reasons) maxBytes=\(stats.maxBytes) time=\(elapsed)")
+    print(
+        "incremental-property structural seed=\(seed) restyles=\(stats.restyles) withSpans=\(stats.stepsWithSpans)"
+            + " lines=\(stats.lines) full=\(stats.full) reasons=\(stats.reasons) maxBytes=\(stats.maxBytes)"
+            + " time=\(elapsed)"
+    )
     expectEqualToFullRestyle(stats)
     // The floor (3): a scope that answers `.full` for everything cannot pass.
     #expect(stats.lines >= 10, "only \(stats.lines) of \(stats.restyles) restyles were .lines; \(stats.reasons)")
@@ -190,6 +197,31 @@ func randomLineLocalEditsAreRestyledByLines(_ seed: UInt64) {
         stats.localLines * 100 >= stats.localEdits * 95,
         "\(stats.localLines) of \(stats.localEdits) line-local edits were .lines; \(stats.reasons); \(stats.examples["local but full"] ?? "")"
     )
+}
+
+// MARK: - Callouts (ADR-0087's amendment of ADR-0091 §D3)
+
+/// Two callouts, one folded with a nested quote, and a plain quote between prose.
+private let calloutStart = "intro\n\n> [!note] Titolo\n> uno\n> due\n\n> [!avviso]- Piegato\n> corpo\n> > annidata\n\n"
+    + "> citata\n> ancora\n\nfine\n"
+/// What makes and breaks a callout: a header typed whole or in pieces, a `>` added or taken from a
+/// line, a level, a line break that splits a run.
+private let calloutTokens = ["> ", "> [!note] ", "> [!tip]- ", "[!", "]", "\n", ">> ", "\n> ", "==x=="]
+
+// (R-04, N5 R-38) A callout makes a run's lines depend on its first one: an edit that types a header,
+// breaks a run or joins two must leave what a full restyle leaves, over every line of every run it
+// touches (plan N5, Realignment 3).
+@Test(arguments: seeds)
+func randomCalloutEditsStyleLikeAFullRestyle(_ seed: UInt64) {
+    let stats = drive(
+        from: calloutStart, seed: seed &+ 200, edits: editsPerSeed,
+        atoms: EditGenerator.proseAtoms, tokens: calloutTokens, label: "callout seed \(seed)"
+    )
+    print(
+        "incremental-property callout seed=\(seed) restyles=\(stats.restyles) lines=\(stats.lines)"
+            + " full=\(stats.full) reasons=\(stats.reasons)"
+    )
+    expectEqualToFullRestyle(stats)
 }
 
 // MARK: - R-03: the golden inputs as starting texts

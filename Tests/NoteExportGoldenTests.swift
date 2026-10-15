@@ -16,7 +16,7 @@ enum NoteExportGoldenPages {
     static let all: [ExportGoldenCase] = [
         ExportGoldenCase(
             "W01", relatedNote, title: "Curva di trasmissibilità",
-            .unchanged, "the frontmatter and `## Note correlate` stay out",
+            .a, "the frontmatter and `## Note correlate` stay out; the stylesheet gains the `mark` and `aside` rules (ADR-0087 §D12)",
             #"""
             <!DOCTYPE html>
             <html lang="it">
@@ -32,6 +32,13 @@ enum NoteExportGoldenPages {
             pre { background: #f2f2f7; padding: 1em; border-radius: 6px; overflow-x: auto; }
             pre code { background: none; padding: 0; }
             blockquote { margin: 0; padding-left: 1em; border-left: 3px solid #d1d1d6; color: #48484a; }
+            mark { background: #F9E7A1; padding: 0 0.15em; border-radius: 3px; }
+            aside { margin: 1em 0; padding: 0.6em 1em; border-left: 3px solid #958D80; border-radius: 6px; background: #F2EFE9; }
+            aside.callout-note { border-color: #3B6EA5; background: #EFF3F8; }
+            aside.callout-tip { border-color: #3F7A45; background: #F0F4F0; }
+            aside.callout-important { border-color: #7E4B7A; background: #F5F1F4; }
+            aside.callout-warning { border-color: #94600F; background: #F6F2EC; }
+            aside.callout-caution { border-color: #B3261E; background: #F9EEED; }
             table { border-collapse: collapse; }
             th, td { border: 1px solid #d1d1d6; padding: 0.4em 0.7em; text-align: left; }
             </style>
@@ -47,7 +54,7 @@ enum NoteExportGoldenPages {
         ),
         ExportGoldenCase(
             "W02", kitchenSink, title: "Scheda AV-45",
-            .a, "strikethrough, the four task glyphs, a rule, an aligned column, embeds as their names",
+            .a, "strikethrough, the four task glyphs, a rule, an aligned column, embeds as their names, a transclusion as its caption, the `mark` and `aside` rules (ADR-0087 §D12)",
             #"""
             <!DOCTYPE html>
             <html lang="it">
@@ -63,6 +70,13 @@ enum NoteExportGoldenPages {
             pre { background: #f2f2f7; padding: 1em; border-radius: 6px; overflow-x: auto; }
             pre code { background: none; padding: 0; }
             blockquote { margin: 0; padding-left: 1em; border-left: 3px solid #d1d1d6; color: #48484a; }
+            mark { background: #F9E7A1; padding: 0 0.15em; border-radius: 3px; }
+            aside { margin: 1em 0; padding: 0.6em 1em; border-left: 3px solid #958D80; border-radius: 6px; background: #F2EFE9; }
+            aside.callout-note { border-color: #3B6EA5; background: #EFF3F8; }
+            aside.callout-tip { border-color: #3F7A45; background: #F0F4F0; }
+            aside.callout-important { border-color: #7E4B7A; background: #F5F1F4; }
+            aside.callout-warning { border-color: #94600F; background: #F6F2EC; }
+            aside.callout-caution { border-color: #B3261E; background: #F9EEED; }
             table { border-collapse: collapse; }
             th, td { border: 1px solid #d1d1d6; padding: 0.4em 0.7em; text-align: left; }
             </style>
@@ -95,7 +109,7 @@ enum NoteExportGoldenPages {
             <tbody><tr><td>Carico</td><td style="text-align: right">450 daN</td></tr></tbody>
             </table>
             <p>foto.png</p>
-            <p>Altra nota</p>
+            <p>da «Altra nota» › Sezione</p>
             </body>
             </html>
             """#
@@ -218,14 +232,17 @@ private func tags(in html: String) -> [(name: String, attributes: String)?] {
     return result
 }
 
-/// ADR-0077 §D4's elements.
+/// ADR-0077 §D4's elements, plus ADR-0087 §D12's two.
 private let allowedElements: Set<String> = [
     "p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "code",
     "table", "thead", "tbody", "tr", "th", "td", "hr", "strong", "em", "del", "a",
+    // ADR-0087 §D12 amends §D4 by these two.
+    "mark", "aside",
 ]
 
 /// Whether a tag's attributes are the ones §D4 allows it: `href` on `a`, one of two fixed
-/// alignments on `th`/`td`, nothing anywhere else, and nothing at all on a closing tag.
+/// alignments on `th`/`td`, one of six fixed classes on `aside` (ADR-0087 §D12), nothing anywhere
+/// else, and nothing at all on a closing tag.
 private func allowsAttributes(_ attributes: String, on name: String) -> Bool {
     if attributes.isEmpty { return true }
     switch name {
@@ -234,6 +251,9 @@ private func allowsAttributes(_ attributes: String, on name: String) -> Bool {
         return attributes.hasPrefix(#" href=""#) && attributes.hasSuffix(#"""#) && !value.contains("\"")
     case "th", "td":
         return [#" style="text-align: center""#, #" style="text-align: right""#].contains(attributes)
+    case "aside":
+        return ["note", "tip", "important", "warning", "caution", "other"]
+            .map { #" class="callout-\#($0)""# }.contains(attributes)
     default:
         return false
     }
@@ -297,4 +317,63 @@ private func occurrences(of needle: String, in haystack: String) -> Int {
         <li>\u{25B7} e</li>
         </ul>
         """)
+}
+
+// MARK: - The stylesheet's copies of the light theme (ADR-0087 §D12)
+
+/// The `<style>` block of an exported page.
+private func stylesheet(of html: String) -> String {
+    let start = html.range(of: "<style>\n")?.upperBound ?? html.startIndex
+    let end = html.range(of: "\n</style>")?.lowerBound ?? html.endIndex
+    return String(html[start..<end])
+}
+
+/// `color` at `opacity` over opaque white, as the export's literal card colours are written.
+private func card(_ color: RGBA, opacity: Double) -> String {
+    func over(_ channel: Double) -> Double { channel * opacity + (1 - opacity) }
+    return RGBA(red: over(color.red), green: over(color.green), blue: over(color.blue)).hexString
+}
+
+/// The export stylesheet copies the light theme's colours as literal hex, the way its `blockquote`
+/// rule always has. One test reads the theme file and asserts every copy, so a retuned token cannot
+/// leave the export behind unnoticed.
+@MainActor
+@Test func theExportStylesheetColoursAreTheLightThemesApprovedValues() throws { // R-43
+    let engine = ThemeEngine(defaults: try #require(UserDefaults(suiteName: "pergamenum.tests.\(UUID().uuidString)")))
+    let light = try #require(engine.themes.first { $0.id == "pergamenum-light" }, "pergamenum-light is not loaded")
+    let css = stylesheet(of: NoteExport.html(from: "x", title: "t"))
+
+    let highlight = light.rawColor(.highlight).hexString
+    #expect(
+        css.contains("mark { background: \(highlight); padding: 0 0.15em; border-radius: 3px; }"),
+        "mark rule: \(css)"
+    )
+    let bar = light.rawColor(.quoteBar).hexString
+    let sunken = light.rawColor(.surfaceSunken).hexString
+    #expect(
+        css.contains(
+            "aside { margin: 1em 0; padding: 0.6em 1em; border-left: 3px solid \(bar); border-radius: 6px; "
+                + "background: \(sunken); }"
+        ),
+        "aside rule: \(css)"
+    )
+    let kinds: [(String, ColorToken)] = [
+        ("note", .calloutNote), ("tip", .calloutTip), ("important", .calloutImportant),
+        ("warning", .calloutWarning), ("caution", .calloutCaution),
+    ]
+    for (name, token) in kinds {
+        let color = light.rawColor(token)
+        // 0.08 is ADR-0087 §D4's card opacity, `CalloutStyle.backgroundOpacity`.
+        let rule = "aside.callout-\(name) { border-color: \(color.hexString); background: \(card(color, opacity: 0.08)); }"
+        #expect(css.contains(rule), "\(rule) is not in \(css)")
+    }
+}
+
+@Test func theStylesheetHasOneAsideRulePerCalloutKindAndNoneForOther() {
+    let css = stylesheet(of: NoteExport.html(from: "x", title: "t"))
+    for name in ["note", "tip", "important", "warning", "caution"] {
+        #expect(css.contains("aside.callout-\(name) {"), "no rule for \(name)")
+    }
+    // `other` is drawn by the base `aside` rule: neutral colours, no rule of its own (§D4).
+    #expect(!css.contains("aside.callout-other"))
 }

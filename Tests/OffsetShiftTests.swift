@@ -60,7 +60,8 @@ private func below(_ snapshot: DerivedStateSnapshot, from boundary: Int) -> Deri
         revealedParagraphs: [],
         revealedSpanKeys: keys(snapshot.decorations.revealedSpanKeys),
         tableViewKeys: keys(snapshot.decorations.tableViewKeys),
-        viewBlockHostKeys: keys(snapshot.decorations.viewBlockHostKeys)
+        viewBlockHostKeys: keys(snapshot.decorations.viewBlockHostKeys),
+        toggledCallouts: offsets(snapshot.decorations.toggledCallouts)
     )
     copy.unspellable = ranges(snapshot.unspellable)
     copy.embedRuns = ranges(snapshot.embedRuns)
@@ -74,6 +75,7 @@ private func below(_ snapshot: DerivedStateSnapshot, from boundary: Int) -> Deri
     layout.hiddenLineOffsets = offsets(layout.hiddenLineOffsets)
     layout.foldedHeadings = layout.foldedHeadings.filter { $0.key >= boundary }
     copy.foldLayout = layout
+    copy.calloutFolds = snapshot.calloutFolds?.filter { ($0.first ?? 0) >= boundary }
     // The outline map (ADR-0096 §D6, plan Task 4): entries below the edited paragraph only, like every
     // other offset-keyed field here. The edited line's own entry is re-read by the splice, which this
     // test does not run (it calls `shiftDerivedState` by hand), so it is not the shift's to produce.

@@ -431,7 +431,7 @@ Signatures:
 - MarkdownStyler.Span.highlight — case highlight
 - MarkdownStyler.Span.highlightMarker — case highlightMarker
 - MarkdownStyler.Span.inlineCodeMarker — case inlineCodeMarker
-- MarkdownStyler.Span.fenceOpening — case fenceOpening(language: String?, lineCount: Int)
+- MarkdownStyler.Span.fenceOpening — case fenceOpening (no payload: the drawing reads language and line count from the text, `FenceChrome`)
 - MarkdownStyler.Span.fenceClosing — case fenceClosing
 - MarkdownStyler.Span.calloutMarker — case calloutMarker(CalloutKind, fold: Callout.Fold)
 - MarkdownStyler.Span.calloutBody — case calloutBody(CalloutKind)
@@ -670,7 +670,7 @@ Red: no
 
 ADR-0087 §D6:
 
-- **Spans and concealment.** The styler emits `.fenceOpening(language:lineCount:)` and
+- **Spans and concealment.** The styler emits `.fenceOpening` and
   `.fenceClosing` from `FenceChrome.blocks(in:)`, beside today's `.codeBlock`/`.codeToken` spans,
   which keep colouring the body. `hiddenKind` maps them to the two block kinds, collapsed on the
   generic path with a minimum line height so the header row has height. This is
@@ -943,3 +943,28 @@ TEST-CMD CANDIDATE: xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergame
 TEST-CMD MODE: brownfield
 
 CHECK-CMD CANDIDATE: NONE
+
+## Build result (2026-10-15)
+
+BUILD · DONE WITH WARNINGS
+
+Files    112 changed or new in the working tree, uncommitted (Sources/Core, Sources/Features/Editor, Sources/App, Sources/Vault, Tests, docs, TODO.md)
+Tests    PergamenumTests green, 7038 tests, 5 known issues (HostedViewSupport.swift:46); perg and pergamenum-mcp build
+Review   sonnet: safe; opus: safe; no BLOCKER or MAJOR in the final round
+Coverage R-36 to R-43 covered; tester gaps (MarkdownLineSignature.isQuote, callout equals-a-full-restyle property) closed
+Open     none
+Dispatch Rounds 0 to 4: tester (red), coder, tester, debugger and coder fix loop (2 rounds), sweep (2 rounds)
+
+INFO: review escalated, size: 115 changed files, threshold 20
+WARN: accepted deviation, spaced nested quote (`> > c`) is level 1 in the editor and level 2 in the reading view and export; documented in ADR-0087, needs a separate decision (R-39, R-43)
+WARN: mockup HITL gate (Callout, Codice/citazioni/chip, Embed/transclusioni/tabelle, light and dark) was not passed before /build; may retune the 8 token values
+WARN: debugger changed `anEditorWithNoToggleHandlerClaimsNothing` in CalloutDrawingTests because it asserted the bug
+
+DEFER accepted-open: spaced nested quote level divergence between editor and reading view/export (ADR-0087 implementation notes)
+DROP fix-hunk: NoteTextView+Folding.swift:182 stale callout memo under the kill switch (MINOR, diagnostic mode only)
+DROP fix-hunk: ADR-0087:484 deviation note omits `>>2026-10-14` (MINOR)
+DROP fix-hunk: NoteTextView+Folding.swift:181 same kill-switch memo (follow-up, unverified)
+AUTO cap-reached: ADR-0087:389 amendment 4 contradicts the implementation notes (MINOR), not swept, rounds exhausted
+AUTO nit: Tests/StylerGoldenChanges.swift:278 S52 reason wording (NIT), not swept
+AUTO follow-up: Tests/IncrementalStylerPropertyTests.swift:193 and :254 long print lines, pre-existing at HEAD, not swept
+DROP nit: 2 (FenceMenu dead `~~~` clause, EmbedPlaceholder 720 literal)

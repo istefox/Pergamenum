@@ -18,7 +18,10 @@ enum MarkdownBlock: Equatable, Sendable {
     case numberedList([String])
     /// A checklist line of SPEC §7.1, with the marker it carried.
     case tasks([TaskLine])
-    case quote([String])
+    /// A quote run, one entry per line with the nesting level of its opening `>` run (ADR-0087 §D2).
+    case quote([QuoteLine])
+    /// `> [!type] Titolo` and the rest of its quote run (ADR-0087 §D2).
+    case callout(Callout)
     case code(language: String?, lines: [String])
     case rule
     /// A GFM table, which SPEC §5 puts in the required dialect alongside CommonMark
@@ -35,6 +38,12 @@ enum MarkdownBlock: Equatable, Sendable {
     /// file that is not there is a missing file, a note that is not there is a missing
     /// note, and saying the first about the second is the defect this case removes.
     case transclusion(reference: String, section: String?)
+
+    /// One line of a quote: how many `>` opened it and what is left after them.
+    struct QuoteLine: Equatable, Sendable {
+        var level: Int
+        var text: String
+    }
 
     struct TaskLine: Equatable, Sendable {
         var isDone: Bool
@@ -171,7 +180,9 @@ enum MarkdownBlockParser {
         private var bullets: [String] = []
         private var numbers: [String] = []
         private var tasks: [MarkdownBlock.TaskLine] = []
-        private var quote: [String] = []
+        private var quote: [MarkdownBlock.QuoteLine] = []
+        /// The title line of the quote run being read, when it opened a callout.
+        private var callout: Callout.Header?
 
         /// `line` is the token's own line; its marker ranges index the same string.
         mutating func take(_ line: Substring, trimmed: String, kind: MarkdownLineToken.Kind) {
@@ -200,9 +211,13 @@ enum MarkdownBlockParser {
             case .listItem(true, _, let marker, _) where !after(marker).isEmpty:
                 flushExcept(.numbers)
                 numbers.append(after(marker))
-            case .quote:
+            case .quote, .calloutBody:
                 flushExcept(.quote)
-                quote.append(String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces))
+                quote.append(MarkdownBlockParser.quoteLine(trimmed))
+            case .calloutHeader(let header, _):
+                // The token layer gives a header only to the first line of a run.
+                flushAll()
+                callout = header
             default:
                 flushExcept(.paragraph)
                 paragraph.append(String(line))
@@ -229,7 +244,13 @@ enum MarkdownBlockParser {
                 blocks.append(.tasks(tasks))
                 tasks = []
             }
-            if kept != .quote, !quote.isEmpty {
+            if kept != .quote, let header = callout {
+                // The body is the rest of the run, one level up: level 0 is the callout's own text.
+                let body = quote.map { MarkdownBlock.QuoteLine(level: $0.level - 1, text: $0.text) }
+                blocks.append(.callout(Callout(kind: header.kind, title: header.title, fold: header.fold, body: body)))
+                callout = nil
+                quote = []
+            } else if kept != .quote, !quote.isEmpty {
                 blocks.append(.quote(quote))
                 quote = []
             }
@@ -247,6 +268,26 @@ enum MarkdownBlockParser {
     }
 
     // MARK: Line shapes
+
+    /// A quote line's nesting level and text: every `>` of its opening run, each optionally followed
+    /// by spaces, CommonMark's rule, so `>> b` and `> > b` are both level 2 (ADR-0087 §D2). The token
+    /// layer's own level counts the unbroken `>` run only, which is what the editor hangs from
+    /// (ADR-0081 §D3); the reading view and the export read the nesting a person meant.
+    ///
+    /// A `>` straight after the first one's spaces and followed by an ISO date is the scheduling
+    /// token of SPEC §7.1, as the token layer already reads it for the first `>`: `> >2026-10-14`
+    /// is a level-1 quote of a date.
+    static func quoteLine(_ trimmed: String) -> MarkdownBlock.QuoteLine {
+        var level = 0
+        var rest = trimmed[...]
+        while rest.first == ">" {
+            let after = rest.dropFirst()
+            if level > 0, CalendarDate(iso: String(after.prefix(10))) != nil { break }
+            level += 1
+            rest = after.drop(while: { $0 == " " })
+        }
+        return MarkdownBlock.QuoteLine(level: level, text: rest.trimmingCharacters(in: .whitespaces))
+    }
 
     /// Whether a line is a thematic break: three or more of `-`, `*` or `_`, optionally
     /// space-separated.

@@ -86,11 +86,14 @@ enum ProseParagraphSpacing {
     private static func shapesItsLine(_ span: MarkdownStyler.Span) -> Bool {
         switch span {
         case .frontmatter, .codeBlock, .tableRun, .viewBlockRun, .listMarker, .taskMarker,
-             .blockquoteMarker, .horizontalRule, .messageAnchor, .embedRun:
+             .blockquoteMarker, .horizontalRule, .messageAnchor, .embedRun,
+             // ADR-0087's block-level spans: the fence chrome and the callout lines shape their line.
+             .fenceOpening, .fenceClosing, .calloutMarker, .calloutBody:
             true
         case .heading, .headingMarker, .bold, .italic, .emphasisMarker, .strikethrough,
              .strikethroughMarker, .code, .codeToken, .tag, .scheduled, .due, .annotation,
-             .linkSyntax, .linkTarget, .embedTarget:
+             .linkSyntax, .linkTarget, .embedTarget, .highlight, .highlightMarker, .inlineCodeMarker,
+             .embedChipMarker:
             false
         }
     }

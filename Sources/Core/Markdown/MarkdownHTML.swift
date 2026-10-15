@@ -57,7 +57,9 @@ enum MarkdownHTML {
         case .tasks(let tasks):
             list("ul", tasks.map { "\(glyph(for: $0.marker)) \(inline($0.text))" })
         case .quote(let lines):
-            "<blockquote><p>\(inline(joined(lines)))</p></blockquote>"
+            "<blockquote>\(quoted(lines[...], level: 1))</blockquote>"
+        case .callout(let callout):
+            html(for: callout)
         case .code(_, let lines):
             // No language class, `pergamenum-view` included: a fence exports as its text (§D6).
             "<pre><code>\(NoteExport.escape(lines.joined(separator: "\n")))</code></pre>"
@@ -67,9 +69,46 @@ enum MarkdownHTML {
             html(for: table)
         case .embed(let target, let alt):
             "<p>\(NoteExport.escape(alt ?? target))</p>"
-        case .transclusion(let reference, _):
-            "<p>\(NoteExport.escape(reference))</p>"
+        case .transclusion(let reference, let section):
+            // The caption the editor draws in the source line's place (ADR-0087 §D10, §D12): the note's
+            // name, not the path the reference was written with (R-43).
+            "<p>\(NoteExport.escape(captionText(reference: reference, section: section)))</p>"
         }
+    }
+
+    private static func captionText(reference: String, section: String?) -> String {
+        TransclusionCaption.text(note: TransclusionCaption.name(ofReference: reference), section: section)
+    }
+
+    /// The lines of a quote at `level` and deeper: each run of lines at `level` one paragraph, each
+    /// deeper run a nested `<blockquote>`, all inline with no line breaks, so a level-1 quote keeps
+    /// the bytes it always had (ADR-0087 §D12).
+    private static func quoted(_ lines: ArraySlice<MarkdownBlock.QuoteLine>, level: Int) -> String {
+        var html = ""
+        var index = lines.startIndex
+        while index < lines.endIndex {
+            let deeper = lines[index].level > level
+            let end = lines[index...].firstIndex { deeper ? $0.level <= level : $0.level != level } ?? lines.endIndex
+            html += deeper
+                ? "<blockquote>\(quoted(lines[index..<end], level: level + 1))</blockquote>"
+                : "<p>\(inline(joined(lines[index..<end].map(\.text))))</p>"
+            index = end
+        }
+        return html
+    }
+
+    /// A callout is an `aside` of one of six fixed classes, never text from the note, holding its
+    /// title (the written one, else the Italian label) and its body. A folded callout exports open:
+    /// the fold is a look in one tab, not part of the document (ADR-0087 §D12).
+    private static func html(for callout: Callout) -> String {
+        var lines = [
+            "<aside class=\"\(callout.kind.exportClass)\">",
+            "<p><strong>\(inline(callout.title ?? callout.kind.label))</strong></p>",
+        ]
+        let body = quoted(callout.body[...], level: 0)
+        if !body.isEmpty { lines.append(body) }
+        lines.append("</aside>")
+        return lines.joined(separator: "\n")
     }
 
     /// A paragraph's or a quote's lines, trimmed and joined by one space (§D6).
@@ -115,12 +154,12 @@ enum MarkdownHTML {
 
     // MARK: Spans
 
-    /// Styles wrap inside to outside as `code`, `del`, `em`, `strong`, so a run is always
-    /// well-formed however its styles combine.
+    /// Styles wrap inside to outside as `code`, `mark`, `del`, `em`, `strong`, so a run is always
+    /// well-formed however its styles combine (ADR-0087 §D12).
     private static func html(for span: MarkdownSpan) -> String {
         var html = NoteExport.escape(displayed(span))
-        for (style, tag) in [(MarkdownSpan.Style.code, "code"), (.strikethrough, "del"), (.emphasis, "em"),
-                             (.strong, "strong")] where span.styles.contains(style) {
+        for (style, tag) in [(MarkdownSpan.Style.code, "code"), (.highlight, "mark"), (.strikethrough, "del"),
+                             (.emphasis, "em"), (.strong, "strong")] where span.styles.contains(style) {
             html = "<\(tag)>\(html)</\(tag)>"
         }
         return html

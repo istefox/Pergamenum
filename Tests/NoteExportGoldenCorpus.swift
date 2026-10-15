@@ -53,7 +53,7 @@ struct ExportGoldenCase: Sendable, CustomStringConvertible {
 
 enum NoteExportGoldenCorpus {
     /// Rendered through `MarkdownHTML.render(_:)`.
-    static let bodies = decisionTable + escapeCorpus
+    static let bodies = decisionTable + escapeCorpus + constructCorpus
 }
 
 /// E01 to E45, outside the enum's body for `type_body_length`.
@@ -146,8 +146,8 @@ private let decisionTable: [ExportGoldenCase] = [
     ),
     ExportGoldenCase(
         "E15", "![[Altra nota#Sezione]]",
-        .a, "a transclusion exports as its reference",
-        #"<p>Altra nota</p>"#
+        .a, "a transclusion exports as its caption «da «Nota» › Sezione», re-captured by ADR-0087 §D12",
+        #"<p>da «Altra nota» › Sezione</p>"#
     ),
     ExportGoldenCase(
         "E16", "Vedi ![[foto.png|300]] qui.",

@@ -127,3 +127,99 @@ import Testing
         #expect(Self.fonts(of: copy).allSatisfy { $0 !== EditorDecorationDelegate.collapsedFont })
     }
 }
+
+// MARK: - N5 Task 3 (ADR-0087, plan `note-workflow-n5.md`): every new branch keeps the paragraph length
+
+/// Each of ADR-0087's new substitutions collapses characters and replaces none, because the displayed
+/// paragraph must be as long as the stored one (`NSTextContentManager.h:120`). Driven with hand-built
+/// markers, the way `MarkupHidingRule` drives the rule: the delegate must serve the marker (a non-nil
+/// paragraph), keep its length, and give the paragraph back untouched when the caret reveals it. Red
+/// until Tasks 4 to 7 give each kind a re-validation and a branch (today `stillSpells` refuses all six).
+@MainActor
+@Suite struct EditorDecorationNewSubstitutions {
+    struct Case: CustomStringConvertible, Sendable {
+        let name: String
+        let note: String
+        let at: Int
+        let markers: [HiddenMarker]
+        let collapsed: [Int]
+        var description: String { name }
+    }
+
+    nonisolated static let cases: [Case] = [
+        Case(
+            name: "inline code", note: "testo `codice` fine\n", at: 0,
+            markers: [
+                HiddenMarker(range: NSRange(location: 6, length: 1), kind: .inlineCode),
+                HiddenMarker(range: NSRange(location: 13, length: 1), kind: .inlineCode),
+            ],
+            collapsed: [6, 13]
+        ),
+        Case(
+            name: "highlight", note: "testo ==x== fine\n", at: 0,
+            markers: [
+                HiddenMarker(range: NSRange(location: 6, length: 2), kind: .highlight),
+                HiddenMarker(range: NSRange(location: 9, length: 2), kind: .highlight),
+            ],
+            collapsed: [6, 7, 9, 10]
+        ),
+        Case(
+            name: "fence opening", note: "```swift\nlet a = 1\n```\n", at: 0,
+            markers: [HiddenMarker(range: NSRange(location: 0, length: 8), kind: .fenceOpening)],
+            collapsed: [0, 7]
+        ),
+        Case(
+            name: "fence closing", note: "```swift\nlet a = 1\n```\n", at: 19,
+            markers: [HiddenMarker(range: NSRange(location: 0, length: 3), kind: .fenceClosing)],
+            collapsed: [0, 2]
+        ),
+        Case(
+            name: "callout marker", note: "> [!note] Titolo\n> corpo\n", at: 0,
+            markers: [HiddenMarker(range: NSRange(location: 0, length: 10), kind: .calloutMarker)],
+            collapsed: [0, 9]
+        ),
+        Case(
+            name: "embed chip", note: "vedi ![[scheda.pdf]] fine\n", at: 0,
+            markers: [
+                HiddenMarker(range: NSRange(location: 5, length: 3), kind: .embedChip),
+                HiddenMarker(range: NSRange(location: 18, length: 2), kind: .embedChip),
+            ],
+            collapsed: [5, 6, 7, 18, 19]
+        ),
+    ]
+
+    @Test(arguments: cases)
+    func theSubstitutionServesTheMarkerAndKeepsTheParagraphLength(_ item: Case) {
+        let displayed = MarkupHidingFixture.displayedParagraph(item.note, markers: item.markers, at: item.at)
+        #expect(displayed != nil, "\(item.name): nessuna sostituzione")
+        #expect(displayed?.attributedString.length == MarkupHidingFixture.firstParagraphLength(of: item.note, at: item.at))
+        for offset in item.collapsed {
+            #expect(
+                (displayed?.attributedString.attribute(.font, at: offset, effectiveRange: nil) as? NSFont)
+                    == EditorDecorationDelegate.collapsedFont,
+                "\(item.name): offset \(offset) non è nel font collassato"
+            )
+        }
+    }
+
+    @Test(arguments: cases)
+    func aRevealedParagraphIsLeftAlone(_ item: Case) {
+        // Block kinds reveal by paragraph, the inline ones by paragraph unless ADR-0037's span-grained
+        // setting is on, which these cases leave off: either way the caret in the paragraph shows raw.
+        #expect(
+            MarkupHidingFixture.displayedParagraph(item.note, markers: item.markers, at: item.at, revealed: [item.at])
+                == nil
+        )
+    }
+
+    @Test(arguments: cases)
+    func theSettingOffServesNothing(_ item: Case) {
+        #expect(MarkupHidingFixture.displayedParagraph(item.note, markers: item.markers, at: item.at, hidesMarkup: false) == nil)
+    }
+
+    @Test(arguments: cases)
+    func aStaleMarkerAgainstProseDoesNotCollapseIt(_ item: Case) {
+        let prose = String(repeating: "x", count: item.note.count - 1) + "\n"
+        #expect(MarkupHidingFixture.displayedParagraph(prose, markers: item.markers, at: 0) == nil)
+    }
+}

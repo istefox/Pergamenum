@@ -17,7 +17,7 @@ enum InlineSpanReveal {
     /// Every emphasis/strikethrough/link construct in `paragraph`, as UTF-16 `NSRange`s
     /// sorted by location with duplicates removed (ADR-0037 §D4).
     ///
-    /// - `.bold`/`.italic`/`.strikethrough` spans from `MarkdownStyler.spans(in:)` are kept
+    /// - `.bold`/`.italic`/`.strikethrough`/`.code`/`.highlight` spans from `MarkdownStyler.spans(in:)` are kept
     ///   as-is - the whole run, delimiters included, nested runs included (PG-084).
     /// - A `.linkSyntax` span whose text starts with `[[` is a wikilink's whole run, kept
     ///   as-is.
@@ -35,13 +35,19 @@ enum InlineSpanReveal {
         var found: [NSRange] = []
         for styledRange in styled {
             switch styledRange.span {
-            case .bold, .italic, .strikethrough:
+            // Inline code and a highlight reveal by the span too (ADR-0087 §D5).
+            case .bold, .italic, .strikethrough, .code, .highlight:
                 found.append(NSRange(styledRange.range, in: paragraph))
             case .linkSyntax:
                 let text = paragraph[styledRange.range]
                 if text.hasPrefix("[[") {
                     // A wikilink's whole bracketed run, `![[embed]]` excluded by the prefix
                     // test: an embed is paragraph-grained (ADR-0037 §D3).
+                    found.append(NSRange(styledRange.range, in: paragraph))
+                } else if text.hasPrefix("![["), styled.contains(where: {
+                    $0.span == .embedChipMarker && $0.range.lowerBound == styledRange.range.lowerBound
+                }) {
+                    // An embed that reads as a chip is an inline span, revealed whole (ADR-0087 §D9).
                     found.append(NSRange(styledRange.range, in: paragraph))
                 } else if text == "[" {
                     // A CommonMark link, which `MarkdownStyler` only ever emits as two halves

@@ -34,7 +34,10 @@ extension MarkdownAttributedText {
         case .annotation, .frontmatter, .heading, .headingMarker, .bold, .italic, .emphasisMarker,
              .strikethrough, .strikethroughMarker, .code, .codeToken, .codeBlock, .linkSyntax,
              .linkTarget, .embedTarget, .embedRun, .tableRun, .viewBlockRun, .listMarker,
-             .taskMarker, .blockquoteMarker, .horizontalRule, .messageAnchor:
+             .taskMarker, .blockquoteMarker, .horizontalRule, .messageAnchor,
+             // ADR-0087's spans: none of them is a click target.
+             .highlight, .highlightMarker, .inlineCodeMarker, .fenceOpening, .fenceClosing,
+             .calloutMarker, .calloutBody, .embedChipMarker:
             return nil
         }
     }

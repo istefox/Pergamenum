@@ -26,6 +26,8 @@ final class FoldedHeadingFragment: NSTextLayoutFragment {
     /// *which* section to open. The fold itself is held by index-entry ordinal, so this is
     /// translated on the way out rather than stored twice.
     nonisolated(unsafe) var headingOffset = 0
+    /// The pills' room and corners, pushed in beside `badgeFont` (ADR-0087 §D5).
+    nonisolated(unsafe) var chipMetrics = InlineChip.Metrics()
 
     private static let gap: CGFloat = 8
     private static let padding = NSSize(width: 6, height: 1)
@@ -105,6 +107,8 @@ final class FoldedHeadingFragment: NSTextLayoutFragment {
     }
 
     override func draw(at point: CGPoint, in context: CGContext) {
+        // A heading with inline code keeps its pill when it is folded (ADR-0087 §D5).
+        InlineChipPainter.paint(self, at: point, in: context, metrics: chipMetrics)
         super.draw(at: point, in: context)
         guard hiddenLines > 0 else { return }
 

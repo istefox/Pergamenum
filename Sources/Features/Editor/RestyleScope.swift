@@ -120,6 +120,14 @@ struct RestyleScope: Sendable {
             || (high + 1 < lines.count && lines[high + 1].signature.tableCapable)
         if touchesTable, !extendOverTableRuns(&low, &high, onlyWhereCut: false) { return .full(.tableFence) }
 
+        // Quotes: every run of quote lines the edit touches or adjoins, the tables row's shape. A
+        // callout makes a run's lines depend on its first one (ADR-0087's amendment of ADR-0091 §D3).
+        let touchesQuote = oldSignatures.contains(where: \.isQuote)
+            || newSignatures.contains(where: \.isQuote)
+            || (low > 0 && lines[low - 1].signature.isQuote)
+            || (high + 1 < lines.count && lines[high + 1].signature.isQuote)
+        if touchesQuote { extendOverQuoteRuns(&low, &high, onlyWhereCut: false) }
+
         high = max(high, listWalkEnd(first: first, last: last, old: oldSignatures, new: newSignatures))
         if !widenOverRegions(&low, &high) { return .full(.tableFence) }
         if readsFrontmatter(from: low, in: text) { return .full(.frontmatter) }
@@ -178,6 +186,8 @@ struct RestyleScope: Sendable {
             }
             let before = (low, high)
             if !extendOverTableRuns(&low, &high, onlyWhereCut: true) { return false }
+            // A fragment that starts inside a quote run would read its first line as the run's first.
+            extendOverQuoteRuns(&low, &high, onlyWhereCut: true)
             if before != (low, high) { moved = true }
         }
         return true
@@ -209,6 +219,19 @@ struct RestyleScope: Sendable {
             }
         }
         return true
+    }
+
+    /// Grows `low` and `high` over the runs of quote lines they touch, or only over the ones they cut
+    /// when `onlyWhereCut`. No fence check: a fence line never opens a quote.
+    private func extendOverQuoteRuns(_ low: inout Int, _ high: inout Int, onlyWhereCut: Bool) {
+        let lines = map.lines
+        func quote(_ index: Int) -> Bool { lines[index].signature.isQuote }
+        if !onlyWhereCut || (low > 0 && quote(low)) {
+            while low > 0, quote(low - 1) { low -= 1 }
+        }
+        if !onlyWhereCut || quote(high) {
+            while high + 1 < lines.count, quote(high + 1) { high += 1 }
+        }
     }
 
     /// The list stack open just before line `index`, folded from the last reset line above it.

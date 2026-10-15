@@ -187,23 +187,29 @@ private func quoteParagraph(
         #expect(displayed?.attributedString.length == firstParagraphLength(of: Self.twoLevels))
     }
 
-    /// Concealed, the bars hang the same way: the column is the same, the run is the bars.
-    @Test func aConcealedQuoteAtAGutterHangsItsBarsFromTheSameColumn() { // (n2-page R-14)
+    /// Concealed, the content hangs from the same column. ADR-0087 §D7 amends ADR-0029 §D1's quote
+    /// bullet for the note editor: at a gutter the `>` run is no longer substituted by `▏` glyphs but
+    /// collapsed, and `QuoteBarFragment` draws the bars over the fragment's full height, so nothing is
+    /// displayed before the content and the first line starts at the column too. This test asserted
+    /// the `▏▏` substitution and the bars' width; it now asserts the collapsed run (plan N5, Task 6).
+    /// At gutter 0 (a card) the `▏` substitution stays, as the tests above assert.
+    @Test func aConcealedQuoteAtAGutterHangsItsBarsFromTheSameColumn() { // (n2-page R-14, N5 R-39)
         let displayed = quoteParagraph(
             Self.twoLevels, markers: [Self.twoLevelMarker], gutter: 48, proseFont: Self.font
         )
         let style = Self.style(displayed)
         let column = EditorGutter.quoteColumn(level: 2, font: Self.font, gutter: 48)
-        let bars = ("\u{258F}\u{258F}" as NSString).size(withAttributes: [.font: Self.font]).width
 
-        #expect(displayed?.attributedString.string == "▏▏ due\n")
+        #expect(displayed?.attributedString.string == ">> due\n")
+        let runFont = displayed?.attributedString.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect(runFont == EditorDecorationDelegate.collapsedFont, "il `>>` non è nascosto")
         #expect(
             abs((style?.headIndent ?? -1) - column) <= 0.5,
             "headIndent \(style?.headIndent ?? -1) invece di \(column)"
         )
         #expect(
-            abs((style?.firstLineHeadIndent ?? -1) - max(0, column - bars)) <= 0.5,
-            "firstLineHeadIndent \(style?.firstLineHeadIndent ?? -1) invece di \(max(0, column - bars))"
+            abs((style?.firstLineHeadIndent ?? -1) - column) <= 0.5,
+            "firstLineHeadIndent \(style?.firstLineHeadIndent ?? -1) invece di \(column)"
         )
     }
 

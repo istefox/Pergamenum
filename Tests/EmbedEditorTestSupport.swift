@@ -100,12 +100,15 @@ enum EmbedEditorFixtures {
     }
 
     /// Polls `embeds.renditions` until the render lands - the real, asynchronous
-    /// `ThumbnailStore` call.
+    /// `ThumbnailStore` call. A `.pending` entry is the render still in flight (ADR-0087 §D9),
+    /// not its landing, so it is waited past.
     static func waitForRendition(
         at offset: Int, in coordinator: NoteTextView.Coordinator
     ) async -> EmbedRendition? {
         for _ in 0..<100 {
-            if let rendition = coordinator.embeds.renditions[offset] { return rendition }
+            if let rendition = coordinator.embeds.renditions[offset] {
+                if case .pending = rendition {} else { return rendition }
+            }
             try? await Task.sleep(for: .milliseconds(50))
         }
         return coordinator.embeds.renditions[offset]

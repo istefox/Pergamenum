@@ -12,7 +12,9 @@ extension StylerGoldenCorpus {
     /// shared grammar made is class A: the old styler was wrong, and the exporter already read the
     /// input right, with one exception: `*corsivo con **forte** dentro*` (the second half of S36,
     /// and E48), which both readers got wrong and the parser's `closingRange` now nests, so the
-    /// exporter's output moved for it too (ADR-0082 §D4, E48 class A there). No B. S11, S36 and
+    /// exporter's output moved for it too (ADR-0082 §D4, E48 class A there). No B at N2; every
+    /// `.deliberate` case below (S38's code-span half, and the cases from "N01" on) is N5's
+    /// (ADR-0087). S11, S36 and
     /// S45 first came out as C and were fixed before this table was written: S11 and S45 in the
     /// styler's mapping (ASCII ordered digits; the styler's line is the editor's paragraph, so
     /// `lineTokens` is given `LineBreak.isTerminator` and a U+2028 ends none, S55 to S58), S36 in
@@ -231,20 +233,33 @@ private let classedChanges: [String: StylerGoldenCase.Change] = [
         expected: #"""
         """#
     ),
-    "S38": .fix(
-        reason: "`~~ non barrato ~~` is no strikethrough: a delimiter followed by a space opens nothing, as in the "
-            + "exporter.",
+    "S38": .deliberate(
+        reason: "`~~ non barrato ~~` is no strikethrough: a delimiter followed by a space opens nothing, as in "
+            + "the exporter (class A, N2). And the code spans follow CommonMark's backtick runs (ADR-0087 §D5): "
+            + "``` ``doppio ` tick`` ``` is one span closed by the matching double run, each run an "
+            + "`inlineCodeMarker` concealed off the caret.",
         expected: #"""
         0..<2 strikethroughMarker
         0..<11 strikethrough
         9..<11 strikethroughMarker
+        34..<35 inlineCodeMarker
         34..<42 code
-        45..<47 code
-        54..<61 code
+        41..<42 inlineCodeMarker
+        45..<47 inlineCodeMarker
+        45..<62 code
+        60..<62 inlineCodeMarker
         hidden 0..<2 strikethrough
         hidden 9..<11 strikethrough
+        hidden 34..<35 inlineCode
+        hidden 41..<42 inlineCode
+        hidden 45..<47 inlineCode
+        hidden 60..<62 inlineCode
         order 0..<11 strikethrough < 0..<2 strikethroughMarker
         order 0..<11 strikethrough < 9..<11 strikethroughMarker
+        order 34..<42 code < 34..<35 inlineCodeMarker
+        order 34..<42 code < 41..<42 inlineCodeMarker
+        order 45..<62 code < 45..<47 inlineCodeMarker
+        order 45..<62 code < 60..<62 inlineCodeMarker
         """#
     ),
     "S51": .fix(
@@ -304,6 +319,598 @@ private let classedChanges: [String: StylerGoldenCase.Change] = [
             + "the exporter read it: one table run, no rule drawn over the row (ADR-0082 §D4).",
         expected: #"""
         0..<15 tableRun
+        """#
+    ),
+    // N5 (ADR-0087 §D5, plan docs/plans/note-workflow-n5.md, Task 3): class B, a deliberate change.
+    // Written from the plan's "maps it with `run(...)` to `.highlight` plus two `.highlightMarker`"
+    // and `hiddenKind`'s `.highlight`, never captured: the styler does not emit it yet. Every other
+    // N5 case whose output will move (the inline code, fence, callout and chip cases) is classed by
+    // the task that gives it its spans, against `MarkdownStylerTests`' own assertions.
+    "N01": .deliberate(
+        reason: "`==b==` is a highlight (ADR-0087 §D5): one `.highlight` run and its two `==` delimiters, which "
+            + "the editor conceals off the caret.",
+        expected: #"""
+        2..<4 highlightMarker
+        2..<7 highlight
+        5..<7 highlightMarker
+        hidden 2..<4 highlight
+        hidden 5..<7 highlight
+        order 2..<7 highlight < 2..<4 highlightMarker
+        order 2..<7 highlight < 5..<7 highlightMarker
+        """#
+    ),
+    // N5 (ADR-0087, plan docs/plans/note-workflow-n5.md, Task 4 to 7): class B, every one deliberate.
+    // Each `expected` is `stylerGoldenCapture`'s output once the construct's spans landed.
+    "E16": .deliberate(
+        reason: "An embed inside a line of prose reads as a chip (ADR-0087 §D9): its `![[` and its `|W]]`/`]]` "
+            + "are `embedChipMarker`s, concealed off the caret, and the name stays.",
+        expected: #"""
+        5..<8 embedChipMarker
+        5..<22 linkSyntax
+        8..<16 embedTarget("foto.png")
+        16..<22 embedChipMarker
+        hidden 5..<8 embedChip
+        hidden 5..<22 link
+        hidden 16..<22 embedChip
+        order 5..<22 linkSyntax < 8..<16 embedTarget("foto.png")
+        order 5..<22 linkSyntax < 5..<8 embedChipMarker
+        order 5..<22 linkSyntax < 16..<22 embedChipMarker
+        """#
+    ),
+    "E20": .deliberate(
+        reason: "Inline code is a pill (ADR-0087 §D5): each backtick run is an `inlineCodeMarker`, concealed off "
+            + "the caret.",
+        expected: #"""
+        4..<5 inlineCodeMarker
+        4..<11 code
+        10..<11 inlineCodeMarker
+        14..<15 inlineCodeMarker
+        14..<21 code
+        20..<21 inlineCodeMarker
+        hidden 4..<5 inlineCode
+        hidden 10..<11 inlineCode
+        hidden 14..<15 inlineCode
+        hidden 20..<21 inlineCode
+        order 4..<11 code < 4..<5 inlineCodeMarker
+        order 4..<11 code < 10..<11 inlineCodeMarker
+        order 14..<21 code < 14..<15 inlineCodeMarker
+        order 14..<21 code < 20..<21 inlineCodeMarker
+        """#
+    ),
+    "N02": .deliberate(
+        reason: "`==**x**==` is a highlight around bold (ADR-0087 §D5): one `.highlight` run and its two `==`, "
+            + "concealed off the caret, with the bold inside it unchanged.",
+        expected: #"""
+        0..<2 highlightMarker
+        0..<9 highlight
+        2..<4 emphasisMarker
+        2..<7 bold
+        5..<7 emphasisMarker
+        7..<9 highlightMarker
+        hidden 0..<2 highlight
+        hidden 2..<4 emphasis
+        hidden 5..<7 emphasis
+        hidden 7..<9 highlight
+        order 0..<9 highlight < 0..<2 highlightMarker
+        order 0..<9 highlight < 7..<9 highlightMarker
+        order 0..<9 highlight < 2..<7 bold
+        order 0..<9 highlight < 2..<4 emphasisMarker
+        order 0..<9 highlight < 5..<7 emphasisMarker
+        order 2..<7 bold < 2..<4 emphasisMarker
+        order 2..<7 bold < 5..<7 emphasisMarker
+        """#
+    ),
+    "N03": .deliberate(
+        reason: "Inline code is a pill (ADR-0087 §D5): each backtick run is an `inlineCodeMarker`, concealed off "
+            + "the caret.",
+        expected: #"""
+        0..<1 inlineCodeMarker
+        0..<8 code
+        7..<8 inlineCodeMarker
+        hidden 0..<1 inlineCode
+        hidden 7..<8 inlineCode
+        order 0..<8 code < 0..<1 inlineCodeMarker
+        order 0..<8 code < 7..<8 inlineCodeMarker
+        """#
+    ),
+    "N06": .deliberate(
+        reason: "`> [!type]` opens a callout (ADR-0087 §D8): one `calloutMarker` over the marker run, concealed "
+            + "off the caret, in place of the quote's `>` marker, and each body line carries `calloutBody`.",
+        expected: #"""
+        0..<13 calloutMarker(CalloutKind.warning, fold: Callout.Fold.fixed)
+        19..<21 blockquoteMarker(level: 1)
+        19..<26 calloutBody(CalloutKind.warning)
+        hidden 0..<13 calloutMarker
+        hidden 19..<21 blockquote
+        order 19..<26 calloutBody(CalloutKind.warning) < 19..<21 blockquoteMarker(level: 1)
+        """#
+    ),
+    "N07": .deliberate(
+        reason: "`> [!type]` opens a callout (ADR-0087 §D8): one `calloutMarker` over the marker run, concealed "
+            + "off the caret, in place of the quote's `>` marker.",
+        expected: #"""
+        0..<9 calloutMarker(CalloutKind.note, fold: Callout.Fold.fixed)
+        hidden 0..<9 calloutMarker
+        """#
+    ),
+    "N08": .deliberate(
+        reason: "`> [!type]` opens a callout (ADR-0087 §D8): one `calloutMarker` over the marker run, concealed "
+            + "off the caret, in place of the quote's `>` marker.",
+        expected: #"""
+        0..<8 calloutMarker(CalloutKind.tip, fold: Callout.Fold.fixed)
+        hidden 0..<8 calloutMarker
+        """#
+    ),
+    "N09": .deliberate(
+        reason: "`> [!type]` opens a callout (ADR-0087 §D8): one `calloutMarker` over the marker run, concealed "
+            + "off the caret, in place of the quote's `>` marker.",
+        expected: #"""
+        0..<14 calloutMarker(CalloutKind.important, fold: Callout.Fold.fixed)
+        hidden 0..<14 calloutMarker
+        """#
+    ),
+    "N10": .deliberate(
+        reason: "`> [!type]` opens a callout (ADR-0087 §D8): one `calloutMarker` over the marker run, concealed "
+            + "off the caret, in place of the quote's `>` marker.",
+        expected: #"""
+        0..<12 calloutMarker(CalloutKind.warning, fold: Callout.Fold.fixed)
+        hidden 0..<12 calloutMarker
+        """#
+    ),
+    "N11": .deliberate(
+        reason: "`> [!type]` opens a callout (ADR-0087 §D8): one `calloutMarker` over the marker run, concealed "
+            + "off the caret, in place of the quote's `>` marker.",
+        expected: #"""
+        0..<12 calloutMarker(CalloutKind.caution, fold: Callout.Fold.fixed)
+        hidden 0..<12 calloutMarker
+        """#
+    ),
+    "N12": .deliberate(
+        reason: "`> [!type]` opens a callout (ADR-0087 §D8): one `calloutMarker` over the marker run, concealed "
+            + "off the caret, in place of the quote's `>` marker.",
+        expected: #"""
+        0..<11 calloutMarker(CalloutKind.warning, fold: Callout.Fold.fixed)
+        hidden 0..<11 calloutMarker
+        """#
+    ),
+    "N13": .deliberate(
+        reason: "`> [!type]` opens a callout (ADR-0087 §D8): one `calloutMarker` over the marker run, concealed "
+            + "off the caret, in place of the quote's `>` marker.",
+        expected: #"""
+        0..<9 calloutMarker(CalloutKind.note, fold: Callout.Fold.fixed)
+        hidden 0..<9 calloutMarker
+        """#
+    ),
+    "N14": .deliberate(
+        reason: "`> [!type]` opens a callout (ADR-0087 §D8): one `calloutMarker` over the marker run, concealed "
+            + "off the caret, in place of the quote's `>` marker. An unknown type is kept as `other`.",
+        expected: #"""
+        0..<9 calloutMarker(CalloutKind.other("faq"), fold: Callout.Fold.fixed)
+        hidden 0..<9 calloutMarker
+        """#
+    ),
+    "N15": .deliberate(
+        reason: "`> [!type]` opens a callout (ADR-0087 §D8): one `calloutMarker` over the marker run, concealed "
+            + "off the caret, in place of the quote's `>` marker, and each body line carries `calloutBody`. The "
+            + "`-` sign folds it.",
+        expected: #"""
+        0..<10 calloutMarker(CalloutKind.tip, fold: Callout.Fold.folded)
+        17..<19 blockquoteMarker(level: 1)
+        17..<24 calloutBody(CalloutKind.tip)
+        hidden 0..<10 calloutMarker
+        hidden 17..<19 blockquote
+        order 17..<24 calloutBody(CalloutKind.tip) < 17..<19 blockquoteMarker(level: 1)
+        """#
+    ),
+    "N16": .deliberate(
+        reason: "`> [!type]` opens a callout (ADR-0087 §D8): one `calloutMarker` over the marker run, concealed "
+            + "off the caret, in place of the quote's `>` marker.",
+        expected: #"""
+        0..<10 calloutMarker(CalloutKind.note, fold: Callout.Fold.fixed)
+        hidden 0..<10 calloutMarker
+        """#
+    ),
+    "N19": .deliberate(
+        reason: "A closed fence's opening and closing lines are its chrome (ADR-0087 §D6): `fenceOpening` and "
+            + "`fenceClosing`, both concealed off the caret.",
+        expected: #"""
+        0..<8 fenceOpening
+        0..<22 codeBlock
+        9..<12 codeToken(CodeSyntax.Token.keyword)
+        17..<18 codeToken(CodeSyntax.Token.number)
+        19..<22 fenceClosing
+        hidden 0..<8 fenceOpening
+        hidden 19..<22 fenceClosing
+        order 0..<22 codeBlock < 9..<12 codeToken(CodeSyntax.Token.keyword)
+        order 0..<22 codeBlock < 17..<18 codeToken(CodeSyntax.Token.number)
+        order 0..<22 codeBlock < 0..<8 fenceOpening
+        order 0..<22 codeBlock < 19..<22 fenceClosing
+        """#
+    ),
+    "S19": .deliberate(
+        reason: "A closed fence's opening and closing lines are its chrome (ADR-0087 §D6): `fenceOpening` and "
+            + "`fenceClosing`, both concealed off the caret.",
+        expected: #"""
+        0..<3 fenceOpening
+        0..<36 codeBlock
+        33..<36 fenceClosing
+        hidden 0..<3 fenceOpening
+        hidden 33..<36 fenceClosing
+        order 0..<36 codeBlock < 0..<3 fenceOpening
+        order 0..<36 codeBlock < 33..<36 fenceClosing
+        """#
+    ),
+    "S20": .deliberate(
+        reason: "A closed fence's opening and closing lines are its chrome (ADR-0087 §D6): `fenceOpening` and "
+            + "`fenceClosing`, both concealed off the caret.",
+        expected: #"""
+        0..<8 fenceOpening
+        0..<46 codeBlock
+        9..<12 codeToken(CodeSyntax.Token.keyword)
+        17..<18 codeToken(CodeSyntax.Token.number)
+        19..<30 codeToken(CodeSyntax.Token.comment)
+        31..<35 codeToken(CodeSyntax.Token.keyword)
+        43..<46 fenceClosing
+        hidden 0..<8 fenceOpening
+        hidden 43..<46 fenceClosing
+        order 0..<46 codeBlock < 9..<12 codeToken(CodeSyntax.Token.keyword)
+        order 0..<46 codeBlock < 17..<18 codeToken(CodeSyntax.Token.number)
+        order 0..<46 codeBlock < 19..<30 codeToken(CodeSyntax.Token.comment)
+        order 0..<46 codeBlock < 31..<35 codeToken(CodeSyntax.Token.keyword)
+        order 0..<46 codeBlock < 0..<8 fenceOpening
+        order 0..<46 codeBlock < 43..<46 fenceClosing
+        """#
+    ),
+    "S27": .deliberate(
+        reason: "An embed inside a line of prose reads as a chip (ADR-0087 §D9): its `![[` and its `|W]]`/`]]` "
+            + "are `embedChipMarker`s, concealed off the caret, and the name stays.",
+        expected: #"""
+        0..<3 embedChipMarker
+        0..<13 linkSyntax
+        3..<11 embedTarget("foto.png")
+        11..<13 embedChipMarker
+        16..<19 embedChipMarker
+        16..<33 linkSyntax
+        19..<27 embedTarget("foto.png")
+        27..<33 embedChipMarker
+        36..<39 embedChipMarker
+        36..<57 linkSyntax
+        39..<47 embedTarget("foto.png")
+        47..<57 embedChipMarker
+        hidden 0..<3 embedChip
+        hidden 0..<13 link
+        hidden 11..<13 embedChip
+        hidden 16..<19 embedChip
+        hidden 16..<33 link
+        hidden 27..<33 embedChip
+        hidden 36..<39 embedChip
+        hidden 36..<57 link
+        hidden 47..<57 embedChip
+        order 0..<13 linkSyntax < 3..<11 embedTarget("foto.png")
+        order 0..<13 linkSyntax < 0..<3 embedChipMarker
+        order 0..<13 linkSyntax < 11..<13 embedChipMarker
+        order 16..<33 linkSyntax < 19..<27 embedTarget("foto.png")
+        order 16..<33 linkSyntax < 16..<19 embedChipMarker
+        order 16..<33 linkSyntax < 27..<33 embedChipMarker
+        order 36..<57 linkSyntax < 39..<47 embedTarget("foto.png")
+        order 36..<57 linkSyntax < 36..<39 embedChipMarker
+        order 36..<57 linkSyntax < 47..<57 embedChipMarker
+        """#
+    ),
+    "S39": .deliberate(
+        reason: "Inline code is a pill (ADR-0087 §D5): each backtick run is an `inlineCodeMarker`, concealed off "
+            + "the caret.",
+        expected: #"""
+        0..<1 inlineCodeMarker
+        0..<15 code
+        14..<15 inlineCodeMarker
+        18..<20 emphasisMarker
+        18..<43 bold
+        20..<21 inlineCodeMarker
+        20..<41 code
+        40..<41 inlineCodeMarker
+        41..<43 emphasisMarker
+        46..<58 linkSyntax
+        48..<50 emphasisMarker
+        48..<56 bold
+        48..<56 linkTarget("nota")
+        54..<56 emphasisMarker
+        hidden 0..<1 inlineCode
+        hidden 14..<15 inlineCode
+        hidden 18..<20 emphasis
+        hidden 20..<21 inlineCode
+        hidden 40..<41 inlineCode
+        hidden 41..<43 emphasis
+        hidden 46..<58 link
+        hidden 48..<50 emphasis
+        hidden 54..<56 emphasis
+        order 0..<15 code < 0..<1 inlineCodeMarker
+        order 0..<15 code < 14..<15 inlineCodeMarker
+        order 18..<43 bold < 18..<20 emphasisMarker
+        order 18..<43 bold < 41..<43 emphasisMarker
+        order 18..<43 bold < 20..<41 code
+        order 18..<43 bold < 20..<21 inlineCodeMarker
+        order 18..<43 bold < 40..<41 inlineCodeMarker
+        order 20..<41 code < 20..<21 inlineCodeMarker
+        order 20..<41 code < 40..<41 inlineCodeMarker
+        order 48..<56 bold < 48..<50 emphasisMarker
+        order 48..<56 bold < 54..<56 emphasisMarker
+        order 48..<56 bold < 46..<58 linkSyntax
+        order 48..<56 bold < 48..<56 linkTarget("nota")
+        order 48..<50 emphasisMarker < 46..<58 linkSyntax
+        order 48..<50 emphasisMarker < 48..<56 linkTarget("nota")
+        order 54..<56 emphasisMarker < 46..<58 linkSyntax
+        order 54..<56 emphasisMarker < 48..<56 linkTarget("nota")
+        order 46..<58 linkSyntax < 48..<56 linkTarget("nota")
+        """#
+    ),
+    "S47": .deliberate(
+        reason: "Inline code is a pill (ADR-0087 §D5): each backtick run is an `inlineCodeMarker`, concealed off "
+            + "the caret. A closed fence's opening and closing lines are its chrome (ADR-0087 §D6): "
+            + "`fenceOpening` and `fenceClosing`, both concealed off the caret.",
+        expected: #"""
+        0..<44 frontmatter
+        46..<48 headingMarker
+        46..<74 heading(level: 1)
+        59..<67 linkSyntax
+        61..<65 linkTarget("Nota")
+        86..<88 emphasisMarker
+        86..<95 bold
+        93..<95 emphasisMarker
+        97..<98 emphasisMarker
+        97..<106 italic
+        105..<106 emphasisMarker
+        108..<110 strikethroughMarker
+        108..<119 strikethrough
+        117..<119 strikethroughMarker
+        121..<122 inlineCodeMarker
+        121..<129 code
+        128..<129 inlineCodeMarker
+        132..<133 linkSyntax
+        133..<137 linkTarget("https://x.it")
+        137..<152 linkSyntax
+        155..<160 taskMarker(state: TaskItem.State.open)
+        170..<181 scheduled
+        182..<193 due
+        194..<213 annotation
+        216..<218 listMarker(kind: MarkdownStyler.Span.ListKind.bullet, level: 2)
+        230..<233 listMarker(kind: MarkdownStyler.Span.ListKind.ordered, level: 1)
+        237..<240 listMarker(kind: MarkdownStyler.Span.ListKind.ordered, level: 1)
+        245..<247 blockquoteMarker(level: 1)
+        261..<262 emphasisMarker
+        261..<269 italic
+        268..<269 emphasisMarker
+        271..<279 fenceOpening
+        271..<300 codeBlock
+        280..<283 codeToken(CodeSyntax.Token.keyword)
+        293..<296 codeToken(CodeSyntax.Token.number)
+        297..<300 fenceClosing
+        302..<331 tableRun
+        333..<350 embedRun
+        333..<350 linkSyntax
+        336..<344 embedTarget("foto.png")
+        hidden 46..<48 heading
+        hidden 59..<67 link
+        hidden 86..<88 emphasis
+        hidden 93..<95 emphasis
+        hidden 97..<98 emphasis
+        hidden 105..<106 emphasis
+        hidden 108..<110 strikethrough
+        hidden 117..<119 strikethrough
+        hidden 121..<122 inlineCode
+        hidden 128..<129 inlineCode
+        hidden 132..<133 link
+        hidden 137..<152 link
+        hidden 155..<160 checkbox
+        hidden 216..<218 list
+        hidden 230..<233 list
+        hidden 237..<240 list
+        hidden 245..<247 blockquote
+        hidden 261..<262 emphasis
+        hidden 268..<269 emphasis
+        hidden 271..<279 fenceOpening
+        hidden 297..<300 fenceClosing
+        hidden 333..<350 embed
+        hidden 333..<350 link
+        order 271..<300 codeBlock < 280..<283 codeToken(CodeSyntax.Token.keyword)
+        order 271..<300 codeBlock < 293..<296 codeToken(CodeSyntax.Token.number)
+        order 271..<300 codeBlock < 271..<279 fenceOpening
+        order 271..<300 codeBlock < 297..<300 fenceClosing
+        order 46..<74 heading(level: 1) < 46..<48 headingMarker
+        order 46..<74 heading(level: 1) < 59..<67 linkSyntax
+        order 46..<74 heading(level: 1) < 61..<65 linkTarget("Nota")
+        order 86..<95 bold < 86..<88 emphasisMarker
+        order 86..<95 bold < 93..<95 emphasisMarker
+        order 97..<106 italic < 97..<98 emphasisMarker
+        order 97..<106 italic < 105..<106 emphasisMarker
+        order 108..<119 strikethrough < 108..<110 strikethroughMarker
+        order 108..<119 strikethrough < 117..<119 strikethroughMarker
+        order 121..<129 code < 121..<122 inlineCodeMarker
+        order 121..<129 code < 128..<129 inlineCodeMarker
+        order 261..<269 italic < 261..<262 emphasisMarker
+        order 261..<269 italic < 268..<269 emphasisMarker
+        order 333..<350 embedRun < 333..<350 linkSyntax
+        order 333..<350 embedRun < 336..<344 embedTarget("foto.png")
+        order 59..<67 linkSyntax < 61..<65 linkTarget("Nota")
+        order 333..<350 linkSyntax < 336..<344 embedTarget("foto.png")
+        """#
+    ),
+    "S55": .deliberate(
+        reason: "Inline code is a pill (ADR-0087 §D5): each backtick run is an `inlineCodeMarker`, concealed off "
+            + "the caret.",
+        expected: #"""
+        2..<4 emphasisMarker
+        2..<9 bold
+        7..<9 emphasisMarker
+        12..<13 inlineCodeMarker
+        12..<17 code
+        16..<17 inlineCodeMarker
+        20..<21 linkSyntax
+        21..<24 linkTarget("u")
+        24..<28 linkSyntax
+        hidden 2..<4 emphasis
+        hidden 7..<9 emphasis
+        hidden 12..<13 inlineCode
+        hidden 16..<17 inlineCode
+        hidden 20..<21 link
+        hidden 24..<28 link
+        order 2..<9 bold < 2..<4 emphasisMarker
+        order 2..<9 bold < 7..<9 emphasisMarker
+        order 12..<17 code < 12..<13 inlineCodeMarker
+        order 12..<17 code < 16..<17 inlineCodeMarker
+        """#
+    ),
+    "W01": .deliberate(
+        reason: "Inline code is a pill (ADR-0087 §D5): each backtick run is an `inlineCodeMarker`, concealed off "
+            + "the caret.",
+        expected: #"""
+        0..<74 frontmatter
+        76..<78 headingMarker
+        76..<102 heading(level: 1)
+        116..<118 emphasisMarker
+        116..<125 bold
+        123..<125 emphasisMarker
+        154..<155 emphasisMarker
+        154..<162 italic
+        161..<162 emphasisMarker
+        165..<168 headingMarker
+        165..<182 heading(level: 2)
+        184..<186 listMarker(kind: MarkdownStyler.Span.ListKind.bullet, level: 1)
+        186..<200 linkSyntax
+        188..<198 linkTarget("Altra nota")
+        232..<235 headingMarker
+        232..<241 heading(level: 2)
+        254..<255 inlineCodeMarker
+        254..<269 code
+        268..<269 inlineCodeMarker
+        hidden 76..<78 heading
+        hidden 116..<118 emphasis
+        hidden 123..<125 emphasis
+        hidden 154..<155 emphasis
+        hidden 161..<162 emphasis
+        hidden 165..<168 heading
+        hidden 184..<186 list
+        hidden 186..<200 link
+        hidden 232..<235 heading
+        hidden 254..<255 inlineCode
+        hidden 268..<269 inlineCode
+        order 76..<102 heading(level: 1) < 76..<78 headingMarker
+        order 116..<125 bold < 116..<118 emphasisMarker
+        order 116..<125 bold < 123..<125 emphasisMarker
+        order 154..<162 italic < 154..<155 emphasisMarker
+        order 154..<162 italic < 161..<162 emphasisMarker
+        order 165..<182 heading(level: 2) < 165..<168 headingMarker
+        order 232..<241 heading(level: 2) < 232..<235 headingMarker
+        order 254..<269 code < 254..<255 inlineCodeMarker
+        order 254..<269 code < 268..<269 inlineCodeMarker
+        order 186..<200 linkSyntax < 188..<198 linkTarget("Altra nota")
+        """#
+    ),
+    "W02": .deliberate(
+        reason: "A closed fence's opening and closing lines are its chrome (ADR-0087 §D6): `fenceOpening` and "
+            + "`fenceClosing`, both concealed off the caret.",
+        expected: #"""
+        0..<44 frontmatter
+        46..<48 headingMarker
+        46..<60 heading(level: 1)
+        74..<76 emphasisMarker
+        74..<83 bold
+        81..<83 emphasisMarker
+        104..<105 emphasisMarker
+        104..<112 italic
+        111..<112 emphasisMarker
+        118..<120 strikethroughMarker
+        118..<129 strikethrough
+        127..<129 strikethroughMarker
+        139..<141 listMarker(kind: MarkdownStyler.Span.ListKind.bullet, level: 1)
+        153..<155 listMarker(kind: MarkdownStyler.Span.ListKind.bullet, level: 1)
+        170..<173 listMarker(kind: MarkdownStyler.Span.ListKind.ordered, level: 1)
+        183..<186 listMarker(kind: MarkdownStyler.Span.ListKind.ordered, level: 1)
+        197..<202 taskMarker(state: TaskItem.State.open)
+        217..<222 taskMarker(state: TaskItem.State.done)
+        234..<239 taskMarker(state: TaskItem.State.cancelled)
+        250..<255 taskMarker(state: TaskItem.State.rescheduled)
+        266..<268 blockquoteMarker(level: 1)
+        282..<284 blockquoteMarker(level: 1)
+        299..<307 fenceOpening
+        299..<328 codeBlock
+        308..<311 codeToken(CodeSyntax.Token.keyword)
+        321..<324 codeToken(CodeSyntax.Token.number)
+        325..<328 fenceClosing
+        330..<397 codeBlock
+        330..<397 viewBlockRun
+        399..<402 horizontalRule
+        404..<457 tableRun
+        459..<476 embedRun
+        459..<476 linkSyntax
+        462..<470 embedTarget("foto.png")
+        478..<501 linkSyntax
+        481..<491 embedTarget("Altra nota")
+        hidden 46..<48 heading
+        hidden 74..<76 emphasis
+        hidden 81..<83 emphasis
+        hidden 104..<105 emphasis
+        hidden 111..<112 emphasis
+        hidden 118..<120 strikethrough
+        hidden 127..<129 strikethrough
+        hidden 139..<141 list
+        hidden 153..<155 list
+        hidden 170..<173 list
+        hidden 183..<186 list
+        hidden 197..<202 checkbox
+        hidden 217..<222 checkbox
+        hidden 234..<239 checkbox
+        hidden 250..<255 checkbox
+        hidden 266..<268 blockquote
+        hidden 282..<284 blockquote
+        hidden 299..<307 fenceOpening
+        hidden 325..<328 fenceClosing
+        hidden 399..<402 rule
+        hidden 459..<476 embed
+        hidden 459..<476 link
+        hidden 478..<501 link
+        order 299..<328 codeBlock < 308..<311 codeToken(CodeSyntax.Token.keyword)
+        order 299..<328 codeBlock < 321..<324 codeToken(CodeSyntax.Token.number)
+        order 299..<328 codeBlock < 299..<307 fenceOpening
+        order 299..<328 codeBlock < 325..<328 fenceClosing
+        order 330..<397 codeBlock < 330..<397 viewBlockRun
+        order 46..<60 heading(level: 1) < 46..<48 headingMarker
+        order 74..<83 bold < 74..<76 emphasisMarker
+        order 74..<83 bold < 81..<83 emphasisMarker
+        order 104..<112 italic < 104..<105 emphasisMarker
+        order 104..<112 italic < 111..<112 emphasisMarker
+        order 118..<129 strikethrough < 118..<120 strikethroughMarker
+        order 118..<129 strikethrough < 127..<129 strikethroughMarker
+        order 459..<476 embedRun < 459..<476 linkSyntax
+        order 459..<476 embedRun < 462..<470 embedTarget("foto.png")
+        order 459..<476 linkSyntax < 462..<470 embedTarget("foto.png")
+        order 478..<501 linkSyntax < 481..<491 embedTarget("Altra nota")
+        """#
+    ),
+    "X02": .deliberate(
+        reason: "Inline code is a pill (ADR-0087 §D5): each backtick run is an `inlineCodeMarker`, concealed off "
+            + "the caret.",
+        expected: #"""
+        0..<1 inlineCodeMarker
+        0..<19 code
+        18..<19 inlineCodeMarker
+        hidden 0..<1 inlineCode
+        hidden 18..<19 inlineCode
+        order 0..<19 code < 0..<1 inlineCodeMarker
+        order 0..<19 code < 18..<19 inlineCodeMarker
+        """#
+    ),
+    "X07": .deliberate(
+        reason: "A closed fence's opening and closing lines are its chrome (ADR-0087 §D6): `fenceOpening` and "
+            + "`fenceClosing`, both concealed off the caret.",
+        expected: #"""
+        0..<3 fenceOpening
+        0..<25 codeBlock
+        22..<25 fenceClosing
+        hidden 0..<3 fenceOpening
+        hidden 22..<25 fenceClosing
+        order 0..<25 codeBlock < 0..<3 fenceOpening
+        order 0..<25 codeBlock < 22..<25 fenceClosing
         """#
     ),
 ]

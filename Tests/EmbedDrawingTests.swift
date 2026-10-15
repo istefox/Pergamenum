@@ -114,14 +114,25 @@ private func syntheticImage(size: CGSize = CGSize(width: 64, height: 48)) -> NSI
     }
 
     /// A stale `.missing` rendition naming a different file than the one the line spells
-    /// right now must not draw - the one identity check `stillSpellsAnEmbed` can make,
-    /// since a `.drawn` rendition carries no name of its own to compare against.
+    /// right now must not draw - an identity check `stillSpellsAnEmbed` can make, since a
+    /// `.drawn` rendition carries no name of its own to compare against.
     @Test func aMissingRenditionForADifferentTargetDoesNotDraw() {
         let delegate = EditorDecorationDelegate()
         delegate.apply(hiddenMarkers: [Self.embedOffset: [Self.marker]], hidingMarkup: true)
         delegate.apply(embeds: [Self.embedOffset: .missing(name: "altro.png")])
 
         #expect(substitutedParagraph(delegate, note: Self.note, at: Self.embedOffset) == nil)
+    }
+
+    /// The same check for a `.pending` placeholder: it names the file it waits for, so one left
+    /// over from a line that now spells another file is not drawn either.
+    @Test func aPendingRenditionForADifferentTargetDoesNotDraw() {
+        let delegate = EditorDecorationDelegate()
+        delegate.apply(hiddenMarkers: [Self.embedOffset: [Self.marker]], hidingMarkup: true)
+        delegate.apply(embeds: [Self.embedOffset: .pending(name: "altro.png")])
+
+        #expect(substitutedParagraph(delegate, note: Self.note, at: Self.embedOffset) == nil)
+        #expect(delegate.drawnEmbedRange(atParagraphStart: Self.embedOffset, in: Self.note as NSString) == nil)
     }
 
     @Test func aStaleMarkerAgainstPlainProseDoesNotDraw() {
@@ -174,14 +185,18 @@ private func syntheticImage(size: CGSize = CGSize(width: 64, height: 48)) -> NSI
     }
 
     /// Polls until the delegate's own paragraph substitution starts returning the
-    /// attachment. Not `EmbedEditorFixtures.waitForRendition`: that one polls
-    /// `embeds.renditions`, and here the assertion is one level further down the pipeline,
-    /// at the hook `EditorDecorationDelegate` actually draws from (ADR-0051 §D4).
+    /// picture's attachment rather than the placeholder box (ADR-0087 §D9). Not
+    /// `EmbedEditorFixtures.waitForRendition`: that one polls `embeds.renditions`, and here
+    /// the assertion is one level further down the pipeline, at the hook
+    /// `EditorDecorationDelegate` actually draws from (ADR-0051 §D4).
     private static func waitForSubstitution(
         offset: Int, in coordinator: NoteTextView.Coordinator, textView: NSTextView
     ) async -> NSTextParagraph? {
         for _ in 0..<100 {
-            if let paragraph = substitutedParagraph(coordinator.decorations, note: textView.string, at: offset) {
+            if let paragraph = substitutedParagraph(coordinator.decorations, note: textView.string, at: offset),
+               let attachment = paragraph.attributedString.attribute(.attachment, at: 0, effectiveRange: nil)
+                   as? EmbedAttachment,
+               attachment.placeholder == nil {
                 return paragraph
             }
             try? await Task.sleep(for: .milliseconds(50))
@@ -203,9 +218,11 @@ private func syntheticImage(size: CGSize = CGSize(width: 64, height: 48)) -> NSI
         coordinator.applyEmbeds(to: textView)
 
         let offset = (text as NSString).range(of: "![[foto.png]]").location
-        // Nothing yet, synchronously: the first pass never blocks on the render, so the
-        // delegate must still be drawing the raw syntax at this point.
-        #expect(substitutedParagraph(coordinator.decorations, note: text, at: offset) == nil)
+        // Only the placeholder box, synchronously: the first pass never blocks on the render,
+        // so the delegate draws the `.pending` box at this point (ADR-0087 §D9; before N5 it
+        // drew the raw syntax).
+        let first = substitutedParagraph(coordinator.decorations, note: text, at: offset)?.attributedString
+        #expect((first?.attribute(.attachment, at: 0, effectiveRange: nil) as? EmbedAttachment)?.placeholder != nil)
 
         let paragraph = await Self.waitForSubstitution(offset: offset, in: coordinator, textView: textView)
         let attributed = try #require(paragraph).attributedString
@@ -361,5 +378,121 @@ private func writePDF(named name: String, in root: URL, pageSize: CGSize = CGSiz
         // assertion against the literal 900 would have been green through the defect.
         let stretched = EmbedResize.resolved(written: .width(900), natural: placeholder, column: Self.column)
         #expect(bounds.size != stretched)
+    }
+}
+
+// MARK: - N5 Task 3 (ADR-0087 §D10, plan `note-workflow-n5.md`, R-40): the placeholder and the chip
+
+/// A `![[foto.png|300]]` line reserves its written size before `ThumbnailStore` answers, so the page does
+/// not jump when the picture lands: `EmbedPlaceholder` gives the size and the delegate's `.pending` arm
+/// draws it.
+@MainActor
+@Suite struct EmbedPlaceholderDrawing {
+    private static let column: CGFloat = 400
+
+    private static func container() -> NSTextContainer {
+        let container = NSTextContainer(size: CGSize(width: column, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        return container
+    }
+
+    private static func attachment(
+        run: String, rendition: EmbedRendition, handleColor: NSColor? = nil
+    ) throws -> EmbedAttachment {
+        let note = "prima\n\(run)\ndopo\n"
+        let marker = HiddenMarker(range: NSRange(location: 0, length: (run as NSString).length), kind: .embed)
+        let delegate = EditorDecorationDelegate()
+        if let handleColor { delegate.handleColor = handleColor }
+        delegate.apply(hiddenMarkers: [6: [marker]], hidingMarkup: true)
+        delegate.apply(embeds: [6: rendition])
+        let paragraph = try #require(substitutedParagraph(delegate, note: note, at: 6))
+        return try #require(
+            paragraph.attributedString.attribute(.attachment, at: 0, effectiveRange: nil) as? EmbedAttachment
+        )
+    }
+
+    private static func bounds(of attachment: EmbedAttachment) -> CGRect {
+        attachment.attachmentBounds(
+            for: [:], location: anyTextLocation(), textContainer: container(),
+            proposedLineFragment: .zero, position: .zero
+        )
+    }
+
+    @Test func aPendingEmbedAlreadyHoldsAnAttachmentOfItsWrittenWidth() throws { // R-40
+        let attachment = try Self.attachment(run: "![[foto.png|300]]", rendition: .pending(name: "foto.png"))
+        let size = Self.bounds(of: attachment).size
+        #expect(size.width == 300)
+        let ratio = EmbedPlaceholder.defaultSize.height / EmbedPlaceholder.defaultSize.width
+        #expect(abs(size.height - 300 * ratio) < 0.5, "\(size)")
+    }
+
+    @Test func aPendingEmbedWithNoSuffixHoldsTheDefaultSize() throws { // R-40
+        let attachment = try Self.attachment(run: "![[foto.png]]", rendition: .pending(name: "foto.png"))
+        let expected = EmbedPlaceholder.size(written: nil, column: Self.column)
+        #expect(expected.width > 0)
+        #expect(Self.bounds(of: attachment).size == expected)
+    }
+
+    @Test func theLineDoesNotChangeHeightWhenTheDrawnRenditionArrivesForAWrittenWidthByHeight() throws { // R-40
+        let run = "![[foto.png|300x200]]"
+        let pending = try Self.attachment(run: run, rendition: .pending(name: "foto.png"))
+        let drawn = try Self.attachment(
+            run: run, rendition: .drawn(syntheticImage(size: CGSize(width: 64, height: 48)))
+        )
+        #expect(Self.bounds(of: pending).size == CGSize(width: 300, height: 200))
+        #expect(Self.bounds(of: pending).size == Self.bounds(of: drawn).size)
+    }
+
+    @Test func aPendingAttachmentHasNoResizeHandle() throws { // R-40
+        let pending = try Self.attachment(
+            run: "![[foto.png|300]]", rendition: .pending(name: "foto.png"), handleColor: .systemRed
+        )
+        #expect(pending.handleColor == nil)
+        // The control: a drawn picture does get the handle the delegate was given.
+        let drawn = try Self.attachment(
+            run: "![[foto.png|300]]", rendition: .drawn(syntheticImage()), handleColor: .systemRed
+        )
+        #expect(drawn.handleColor == .systemRed)
+    }
+
+    @Test func aPendingRenditionComparesByItsName() { // R-40
+        #expect(EmbedRendition.pending(name: "a.png") == .pending(name: "a.png"))
+        #expect(EmbedRendition.pending(name: "a.png") != .pending(name: "b.png"))
+        #expect(EmbedRendition.pending(name: "a.png") != .missing(name: "a.png"))
+    }
+}
+
+/// An inline `![[scheda.pdf]]` reads as a chip: its punctuation is concealed off the caret, its name
+/// stays, and the name carries the chip attribute: the styler's `.embedChipMarker` spans and the
+/// delegate's `.embedChip` branch.
+@MainActor
+@Suite struct EmbedChipDrawing {
+    private static let paragraph = 7
+    private static let note = "intro\n\nvedi ![[scheda.pdf]] fine\n"
+
+    @Test func anInlineEmbedIsConcealedExceptItsNameAndCarriesAChip() { // R-40
+        let built = N5Editor.build(Self.note, caret: 0)
+        // `![[` at 12..<15, the name at 15..<25, `]]` at 25..<27.
+        for punctuation in [12, 13, 14, 25, 26] {
+            #expect(N5Editor.isConcealed(built, paragraph: Self.paragraph, at: punctuation), "offset \(punctuation)")
+        }
+        for name in 15..<25 {
+            #expect(!N5Editor.isConcealed(built, paragraph: Self.paragraph, at: name), "offset \(name)")
+        }
+        #expect(built.textView.textStorage?.attribute(.pergamenumChip, at: 15, effectiveRange: nil) is InlineChip.Style)
+    }
+
+    @Test func theCaretInTheParagraphRevealsTheEmbedsPunctuation() { // R-40
+        let built = N5Editor.build(Self.note, caret: 16)
+        for punctuation in [12, 13, 14, 25, 26] {
+            #expect(!N5Editor.isConcealed(built, paragraph: Self.paragraph, at: punctuation), "offset \(punctuation)")
+        }
+    }
+
+    @Test func theChipParagraphKeepsItsStoredLength() { // R-40
+        for caret in [0, 16] {
+            let lengths = N5Editor.lengths(N5Editor.build(Self.note, caret: caret), at: Self.paragraph)
+            #expect(lengths.displayed == lengths.stored, "caret \(caret): \(lengths)")
+        }
     }
 }

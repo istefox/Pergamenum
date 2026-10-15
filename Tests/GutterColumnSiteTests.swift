@@ -342,7 +342,8 @@ import Testing
         #expect(keys.allSatisfy { $0.hasSuffix("|\(Int(width))") }, "misurata a una larghezza diversa: \(keys)")
 
         let rendition = try #require(coordinator.transclusion.lastRenditions.values.first)
-        let expected = TranscludedRendition.padding * 2 + TranscludedRendition.captionHeight
+        // No header caption since ADR-0087 §D10: the source line is the caption.
+        let expected = TranscludedRendition.padding * 2
             + TranscludedRendition.height(of: rendition.body, width: width)
         #expect(rendition.reservedHeight == expected)
     }

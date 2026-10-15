@@ -81,13 +81,15 @@ extension TableGridView {
         return table.rows.count - 1
     }
 
-    private var columnAnchor: Int? {
+    /// Which column a structural edit, and the column control's menu, is aimed at.
+    var columnAnchor: Int? {
         if let focused { return focused.column }
         guard let table, !table.header.isEmpty else { return nil }
         return table.header.count - 1
     }
 
-    private func commit(_ edit: TableEdit) {
+    /// Not `private`: the column menu (`+ColumnMenu`) commits through the same door.
+    func commit(_ edit: TableEdit) {
         // A cell still being typed into commits first. Clicking a button does not end a field
         // editor's session by itself, so without this the structural edit would be computed
         // against a table the pending cell has not reached yet - and then the cell's own
