@@ -27,12 +27,29 @@ final class QuitReviewUITests: PergamenumUITestCase {
 
         Testo iniziale.
         """.write(to: noteURL, atomically: true, encoding: .utf8)
+        try Self.board(text: "CARD A").write(to: boardURL, atomically: true, encoding: .utf8)
 
         launchApp()
         waitForMainWindow()
     }
 
     private var noteURL: URL { vault.appending(path: "Uscita.md", directoryHint: .notDirectory) }
+    private var boardURL: URL { vault.appending(path: "Lavagna.canvas", directoryHint: .notDirectory) }
+
+    private static let cardID = "aaaa000000000001"
+
+    /// A one-card board; `text` is the only thing the "other writer" changes.
+    private static func board(text: String) -> String {
+        """
+        {
+          "nodes": [
+            { "id": "\(cardID)", "type": "text", "text": "\(text)",
+              "x": 0, "y": 0, "width": 240, "height": 140, "color": "3" }
+          ],
+          "edges": []
+        }
+        """
+    }
 
     func testQuittingWithAnUnsavedNoteAsksAndSalvaWritesIt() throws {
         let note = noteRow("Uscita.md")
@@ -114,6 +131,61 @@ final class QuitReviewUITests: PergamenumUITestCase {
         discard.click()
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 15), "dopo «Non salvare» l'app non è uscita")
         XCTAssertEqual(try String(contentsOf: dayFile, encoding: .utf8), outside, "«Non salvare» ha scritto il giorno")
+    }
+
+    /// ADR-0095, PG-392 R-05: a conflicted Workspace board whose pane is not on screen is still
+    /// asked about at quit, «Salva» cancels and brings the pane and its banner back, and «Non
+    /// salvare» lets the board go without writing it. On the tree before PR #1000 the quit still
+    /// asked, but «Salva» did not bring the board back: this test goes red at that step there
+    /// (checked on `ee6d345f`, 2026-10-15). The question's wording and order, the
+    /// off-screen scope and the reveal hook are pinned in-process (`QuitConflictOffScreenTests`,
+    /// `QuitBoardLifetimeHostedTests`); what only a real window shows is AppKit's terminate
+    /// reaching the review once SwiftUI has delivered the pane's real `onDisappear`, and the
+    /// delegate raising the pane again. The conflict is made the way another writer makes it:
+    /// `.canvas` paths never reach `VaultWatcher` (ADR-0054 §D7), so rewriting the file is
+    /// unseen until the board's own autosave proves against the hash it loaded. It ends with the
+    /// app gone, so the teardown's `terminate()` meets no alert.
+    func testQuittingWithAConflictedBoardOffScreenAsksAndWritesNothing() throws {
+        openSidebarRow("pane-workspace")
+        let row = element("workspace-board-Lavagna.canvas")
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "la board non è nell'elenco del Workspace")
+        row.click()
+        let card = element("canvas-node-\(Self.cardID)")
+        XCTAssertTrue(card.waitForExistence(timeout: 10), "la board non si è aperta")
+
+        // Another writer rewrites the board, then the app edits it: the autosave finds the file moved on.
+        let outside = Self.board(text: "SCRITTO DA FUORI")
+        try outside.write(to: boardURL, atomically: true, encoding: .utf8)
+        card.click()
+        let corner = card.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
+        corner.dragTo(corner.withOffset(CGVector(dx: 60, dy: 40)))
+        let banner = element("board-conflict-keep-local")
+        XCTAssertTrue(banner.waitForExistence(timeout: 10), "la board non ha mostrato il conflitto di salvataggio")
+
+        // The pane leaves the screen: this is the case ADR-0089 §D7 named and ADR-0095 closes.
+        openSidebarRow("pane-notes")
+        XCTAssertTrue(noteRow("Uscita.md").waitForExistence(timeout: 10), "il pannello Note non è comparso")
+        XCTAssertFalse(banner.exists, "il Workspace è ancora sullo schermo")
+
+        // First quit: the question appears, and «Salva» cancels and shows the pane and its banner again.
+        app.typeKey("q", modifierFlags: .command)
+        let save = alertButton(identifier: "quit-prompt-save")
+        XCTAssertTrue(save.waitForExistence(timeout: 5), "uscire con una board in conflitto non ha chiesto niente")
+        save.click()
+        XCTAssertEqual(app.state, .runningForeground, "«Salva» ha chiuso l'app")
+        XCTAssertTrue(
+            element("board-conflict-keep-local").waitForExistence(timeout: 10),
+            "«Salva» non ha riportato in primo piano la board in conflitto"
+        )
+        XCTAssertEqual(try String(contentsOf: boardURL, encoding: .utf8), outside, "«Salva» ha scritto la board")
+
+        // Second quit: «Non salvare» lets the board go, writes nothing, and the app exits.
+        app.typeKey("q", modifierFlags: .command)
+        let discard = alertButton(identifier: "quit-prompt-discard")
+        XCTAssertTrue(discard.waitForExistence(timeout: 5), "la seconda uscita non ha chiesto niente")
+        discard.click()
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 15), "dopo «Non salvare» l'app non è uscita")
+        XCTAssertEqual(try String(contentsOf: boardURL, encoding: .utf8), outside, "«Non salvare» ha scritto la board")
     }
 
     /// The day's own file, `Diario/<yyyyMMdd>.md` in the machine's zone (`CalendarDate.today` is).
