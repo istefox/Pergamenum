@@ -2,7 +2,8 @@
 
 - Status: **accepted**. Merged to `main` via PR #1000 (`5ead20db`, 2026-10-13), built from
   `docs/plans/pg-392-board-controller-vault-lifetime.md`: unit suite green on the merged tree (6698
-  tests, CI green). The hand checks R-02 to R-08 are not yet run (ledger `PG-414`).
+  tests, CI green). The hand checks R-02 to R-04 and R-06 to R-08 are not yet run (ledger `PG-414`);
+  R-05 is covered by a GUI test, see §D9.
 - Date: 2026-10-07. Written against `29bb3aa0`, which is both `origin/main` and the tip of
   `feature/pg-392-board-controller-vault-lifetime`. Every line number below was read from that
   tree.
@@ -307,8 +308,22 @@ filed as its own ledger entry.
   schema, frontmatter key and protected interface. `perg` and `pergamenum-mcp` compile none of the
   files this changes.
 - **Not added.** Zoom and pan are not remembered per board, and no board is reopened at launch.
-- **No GUI test.** The leave is driven through `enterPane()`/`leavePane()` and the hosted-view
-  harness, the switch through its injectable `ask`.
+- **One GUI test, added after the merge (2026-10-15).** The leave is driven through
+  `enterPane()`/`leavePane()` and the hosted-view harness, the switch through its injectable `ask`,
+  and those stay the cover. What no in-process test reaches is the quit with the board off screen,
+  because the real `QuitCoordinator`, the real alert and the real autosave sit behind `NSApp` and
+  the app's scene. `QuitReviewUITests.testQuittingWithAConflictedBoardOffScreenAsksAndWritesNothing`
+  automates hand check R-05 there: a board conflicted by an outside write, the person on the notes
+  pane, Cmd+Q asks, «Salva» cancels and brings the board back, a second Cmd+Q with «Non salvare»
+  quits, and the file holds the outside text throughout. Run on the tree before the merge
+  (`ee6d345f`) it is red at the reveal: the quit asks, «Salva» does not bring the board back
+  (twice, with one stray focus change each, so the run was marked contaminated); on this tree it is
+  green, 3 of 3 in its class. It is one test in an existing class,
+  against the CLAUDE.md allowance of two or three per feature. The GUI suite stands at 36 test
+  functions (`scripts/uitests.sh --status`, 2026-10-15) against the seventeen that CLAUDE.md names
+  as the cap, so this adds to a count already over it rather than staying inside it. Hand checks
+  R-02 to R-04 and R-07 stay owed (`PG-414`). R-06 (an `NSOpenPanel`) and R-08 (the
+  `pergamenum://` route could be handled by an installed copy of the app) stay manual by choice.
 
 ## Alternatives considered
 
