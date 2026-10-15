@@ -13,6 +13,13 @@ import Testing
 
     private static var ratio: CGFloat { EmbedPlaceholder.defaultSize.height / EmbedPlaceholder.defaultSize.width }
 
+    /// PG-420: the default is the width an unsized embed is rendered at, at 16:9, read from the one
+    /// constant rather than written twice.
+    @Test func theDefaultSizeIsTheRenderWidthAtSixteenByNine() { // R-40
+        #expect(EmbedPlaceholder.defaultSize.width == EmbedTable.renderWidth)
+        #expect(abs(EmbedPlaceholder.defaultSize.height - EmbedTable.renderWidth * 9 / 16) < 0.001)
+    }
+
     @Test func theDefaultSizeIsARealSize() { // R-40
         #expect(EmbedPlaceholder.defaultSize.width > 0)
         #expect(EmbedPlaceholder.defaultSize.height > 0)

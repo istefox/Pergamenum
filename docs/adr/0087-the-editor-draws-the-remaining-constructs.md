@@ -389,7 +389,9 @@ stand; what changed is the code they were written against, and one earlier recor
    markers, the fold pass's hidden lines. `NoteTab.toggledCallouts` is model state of
    `foldedEntries`' class: offsets read fresh against the text on each pass, so an edit above a
    callout can drop its toggle, as it can drop a heading's fold. §Neutral's "a callout's fold is
-   lost when its tab closes" gains that sentence.
+   lost when its tab closes" gains that sentence. *Superseded in the code PR:* the flips move with
+   the text, as every offset-keyed holder does, so an edit above a callout keeps its toggle and
+   §Neutral gained nothing (Implementation notes, «D8, a flip follows its callout»).
 5. **ADR-0096 owns the update path.** `OutlineInputs` carries `toggledCallouts` and
    `onToggleCallout` in its declared equality, fed from `EditorColumn+Text.swift` beside
    `onToggleFold`, so a toggle runs a pass and an unrelated keystroke does not.
@@ -482,19 +484,23 @@ above left open, found while building; the decisions themselves stand.
   The line-token layer (`MarkdownBlockParser.quoteMarker`) counts the unbroken `>` run, as it did
   before this ADR, so the editor and the Workspace cards draw one bar and leave `> c` as the line's
   text. D7's «the same nesting» holds for `>> c` and for every run written without spaces, and
-  does not hold for a run with a space between the carets. Aligning the token layer was tried on
-  paper and refused: it would change the styler corpus's S13 (not among the deliberate changes
-  above), `MarkdownLineTokenTests.aSpacedNestedQuoteIsALevelOneQuoteLine`,
+  does not hold for a run with a space between the carets. Nor for a run whose last caret opens a
+  `>date`: `quoteLine` stops before a caret followed by a date once a level is counted, so
+  `>>2026-10-14` is one level with `>2026-10-14` as its text in the reading view and the export,
+  while `quoteMarker` excludes the date only after a lone caret and draws two. Aligning the token
+  layer was tried on paper and refused: it would change the styler corpus's S13 (not among the
+  deliberate changes above), `MarkdownLineTokenTests.aSpacedNestedQuoteIsALevelOneQuoteLine`,
   `CardBlockMarkerTests.aSpacedPairOfQuoteMarksIsOneLevelInACardAsInTheNotePane` (n2-page R-18 and
   R-19), the marker grammar `stillSpellsABlockquoteMarker` re-checks at layout time (a `>` run and
   at most one space), and the card path's one-for-one `▏` substitution, which assumes the first
   `level` characters of the marker are the carets. Aligning the other way would drop the nesting D2
   decided on. The divergence is therefore kept, pinned on the parser side by
   `QuoteLevels.aSpacedNestedCaretIsLevelTwoToo`, and is an **accepted deviation from R-39 and
-  R-43 for spaced nesting only**: for `> > c` the editor draws one level where the reading view
-  (R-39) and the HTML export (R-43) draw two, so neither requirement holds for that spelling, and
-  both hold for every unspaced run. The follow-up is a separate decision, not part of N5, that
-  reopens those tests together: a token-layer marker that spans `> > ` with a level of 2, a
+  R-43 for spaced nesting and a run ending in a `>date` only**: for `> > c` the editor draws one
+  level where the reading view (R-39) and the HTML export (R-43) draw two, so neither requirement
+  holds for that spelling, and both hold for every unspaced run but one ending in a `>date`. The
+  follow-up is a separate decision, not part of N5, that reopens those tests together: a
+  token-layer marker that spans `> > ` with a level of 2, a
   `stillSpellsABlockquoteMarker` stale check that accepts that marker, and a card `▏`
   substitution that reads the carets out of it rather than the marker's first `level`
   characters.

@@ -4,8 +4,8 @@ import AppKit
 /// the written `|W` or `|WxH`, else a default, so the page does not jump when the picture lands.
 enum EmbedPlaceholder {
     /// The size reserved for an embed with no written size: the width an unsized embed is rendered
-    /// at (`EmbedTable.renderWidth`, 720), at 16:9. The column clamps it, as it clamps the picture.
-    static let defaultSize = CGSize(width: 720, height: 405)
+    /// at (`EmbedTable.renderWidth`), at 16:9. The column clamps it, as it clamps the picture.
+    static let defaultSize = CGSize(width: EmbedTable.renderWidth, height: EmbedTable.renderWidth * 9 / 16)
 
     /// The reserved size in a column `column` wide: `EmbedResize`'s own answer, unaltered, for no size,
     /// a width and a `WxH` alike, so a `|300` placeholder is as wide as the picture it holds the place of

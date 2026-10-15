@@ -237,4 +237,54 @@ import Testing
         #expect(reported == [[tip + 2]])
         #expect(full.coordinator.derivedStateSnapshot().decorations.toggledCallouts == [tip + 2])
     }
+
+    /// PG-419 against the oracle: the incremental editor re-reads its callouts as the text changes, the
+    /// kill-switch twin must end holding the same memo and the same hidden lines after each of these.
+    @Test func theKillSwitchTwinMatchesAfterTheLastHeaderGoes() { // R-38
+        let note = "intro\n\n> [!faq]- Domanda\n> risposta\n\nfine\n"
+        let twin = RestyleTwin.plain(note)
+        twin.both { $0.coordinator.parent.outline.onToggleCallout = { _ in } }
+        twin.both { $0.runPasses() }
+        #expect(twin.incremental.coordinator.derivedStateSnapshot().calloutFolds?.count == 1, "nothing folds")
+        #expect(twin.differences().isEmpty, "\(twin.differences())")
+
+        twin.type("", over: (note as NSString).range(of: "[!"))
+        #expect(twin.differences().isEmpty, "\(twin.differences())")
+        #expect(twin.full.coordinator.derivedStateSnapshot().foldLayout.hiddenLineOffsets.isEmpty)
+    }
+
+    @Test func theKillSwitchKeepsTheOtherCalloutFoldedWhenOneHeaderGoes() { // R-38
+        let note = "> [!faq]- Uno\n> a\n\n> [!faq]- Due\n> b\n\nfine\n"
+        let twin = RestyleTwin.plain(note)
+        twin.both { $0.coordinator.parent.outline.onToggleCallout = { _ in } }
+        twin.both { $0.runPasses() }
+        #expect(twin.full.coordinator.derivedStateSnapshot().calloutFolds?.count == 2)
+
+        twin.type("", over: (note as NSString).range(of: "[!"))
+        #expect(twin.differences().isEmpty, "\(twin.differences())")
+        let kept = twin.full.coordinator.derivedStateSnapshot().calloutFolds
+        #expect(kept?.count == 1, "the surviving callout lost its fold: \(String(describing: kept))")
+        #expect(twin.full.coordinator.derivedStateSnapshot().foldLayout.hiddenLineOffsets.count == 1)
+    }
+
+    @Test func theKillSwitchForgetsAFoldWhenTheLastHeaderGoes() throws { // R-38
+        // PG-419: with the kill switch on an edit shifts the flips alone, so the folded-callouts memo is
+        // neither moved nor told an edit reached it. Deleting the last `[!` must not leave it hiding lines
+        // at the offsets they had before.
+        let note = "intro\n\n> [!faq]- Domanda\n> risposta\n\nfine\n"
+        let full = RestyleTwin.plain(note).full
+        #expect(full.coordinator.forcesFullRestyle)
+        full.coordinator.parent.outline.onToggleCallout = { _ in }
+        full.runPasses()
+        try #require(full.coordinator.folding.calloutFoldKeys?.count == 1, "the `-` callout does not fold")
+        #expect(!full.coordinator.folding.lastFoldLayout.hiddenLineOffsets.isEmpty)
+
+        full.undoManager?.beginUndoGrouping()
+        full.type("", over: (note as NSString).range(of: "[!"))
+        full.undoManager?.endUndoGrouping()
+        full.runPasses()
+        #expect(!full.textView.string.contains("[!"))
+        #expect(full.coordinator.folding.calloutFoldKeys ?? [] == [], "the memo kept the deleted callout")
+        #expect(full.coordinator.folding.lastFoldLayout.hiddenLineOffsets.isEmpty, "a stale fold hides lines")
+    }
 }

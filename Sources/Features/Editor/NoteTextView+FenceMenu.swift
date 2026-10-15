@@ -17,7 +17,8 @@ extension NoteTextView.Coordinator {
         let text = view.string
         // A note with no fence mark has no block to copy, and `clickedParagraph` lays out everything
         // above the click: the scan of the characters is the cheaper of the two (the PG-401 cost class).
-        guard text.contains("```") || text.contains("~~~") else { return menu }
+        // The mark is `CodeFence.marks`', which opens a fence on backticks only.
+        guard text.contains("```") else { return menu }
         let index = Self.clickedParagraph(of: event, in: view) ?? charIndex
         guard let block = FenceChrome.block(containing: index, in: text) else { return menu }
         let item = NSMenuItem(title: "Copia il blocco", action: #selector(copyFenceBlock(_:)), keyEquivalent: "")
