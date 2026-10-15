@@ -276,8 +276,8 @@ private let classedChanges: [String: StylerGoldenCase.Change] = [
         """#
     ),
     "S52": .fix(
-        reason: "A tab before `>` hides no quote, as in the reading view and the exporter (`> >` is level 1, as in "
-            + "S13).",
+        reason: "A tab before `>` hides no quote, as in the reading view and the exporter. `> >` is level 1 here, "
+            + "as in S13, where those two count level 2 (ADR-0087's accepted spaced-nesting deviation).",
         expected: #"""
         1..<3 blockquoteMarker(level: 1)
         25..<27 blockquoteMarker(level: 1)

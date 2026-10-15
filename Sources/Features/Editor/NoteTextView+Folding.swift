@@ -177,9 +177,14 @@ extension FoldController {
 
     /// The full restyle's word that it styled the whole note: a note holding a header is read again, and
     /// so is one an edit reached a folded callout in, even when that edit took the last header out, or
-    /// the memo (now without that callout) would keep the layout still hiding its body.
+    /// the memo (now without that callout) would keep the layout still hiding its body. A memo holding
+    /// any fold is read again too: with the kill switch on, an edit shifts the flips alone, so the memo
+    /// is neither moved nor told it was reached, and the edit that took the last header out would leave
+    /// it hiding lines at the offsets they had before.
     func restyled(_ text: String) {
-        if calloutFolds != nil, reachedFolds != nil || text.contains("[!") { calloutFolds = nil }
+        if let folds = calloutFolds, !folds.isEmpty || reachedFolds != nil || text.contains("[!") {
+            calloutFolds = nil
+        }
         reachedFolds = nil
     }
 

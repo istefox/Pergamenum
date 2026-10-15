@@ -129,6 +129,29 @@ import Testing
         #expect(menu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true)
     }
 
+    /// PG-420: the early return tests for the backtick mark alone, as `CodeFence.marks` does, so a tilde
+    /// fence never gets the item, and a note holding both still gets it on the backtick block.
+    @Test func aTildeFenceGetsNoCopyItem() { // R-37
+        let note = "intro\n\n~~~\nlet a = 1\n~~~\n\nfine\n"
+        let built = N5Editor.build(note, caret: 0)
+        let inside = (note as NSString).range(of: "let a").location
+        let menu = built.coordinator.textView(
+            built.textView, menu: Self.baseMenu(), for: Self.event(at: .zero, in: built.window), at: inside
+        )
+        #expect(Self.blockItem(in: menu) == nil)
+        #expect(menu?.items.count == 2)
+    }
+
+    @Test func aBacktickFenceBesideATildeOneStillGetsTheItem() { // R-37
+        let note = "~~~\nx\n~~~\n\n```swift\nlet a = 1\n```\n"
+        let built = N5Editor.build(note, caret: 0)
+        let inside = (note as NSString).range(of: "let a").location
+        let menu = built.coordinator.textView(
+            built.textView, menu: Self.baseMenu(), for: Self.event(at: .zero, in: built.window), at: inside
+        )
+        #expect(Self.blockItem(in: menu) != nil)
+    }
+
     @Test(arguments: [0, 3, 42])
     func theMenuIsUnchangedOutsideTheFence(index: Int) { // R-37
         let built = N5Editor.build(Self.note, caret: 0)

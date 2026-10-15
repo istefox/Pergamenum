@@ -101,7 +101,8 @@ final class EmbedTable {
     /// buckets are the ceiling on how many renders one file can cost over its whole
     /// life, however often it is resized. Reading mode is not touched by any of this:
     /// `EmbeddedFileView.renderWidth` stays 720 and is neither read nor changed here.
-    private static let renderWidth: CGFloat = 720
+    /// `EmbedPlaceholder.defaultSize` reads it, so the place an unsized embed holds is this width.
+    nonisolated static let renderWidth: CGFloat = 720
 
     /// `renderCache`'s and `pending`'s shared key: the resolved path and the bucket
     /// `ThumbnailStore` will actually render at, never the width that was asked for

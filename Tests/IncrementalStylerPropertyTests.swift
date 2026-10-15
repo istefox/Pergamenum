@@ -190,7 +190,11 @@ func randomLineLocalEditsAreRestyledByLines(_ seed: UInt64) {
             atoms: EditGenerator.proseAtoms, tokens: EditGenerator.proseTokens, label: "prose seed \(seed)"
         )
     }
-    print("incremental-property prose seed=\(seed) restyles=\(stats.restyles) lines=\(stats.lines) full=\(stats.full) localEdits=\(stats.localEdits) localLines=\(stats.localLines) withSpans=\(stats.stepsWithSpans) reasons=\(stats.reasons) maxBytes=\(stats.maxBytes) time=\(elapsed)")
+    print(
+        "incremental-property prose seed=\(seed) restyles=\(stats.restyles) lines=\(stats.lines)"
+            + " full=\(stats.full) localEdits=\(stats.localEdits) localLines=\(stats.localLines)"
+            + " withSpans=\(stats.stepsWithSpans) reasons=\(stats.reasons) maxBytes=\(stats.maxBytes) time=\(elapsed)"
+    )
     expectEqualToFullRestyle(stats)
     #expect(stats.localEdits >= 100, "only \(stats.localEdits) edits counted as local")
     #expect(
@@ -251,7 +255,10 @@ private func capped(_ text: String) -> String {
             total.add(stats)
         }
     }
-    print("incremental-property golden inputs=\(inputs.count) restyles=\(total.restyles) lines=\(total.lines) full=\(total.full) reasons=\(total.reasons) maxBytes=\(total.maxBytes) time=\(elapsed)")
+    print(
+        "incremental-property golden inputs=\(inputs.count) restyles=\(total.restyles) lines=\(total.lines)"
+            + " full=\(total.full) reasons=\(total.reasons) maxBytes=\(total.maxBytes) time=\(elapsed)"
+    )
     expectEqualToFullRestyle(total)
     #expect(total.lines * 10 >= total.restyles, "fewer than 10% of \(total.restyles) restyles were .lines; \(total.reasons)")
 }
