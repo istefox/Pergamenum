@@ -371,3 +371,178 @@ private func italics(_ text: String) -> [String] {
     #expect(MarkdownStylerFixture.styled("usa `codice` inline", .code) == "`codice`")
     #expect(!MarkdownStylerFixture.spans("usa `codice` inline").contains(.codeBlock))
 }
+
+// MARK: - N5 (ADR-0087, plan docs/plans/note-workflow-n5.md, Task 3): the new spans
+
+@Suite struct HighlightSpans {
+    @Test func doubleEqualsGivesAHighlightAndTwoMarkers() { // R-36
+        let text = "a ==x== b"
+        #expect(MarkdownStylerFixture.styled(text, .highlight) == "==x==")
+        #expect(MarkdownStylerFixture.styledAll(text) { $0 == .highlightMarker } == ["==", "=="])
+    }
+
+    @Test func doubleEqualsInsideACodeSpanIsNotAHighlight() { // R-36, the SPEC's edge case
+        let spans = MarkdownStylerFixture.spans("`a==b==`")
+        #expect(!spans.contains(.highlight))
+        #expect(!spans.contains(.highlightMarker))
+    }
+
+    @Test func aSpaceAfterTheOpeningPairOpensNothing() { // R-36
+        let spans = MarkdownStylerFixture.spans("a == b == c")
+        #expect(!spans.contains(.highlight))
+    }
+}
+
+@Suite struct InlineCodeMarkerSpans {
+    @Test func aCodeSpanHasTwoDelimiterMarkers() { // R-36
+        #expect(MarkdownStylerFixture.styledAll("a `x` b") { $0 == .inlineCodeMarker } == ["`", "`"])
+    }
+
+    @Test func aLongerBacktickRunIsOneMarkerEachSide() { // R-36, "a backtick run's length varies"
+        #expect(MarkdownStylerFixture.styledAll("a ``x ` y`` b") { $0 == .inlineCodeMarker } == ["``", "``"])
+    }
+
+    @Test func anUnclosedBacktickHasNoMarker() { // R-36
+        #expect(!MarkdownStylerFixture.spans("a `x b").contains(.inlineCodeMarker))
+    }
+}
+
+@Suite struct FenceChromeSpans {
+    /// Each `.fenceOpening` span with the language and line count the drawing reads for it: the span
+    /// carries neither, the fence's `FenceChrome` at the span's start does.
+    private static func openings(_ text: String) -> [(text: String, language: String?, lineCount: Int?)] {
+        MarkdownStyler.spans(in: text).compactMap { item in
+            guard item.span == .fenceOpening else { return nil }
+            let offset = text.utf16.distance(from: text.startIndex, to: item.range.lowerBound)
+            let chrome = FenceChrome.block(containing: offset, in: text)
+            #expect(chrome?.opening == item.range, "the span is not its fence's opening line")
+            return (String(text[item.range]), chrome?.language, chrome?.lineCount)
+        }
+    }
+
+    @Test func aClosedFenceGivesAnOpeningWithItsLanguageAndLineCountAndAClosing() { // R-37
+        let text = "intro\n```swift\nlet a = 1\nlet b = 2\n```\nfine"
+        let found = Self.openings(text)
+        #expect(found.count == 1)
+        #expect(found.first?.language == "swift")
+        #expect(found.first?.lineCount == 2)
+        #expect(found.first?.text.hasPrefix("```swift") == true)
+        let closings = MarkdownStylerFixture.styledAll(text) { $0 == .fenceClosing }
+        #expect(closings.count == 1)
+        #expect(closings.first?.hasPrefix("```") == true)
+    }
+
+    @Test func aFenceWithNoLanguageCarriesNone() { // R-37
+        let found = Self.openings("```\nx\n```")
+        #expect(found.count == 1)
+        #expect(found.first?.language == nil)
+        #expect(found.first?.lineCount == 1)
+    }
+
+    @Test func anUnclosedFenceGivesNeither() { // R-37
+        let spans = MarkdownStylerFixture.spans("```swift\nlet a = 1\n")
+        #expect(Self.openings("```swift\nlet a = 1\n").isEmpty)
+        #expect(!spans.contains(.fenceClosing))
+    }
+
+    @Test func aViewBlockFenceGivesNeither() { // R-37
+        let text = "```pergamenum-view\nrender: table\n```"
+        #expect(Self.openings(text).isEmpty)
+        #expect(!MarkdownStylerFixture.spans(text).contains(.fenceClosing))
+    }
+
+    @Test func theBodyKeepsItsCodeBlockAndTokenSpans() { // R-37: the chrome is added beside, not instead
+        let spans = MarkdownStylerFixture.spans("```swift\nlet a = 1\n```")
+        #expect(spans.contains(.codeBlock))
+        #expect(spans.contains { if case .codeToken = $0 { true } else { false } })
+    }
+}
+
+@Suite struct CalloutSpans {
+    private static func markers(_ text: String) -> [(text: String, kind: CalloutKind, fold: Callout.Fold)] {
+        MarkdownStyler.spans(in: text).compactMap { item in
+            guard case .calloutMarker(let kind, let fold) = item.span else { return nil }
+            return (String(text[item.range]), kind, fold)
+        }
+    }
+
+    @Test func aFoldedHeaderGivesItsMarkerOverTheMarkerLengthAndABodySpanPerBodyLine() { // R-38
+        let text = "> [!tip]- T\n> a\n> b"
+        let markers = Self.markers(text)
+        #expect(markers.count == 1)
+        #expect(markers.first?.text == "> [!tip]- ")
+        #expect(markers.first?.kind == .tip)
+        #expect(markers.first?.fold == .folded)
+        let bodies = MarkdownStylerFixture.styledAll(text) { $0 == .calloutBody(.tip) }
+        #expect(bodies.count == 2, "\(bodies)")
+    }
+
+    @Test func eachBodySpanLiesInsideItsOwnBodyLine() { // R-38
+        let text = "> [!tip]- T\n> a\n> b"
+        let lines = (text as NSString).range(of: "> a").location..<(text as NSString).length
+        let ranges = MarkdownStylerFixture.utf16Ranges(text) { $0 == .calloutBody(.tip) }
+        #expect(ranges.allSatisfy { $0.length > 0 && lines.contains($0.location) })
+        #expect(Set(ranges.map(\.location)).count == ranges.count, "two body spans start on the same line")
+    }
+
+    @Test(arguments: [
+        ("> [!note] T", CalloutKind.note, Callout.Fold.fixed),
+        ("> [!avviso]+ T", CalloutKind.warning, Callout.Fold.open),
+        ("> [!CAUTION]- T", CalloutKind.caution, Callout.Fold.folded),
+        ("> [!faq] Q", CalloutKind.other("faq"), Callout.Fold.fixed),
+    ])
+    func theHeaderCarriesItsKindAndFold(_ header: String, _ kind: CalloutKind, _ fold: Callout.Fold) { // R-38
+        let found = Self.markers(header + "\n> corpo")
+        #expect(found.count == 1)
+        #expect(found.first?.kind == kind)
+        #expect(found.first?.fold == fold)
+    }
+
+    @Test func aTypeAtLevelTwoOrOnALaterLineOfAPlainQuoteIsNoCallout() { // R-38
+        #expect(Self.markers(">> [!note] x").isEmpty)
+        #expect(Self.markers("> uno\n> [!note] x").isEmpty)
+        #expect(!MarkdownStylerFixture.spans("> uno\n> [!note] x").contains(.calloutBody(.note)))
+    }
+
+    @Test func aPlainQuoteHasNoCalloutSpan() { // R-39
+        let spans = MarkdownStylerFixture.spans("> uno\n> due")
+        #expect(!spans.contains { if case .calloutMarker = $0 { true } else { false } })
+        #expect(!spans.contains { if case .calloutBody = $0 { true } else { false } })
+    }
+}
+
+@Suite struct EmbedChipSpans {
+    @Test func anInlineEmbedGivesTwoChipMarkersAroundItsName() { // R-40
+        let text = "vedi ![[a.pdf|200]] fine"
+        let markers = MarkdownStylerFixture.styledAll(text) { $0 == .embedChipMarker }
+        #expect(markers.count == 2, "\(markers)")
+        #expect(markers.allSatisfy { !$0.contains("a.pdf") }, "the name must stay visible: \(markers)")
+        #expect(markers.first?.hasPrefix("![[") == true)
+        #expect(markers.last?.hasSuffix("]]") == true)
+    }
+
+    @Test func anEmbedOnALineOfItsOwnIsDrawnNotChipped() { // R-40
+        #expect(!MarkdownStylerFixture.spans("![[a.pdf]]").contains(.embedChipMarker))
+    }
+}
+
+@Suite struct NewSpanPolicies {
+    @Test func theNewMarkersAndChromeAreNotSpellChecked() { // R-36..R-40
+        let silent: [MarkdownStyler.Span] = [
+            .highlightMarker, .inlineCodeMarker, .fenceOpening, .fenceClosing,
+            .calloutMarker(.note, fold: .fixed), .embedChipMarker,
+        ]
+        for span in silent { #expect(MarkdownStyler.suppressesSpellCheck(span), "\(span)") }
+        #expect(!MarkdownStyler.suppressesSpellCheck(.highlight), "a highlight wraps prose")
+        #expect(!MarkdownStyler.suppressesSpellCheck(.calloutBody(.note)), "a callout body is prose")
+    }
+
+    @Test func theInlineKindsAreSpanGrainedAndTheBlockKindsAreNot() { // ADR-0037 §D2
+        #expect(HiddenMarker.Kind.inlineCode.isInline)
+        #expect(HiddenMarker.Kind.highlight.isInline)
+        #expect(HiddenMarker.Kind.embedChip.isInline)
+        #expect(!HiddenMarker.Kind.fenceOpening.isInline)
+        #expect(!HiddenMarker.Kind.fenceClosing.isInline)
+        #expect(!HiddenMarker.Kind.calloutMarker.isInline)
+    }
+}

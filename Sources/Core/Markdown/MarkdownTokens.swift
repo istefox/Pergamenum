@@ -24,6 +24,14 @@ struct MarkdownLineToken: Equatable, Sendable {
         /// the task index does not read as the bullet it is, at that depth.
         case task(state: TaskItem.State, marker: Range<String.Index>, level: Int)
         case quote(level: Int, marker: Range<String.Index>)
+        /// The first line of a quote run when `Callout.header(inLine:)` reads it as a callout's title
+        /// line (ADR-0087 §D2). `marker` is what the header measured: `>`, the spaces, `[!type]`, the
+        /// sign and one space, never the title.
+        case calloutHeader(Callout.Header, marker: Range<String.Index>)
+        /// A later line of a callout's quote run: the quote line's own `level` and `marker`, and the
+        /// kind of the callout it belongs to. A line is a body line because of the header above it,
+        /// which is why a restyle widens over a whole quote run (ADR-0087, amending ADR-0091 §D3).
+        case calloutBody(CalloutKind, level: Int, marker: Range<String.Index>)
     }
 }
 
@@ -38,6 +46,8 @@ struct MarkdownInlineToken: Equatable, Sendable {
         case strong(delimiters: [Range<String.Index>])
         case emphasis(delimiters: [Range<String.Index>])
         case strikethrough(delimiters: [Range<String.Index>])
+        /// `==testo==` (ADR-0087 §D2).
+        case highlight(delimiters: [Range<String.Index>])
         /// `[[Nota]]`: `syntax` is the opening `[[` and the closing `]]`.
         case wikilink(target: String, syntax: [Range<String.Index>])
         /// `[testo](url)`, or `![alt](file)`: `syntax` is the opening `[` (or `![`) and the
@@ -126,7 +136,39 @@ extension MarkdownBlockParser {
             ))
             index += 1
         }
+        foldCallouts(in: &tokens, text: text)
         return tokens
+    }
+
+    /// Turns each quote run whose first line is a callout's title line into a `.calloutHeader` and
+    /// its `.calloutBody` lines (ADR-0087 §D2). A run is consecutive `.quote` lines; a `[!type]` on a
+    /// later line of a run, or on a level-2 line, stays quote text. `Callout.header(inLine:)` is the
+    /// one predicate, asked of the line from its first `>`.
+    private static func foldCallouts(in tokens: inout [MarkdownLineToken], text: String) {
+        var callout: CalloutKind?
+        var previousIsQuote = false
+        for index in tokens.indices {
+            guard case .quote(let level, let marker) = tokens[index].kind else {
+                callout = nil
+                previousIsQuote = false
+                continue
+            }
+            let range = tokens[index].range
+            if previousIsQuote {
+                if let callout {
+                    tokens[index] = MarkdownLineToken(
+                        range: range, kind: .calloutBody(callout, level: level, marker: marker)
+                    )
+                }
+            } else if level == 1, let header = Callout.header(inLine: text[marker.lowerBound..<range.upperBound]) {
+                let end = text.utf16.index(marker.lowerBound, offsetBy: header.markerLength)
+                tokens[index] = MarkdownLineToken(
+                    range: range, kind: .calloutHeader(header, marker: marker.lowerBound..<end)
+                )
+                callout = header.kind
+            }
+            previousIsQuote = true
+        }
     }
 
     /// The lines of `text`, split as `blocks(in:)` has always split them (`endsLine` defaults to
@@ -210,6 +252,15 @@ extension MarkdownBlockParser {
         return .paragraph
     }
 
+    /// Whether a line, its terminator excluded, opens a quote: its first non-blank character opens a
+    /// quote marker. Only the line's own marker is read; whether the line sits inside a fence or a
+    /// table is not checked here. A rule, a heading, a task and a list item never start with `>`, so
+    /// the marker alone decides (`MarkdownLineSignature.isQuote`, ADR-0087's amendment of ADR-0091 §D3).
+    static func opensQuote(_ line: Substring) -> Bool {
+        let content = line.firstIndex { !isBlank($0) } ?? line.endIndex
+        return quoteMarker(in: line[content...]) != nil
+    }
+
     /// Whether a character is the indentation `trimmingCharacters(in: .whitespaces)` removes.
     private static func isBlank(_ character: Character) -> Bool {
         character.unicodeScalars.allSatisfy(CharacterSet.whitespaces.contains)
@@ -267,6 +318,10 @@ extension MarkdownBlockParser {
     /// scheduling token (SPEC §7.1, ADR-0082 §D4), moved here from the styler so the reading view,
     /// the exporter and the editor read it alike. `> 2026-10-04`, with the space, stays a quote,
     /// and so does `>2026-02-31`, which is no date.
+    ///
+    /// Only the unbroken run counts: `> > c` is level 1 here and level 2 in `quoteLine`, an
+    /// accepted deviation from R-39/R-43 recorded in ADR-0087's implementation notes, with the
+    /// follow-up it needs.
     private static func quoteMarker(in body: Substring) -> (level: Int, marker: Range<String.Index>)? {
         let carets = body.prefix(while: { $0 == ">" })
         guard !carets.isEmpty else { return nil }

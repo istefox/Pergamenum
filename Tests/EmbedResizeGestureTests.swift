@@ -105,11 +105,11 @@ import Testing
         #expect(coordinator.embedResize.handleRect(forEmbedAt: CGPoint(x: box.midX, y: box.midY), in: textView) == nil)
     }
 
-    /// Nothing landed yet, synchronously: the same first-pass state
+    /// Nothing drawn yet, synchronously: the same first-pass state
     /// `EmbedResolutionTests.anImageEmbedResolvesToADrawnRenditionWithARealRender` asserts
-    /// before awaiting the render. No entry in `embeds.renditions` means
-    /// `drawnEmbedRange(atParagraphStart:in:)` itself answers nil, so there is nothing for
-    /// the handle to sit on regardless of where `point` falls.
+    /// before awaiting the render. A `.pending` entry is a placeholder box, refused by
+    /// `handleRect`'s own `guard case .drawn`, so there is nothing for the handle to sit on
+    /// regardless of where `point` falls.
     @Test func handleRectAnswersNilBeforeARenditionLands() throws {
         let root = try EmbedEditorFixtures.makeTempVaultRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -125,7 +125,8 @@ import Testing
         defer { fixture.window.orderOut(nil) }
         coordinator.applyStyling(to: textView, theme: .emergency)
         coordinator.applyEmbeds(to: textView)
-        #expect(coordinator.embeds.renditions[EmbedEditorFixtures.embedOffset] == nil)
+        // `.pending` since ADR-0087 §D9 (nil before N5): a placeholder box, which gets no handle.
+        #expect(coordinator.embeds.renditions[EmbedEditorFixtures.embedOffset] == .pending(name: "foto.png"))
         textView.textLayoutManager?.ensureLayout(for: textView.textLayoutManager!.documentRange)
 
         #expect(coordinator.embedResize.handleRect(forEmbedAt: CGPoint(x: 50, y: 20), in: textView) == nil)

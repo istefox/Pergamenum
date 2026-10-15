@@ -39,13 +39,15 @@ final class UpdatePathFixture {
 
     /// `typingPause` and `find` are the two things plan Task 4 needs to reach: the pause that settles the
     /// unsaved mark, and the find session whose `updates` the column's handlers move. Their defaults keep
-    /// every Task 1 call site as it was.
+    /// every Task 1 call site as it was. `note` replaces the case's synthetic note, for a test that
+    /// wraps it in constructs of its own (plan N5, Realignment 5).
     init(
         _ c: RestyleBudget.Case,
         typingPause: any PauseScheduler = ManualPauseScheduler(),
-        find: FindSession = FindSession()
+        find: FindSession = FindSession(),
+        note override: String? = nil
     ) async throws {
-        let note = RestyleBudget.syntheticNote(bytes: c.bytes, variant: c.variant)
+        let note = override ?? RestyleBudget.syntheticNote(bytes: c.bytes, variant: c.variant)
         let temporaryVault = try TemporaryVault()
         try temporaryVault.write(note, to: "Nota.md")
 
@@ -126,10 +128,12 @@ final class UpdatePathFixture {
     /// `string` typed at `position` the way `keystroke()` types its letter (the selection set there, then
     /// `insertText`), and SwiftUI's update made to run before returning, counted the same way. Added for
     /// plan Task 4, whose tests type a fence's third backtick and a heading's `# ` somewhere other than
-    /// the middle paragraph. It leaves `location`, where the next `keystroke()` types, alone.
-    func type(_ string: String, at position: Int) {
+    /// the middle paragraph. It leaves `location`, where the next `keystroke()` types, alone. `length`
+    /// characters from `position` are selected first, so the typing replaces them (an empty `string`
+    /// deletes them).
+    func type(_ string: String, at position: Int, replacing length: Int = 0) {
         let before = coordinator.restyleLog.skipped
-        textView.setSelectedRange(NSRange(location: position, length: 0))
+        textView.setSelectedRange(NSRange(location: position, length: length))
         textView.insertText(string, replacementRange: NSRange(location: NSNotFound, length: 0))
 
         hosted.hosting.layoutSubtreeIfNeeded()

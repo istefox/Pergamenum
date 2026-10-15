@@ -318,18 +318,18 @@ final class TransclusionController {
         else { return nil }
 
         let (body, isCut) = Self.fitted(excerpt, theme: theme, width: width)
-        let caption = TranscludedRendition.captionHeight
+        // No header caption: the source line is the caption now (ADR-0087 §D10).
         let rendition = TranscludedRendition(
             title: occurrence.section.map { "\(resolved.title) › \($0)" } ?? resolved.title,
             reference: occurrence.reference,
             body: body,
             isCut: isCut,
             reservedHeight: TranscludedRendition.padding * 2
-                + caption
                 + TranscludedRendition.height(of: body, width: width)
-                + (isCut ? caption : 0),
+                + (isCut ? TranscludedRendition.captionHeight : 0),
             ruleColor: NSColor(theme.color(.accentPrimary)).withAlphaComponent(0.35),
-            captionColor: NSColor(theme.color(.textTertiary))
+            captionColor: NSColor(theme.color(.textTertiary)),
+            caption: TransclusionCaption.text(note: resolved.title, section: occurrence.section)
         )
         renditionCache[key] = rendition
         return rendition

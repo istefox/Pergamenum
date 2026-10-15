@@ -6,7 +6,7 @@ import AppKit
 /// with `paragraphSpacing` on the source line (measured in `TransclusionLayoutTests`), so a
 /// rendition that drew taller than it measured would run over the line below it.
 struct TranscludedRendition: Equatable {
-    /// What the header says, and what a click opens.
+    /// The note and section it shows, and what a click opens.
     var title: String
     var reference: String
     /// The target's source with the editor's style applied - `MarkdownAttributedText` with
@@ -14,12 +14,14 @@ struct TranscludedRendition: Equatable {
     var body: NSAttributedString
     /// True when the note did not fit under the cap and was cut.
     var isCut: Bool
-    /// Everything the line has to reserve underneath itself: padding, header, body, and the
-    /// line that offers the note when it was cut.
+    /// Everything the line has to reserve underneath itself: padding, body, and the line that
+    /// offers the note when it was cut. No header: the source line is the caption (ADR-0087 §D10).
     var reservedHeight: CGFloat
 
     var ruleColor: NSColor = .separatorColor
     var captionColor: NSColor = .secondaryLabelColor
+    /// `da «Nota» › Sezione`, drawn in the source line's row while that line is collapsed.
+    var caption: String = ""
 
     // MARK: Geometry, shared by the measuring and the drawing
 
@@ -48,7 +50,7 @@ struct TranscludedRendition: Equatable {
         ).height)
     }
 
-    /// The caption line's height, used for the header and for the cut notice.
+    /// The caption line's height: the collapsed source row's least height, and the cut notice's.
     static var captionHeight: CGFloat { ceil(captionFont.ascender - captionFont.descender + 2) }
 }
 
@@ -63,6 +65,8 @@ struct TranscludedRendition: Equatable {
 /// what turns that trick into something worth having.
 final class TranscludedLineFragment: NSTextLayoutFragment {
     nonisolated(unsafe) var rendition: TranscludedRendition?
+    /// Whether the source line is collapsed and its row shows `rendition.caption` (ADR-0087 §D10).
+    nonisolated(unsafe) var showsCaption = false
 
     /// The column's width: the text container's own, minus the padding a line fragment hangs
     /// at on each side and the source line's own indents (`EditorGutter.columnSpan`, ADR-0081
@@ -132,7 +136,7 @@ final class TranscludedLineFragment: NSTextLayoutFragment {
 
         let bodyHeight = TranscludedRendition.height(of: rendition.body, width: width)
         let captionHeight = TranscludedRendition.captionHeight
-        let ruleHeight = captionHeight + bodyHeight + (rendition.isCut ? captionHeight : 0)
+        let ruleHeight = bodyHeight + (rendition.isCut ? captionHeight : 0)
 
         rendition.ruleColor.setFill()
         NSBezierPath(
@@ -143,16 +147,21 @@ final class TranscludedLineFragment: NSTextLayoutFragment {
             yRadius: TranscludedRendition.ruleWidth / 2
         ).fill()
 
+        if showsCaption {
+            // In the collapsed source row, centred on it: the line names what is drawn below.
+            let row = line.typographicBounds
+            caption(rendition.caption, color: rendition.captionColor).draw(at: CGPoint(
+                x: point.x, y: point.y + row.midY - (captionHeight - 2) / 2
+            ))
+        }
         let textLeft = left + TranscludedRendition.ruleWidth + TranscludedRendition.padding
-        caption(rendition.title, color: rendition.captionColor)
-            .draw(at: CGPoint(x: textLeft, y: top))
         rendition.body.draw(
-            with: CGRect(x: textLeft, y: top + captionHeight, width: width, height: bodyHeight),
+            with: CGRect(x: textLeft, y: top, width: width, height: bodyHeight),
             options: [.usesLineFragmentOrigin, .usesFontLeading]
         )
         if rendition.isCut {
             caption("… apri la nota", color: rendition.captionColor)
-                .draw(at: CGPoint(x: textLeft, y: top + captionHeight + bodyHeight))
+                .draw(at: CGPoint(x: textLeft, y: top + bodyHeight))
         }
 
         NSGraphicsContext.restoreGraphicsState()
@@ -160,9 +169,9 @@ final class TranscludedLineFragment: NSTextLayoutFragment {
 
     /// Where the drawn note is, in the text view's coordinates, so a click can find it.
     ///
-    /// The whole area under the source line: the rendition is one target, not a set of
-    /// them, and asking a person to hit the header exactly would be a worse gesture than
-    /// none at all.
+    /// The whole area under the source line, and the source row itself while it shows the
+    /// caption (ADR-0087 §D10): the rendition is one target, not a set of them. A revealed
+    /// source line is left to the caret.
     ///
     /// Width comes from `containerWidth`, not from `layoutFragmentFrame.width`, for the same
     /// reason `draw(at:in:)` does: the frame is only as wide as the short `![[Nota]]` line's
@@ -172,7 +181,7 @@ final class TranscludedLineFragment: NSTextLayoutFragment {
     var renditionFrame: CGRect {
         guard rendition != nil, let line = textLineFragments.first else { return .null }
         let frame = layoutFragmentFrame
-        let top = frame.minY + line.typographicBounds.maxY
+        let top = frame.minY + (showsCaption ? line.typographicBounds.minY : line.typographicBounds.maxY)
         return CGRect(
             x: frame.minX,
             y: top,

@@ -284,20 +284,74 @@ private let tableNote = "intro\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\noutro"
     #expect((range.map(NSMaxRange) ?? Int.max) <= endOfReset, "\(describe(outcome))")
 }
 
-// MARK: - Blockquote (line-local)
+// MARK: - Blockquote (a run of quote lines)
 
-// (R-04) ADR-0091 §D3: nothing joins two quote lines, so a line that becomes a quote is a local change.
-@Test func aLineThatBecomesAQuoteStaysLocal() {
+// (R-04, R-38, R-39) ADR-0091 §D3 said "nothing joins two quote lines, so a quote is a local change".
+// ADR-0087 amends that (plan note-workflow-n5.md, Realignment 3): whether a `>` line is a callout body
+// depends on whether the first line of its run is a `[!type]` header, so one edit to a quote line can
+// change what every other line of the run is. The rule is now the tables row's shape: a quote line in
+// the range, old or new, or adjoining it, widens the restyle over its whole maximal run of quote lines.
+// The two single-line cases below keep their old expectation, which the new rule gives too (a run of
+// one); the cases after them are the ones the old rule got wrong.
+
+// (R-04) A line that becomes a quote, alone between prose lines, is a run of one.
+@Test func aLineThatBecomesAQuoteIsItsOwnRun() {
     let old = "uno\ndue\ntre"
     let outcome = decide(old, replacing: NSRange(location: nsRange(of: "due", in: old).location, length: 0), with: "> ")
     expectLines(line(containing: "> due", in: outcome.text), outcome)
 }
 
-// (R-04) And a line that stops being one.
-@Test func aLineThatStopsBeingAQuoteStaysLocal() {
+// (R-04) And a line that stops being one leaves no run at all.
+@Test func aLineThatStopsBeingAQuoteIsItsOwnRun() {
     let old = "uno\n> due\ntre"
     let outcome = decide(old, replacing: nsRange(of: "> ", in: old), with: "")
     expectLines(line(containing: "due", in: outcome.text), outcome)
+}
+
+// (R-04, R-38) A line that becomes a quote right under a callout joins its run, and it is now a body
+// line of that callout: the whole run is restyled.
+@Test func aLineThatBecomesAQuoteUnderACalloutWidensOverTheWholeRun() {
+    let old = "> [!note] T\n> a\nb\n\nfine"
+    let outcome = decide(old, replacing: NSRange(location: nsRange(of: "b", in: old).location, length: 0), with: "> ")
+    expectLines(block(from: "[!note]", to: "> b", in: outcome.text), outcome)
+}
+
+// (R-04, R-38) A line that stops being a quote splits a run in two: both halves are restyled, which is
+// the old and the new line together with the run each side of it.
+@Test func aLineThatStopsBeingAQuoteWidensOverBothNeighbouringRuns() {
+    let old = "> [!note] T\n> a\n> b\n> c\n> d"
+    let outcome = decide(old, replacing: NSRange(location: nsRange(of: "> b", in: old).location, length: 2), with: "")
+    expectLines(block(from: "[!note]", to: "> d", in: outcome.text), outcome)
+}
+
+// (R-04, R-39) An edit in the middle of a quote run restyles the run, not the line.
+@Test func anEditInTheMiddleOfAQuoteRunWidensOverTheRun() {
+    let old = "prima\n\n> uno\n> due\n> tre\n\ndopo"
+    let outcome = decide(old, inserting: "x", after: "> due")
+    expectLines(block(from: "> uno", to: "> tre", in: outcome.text), outcome)
+}
+
+// (R-04, R-38) Removing the `>` from the middle of a callout run: the callout ends at the line above
+// and what is left below is a plain quote. The restyle covers the callout and the leftover.
+@Test func aCalloutRunLosingAMiddleMarkerIsRestyledWholeSoTheBodyAboveAndTheQuoteBelowAreRedrawn() {
+    let old = "> [!tip] T\n> a\n> b\n> c\nfine"
+    let outcome = decide(old, replacing: NSRange(location: nsRange(of: "> b", in: old).location, length: 2), with: "")
+    expectLines(block(from: "[!tip]", to: "> c", in: outcome.text), outcome)
+}
+
+// (R-04, R-38) Typing the header into the first line of a plain quote turns every line below it into a
+// callout body.
+@Test func typingACalloutHeaderIntoAQuoteRestylesTheWholeRun() {
+    let old = "> note T\n> a\n> b\nfine"
+    let outcome = decide(old, replacing: NSRange(location: nsRange(of: "note", in: old).location, length: 0), with: "[!")
+    expectLines(block(from: "[!", to: "> b", in: outcome.text), outcome)
+}
+
+// (R-04) An edit on a prose line beside a quote run, not adjoining it, stays local.
+@Test func aProseEditAwayFromAQuoteRunStaysLocal() {
+    let old = "> uno\n> due\n\nlontano\nfine"
+    let outcome = decide(old, inserting: "x", after: "lontano")
+    expectLines(line(containing: "lontanox", in: outcome.text), outcome)
 }
 
 // MARK: - Wikilinks

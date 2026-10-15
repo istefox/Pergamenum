@@ -128,8 +128,13 @@ final class TableGridView: NSView, NSTextFieldDelegate {
         symbol: "minus.rectangle", title: "-c", tooltip: "Rimuovi la colonna",
         identifier: "editor-table-remove-column", action: #selector(removeColumnTapped)
     )
+    /// The column's alignment and sort menu (ADR-0087 §D11, `+ColumnMenu`).
+    lazy var columnMenuButton = makeControl(
+        symbol: "ellipsis", title: "…", tooltip: "Allineamento e ordinamento della colonna",
+        identifier: "editor-table-column-menu", action: #selector(columnMenuTapped(_:))
+    )
     var controlButtons: [NSButton] {
-        [addRowButton, removeRowButton, addColumnButton, removeColumnButton]
+        [addRowButton, removeRowButton, addColumnButton, removeColumnButton, columnMenuButton]
     }
     var controlLabels: [NSTextField] { [rowLabel, columnLabel] }
 
@@ -170,7 +175,7 @@ final class TableGridView: NSView, NSTextFieldDelegate {
     private var controlsWidth: CGFloat {
         Metrics.controlGroupGap
             + groupWidth(labelWidth: rowLabel.intrinsicContentSize.width + Metrics.labelWidthSlop, buttonCount: 2)
-            + groupWidth(labelWidth: columnLabel.intrinsicContentSize.width + Metrics.labelWidthSlop, buttonCount: 2)
+            + groupWidth(labelWidth: columnLabel.intrinsicContentSize.width + Metrics.labelWidthSlop, buttonCount: 3)
     }
 
     /// The width of one pill: padding on both sides, its label, the gap before the buttons,
@@ -207,7 +212,7 @@ final class TableGridView: NSView, NSTextFieldDelegate {
         // line between the two groups and it read as nothing next to the icons it was meant
         // to separate; grouping by an actual background, the way the rest of macOS groups a
         // named pair of controls, is what reads at a glance instead of only on hover.
-        guard controlButtons.count == 4 else { return }
+        guard controlButtons.count == 5 else { return }
         for pill in [rowPillRect, columnPillRect] {
             let path = NSBezierPath(
                 roundedRect: pill, xRadius: Metrics.pillCornerRadius, yRadius: Metrics.pillCornerRadius

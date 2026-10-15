@@ -120,10 +120,9 @@ enum MarkdownAttributedText {
         private var headings: [Int: [NSAttributedString.Key: Any]] = [:]
         private lazy var boldAttributes: [NSAttributedString.Key: Any] = [.font: ProseTypography.proseBold(theme)]
         private lazy var italicAttributes: [NSAttributedString.Key: Any] = ProseTypography.proseItalicAttributes(theme)
-        /// Shared by both mono-faced arms below, so the face itself is resolved once - the
-        /// colour that goes with it still varies per span (`.codeBlock`'s background versus
-        /// `.code`/`.frontmatter`/`.codeToken`'s foreground, which itself varies by token).
-        private lazy var monoFont: NSFont = ProseTypography.mono(theme)
+        /// Shared by the mono-faced arms, so the face is resolved once; the colour still varies per
+        /// span. Internal, not private: `.code`'s arm lives in `MarkdownAttributedText+Chips.swift`.
+        lazy var monoFont: NSFont = ProseTypography.mono(theme)
         private lazy var codeBlockAttributes: [NSAttributedString.Key: Any] = [
             .font: monoFont,
             .backgroundColor: NSColor(theme.color(.surfaceSunken)),
@@ -196,7 +195,9 @@ enum MarkdownAttributedText {
                 // fence in a language nobody wrote a grammar for still reads as code because
                 // of this.
                 return codeBlockAttributes
-            case .code, .frontmatter, .codeToken:
+            case .code, .highlight, .embedChipMarker, .tag, .scheduled:
+                return chipAttributes(for: span)
+            case .frontmatter, .codeToken:
                 // `.codeBlock`'s reasoning, for the spans that used to fall through to
                 // `default` and take a colour alone. The colour each of them already had is
                 // unchanged - it still comes from the one exhaustive table below.
@@ -252,17 +253,22 @@ enum MarkdownAttributedText {
     /// No `default`, on purpose: this is the one table that must stay exhaustive.
     static func colorToken(for span: MarkdownStyler.Span) -> ColorToken {
         switch span {
-        case .heading, .bold, .italic, .codeBlock: .textPrimary
+        // ADR-0087: a highlight and a revealed fence line keep the colour they had.
+        case .heading, .bold, .italic, .codeBlock, .highlight, .fenceOpening, .fenceClosing: .textPrimary
         // Struck-through text is text the author kept and marked as gone. Dimmer than the
         // rest, because the line already says what it is and a second signal would shout.
         case .strikethrough: .textSecondary
-        case .frontmatter, .code, .annotation: .textSecondary
+        // ADR-0087: a revealed backtick reads as part of its code, and a callout's body is quote
+        // text, which §D7 draws in the secondary colour.
+        case .frontmatter, .code, .annotation, .inlineCodeMarker, .calloutBody: .textSecondary
         // Neither `.headingMarker` nor `.emphasisMarker` needs an arm of its own in
         // `attributes(for:)`: that switch's `default` already returns
         // `[.foregroundColor: …colorToken(for: span)…]`, and `addAttributes` merges
         // rather than replaces, so a marker keeps its run's font - bold, or oblique, or
         // the heading's, applied first - and only gets this colour on top, for free.
-        case .linkSyntax, .headingMarker, .emphasisMarker, .listMarker: .textTertiary
+        // ADR-0087's highlight and embed-chip markers are a marker's grey too.
+        case .linkSyntax, .headingMarker, .emphasisMarker, .listMarker, .highlightMarker, .embedChipMarker:
+            .textTertiary
         // `.embedRun` has its own explicit arm in `attributes(for:)` that returns `[:]`
         // (Step 3 is what collapses it into a preview), so this entry exists only to
         // keep this table exhaustive - the same shelf as `.heading`/`.linkTarget` above,
@@ -292,6 +298,9 @@ enum MarkdownAttributedText {
         case .taskMarker(let state): state == .done ? .taskDone : .taskOpen
         case .scheduled: .taskScheduled
         case .due: .taskOverdue
+        // A callout's title marker in its type colour, the neutral bar for an unknown type
+        // (ADR-0087 §D4). ADR-0087's other spans share the arms above, so this table stays flat.
+        case .calloutMarker(let kind, _): kind.colorToken ?? .quoteBar
         }
     }
 

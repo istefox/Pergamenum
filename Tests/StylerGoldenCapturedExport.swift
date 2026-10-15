@@ -483,4 +483,108 @@ private let exportCaptures: [String: String] = [
         order 459..<476 linkSyntax < 462..<470 embedTarget("foto.png")
         order 478..<501 linkSyntax < 481..<491 embedTarget("Altra nota")
         """#,
+    // N01 to N22 (ADR-0087 §D12, plan n5 Task 3): captured from the styler as it stood before N5's
+    // spans, the same way as every entry above. Never edited.
+    "N01": #"""
+        """#,
+    "N02": #"""
+        2..<4 emphasisMarker
+        2..<7 bold
+        5..<7 emphasisMarker
+        hidden 2..<4 emphasis
+        hidden 5..<7 emphasis
+        order 2..<7 bold < 2..<4 emphasisMarker
+        order 2..<7 bold < 5..<7 emphasisMarker
+        """#,
+    "N03": #"""
+        0..<8 code
+        """#,
+    "N04": #"""
+        """#,
+    "N05": #"""
+        0..<2 blockquoteMarker(level: 1)
+        4..<7 blockquoteMarker(level: 2)
+        9..<11 blockquoteMarker(level: 1)
+        hidden 0..<2 blockquote
+        hidden 4..<7 blockquote
+        hidden 9..<11 blockquote
+        """#,
+    "N06": #"""
+        0..<2 blockquoteMarker(level: 1)
+        19..<21 blockquoteMarker(level: 1)
+        hidden 0..<2 blockquote
+        hidden 19..<21 blockquote
+        """#,
+    "N07": #"""
+        0..<2 blockquoteMarker(level: 1)
+        hidden 0..<2 blockquote
+        """#,
+    "N08": #"""
+        0..<2 blockquoteMarker(level: 1)
+        hidden 0..<2 blockquote
+        """#,
+    "N09": #"""
+        0..<2 blockquoteMarker(level: 1)
+        hidden 0..<2 blockquote
+        """#,
+    "N10": #"""
+        0..<2 blockquoteMarker(level: 1)
+        hidden 0..<2 blockquote
+        """#,
+    "N11": #"""
+        0..<2 blockquoteMarker(level: 1)
+        hidden 0..<2 blockquote
+        """#,
+    "N12": #"""
+        0..<2 blockquoteMarker(level: 1)
+        hidden 0..<2 blockquote
+        """#,
+    "N13": #"""
+        0..<2 blockquoteMarker(level: 1)
+        hidden 0..<2 blockquote
+        """#,
+    "N14": #"""
+        0..<2 blockquoteMarker(level: 1)
+        hidden 0..<2 blockquote
+        """#,
+    "N15": #"""
+        0..<2 blockquoteMarker(level: 1)
+        17..<19 blockquoteMarker(level: 1)
+        hidden 0..<2 blockquote
+        hidden 17..<19 blockquote
+        """#,
+    "N16": #"""
+        0..<2 blockquoteMarker(level: 1)
+        hidden 0..<2 blockquote
+        """#,
+    "N17": #"""
+        0..<15 linkSyntax
+        3..<13 embedTarget("Altra nota")
+        hidden 0..<15 link
+        order 0..<15 linkSyntax < 3..<13 embedTarget("Altra nota")
+        """#,
+    "N18": #"""
+        0..<12 tag("#client-acme")
+        13..<24 scheduled
+        """#,
+    "N19": #"""
+        0..<22 codeBlock
+        9..<12 codeToken(CodeSyntax.Token.keyword)
+        17..<18 codeToken(CodeSyntax.Token.number)
+        order 0..<22 codeBlock < 9..<12 codeToken(CodeSyntax.Token.keyword)
+        order 0..<22 codeBlock < 17..<18 codeToken(CodeSyntax.Token.number)
+        """#,
+    "N20": #"""
+        """#,
+    "N21": #"""
+        """#,
+    "N22": #"""
+        """#,
+    // N23 (R-43): written after the rest, for a path-qualified transclusion; the shape of E15's entry.
+    "N23": #"""
+        0..<32 linkSyntax
+        3..<22 embedTarget("Cartella/Altra nota")
+        hidden 0..<32 link
+        order 0..<32 linkSyntax < 3..<22 embedTarget("Cartella/Altra nota")
+        """#,
 ]

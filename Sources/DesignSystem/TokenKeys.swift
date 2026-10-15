@@ -70,6 +70,19 @@ enum ColorToken: String, TokenKey {
     case codeNumber = "color.code.number"
     case codeType = "color.code.type"
 
+    // ADR-0087 §D4: the page's remaining constructs. The inline-code pill's ground is a surface,
+    // not a syntax role, so it sits outside the five above. A callout's card is its type colour at
+    // one fixed opacity, 0.08, not a key of its own; an unknown type draws neutral from `quoteBar`
+    // and `surfaceSunken`, so no sixth callout key exists.
+    case codeInlineBackground = "color.code.inlineBackground"
+    case highlight = "color.highlight"
+    case quoteBar = "color.quote.bar"
+    case calloutNote = "color.callout.note"
+    case calloutTip = "color.callout.tip"
+    case calloutImportant = "color.callout.important"
+    case calloutWarning = "color.callout.warning"
+    case calloutCaution = "color.callout.caution"
+
     // The Italian calendar's red days (M12). Three and not one: a Saturday coloured
     // like Christmas says nothing, and telling the two apart is the whole reason the
     // colour was asked for.

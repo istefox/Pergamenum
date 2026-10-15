@@ -115,6 +115,22 @@ func proseIsNotTableCapable(_ line: String) {
     #expect(signature("plain").brackets.isEmpty)
 }
 
+// MARK: - isQuote: the token layer's quote predicate (ADR-0087's amendment of ADR-0091 §D3)
+
+// (R-38, R-39) A line whose first non-blank character opens a quote marker is a quote line, at any
+// level, with or without the space, and indented by spaces or a tab. A callout header is one too.
+@Test(arguments: ["> a", ">a", ">", "> ", ">> b", "> > c", "  > indented", "\t> tab", "> [!note] Titolo", "> [!avviso]- T"])
+func aQuoteLineCarriesIsQuote(_ line: String) {
+    #expect(signature(line).isQuote, "\(line.debugDescription)")
+}
+
+// (R-38, R-39) Prose, a list line, a heading, a blank line, a `>` that is not first and a `>date`
+// scheduling token (the token layer's own exclusion) are no quote line.
+@Test(arguments: ["plain", "- item", "1. item", "# Heading", "", "   ", "a > b", "- > not first", ">2026-10-14", ">2026-10-14 10:30"])
+func aNonQuoteLineCarriesNoIsQuote(_ line: String) {
+    #expect(!signature(line).isQuote, "\(line.debugDescription)")
+}
+
 // MARK: - lineTokens(listSeed:)
 
 private let listAndTaskTexts: [String] = [

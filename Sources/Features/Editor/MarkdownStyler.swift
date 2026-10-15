@@ -103,6 +103,23 @@ enum MarkdownStyler {
         /// out of the layout mid-keystroke (ADR §D6). The span never reads `render:` -
         /// which renderer a fence names is Task 5's concern, not the classifier's.
         case viewBlockRun
+        /// A highlight (ADR-0087): the text of `==text==` between its delimiters.
+        case highlight
+        /// One `==` delimiter of a `.highlight` run.
+        case highlightMarker
+        /// One backtick delimiter of a `.code` run.
+        case inlineCodeMarker
+        /// A closed fence's opening line. Its language and body line count are not carried: the
+        /// drawing reads both from the text (`FenceChrome`).
+        case fenceOpening
+        /// A closed fence's closing line.
+        case fenceClosing
+        /// A callout header's marker run, `> [!type]` plus its fold sign.
+        case calloutMarker(CalloutKind, fold: Callout.Fold)
+        /// One body line of a callout.
+        case calloutBody(CalloutKind)
+        /// One of the two punctuation runs of an inline embed that reads as a chip.
+        case embedChipMarker
     }
 
     struct StyledRange: Equatable, Sendable {
@@ -143,6 +160,11 @@ enum MarkdownStyler {
             result.append(StyledRange(range: fence.range, span: .codeBlock))
             for span in CodeSyntax.spans(in: text[fence.body], language: fence.language) {
                 result.append(StyledRange(range: span.range, span: .codeToken(span.token)))
+            }
+            // The chrome of a closed fence (ADR-0087 §D6), beside the spans that colour its body.
+            if let chrome = FenceChrome(region: fence, in: text) {
+                result.append(StyledRange(range: chrome.opening, span: .fenceOpening))
+                result.append(StyledRange(range: chrome.closing, span: .fenceClosing))
             }
         }
 
@@ -235,11 +257,14 @@ enum MarkdownStyler {
              // above and for the identical reason (ADR-0033 §D1, Task 1).
              .viewBlockRun,
              // A Message-ID is an identifier, not prose (ADR-0076 §D9).
-             .messageAnchor:
+             .messageAnchor,
+             // ADR-0087's markers and fence chrome: punctuation and chrome, not prose.
+             .highlightMarker, .inlineCodeMarker, .fenceOpening, .fenceClosing, .calloutMarker,
+             .embedChipMarker:
             true
         // Strikethrough belongs here with bold and italic and not above: `~~` wraps prose,
         // and prose is exactly what a spell checker is for.
-        case .heading, .bold, .italic, .strikethrough:
+        case .heading, .bold, .italic, .strikethrough, .highlight, .calloutBody:
             false
         }
     }
@@ -311,6 +336,14 @@ enum MarkdownStyler {
         // so there is nothing to cap the way `.listMarker`'s level is capped at 6.
         case .quote(let level, let marker):
             result.append(StyledRange(range: marker, span: .blockquoteMarker(level: level)))
+        // A callout's title line is its marker and its title; its body lines are quote lines
+        // whose band and bar take the callout's kind (ADR-0087 §D8). The body span is the whole
+        // line, first, so the quote marker on top of it wins.
+        case .calloutHeader(let header, let marker):
+            result.append(StyledRange(range: marker, span: .calloutMarker(header.kind, fold: header.fold)))
+        case .calloutBody(let kind, let level, let marker):
+            result.append(StyledRange(range: token.range, span: .calloutBody(kind)))
+            result.append(StyledRange(range: marker, span: .blockquoteMarker(level: level)))
         case .heading(let level, let marker):
             result.append(StyledRange(range: token.range, span: .heading(level: level)))
             // After the heading span, on purpose: later spans win on overlap, so the marker
@@ -359,8 +392,11 @@ enum MarkdownStyler {
         // `_` and `__` keep their markers on screen (`underscoreEmphasisHasNoMarkerSpan`).
         let starMarker: Span? = text[range.lowerBound] == "*" ? .emphasisMarker : nil
         switch token.kind {
-        case .code:
-            return [StyledRange(range: range, span: .code)]
+        // A backtick run's length varies, so each delimiter is the token's own range (ADR-0087 §D5).
+        case .code(let delimiters):
+            return run(range, .code, delimiters: delimiters, markedBy: .inlineCodeMarker)
+        case .highlight(let delimiters):
+            return run(range, .highlight, delimiters: delimiters, markedBy: .highlightMarker)
         case .strong(let delimiters):
             return run(range, .bold, delimiters: delimiters, markedBy: starMarker)
         case .emphasis(let delimiters):
@@ -518,8 +554,33 @@ enum MarkdownStyler {
                     range: targetStart..<targetEnd,
                     span: link.isEmbed ? .embedTarget(link.target) : .linkTarget(link.resolvedTitle)
                 ))
+                // An embed that reads as a chip (ADR-0087 §D9) conceals its `![[` and its
+                // `|W]]`/`]]`, and keeps its name.
+                if link.isEmbed, targetEnd < upper, EmbedPresentation.of(
+                    target: link.target, isWholeLine: isWholeLine(lower..<upper, in: text)
+                ) == .chip {
+                    result.append(StyledRange(range: lower..<targetStart, span: .embedChipMarker))
+                    result.append(StyledRange(range: targetEnd..<upper, span: .embedChipMarker))
+                }
             }
         }
         return result
+    }
+
+    /// Whether `range` is all its line holds but for surrounding whitespace.
+    private static func isWholeLine(_ range: Range<String.Index>, in text: String) -> Bool {
+        var before = range.lowerBound
+        while before > text.startIndex {
+            let previous = text.index(before: before)
+            if text[previous].isNewline { break }
+            guard text[previous].isWhitespace else { return false }
+            before = previous
+        }
+        var after = range.upperBound
+        while after < text.endIndex, !text[after].isNewline {
+            guard text[after].isWhitespace else { return false }
+            after = text.index(after: after)
+        }
+        return true
     }
 }

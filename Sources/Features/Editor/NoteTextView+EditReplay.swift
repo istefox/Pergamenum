@@ -24,6 +24,9 @@ extension NoteTextView.Coordinator {
     func runEditPasses(in textView: NSTextView, renumbering renumbers: Bool, completing: Bool = true) {
         let written = textView.string
         parent.text = written
+        // After everything that can edit again below (the list renumber): the tab learns where the
+        // edits left its flipped callouts' titles, and the next update finds them equal.
+        defer { if let moved = folding.takeMovedFlips() { parent.outline.onCalloutsMoved?(moved) } }
         modelSync.wrote(written)
         applyStylingIfNeeded(to: textView, theme: parent.theme)
         // The binding was written first, so the stamp is the revision this keystroke made; and an edit

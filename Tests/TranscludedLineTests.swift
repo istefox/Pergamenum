@@ -255,3 +255,101 @@ import Testing
         #expect(Self.spacing(in: textView, atLineContaining: "![[Prove]]") == Theme.emergency.spacing(.paragraph))
     }
 }
+
+// MARK: - N5 Task 3 (ADR-0087 §D10, plan `note-workflow-n5.md`, R-40): the source line is the caption
+
+// Off the caret the source line's own characters are collapsed and the fragment draws the caption
+// `da «Nota» › Sezione` in their place; with the caret in the line the source shows raw; the rendition
+// no longer reserves a header caption of its own. The caption's text is `TransclusionCaption.text` (Task 1); the fragment declares no accessor
+// for it, so what is pinned here is the collapse, the reveal and the reserved height.
+
+@MainActor
+@Suite struct TranscludedCaption {
+    private static let host = "# Ospite\n\n![[Prove]]\n\ncoda\n"
+    private static let line = 10
+
+    private static func source(resolving reference: String = "Prove") -> TransclusionSource {
+        TransclusionSource(
+            resolve: { requested in
+                guard requested == reference else { return nil }
+                return TransclusionSource.Resolved(
+                    title: "Prove", relativePath: "Prove.md", text: "# Prove\n\nTre serie di misure.\n"
+                )
+            },
+            generation: 1
+        )
+    }
+
+    private static func editor(
+        _ text: String = host, caret: Int, transclusions: TransclusionSource?
+    ) -> N5Editor.Built {
+        let built = N5Editor.build(text, caret: caret, vault: .init(transclusions: transclusions))
+        built.coordinator.applyTransclusions(to: built.textView, theme: built.theme)
+        built.textView.textLayoutManager?.ensureLayout(for: built.textView.textLayoutManager!.documentRange)
+        return built
+    }
+
+    @Test func offTheCaretTheSourceLinesCharactersAreCollapsed() { // R-40
+        let built = Self.editor(caret: 0, transclusions: Self.source())
+        for offset in Self.line..<(Self.line + 10) {
+            #expect(N5Editor.isConcealed(built, paragraph: Self.line, at: offset), "offset \(offset)")
+        }
+    }
+
+    @Test func theCollapsedLineKeepsItsStoredLength() { // R-40
+        for caret in [0, Self.line + 4] {
+            let built = Self.editor(caret: caret, transclusions: Self.source())
+            let lengths = N5Editor.lengths(built, at: Self.line)
+            #expect(lengths.displayed == lengths.stored, "caret \(caret): \(lengths)")
+        }
+    }
+
+    @Test func withTheCaretInTheLineTheSourceShowsRaw() { // R-40
+        let built = Self.editor(caret: Self.line + 4, transclusions: Self.source())
+        for offset in Self.line..<(Self.line + 10) {
+            #expect(!N5Editor.isConcealed(built, paragraph: Self.line, at: offset), "offset \(offset)")
+        }
+    }
+
+    @Test func anUnresolvedTransclusionIsDrawnAsToday() { // R-40
+        let built = Self.editor(caret: 0, transclusions: Self.source(resolving: "Altra"))
+        #expect(!N5Editor.isConcealed(built, paragraph: Self.line, at: Self.line + 4))
+        let style = built.textView.textStorage?
+            .attribute(.paragraphStyle, at: Self.line, effectiveRange: nil) as? NSParagraphStyle
+        #expect(style?.paragraphSpacing == Theme.emergency.spacing(.paragraph))
+        #expect(built.coordinator.transclusion.lastRenditions[Self.line] == nil)
+    }
+
+    /// Today the reservation is `padding * 2 + caption + body (+ caption when cut)`: the caption was the
+    /// header the rendition drew. The source line is the caption now, so the header's height is gone.
+    @Test func theReservedHeightHasNoHeaderCaption() throws { // R-40
+        let built = Self.editor(caret: 0, transclusions: Self.source())
+        let rendition = try #require(built.coordinator.transclusion.lastRenditions[Self.line])
+        try #require(!rendition.isCut, "the fixture note must fit")
+
+        let container = try #require(built.textView.textContainer)
+        let style = built.textView.textStorage?
+            .attribute(.paragraphStyle, at: Self.line, effectiveRange: nil) as? NSParagraphStyle
+        let width = EditorGutter.columnSpan(
+            containerWidth: container.size.width, padding: container.lineFragmentPadding, style: style
+        ).width
+        let body = TranscludedRendition.height(of: rendition.body, width: width)
+        #expect(rendition.reservedHeight == TranscludedRendition.padding * 2 + body, "\(rendition.reservedHeight)")
+    }
+
+    @Test func aSectionTransclusionKeepsItsTitleForTheClickThrough() throws { // R-40
+        let note = "# Prove\n\nIntro.\n\n## Seconda\n\nTesto.\n"
+        let source = TransclusionSource(
+            resolve: { reference in
+                reference == "Prove"
+                    ? TransclusionSource.Resolved(title: "Prove", relativePath: "Prove.md", text: note) : nil
+            },
+            generation: 1
+        )
+        let host = "# Ospite\n\n![[Prove#Seconda]]\n\ncoda\n"
+        let built = Self.editor(host, caret: 0, transclusions: source)
+        let rendition = try #require(built.coordinator.transclusion.lastRenditions[Self.line])
+        #expect(rendition.title == "Prove › Seconda")
+        #expect(N5Editor.isConcealed(built, paragraph: Self.line, at: Self.line + 5))
+    }
+}

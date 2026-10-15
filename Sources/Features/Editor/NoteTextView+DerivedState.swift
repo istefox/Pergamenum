@@ -15,6 +15,9 @@ struct DerivedStateSnapshot: Equatable {
     var embedRenditions: [Int]
     var transclusionRenditions: [Int]
     var foldLayout: NoteFolding.Layout
+    /// The fold pass's folded callouts (`FoldController.calloutFoldKeys`, ADR-0087 §D8): nil while the
+    /// pass holds no memo, which is always the case where no callout toggle is wired.
+    var calloutFolds: [[Int]]?
     var revealed: Set<Int>
     var revealedSpans: [Int: [NSRange]]
     var map: StructureMap?
@@ -37,6 +40,8 @@ struct DecorationSnapshot: Equatable {
     var revealedSpanKeys: [Int]
     var tableViewKeys: [Int]
     var viewBlockHostKeys: [Int]
+    /// The tab's flipped callouts as the delegate holds them, shifted by the fold controller (ADR-0087 §D8).
+    var toggledCallouts: Set<Int>
 }
 
 extension NoteTextView.Coordinator {
@@ -68,6 +73,7 @@ extension NoteTextView.Coordinator {
             embedRenditions: embeds.renditions.keys.sorted(),
             transclusionRenditions: transclusion.lastRenditions.keys.sorted(),
             foldLayout: folding.lastFoldLayout,
+            calloutFolds: folding.calloutFoldKeys,
             revealed: reveal.lastRevealed,
             revealedSpans: reveal.lastRevealedSpans,
             map: restyleScope?.map,

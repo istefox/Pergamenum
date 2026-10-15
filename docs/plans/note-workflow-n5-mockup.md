@@ -1,20 +1,22 @@
-**Requirement set:** `SPEC.md`
+**Requirement set:** `docs/specs/note-workflow-n5.spec.md`
 
 # N5 mockup PR: the page, part two (tokens and DesignGallery)
 
-- SPEC: root `SPEC.md`, Approved 2026-10-04, milestone N5 (issue #890). This PR covers R-35 and
+- SPEC: `docs/specs/note-workflow-n5.spec.md` (restored on 2026-10-14 from the root `SPEC.md` of
+  `f697b363`), Approved 2026-10-04, milestone N5 (issue #890, ledger `PG-388`). This PR covers R-35 and
   the mockup half of R-44; R-36 to R-43 are built by `docs/plans/note-workflow-n5.md` after this
   PR's mockups are approved on the Debug build (SPEC §11.1, the SPEC's "Mockups ship first"
   decision).
-- ADR: `docs/adr/0087-the-editor-draws-the-remaining-constructs.md` (new, Proposed). This PR
+- ADR: `docs/adr/0087-the-editor-draws-the-remaining-constructs.md` (new, planned). This PR
   realises its §D4 (the eight token keys, their thresholds, the derived callout card) and draws
   §D5 to §D11 as pictures. The ADR outcome for this plan is that ADR, shared with the code PR, not a
   second one.
-- Base: `48a2d912` (`origin/main`). N5 is built last. **Dependencies, stated per the dispatch:**
-  N2's styler rewrite (ADR-0082, plan `docs/plans/note-workflow-n2.md`) and N1's clickable tag and
-  date (R-07, ADR-0080) must be on `main` before the **code** PR. This mockup PR depends on neither:
-  it touches no editor code. It does touch the same theme files and `TokenKeys.swift` as N1's
-  `spacing.paragraph` (R-08), so it is cut from `main` after N1 merges.
+- Base: `d2be1588` (`origin/main` on 2026-10-14); first written against `48a2d912` and **realigned
+  on 2026-10-14** (see "Realignment" at the end). **Dependencies, all met:** N2's styler rewrite
+  (ADR-0082, PR #956) and N1's clickable tag and date (N1 SPEC R-12 and R-13; the first draft cited
+  "R-07", which is N1's `[[` completion) are on `main`. This mockup PR depends on neither: it touches no editor
+  code. N1's `spacing.paragraph` is already in `TokenKeys.swift` (`:149`), so the "cut after N1"
+  conflict this plan feared does not exist; the branch is cut from today's `main`.
 - Decisions registered from the SPEC, not reopened: callouts write `note`/`tip`/`important`/
   `warning`/`caution`, read `nota`/`suggerimento`/`importante`/`avviso`/`attenzione` as aliases,
   are labelled in Italian, and any other type draws neutral; clickable dates are `>YYYY-MM-DD`
@@ -51,8 +53,8 @@ a surface, not a syntax role. Add each key to both bundled theme files under its
 `color.code.inlineBackground`, a top-level `color.highlight`, a new `color.quote` group and a new
 `color.callout` group. Add each to `Theme.emergency` with the light value. The PG-225 contract is
 that `rawColor` force-unwraps the emergency entry, so a key missing there crashes the xctest
-process rather than failing a test. `Theme.swift` is already at 415 lines, past the 400 warning
-and far from the 1000 error; eight dictionary lines do not justify a split.
+process rather than failing a test. `Theme.swift` is 371 lines on `d2be1588` (the first draft said 415), under the 400
+warning; eight dictionary lines do not justify a split.
 
 Starting values, computed against `color.background.primary` (`#FFFFFF` light, `#1A1917` dark).
 They are tuned at the mockup gate, and the thresholds in Task 2 are what binds.
@@ -167,8 +169,9 @@ extended. Each screen shows, in light and dark through the gallery's own theme s
   - a table column's menu open (Allinea a sinistra / al centro / a destra with the current one
     ticked, Ordina A→Z / Z→A), with a right-aligned column.
 
-Add the three `Screen` cases and their `page` lines. N1 to N4's mockup PRs add cases to the same
-`case` line of `Screen`; whichever merges second rebases that one line.
+Add the three `Screen` cases and their `page` lines. `Screen` (`MockupGalleryView.swift:63`) already
+carries N1 to N4's cases (`gutter`, `linkPreview`, `inspectorLinks`, `noteBirth`, ...), so the three
+new ones are appended to the last line of the `case` list and nothing is left to rebase.
 
 **Human gate (HITL):** Stefano approves the three screens on the Debug build, in light and dark,
 before `docs/plans/note-workflow-n5.md` starts. The approval fixes the token names and confirms or
@@ -187,8 +190,15 @@ Task 2 are amended in this PR, not in the code PR.
 - **Contrast is asserted, not eyeballed**, but only for the pairs Task 2 names. The callout title
   on a Workspace card's sticky colour is not checked: cards colour the title only, and the sticky
   palette varies. Look at it at the gate.
-- **Merge order with N1**: N1 adds `spacing.paragraph` to the same three files. Cut this branch
-  after N1 merges, or expect a trivial conflict in `TokenKeys.swift` and the theme JSONs.
+- **A stale N2 page.** `GutterRevealMockup.swift` ("Margine dei marcatori", N2) draws quote bars as
+  `▏` glyphs (`:221`, `:297-303`). ADR-0087 §D7 replaces them with full-height bars, so that page
+  stops describing the shipped editor once N5's code lands. Do not edit an approved page here: show
+  Stefano the new three-level quote (Task 3) beside it at the gate, and decide whether the N2 page
+  is retired or redrawn in the code PR.
+- **Quote geometry is not free.** ADR-0081 §D3 already hangs the quote at `EditorGutter.quoteColumn`
+  (0.75 em per level). The quote mockup in `PageConstructsMockup` takes its column from that
+  function (the gallery's `GutterRevealMockup` shows the pattern), so the bar the gate approves sits
+  where the editor will put it.
 - HITL: the mockup approval above; commit and push of this branch; the merge. No schema change,
   deletion or deploy.
 
@@ -196,3 +206,34 @@ TEST-CMD CANDIDATE: xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergame
 TEST-CMD MODE: brownfield
 
 CHECK-CMD CANDIDATE: NONE
+
+## Realignment 2026-10-14
+
+Checked on `d2be1588`, by grep of each named path and symbol:
+
+- **Still true:** none of the eight tokens exists yet (`TokenKeys.swift`, `Theme.swift`, both theme
+  JSONs); `Theme.emergency` is at `Theme.swift:243`; `bundledThemesDefineEveryToken` is
+  `Tests/DesignSystemTests.swift:86`; `PraticaRailTokenTests.swift`, `MockupGalleryLayoutTests.swift`,
+  `MockupPage.swift` (`MockupPage` `:13`, `MockupScene` `:37`) and `CodeBlockMockup.swift` (244
+  lines) exist as described; `color.background.primary` is `#FFFFFF` light and `#1A1917` dark, the
+  base Task 1's values were computed against; every existing token the plan reuses is defined
+  (`color.text.secondary/tertiary`, `color.accent.primary/muted`, `color.surface.sunken`,
+  `color.task.scheduled`, `color.border.subtle`, `font.caption`, `font.prose`, `radius.control`,
+  `radius.card`, `spacing.m`); `ThemeEngine.init(bundle:defaults:)` takes `defaults` with a default
+  `bundle`, so Task 2's `init(defaults:)` call compiles.
+- **Changed, patched above:** base commit, dependency status, the `Theme.swift` length, the `Screen`
+  merge note, the N1 requirement numbers, the SPEC path.
+- **New, patched above:** the stale N2 gallery page and the existing quote column.
+- **Unchanged and still to be settled at the gate:** the eight values in Task 1 (re-measure only if
+  the gate retunes them, with Task 2's thresholds as the bound).
+
+## Build result (2026-10-14)
+
+BUILD · DONE
+Files: 12 (tokens in TokenKeys.swift, Theme.swift and both theme JSONs; 3 new DesignGallery screens + MockupGalleryView.swift; NoteConstructTokenTests.swift new; DesignSystemTests.swift and MockupGalleryLayoutTests.swift updated)
+Tests: 6829 tests in 415 suites passed, 5 known issues pre-existing, 0 (coverage)
+Review: sonnet, safe
+Coverage: not run, the plan's requirement set is not SPEC.md (R-35 covered by NoteConstructTokenTests; R-36 to R-43 belong to note-workflow-n5.md)
+Dropped: 1 (dismissed 0, post-sweep 0, nit 0: the "InheritsThem" rename was judged not a typo and left, matching PraticaRailTokenTests.swift:78)
+Dispatch: Round 1 (sweep): coder — 4 NITs (line length, test name, 0.35 comment, sheetTrailingPadding)
+Human gate pending: Stefano approves the three N5 screens on the Debug build, light and dark, before docs/plans/note-workflow-n5.md starts.

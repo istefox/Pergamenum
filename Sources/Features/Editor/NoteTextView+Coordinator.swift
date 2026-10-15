@@ -246,9 +246,13 @@ extension NoteTextView {
         /// `FoldController.apply(to:folded:theme:)`, kept here under the name `updateNSView`
         /// calls (ADR-0074 §D5, `NoteTextView+Folding.swift`).
         func applyFolding(
-            to textView: NSTextView, folded: Set<Int>, hidesFrontmatter: Bool = false, theme: Theme
+            to textView: NSTextView, folded: Set<Int>, hidesFrontmatter: Bool = false,
+            toggledCallouts: Set<Int> = [], theme: Theme
         ) {
-            folding.apply(to: textView, folded: folded, hidesFrontmatter: hidesFrontmatter, theme: theme)
+            folding.apply(
+                to: textView, folded: folded, hidesFrontmatter: hidesFrontmatter,
+                toggledCallouts: toggledCallouts, theme: theme
+            )
         }
 
         /// The styling the update path asks for (ADR-0091 §D8): the dirty range when every edit
@@ -342,6 +346,13 @@ extension NoteTextView {
         ) -> StyledSpans {
             var collected = StyledSpans()
             let length = (source as NSString).length
+            // A chip is drawing (ADR-0087 §D5): with the markup shown, a tag and a date stay as N1 colours them.
+            let chipPadding = parent.hidesMarkup ? InlineChip.Metrics(context.theme).padding : nil
+            // So is a quote's text (ADR-0087 §D7), and the spans after its marker keep their colours.
+            let quoteText = parent.hidesMarkup ? NSColor(context.theme.color(.textSecondary)) : nil
+            // With the markup shown nothing paints the highlight's pill, so it is the plain background
+            // the card and the reading view give it (ADR-0087 §D5); with it hidden the pill is the paint.
+            let highlight = parent.hidesMarkup ? nil : NSColor(context.theme.color(.highlight))
             for styled in spans {
                 let local = NSRange(styled.range, in: source)
                 guard local.location != NSNotFound, NSMaxRange(local) <= length else { continue }
@@ -349,6 +360,13 @@ extension NoteTextView {
                 // Through the source-aware entry: a tag's or a date's click (n1-seams R-12,
                 // R-13) is read off the characters it covers, not the span alone.
                 storage.addAttributes(context.attributes(for: styled, in: source), range: nsRange)
+                if let chipPadding { InlineChip.finish(styled.span, nsRange, in: storage, padding: chipPadding) }
+                if let highlight, case .highlight = styled.span {
+                    storage.addAttribute(.backgroundColor, value: highlight, range: nsRange)
+                }
+                if let quoteText, case .blockquoteMarker = styled.span {
+                    EditorDecorationDelegate.colourQuoteText(after: nsRange, in: storage, color: quoteText)
+                }
                 if MarkdownStyler.suppressesSpellCheck(styled.span) { collected.unspellable.append(nsRange) }
                 if let kind = Self.hiddenKind(for: styled.span) {
                     let paragraphStart = note.paragraphRange(
@@ -481,6 +499,8 @@ extension NoteTextView {
             // `#` run takes there. The card pushes neither and stays at gutter 0 (§D6).
             decorations.gutter = theme.spacing(.gutter)
             decorations.markerFont = ProseTypography.gutterMarker(theme)
+            // What ADR-0087's pills, fence chrome and quotes draw with.
+            decorations.constructStyle = EditorConstructStyle(theme)
         }
 
         /// Which kind of hidden marker a span becomes, or none for a span that is only
@@ -509,6 +529,14 @@ extension NoteTextView {
             // ADR-0076 §D9: the rule's whole-line path, one line over.
             case .messageAnchor: .messageAnchor
             case .linkSyntax: .link
+            // ADR-0087: the pills' delimiters, the fence chrome, a callout's title marker and an
+            // embed chip's brackets, each collapsed on the generic path.
+            case .inlineCodeMarker: .inlineCode
+            case .highlightMarker: .highlight
+            case .fenceOpening: .fenceOpening
+            case .fenceClosing: .fenceClosing
+            case .calloutMarker: .calloutMarker
+            case .embedChipMarker: .embedChip
             // The one ADR-0029 construct that is *not* mapped here, and the reason is
             // structural rather than an omission: a `.tableRun` covers the header line, the
             // delimiter row and every body row, while a `HiddenMarker` is anchored to one
@@ -768,6 +796,7 @@ extension NoteTextView.Coordinator {
         }
         restyleScope = forcesFullRestyle ? nil : RestyleScope(text: text)
         rebuildOutline(from: text)
+        folding.restyled(text)
         let inputs = StylingInputs(storage: storage, textView: textView, theme: theme, parent: parent)
         stylingBaseline = (inputs, recordedEdits)
         embedScan = .whole
@@ -825,6 +854,7 @@ extension NoteTextView.Coordinator {
         embedRuns.splice(collected.embedRuns, replacing: dirty)
         restyleScope?.absorb(StructureMap(text: fragment), at: dirty.location, replacing: dirty)
         spliceOutline(in: textView, note: note, dirty: dirty)
+        folding.restyled(fragment, replacing: dirty)
         stylingBaseline?.edits = recordedEdits
         owe(.range(dirty))
         restyleLog.incremental += 1
@@ -864,10 +894,14 @@ extension NoteTextView.Coordinator {
 
     /// Takes one character edit the storage reported (ADR-0091 §D2): records it, folds it into the
     /// scope's pending decision, and moves every offset-keyed holder past it. With the kill switch
-    /// on, only the record: nothing shifts by itself and every styling is full.
+    /// on, only the record and the tab's flipped callouts, which no styling rebuilds: nothing else
+    /// shifts by itself and every styling is full.
     func recordStorageEdit(_ edit: StorageEdit, in storage: NSTextStorage) {
         lastRecordedEdit = edit
-        guard !forcesFullRestyle else { return }
+        guard !forcesFullRestyle else {
+            folding.shiftFlips(by: edit)
+            return
+        }
         recordedEdits += 1
         if let baseline = stylingBaseline, baseline.inputs.storage == ObjectIdentifier(storage) {
             restyleScope?.record(edit, in: storage.string as NSString)

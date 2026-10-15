@@ -68,8 +68,9 @@ import Testing
         coordinator.applyEmbeds(to: textView)
 
         let offset = (text as NSString).range(of: "![[foto.png]]").location
-        // Nothing yet, synchronously: the first pass never blocks on the render.
-        #expect(coordinator.embeds.renditions[offset] == nil)
+        // Only the placeholder, synchronously: the first pass never blocks on the render, and
+        // records `.pending` while it is in flight (ADR-0087 §D9; this was nil before N5).
+        #expect(coordinator.embeds.renditions[offset] == .pending(name: "foto.png"))
 
         guard case .drawn(let image) = await EmbedEditorFixtures.waitForRendition(at: offset, in: coordinator) else {
             Issue.record("expected the embed to resolve to a drawn rendition")

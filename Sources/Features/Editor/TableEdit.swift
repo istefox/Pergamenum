@@ -30,6 +30,12 @@ enum TableEdit: Equatable, Sendable {
     /// Removes one column, by its index into `table.header`. Refused, the same way
     /// `removeRow` is, when it would leave the table with no columns at all.
     case removeColumn(Int)
+    /// Sets one column's alignment (ADR-0087 §D11). Setting the alignment a column already has, or
+    /// an out-of-range column, is a refusal: the table comes back unchanged.
+    case align(column: Int, GFMTable.Alignment)
+    /// Reorders the body rows by one column (ADR-0087 §D11): `localizedStandardCompare`, empty
+    /// cells last in both directions, stable, the header untouched.
+    case sort(column: Int, ascending: Bool)
 
     /// The edit applied to `table`, or `table` itself unchanged when the edit does not
     /// apply cleanly (an out-of-range row/column, or a removal that would leave the table
@@ -94,7 +100,31 @@ enum TableEdit: Equatable, Sendable {
                 shrunk.remove(at: index)
                 return shrunk
             }
+
+        case .align(let column, let alignment):
+            guard column >= 0, column < result.alignments.count else { return table }
+            result.alignments[column] = alignment
+
+        case .sort(let column, let ascending):
+            guard column >= 0, column < result.header.count else { return table }
+            result.rows = Self.sorted(result.rows, by: column, ascending: ascending)
         }
         return result
+    }
+
+    /// `rows` ordered by one column's text through `localizedStandardCompare`, so `2` sorts before
+    /// `10`. Empty cells go last in both directions, and rows with equal keys keep their order: the
+    /// original position breaks every tie, so stability does not rest on the library's sort.
+    private static func sorted(_ rows: [[String]], by column: Int, ascending: Bool) -> [[String]] {
+        func key(_ row: [String]) -> String {
+            column < row.count ? row[column].trimmingCharacters(in: .whitespaces) : ""
+        }
+        return rows.enumerated().sorted { lhs, rhs in
+            let left = key(lhs.element), right = key(rhs.element)
+            if left.isEmpty != right.isEmpty { return right.isEmpty }
+            let order = left.localizedStandardCompare(right)
+            if order == .orderedSame || left.isEmpty { return lhs.offset < rhs.offset }
+            return ascending ? order == .orderedAscending : order == .orderedDescending
+        }.map(\.element)
     }
 }

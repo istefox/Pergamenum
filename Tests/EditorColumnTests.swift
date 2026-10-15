@@ -322,3 +322,26 @@ private func controller(
     #expect(controller.currentOutlineEntry == nil)
     controller.close()
 }
+
+// MARK: Moved callout flips are written to the column that reported them
+
+@MainActor
+@Test func movedCalloutFlipsLandInTheReportingColumnNotTheFocusedOne() async throws {
+    // An editor reports its shifted flips on any edit of its text, including a programmatic one
+    // (an undo after the focus moved on): they belong to that editor's tab, not to the focused
+    // column's, which would take another note's offsets and leave the reporter's stale.
+    let vault = try TemporaryVault()
+    let controller = try await controller(vault)
+    controller.openNote(at: "Nexion.md")
+    controller.splitEditor()
+    controller.openNote(at: "Progetti/Sospensione.md")
+    controller.focusColumn(1)
+    controller.toggleCallout(7)
+
+    controller.setToggledCallouts([12, 40], inColumn: 0)
+
+    #expect(controller.focusedColumnIndex == 1)
+    #expect(controller.columns[0].active?.toggledCallouts == [12, 40])
+    #expect(controller.columns[1].active?.toggledCallouts == [7])
+    controller.close()
+}

@@ -5,8 +5,9 @@ import Foundation
 ///
 /// Each member is read with the predicate of the parser it restates, never with a second copy of
 /// it: `CodeFence.marks` and `WikilinkParser.marksCodeFence` for the fence mark, `GFMTable.alignments`
-/// for a pipe-less delimiter row, `ListNesting.role(of:)` for the list role, and
-/// `WikilinkParser.inlineCodeRanges(inLine:)` for a bracket that sits in code.
+/// for a pipe-less delimiter row, `ListNesting.role(of:)` for the list role,
+/// `WikilinkParser.inlineCodeRanges(inLine:)` for a bracket that sits in code, and
+/// `MarkdownBlockParser.opensQuote` for a quote line.
 ///
 /// Foundation only: this file compiles into `perg` and `pergamenum-mcp` (ADR-0001 §D1).
 struct MarkdownLineSignature: Equatable, Sendable {
@@ -17,6 +18,9 @@ struct MarkdownLineSignature: Equatable, Sendable {
     var listRole: ListNesting.Role
     /// The line's `[[`, `![[` and `]]` tokens, in order.
     var brackets: [Bracket]
+    /// The line opens a quote (`MarkdownBlockParser.opensQuote`): a callout makes the lines of a quote
+    /// run depend on the first one (ADR-0087's amendment of ADR-0091 §D3).
+    var isQuote = false
 
     enum Bracket: Equatable, Sendable {
         case open(embed: Bool, inCode: Bool)
@@ -30,7 +34,8 @@ struct MarkdownLineSignature: Equatable, Sendable {
             fenceMark: CodeFence.marks(trimmed) || WikilinkParser.marksCodeFence(trimmed),
             tableCapable: isTableCapable(trimmed),
             listRole: ListNesting.role(of: line),
-            brackets: brackets(in: line)
+            brackets: brackets(in: line),
+            isQuote: MarkdownBlockParser.opensQuote(line)
         )
     }
 

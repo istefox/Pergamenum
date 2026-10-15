@@ -1,24 +1,33 @@
-**Requirement set:** `SPEC.md`
+**Requirement set:** `docs/specs/note-workflow-n5.spec.md`
 
 # N5 code PR: the page, part two (R-36 to R-43)
 
-- SPEC: root `SPEC.md`, Approved 2026-10-04, milestone N5 (issue #890), R-36 to R-43, plus the
-  chain-wide R-44 and R-45 for this milestone. R-35 (tokens) ships in the mockup PR,
-  `docs/plans/note-workflow-n5-mockup.md`, which merges and is approved on the Debug build first.
+- SPEC: `docs/specs/note-workflow-n5.spec.md` (restored on 2026-10-14 from the root `SPEC.md` of
+  `f697b363`, the last commit that held it), Approved 2026-10-04, milestone N5 (issue #890, ledger
+  `PG-388`), R-36 to R-43, plus the chain-wide R-44 and R-45 for this milestone. R-35 (tokens) ships
+  in the mockup PR, `docs/plans/note-workflow-n5-mockup.md`, which merges and is approved on the
+  Debug build first.
 - ADR outcome: **new ADR**, `docs/adr/0087-the-editor-draws-the-remaining-constructs.md`
-  (Proposed). It extends ADR-0029 §D1, amends ADR-0029 §D1's quote bullet and ADR-0077 §D4,
+  (planned). It extends ADR-0029 §D1, amends ADR-0029 §D1's quote bullet and ADR-0077 §D4,
   amends SPEC (app) §5's construct list, and records the SPEC's callout-keyword decision (§D3).
-  Section numbers below (§Dn) are that ADR's.
-- Base: `48a2d912` (`origin/main`), planned against today's code. **Dependencies, binding:**
-  - N2's styler rewrite (ADR-0082, plan `docs/plans/note-workflow-n2.md`, roadmap N2 task 7) must
-    be on `main` before Tasks 3 to 7. `MarkdownStyler.spans(in:)` then classifies through
-    `MarkdownBlockParser`/`MarkdownInlineParser`, so the constructs Task 2 adds to those parsers
-    reach the editor through N2's mapping, not through a second recogniser.
-  - ADR-0081 (N2) fixes the quote content column that §D7's indent step reads.
-  - N1's R-07 (Cmd+click on `#tag` and `>date`, ADR-0080) must be on `main` before Task 4, whose
-    chips ride on those ranges.
-  - Line numbers below were read at `48a2d912`. Where N2 moves code, re-grep the named symbol;
-    never trust a line.
+  Section numbers below (§Dn) are that ADR's. Its "Amendments before implementation
+  (2026-10-14)" section records the facts that moved since it was written.
+- Base: `d2be1588` (`origin/main` on 2026-10-14). The plan was first written against `48a2d912`
+  and **realigned on 2026-10-14**: every cited symbol and line below was grepped again on
+  `d2be1588`, and the section "Realignment 2026-10-14" after the call-site list says what the
+  newer code changed in the design. Where a task body still describes the older shape, that
+  section wins; `/workplan` folds it into the task bodies before `/build` starts. Never trust a
+  line number here: re-grep the named symbol.
+- **Dependencies, all met on `d2be1588`:**
+  - N2's styler rewrite (ADR-0082, PR #956 `558db01c`) is on `main`. The seam is the token layer,
+    not the old `spans(in:)`/`MarkdownBlockParser` pair the first draft assumed: see Realignment 1.
+  - ADR-0081 (N2) fixed the quote content column: `EditorGutter.quoteColumn(level:font:gutter:)`
+    with `quoteStepInEms` = 0.75 em. §D7's indent step reads it (Realignment 2).
+  - N1's clickable `#tag` and `>date` are on `main`: they are **R-12 and R-13 of N1's SPEC**
+    (`docs/specs/note-workflow-n1-seams.spec.md`), implemented by
+    `MarkdownAttributedText+Clicks.swift` `clickURL(for:source:)`. The first draft cited them as
+    "R-07", which is N1's `[[` completion; the dependency itself is satisfied.
+  - N4's note birth (ADR-0085, ADR-0086, PR #992) is on `main`. N5 does not depend on it.
 - Decisions registered from the SPEC, not reopened: callouts write `note`/`tip`/`important`/
   `warning`/`caution`, read `nota`/`suggerimento`/`importante`/`avviso`/`attenzione` as aliases,
   label them in Italian and draw any other type neutral; clickable dates are `>YYYY-MM-DD` tokens
@@ -26,44 +35,142 @@
   test.
 - Token names come from the approved mockup PR: `color.code.inlineBackground`, `color.highlight`,
   `color.quote.bar`, `color.callout.{note,tip,important,warning,caution}`, and the card opacity
-  0.08.
-- **Observable contracts this PR changes, with their call sites (grepped at `48a2d912`):**
+  0.08. None of the eight exists on `main` yet (grepped in `TokenKeys.swift`, `Theme.swift` and
+  both theme files on 2026-10-14).
+- **Observable contracts this PR changes, with their call sites (grepped at `d2be1588`):**
   - `MarkdownBlock.quote([String])` becomes `[QuoteLine]`:
-    - `Sources/Core/Markdown/MarkdownBlocks.swift:227`
+    - declaration `Sources/Core/Markdown/MarkdownBlocks.swift:21`, built by the accumulator at
+      `:205` (`String(trimmed.dropFirst())`, one `>` stripped) and appended at `:233`;
     - `Sources/Core/Markdown/MarkdownHTML.swift:59`
-    - `Sources/Features/Editor/MarkdownBlocksView.swift:61`
+    - `Sources/Features/Editor/MarkdownBlocksView.swift:61` (`quoteView` at `:105`)
     - `Tests/MarkdownReadingTests.swift:77`
-  - `MarkdownBlock` gains `.callout`. Its exhaustive switches are `MarkdownHTML.html(for:)` and
-    `MarkdownBlocksView`'s block switch. `Tests/NoteOutlineTests.swift:145` (`default`) and
-    `ViewBlock.blocks(in:)` (`guard case`) are unaffected.
-  - `MarkdownStyler.Span` gains cases. Its exhaustive switches:
-    - `MarkdownStyler.swift:166`, `:344`, `:360`
-    - `CardTextAttributes.swift:114`, `:205`
-    - `InlineSpanReveal.swift:37`
-    - `NoteTextView+Coordinator.swift:414`
-    - `MarkdownAttributedText.swift:127`, `:228`
-    - `CardTextView.swift:360` has `default: nil` and needs no arm.
-  - `HiddenMarker.Kind` gains cases: `isInline` (`EditorDecorationDelegate.swift:114`) and the
-    re-validation switch (`:776`).
-  - `EmbedRendition` gains `.pending`. Its `==` is at `NoteTextView+Embeds.swift:15`, and the
-    tests match `.drawn` with `guard case` only.
+    - `Tests/MarkdownProjectionTests.swift:42`, `:43` and `:48` (**new since the first draft**: three
+      more `.quote([String])` assertions).
+  - `MarkdownBlock` gains `.callout`. Its exhaustive switches are `MarkdownHTML.html(for:)` (`:48`)
+    and `MarkdownBlocksView`'s block switch (`:61`). `Tests/NoteOutlineTests.swift:145` (`default`)
+    and `ViewBlock.blocks(in:)` (`guard case`, `ViewBlock.swift:268`) are unaffected.
+  - `MarkdownStyler.Span` gains cases. Its switches, **exhaustive unless marked**:
+    - `MarkdownStyler.swift:226` (`suppressesSpellCheck`);
+    - `MarkdownAttributedText.swift:156` (`attributes(for:)`) and `:254` (`colorToken`, "No
+      `default`, on purpose");
+    - `CardTextAttributes.swift:122` and `:213`;
+    - `ProseParagraphSpacing.swift:87` (`shapesItsLine`, **new since the first draft**);
+    - `MarkdownAttributedText+Clicks.swift:27` (`clickURL(for:source:)`, **new**, "exhaustive on
+      purpose": a new span must say whether it is a click target);
+    - `InlineSpanReveal.swift:37` (has a `default`: needs an arm only for the spans that reveal by
+      span, `.highlight` and the code span);
+    - `NoteTextView+Coordinator.swift:496` (`hiddenKind(for:)`, `default: nil`);
+    - `CardTextView.swift:~370-387` (`hiddenKind(for:)`, `default: nil`, needs no arm).
+  - The two token switches in `MarkdownStyler.swift` are where the parser's output is mapped:
+    `blockSpans(of:)` (`:303`, `default: break`) and `spans(of:)` over `MarkdownInlineToken` (`:361`,
+    exhaustive). See Realignment 1.
+  - `HiddenMarker.Kind` gains cases: `isInline` (`EditorDecorationDelegate.swift:113`, exhaustive)
+    and the re-validation switch `stillSpells` (`:805`, exhaustive).
+  - `EmbedRendition` gains `.pending`. Its `==` is at `NoteTextView+Embeds.swift:15`; the type's own
+    doc comment at `:7` says "No `.pending` case, on purpose" and is rewritten with it; the tests
+    match `.drawn` with `guard case` only. `EmbedTable` (`:40`) already has an unrelated
+    `pending: [String: Set<Int>]` (renders in flight, `:69`): name the new case's helpers so the two
+    do not read alike.
   - The HTML export changes for `==`, callouts, nested quotes and transclusions, and its stylesheet
-    gains rules. Pinned by:
-    - E15 (`Tests/NoteExportGoldenCorpus.swift:147`);
-    - the W01 and W02 pages (`Tests/NoteExportGoldenTests.swift:26` and `:57`);
-    - the R-11 page (`Tests/ViewBlockOutOfScopeTests.swift:152`);
+    (`NoteExport.swift:42-53`) gains rules. Pinned by:
+    - E15 (`Tests/NoteExportGoldenCorpus.swift:148`);
+    - the W01 and W02 pages (`Tests/NoteExportGoldenTests.swift:18` and `:49`);
+    - the R-11 page (`Tests/ViewBlockOutOfScopeTests.swift:148`, its own copy of the stylesheet);
     - the closed element set (`Tests/NoteExportGoldenTests.swift:222`).
-  - `EditorCommand.editorEntries` gains «Callout». `Tests/EditorCommandTests.swift:168` derives
-    its expectation from the catalogue and stays consistent.
+  - `EditorCommand.editorEntries` (`EditorCommand.swift:45`) gains «Callout» after «Citazione»
+    (`:71`); the exclusion comment is `:39-44`. `Tests/EditorCommandTests.swift:168` derives its
+    expectation from the catalogue and stays consistent.
+  - **`Tests/RestyleScopeTests.swift:287` ("Blockquote (line-local)") asserts the rule Realignment 3
+    changes.** It is updated, not deleted, and says why (ADR-0091 §D3 amended by ADR-0087).
+
 
   Tasks 1 and 2 update every one of these. **Run the full `PergamenumTests` suite after each
   task, not only the new files**: the quote payload and the stylesheet are read by tests in
   unrelated modules.
 
+### Realignment 2026-10-14
+
+Facts the code gained between `48a2d912` and `d2be1588` that change the design, not only a line
+number. Each names the tasks it touches; the ADR-0087 "Amendments before implementation" section
+records the same eight items.
+
+1. **The parser seam is a token layer (ADR-0082 §D2).** `MarkdownBlockParser.lineTokens(in:...)`
+   yields `MarkdownLineToken` (kinds `.fenceOpen(language:)`, `.fenceBody`, `.fenceClose`,
+   `.quote(level:marker:)`, `.heading`, `.listItem`, ...) and `MarkdownInlineParser.tokens(in:)` yields
+   `MarkdownInlineToken` (`.code(delimiters:)`, `.strong`, `.emphasis`, `.strikethrough`, `.tag`,
+   `.scheduled`, ...), both in `Sources/Core/Markdown/MarkdownTokens.swift`. The styler's
+   `blockSpans(of:)` and `spans(of:)` only map them to `Span`. So (Tasks 1, 2, 3, 4, 5, 6):
+   - `==` becomes `MarkdownInlineToken.Kind.highlight(delimiters:)` beside `MarkdownSpan.Style.highlight`;
+     `emphasisMarker(at:)` (`MarkdownInline.swift:190`) and the three-case group in
+     `spans(of node:)` (`:285`) gain it, and the styler maps it with `run(...)` to `.highlight` plus
+     two `.highlightMarker`. Inline code needs no new token: its `delimiters` are already there, and
+     `.inlineCodeMarker` is two more spans from them.
+   - A callout header is recognised by the line-token walk, not by the styler and not by a second
+     scan: it is a new `MarkdownLineToken.Kind` for the level-1 header line and for its body lines
+     (the walk already carries state, `listSeed`), and `MarkdownBlockParser.blocks` folds the run into
+     `.callout`. `Callout.header(inLine:)` stays the one predicate. Today the block accumulator
+     (`MarkdownBlocks.swift:203-205`) strips one `>` and loses nesting; the level it needs is
+     `.quote(level:marker:)`'s, which exists, so no new `>` counter is written.
+   - `FenceChrome` builds on `CodeFence.regions(in:)` as planned. The styler filters regions to
+     `>= bodyStart` (`MarkdownStyler.swift:141`) because a frontmatter holding a fence mark can part
+     `CodeFence.regions` from the tokenizer's own fences (`structuralRuns`' `tokenFences`):
+     `FenceChrome.blocks` takes the same filter, and a test pins a note whose frontmatter holds a
+     fence mark.
+2. **The quote already hangs at a measured column (ADR-0081 §D3).** `EditorGutter.quoteColumn(
+   level:font:gutter:)` (`EditorGutter.swift:42`, step `quoteStepInEms` 0.75 em, `:9`) places the
+   content, and `quoteParagraph` (`EditorDecorationDelegate+QuoteRendering.swift:27`) hangs both the
+   concealed `▏` run and the revealed `>` run from it. `QuoteGeometry.indent(level:step:)` of Task 3
+   is therefore not a second geometry: it delegates to `quoteColumn`, and the plan's `spacing.m`
+   fallback is dead. Task 6 replaces only the `▏` substitution (concealed state) by a collapsed run
+   plus `QuoteBarFragment`, keeping the hang; the revealed state (caret in the line) keeps the raw
+   `>` run hung in the gutter and draws no bar. `QuoteRenderingTests` assertions on the glyph are
+   updated with a comment, never deleted. The N2 gallery page `GutterRevealMockup.swift` draws `▏`
+   bars and goes stale at N5: the mockup PR notes it for Stefano rather than editing an approved
+   page.
+3. **A callout makes quote lines depend on each other, which ADR-0091 §D3 says they do not.** §D3:
+   "The blockquote has no row of its own ... nothing joins two quote lines", asserted by
+   `RestyleScopeTests.swift:287`. With callouts, whether a line is a callout body depends on a
+   header above it, and breaking the run (deleting the `>` of a middle line) changes the lines
+   below. Tasks 1 and 6 add: a `MarkdownLineSignature.isQuote` member (`MarkdownLineSignature.swift`,
+   Foundation only, read with the token layer's quote predicate), and a `RestyleScope` row "a quote
+   line in the range, old or new, or adjoining it, widens over its whole maximal run of quote lines"
+   (the tables row's shape, `RestyleScope.swift`). The property test (equals a full restyle) gains a
+   callout case; `RestyleScopeTests.swift:287` is rewritten to the new rule with the reason in its
+   comment. ADR-0087 records this as an amendment of ADR-0091 §D3.
+4. **Offset-keyed state needs a shift (ADR-0091 §D6, ADR-0094).** "A holder added later that keys by
+   offset must get the same method, or it is a defect." N5 adds: callout title offsets in the hidden
+   markers (keyed by paragraph start, shifted with the existing `hiddenMarkers`), the fold pass's
+   hidden lines (already in `FoldController.lastFoldLayout`, shifted at
+   `NoteTextView+Folding.swift:102`), embed `.pending` entries (`EmbedTable`, `shift(by:)` at
+   `NoteTextView+Embeds.swift:311`) and `NoteTab.toggledCallouts`, which is model state of the
+   `foldedEntries` class (offset keys read fresh against the text each pass, entries that no longer
+   match a header are ignored; document it). Task 3's hosted twin test (R-05 of ADR-0091) is extended
+   to every new holder, and `NoteTextView+DerivedState.swift:45` (`shiftDerivedState`) is the list a
+   new holder joins.
+5. **The update path compares inputs by declared equality (ADR-0096).** `OutlineInputs`
+   (`NoteTextView+Inputs.swift:35`, `foldedOffsets` at `:64`) is fed from `EditorColumn+Text.swift:157-169`
+   (`onToggleFold` at `:161`). `toggledCallouts` and `onToggleCallout` join it there, the first in the
+   input's equality, so a toggle triggers a pass and an unrelated keystroke does not (a test in
+   `EditorUpdatePathBudgetTests`' family).
+6. **Embeds and transclusions are dirty-range passes (ADR-0091 §D7).** Task 7's `.pending`
+   placeholder and caption collapse must hold when `applyEmbeds`/`applyTransclusions` run on a
+   spliced range, not only a whole note: the `embedRuns` splice and the transclusion dirty token are
+   the inputs, and the hosted tests cover an edit above and below an embed.
+7. **There are budget tests now.** `EditorRestyleBudgetTests.swift` and
+   `EditorUpdatePathBudgetTests.swift` (with `RestyleBudgetSupport*.swift`) are in the suite the
+   Stop hook runs. Tasks 4 to 7 add work to the restyle (chip attributes, fence regions, callout
+   runs): run them after each task, and bring a ceiling change to Stefano rather than editing it.
+8. **File budget.** `EditorDecorationDelegate.swift` is 977 lines (cap 1000), `NoteTextView+Coordinator.swift`
+   925, `MarkdownStyler.swift` 525, `VaultController+Tabs.swift` 421. Every new branch goes in a
+   `+Aspect.swift` file as listed; a task that needs more than 20 lines in `EditorDecorationDelegate.swift`
+   itself stops and reports.
+
 ### Task 1 — Core contracts; update tests asserting the old behaviour (R-36, R-37, R-38, R-39, R-40, R-41, R-43)
 Owner: tester
 Files:
 - Sources/Core/Markdown/MarkdownInline.swift
+- Sources/Core/Markdown/MarkdownTokens.swift
+- Sources/Core/Markdown/MarkdownLineSignature.swift
 - Sources/Core/Markdown/MarkdownBlocks.swift
 - Sources/Core/Markdown/Callout.swift
 - Sources/Core/Markdown/FenceChrome.swift
@@ -226,6 +333,8 @@ corpus for `file_length`. `NoteExportGoldenCorpus.bodies` becomes
 Owner: coder
 Files:
 - Sources/Core/Markdown/MarkdownInline.swift
+- Sources/Core/Markdown/MarkdownTokens.swift
+- Sources/Core/Markdown/MarkdownLineSignature.swift
 - Sources/Core/Markdown/MarkdownBlocks.swift
 - Sources/Core/Markdown/Callout.swift
 - Sources/Core/Markdown/FenceChrome.swift
@@ -253,7 +362,7 @@ Make Task 1 green with the rules of ADR-0087 §D2, §D3, §D11 and §D12:
     whole run.
   - A level-1 first line that `Callout.header(inLine:)` accepts turns the run into
     `.callout(Callout)`; the body is the rest of the run, with levels minus one.
-  - Replace Task 1's shim at `MarkdownBlocks.swift:227`. `MarkdownBlocks.swift` is 308 lines: the
+  - Replace Task 1's shim at `MarkdownBlocks.swift:233`. `MarkdownBlocks.swift` is 265 lines: the
     quote and callout run handling goes in `MarkdownBlocks+Quote.swift` if it pushes the file past
     400.
 - **`FenceChrome`** is built over `CodeFence.regions(in:)` plus `CodeFence.marks` on the last line
@@ -313,13 +422,16 @@ Files:
 - Tests/EditorDecorationSubstitutionTests.swift
 - Tests/MarkdownStylerTests.swift
 - Tests/MarkdownStylerFixture.swift
+- Tests/StylerGoldenCorpus.swift
+- Tests/StylerGoldenChanges.swift
+- Tests/RestyleScopeTests.swift
 - Tests/EditorCommandTests.swift
-Tests: InlineChipTests.swift, EditorChipDrawingTests.swift, CodeFenceChromeTests.swift, QuoteBarDrawingTests.swift, CalloutFoldTests.swift, CalloutDrawingTests.swift, EmbedPresentationTests.swift, EmbedDrawingTests.swift, TranscludedLineTests.swift, TranscludedLineFragmentWidthTests.swift, TableColumnMenuTests.swift, EditorDecorationSubstitutionTests.swift, MarkdownStylerTests.swift, MarkdownStylerFixture.swift, EditorCommandTests.swift
+Tests: InlineChipTests.swift, EditorChipDrawingTests.swift, CodeFenceChromeTests.swift, QuoteBarDrawingTests.swift, CalloutFoldTests.swift, CalloutDrawingTests.swift, EmbedPresentationTests.swift, EmbedDrawingTests.swift, TranscludedLineTests.swift, TranscludedLineFragmentWidthTests.swift, TableColumnMenuTests.swift, EditorDecorationSubstitutionTests.swift, MarkdownStylerTests.swift, MarkdownStylerFixture.swift, StylerGoldenCorpus.swift, StylerGoldenChanges.swift, RestyleScopeTests.swift, EditorCommandTests.swift
 Signatures:
 - MarkdownStyler.Span.highlight — case highlight
 - MarkdownStyler.Span.highlightMarker — case highlightMarker
 - MarkdownStyler.Span.inlineCodeMarker — case inlineCodeMarker
-- MarkdownStyler.Span.fenceOpening — case fenceOpening(language: String?, lineCount: Int)
+- MarkdownStyler.Span.fenceOpening — case fenceOpening (no payload: the drawing reads language and line count from the text, `FenceChrome`)
 - MarkdownStyler.Span.fenceClosing — case fenceClosing
 - MarkdownStyler.Span.calloutMarker — case calloutMarker(CalloutKind, fold: Callout.Fold)
 - MarkdownStyler.Span.calloutBody — case calloutBody(CalloutKind)
@@ -377,7 +489,7 @@ The fragment classes are empty subclasses that the delegate never returns yet.
 do not compile (`sharedSources` globs `Sources/Core/**`). Pure types get
 neutral stub bodies, never `fatalError`. `NoteTab.toggledCallouts` and the `OutlineInputs` fields
 are stored but unread; `VaultController.toggleCallout` lives in the new `+Callouts` file
-(`VaultController+Tabs.swift` is at 396 lines) with an empty body. `EmbedRendition.pending` gets
+(`VaultController+Tabs.swift` is at 421 lines) with an empty body. `EmbedRendition.pending` gets
 its `==` arm. Every arm that would need a decision is the coder's, in Tasks 4 to 7. Today's
 drawing stays exactly as it is, so the existing suite stays green.
 
@@ -472,8 +584,11 @@ from the bundled light file, and layout fragments read back by offset.
 - **`EditorDecorationSubstitutionTests.swift`**: each new substitution branch (inline code,
   highlight, fence lines, callout marker, embed chip, transclusion source) keeps the paragraph
   length.
-- **`MarkdownStylerTests.swift` / `MarkdownStylerFixture.swift`**: N2's styler golden corpus (the
-  file N2's plan names; `MarkdownStylerFixture.swift` today) gains one classed case per new span:
+- **`MarkdownStylerTests.swift` / `MarkdownStylerFixture.swift` / the `StylerGolden*.swift` corpus**:
+  N2's styler golden corpus is `StylerGoldenCorpus.swift`, `StylerGoldenChanges.swift` (the A/B/C
+  classes), `StylerGoldenCapturedEditor.swift`, `StylerGoldenCapturedExport.swift` and
+  `StylerGoldenTests.swift`; `MarkdownStylerFixture.swift` is the helper. Add the new files to
+  Task 3's list and give each new span one classed case there:
   - `==x==` gives `.highlight` plus two `.highlightMarker`;
   - `` `x` `` gives two `.inlineCodeMarker`;
   - a closed fence gives `.fenceOpening`/`.fenceClosing`, and an unclosed one neither;
@@ -527,7 +642,8 @@ ADR-0087 §D5:
   paragraph whose substituted text carries `.pergamenumChip`. `FoldedHeadingFragment` calls
   `InlineChipPainter` before drawing its line. `QuoteBarFragment` and `CalloutTitleFragment` get
   the same call in Task 6, when they are given bodies. Radius is `radius.control`.
-- **File length.** `EditorDecorationDelegate.swift` is past 800 lines: the chip branch of the
+- **File length.** `EditorDecorationDelegate.swift` is at 977 lines, 23 under the 1000 error (the
+  hard cap is real here, not a warning): the chip branch of the
   substitution and the fragment choice live in `EditorDecorationDelegate+Chips.swift`.
 - **Reading view.** `MarkdownBlocksView`'s inline renderer gives `.highlight` the
   `color.highlight` background and inline code the `color.code.inlineBackground` background, so
@@ -554,7 +670,7 @@ Red: no
 
 ADR-0087 §D6:
 
-- **Spans and concealment.** The styler emits `.fenceOpening(language:lineCount:)` and
+- **Spans and concealment.** The styler emits `.fenceOpening` and
   `.fenceClosing` from `FenceChrome.blocks(in:)`, beside today's `.codeBlock`/`.codeToken` spans,
   which keep colouring the body. `hiddenKind` maps them to the two block kinds, collapsed on the
   generic path with a minimum line height so the header row has height. This is
@@ -581,6 +697,7 @@ Files:
 - Sources/Features/Editor/EditorDecorationDelegate.swift
 - Sources/Features/Editor/EditorDecorationDelegate+QuoteRendering.swift
 - Sources/Features/Editor/EditorDecorationDelegate+CalloutRendering.swift
+- Sources/Features/Editor/RestyleScope.swift
 - Sources/Features/Editor/QuoteBarFragment.swift
 - Sources/Features/Editor/QuoteGeometry.swift
 - Sources/Features/Editor/CalloutTitleFragment.swift
@@ -598,7 +715,7 @@ Files:
 - Sources/Features/Editor/MarkdownBlocksView+Quote.swift
 - Sources/Features/Workspace/CardTextView+Callout.swift
 - Sources/Features/Workspace/CardTextAttributes.swift
-Tests: QuoteBarDrawingTests.swift, CalloutFoldTests.swift, CalloutDrawingTests.swift, EditorCommandTests.swift, EditorDecorationSubstitutionTests.swift, QuoteRenderingTests.swift, MarkdownReadingTests.swift
+Tests: QuoteBarDrawingTests.swift, CalloutFoldTests.swift, CalloutDrawingTests.swift, EditorCommandTests.swift, EditorDecorationSubstitutionTests.swift, QuoteRenderingTests.swift, MarkdownReadingTests.swift, RestyleScopeTests.swift
 Signatures:
 - CalloutFold.hiddenLines(in:toggled:) — static func hiddenLines(in text: String, toggled: Set<Int>) -> Set<Int>
 - FoldController.apply(to:folded:hidesFrontmatter:theme:) — func apply(to textView: NSTextView, folded: Set<Int>, hidesFrontmatter: Bool = false, toggledCallouts: Set<Int> = [], theme: Theme)
@@ -642,7 +759,8 @@ ADR-0087 §D7 and §D8.
 - **Fold.**
   - `FoldController.apply` unions `CalloutFold.hiddenLines(in:toggled:)` into the hidden-line set
     beside the heading folds and the frontmatter (ADR-0078), and `CaretRescue` applies. Its one
-    call site, `NoteTextView+Coordinator.swift:185`, passes the tab's `toggledCallouts`; the new
+    call site, `NoteTextView+Update.swift:78` (through the coordinator's forward at
+    `NoteTextView+Coordinator.swift:248`), passes the tab's `toggledCallouts`; the new
     parameter defaults to empty, so no other caller changes.
   - `OutlineInputs` carries `toggledCallouts` and `onToggleCallout` from the focused `NoteTab`
     (`EditorColumn+Text.swift`).
@@ -654,17 +772,17 @@ ADR-0087 §D7 and §D8.
 **Slash entry.** `EditorCommand.editorEntries` gains `callout` («Callout», keywords `callout`,
 `nota`, `avviso`, `note`, `warning`; symbol `exclamationmark.bubble`;
 `.insert("> [!note] ", cursorBack: 0)`) after «Citazione». Delete the exclusion comment at
-`EditorCommand.swift:41-45`, whose reason no longer holds.
+`EditorCommand.swift:39-44`, whose reason no longer holds.
 
 **Reading view.**
 
 - Replace Task 1's shims in `MarkdownBlocksView`. A nested quote draws per-level indentation and
   bars from `QuoteGeometry` in `color.quote.bar`, full height.
 - A callout draws as the same card, always open, with the body rendered through the quote view.
-- `MarkdownBlocksView+Quote.swift` holds both, so the 272-line view does not cross 400.
+- `MarkdownBlocksView+Quote.swift` holds both, so the 272-line view does not cross 400 (`MarkdownBlocksView.swift` is still 272).
 
 **Cards.** `CardTextView+Callout.swift` and `CardTextAttributes` colour a callout's title line in
-its type colour and change nothing else on it (R-38). `CardTextView.swift` is at 403 lines and
+its type colour and change nothing else on it (R-38). `CardTextView.swift` is at 392 lines and
 gains no lines beyond an arm.
 
 ### Task 7 — Embed placeholder and chip, transclusion caption, table column menu (R-40, R-41)
@@ -708,7 +826,7 @@ Red: no
 - **Click.** `NoteTextView+EmbedChip.swift` adds `previewChip(at:in:)` to the `onClickInMargin`
   chain. It claims only a plain click on a chip whose paragraph is not revealed, resolves the file
   through `VaultBoundary` (ADR-0041 §D1), and opens it with the column's existing Quick Look
-  route (`previewURLs`/`isPreviewingEmbed`, `EditorColumn+Text.swift:40`).
+  route (`previewURLs`/`isPreviewingEmbed`, `EditorColumn+Text.swift:40-41`, state in `EditorColumnView.swift:50-51`).
 - **Untouched:** `EmbedResize`, the handle and the `|W` write.
 
 **Transclusion caption (§D10).**
@@ -717,7 +835,7 @@ Red: no
   revealed. `TranscludedLineFragment` draws `TransclusionCaption.text` in the source row in
   `captionColor`.
 - `TranscludedRendition` loses its header caption, and `reservedHeight` drops by that height
-  (`NoteTextView+Transclusion.swift:200`).
+  (`NoteTextView+Transclusion.swift:321-332`, the `captionHeight` terms).
 - A click on the caption opens the note through `openTransclusion`, as the header did. An
   unresolved transclusion keeps today's drawing.
 
@@ -768,8 +886,9 @@ Red: no
 - **ADR-0087** gets implementation notes for any departure from its text found while building.
   The status stays `proposed`. The flip to `accepted` names the merge commit and is the first docs
   change after the merge (`docs/adr/README.md` rule 2), so it is not in this PR.
-- **`TODO.md`**: close the N5 ledger entry (its PG id as registered by `/project-tasks roadmap`).
-  The PR body says "Closes #890" (R-44).
+- **`TODO.md`**: close the N5 ledger entry, `PG-388`. The PR body says "refs PG-388" and never
+  "close #890", even negated (PR #964 closed an umbrella issue that way): #890 is closed by hand
+  after the merge, which is how R-44's "closes its issue" is met.
 - **Builds (R-45):** `Pergamenum`, `perg` and `pergamenum-mcp`, each with the `xcodebuild … build`
   line from `CLAUDE.md`. N5 changes nothing under `Sources/MCPServer`, so `scripts/mcp-smoke.py`
   is not required. Say so in the PR body rather than skipping it silently.
@@ -789,10 +908,10 @@ Red: no
 
 ## Risks and HITL gates
 
-- **N2 is a hard prerequisite.** If ADR-0082 lands with a different styler shape (a `Span` enum
-  that is not kept, or a parser that hands the editor no ranges), Tasks 3 to 7's span plumbing must
-  be re-planned against it. Do not start Task 3 until N2's plan and code are on `main`, and re-grep
-  every switch site listed in the header first.
+- **N2 is on `main`, in a different shape from the one this plan first assumed.** ADR-0082 landed as
+  the token layer and ADR-0091 to ADR-0096 changed the restyle and update paths after it. The
+  Realignment section is the answer to "what does the newer code change"; if `/workplan` or `/build`
+  finds a ninth item, stop and add it there before writing code.
 - **The delegate menu route** (`textView(_:menu:for:at:)` reached from the protected
   `menu(for:)`'s `super` call) is AppKit's documented behaviour, but it has not been measured in
   this editor. Task 3's first fence test measures it. If it fails, the fallback is a «Copia» button
@@ -810,9 +929,9 @@ Red: no
   check.
 - **The export stylesheet** pins three page-level expectations (W01, W02, R-11). They are updated
   in Task 1 on purpose. A reviewer who sees them change elsewhere should treat it as a finding.
-- **ADR reference check:** `scripts/check-adr-references.py` will flag ADR-0080 to ADR-0082
-  citations until N1 and N2's ADRs are on `main`. They are, by the binding merge order, before this
-  PR.
+- **ADR reference check:** `scripts/check-adr-references.py` (run it after `git fetch`) must pass
+  with ADR-0080 to ADR-0082 on `main`; they are. ADR-0087 itself is cited from the sources only
+  once it exists on `main`, which it does (as `planned`).
 - **File length:** `EditorDecorationDelegate.swift`, `MarkdownStyler.swift` and
   `NoteTextView+Coordinator.swift` are already past the 400 warning. Every new branch goes in a
   `+Aspect.swift` file as listed. None may cross the 1000 error.
@@ -824,3 +943,28 @@ TEST-CMD CANDIDATE: xcodebuild -workspace Pergamenum.xcworkspace -scheme Pergame
 TEST-CMD MODE: brownfield
 
 CHECK-CMD CANDIDATE: NONE
+
+## Build result (2026-10-15)
+
+BUILD · DONE WITH WARNINGS
+
+Files    112 changed or new in the working tree, uncommitted (Sources/Core, Sources/Features/Editor, Sources/App, Sources/Vault, Tests, docs, TODO.md)
+Tests    PergamenumTests green, 7038 tests, 5 known issues (HostedViewSupport.swift:46); perg and pergamenum-mcp build
+Review   sonnet: safe; opus: safe; no BLOCKER or MAJOR in the final round
+Coverage R-36 to R-43 covered; tester gaps (MarkdownLineSignature.isQuote, callout equals-a-full-restyle property) closed
+Open     none
+Dispatch Rounds 0 to 4: tester (red), coder, tester, debugger and coder fix loop (2 rounds), sweep (2 rounds)
+
+INFO: review escalated, size: 115 changed files, threshold 20
+WARN: accepted deviation, spaced nested quote (`> > c`) is level 1 in the editor and level 2 in the reading view and export; documented in ADR-0087, needs a separate decision (R-39, R-43)
+WARN: mockup HITL gate (Callout, Codice/citazioni/chip, Embed/transclusioni/tabelle, light and dark) was not passed before /build; may retune the 8 token values
+WARN: debugger changed `anEditorWithNoToggleHandlerClaimsNothing` in CalloutDrawingTests because it asserted the bug
+
+DEFER accepted-open: spaced nested quote level divergence between editor and reading view/export (ADR-0087 implementation notes)
+DROP fix-hunk: NoteTextView+Folding.swift:182 stale callout memo under the kill switch (MINOR, diagnostic mode only)
+DROP fix-hunk: ADR-0087:484 deviation note omits `>>2026-10-14` (MINOR)
+DROP fix-hunk: NoteTextView+Folding.swift:181 same kill-switch memo (follow-up, unverified)
+AUTO cap-reached: ADR-0087:389 amendment 4 contradicts the implementation notes (MINOR), not swept, rounds exhausted
+AUTO nit: Tests/StylerGoldenChanges.swift:278 S52 reason wording (NIT), not swept
+AUTO follow-up: Tests/IncrementalStylerPropertyTests.swift:193 and :254 long print lines, pre-existing at HEAD, not swept
+DROP nit: 2 (FenceMenu dead `~~~` clause, EmbedPlaceholder 720 literal)

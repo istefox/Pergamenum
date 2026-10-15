@@ -1,21 +1,24 @@
 import AppKit
-import UniformTypeIdentifiers
 
-/// One embed's resolved picture, or the fact that it could not be drawn (ADR-0018 slice
-/// 3, Step 2).
+/// One embed's resolved picture, the fact that it could not be drawn (ADR-0018 slice
+/// 3, Step 2), or the box held for it while its render is in flight.
 ///
-/// No `.pending` case, on purpose: `EmbedTable.renditions` simply carries no entry yet
-/// for an embed whose render has not landed - the same "absence is the third state"
-/// `EmbeddedFileView` reads through `hasLooked`, a `@State` flip there and a missing
-/// dictionary key here.
+/// `.pending` since ADR-0087 §D9: an embed whose render has not landed used to have no entry
+/// at all, and its line grew by the picture's height when the render arrived. The entry now
+/// reserves the written or default size (`EmbedPlaceholder`), and the render's completion
+/// replaces it through `EmbedTable.setRenditions`, as it filled the empty slot before. Not to be
+/// read as `EmbedTable.pending`, which is the renders in flight by cache key.
 enum EmbedRendition: Equatable {
     case drawn(NSImage)
     case missing(name: String)
+    /// A placeholder of the written or default size, held until the thumbnail answers.
+    case pending(name: String)
 
     static func == (lhs: EmbedRendition, rhs: EmbedRendition) -> Bool {
         switch (lhs, rhs) {
         case let (.drawn(left), .drawn(right)): left === right
         case let (.missing(left), .missing(right)): left == right
+        case let (.pending(left), .pending(right)): left == right
         default: false
         }
     }
@@ -113,9 +116,9 @@ final class EmbedTable {
     /// Resolves every embed line `applyStyling` just found, from the cache when it is
     /// already there and by starting a render when it is not.
     ///
-    /// Never blocks: a cache miss leaves that offset out of the table for this pass -
-    /// the "pending" state `EmbedRendition` has no case for - and the table updates
-    /// itself later, from `requestRender`'s own completion, once the render lands.
+    /// Never blocks: a cache miss enters that offset as `.pending` for this pass, and the
+    /// table updates itself later, from `requestRender`'s own completion, once the render
+    /// lands (ADR-0087 §D9).
     ///
     /// `dirty` is the incremental restyle's range (ADR-0091 §D4): only the runs inside it are
     /// resolved, and every rendition outside it is kept as the shift left it.
@@ -147,9 +150,9 @@ final class EmbedTable {
         setRenditions(next, text: text)
     }
 
-    /// One embed's rendition, synchronously from the cache, or nil while a render is
-    /// still in flight - never nil for a reason `EditorDecorationDelegate` would need to
-    /// draw differently, since a missing file is `.missing`, not an absent entry.
+    /// One embed's rendition, synchronously from the cache, or `.pending` while a render is
+    /// still in flight; nil only for an embed the editor does not draw (a chip, ADR-0087 §D9),
+    /// since a missing file is `.missing`, not an absent entry.
     private func rendition(
         forSyntax syntax: String,
         notePath: String,
@@ -157,14 +160,16 @@ final class EmbedTable {
         thumbnails: ThumbnailStore,
         offset: Int
     ) -> EmbedRendition? {
-        guard let embed = Attachment.embed(inLine: syntax) else { return nil }
+        // A file that is neither a picture nor a PDF reads as a chip, never as a placeholder
+        // or a broken picture (ADR-0087 §D9): decided from its name, before any lookup.
+        guard let embed = Attachment.embed(inLine: syntax),
+              EmbedPresentation.of(target: embed.target, isWholeLine: true) == .drawn
+        else { return nil }
         guard let relativePath = resolvedPath(for: embed.target, notePath: notePath, root: root) else {
             return .missing(name: embed.target)
         }
-        // Only a picture or a PDF is drawable here (D3). Anything else is not entered as
-        // `.missing` either - it stays plain, unresolved text once Step 3 exists, the
-        // same as a line still waiting on its first render.
-        guard Self.isRenderableType(of: relativePath) else { return nil }
+        // The resolved file, not only the written target, has to be a picture or a PDF (D3).
+        guard EmbedPresentation.isDrawable(relativePath) else { return nil }
 
         // ADR-0019 §D4: the run's own `|W`/`|WxH` decides the width its render is asked
         // for, and only a run naming none falls back to the constant. Read out of
@@ -181,7 +186,7 @@ final class EmbedTable {
             relativePath: relativePath, width: width, thumbnails: thumbnails,
             fallbackName: embed.target, offset: offset
         )
-        return nil
+        return .pending(name: embed.target)
     }
 
     /// `Attachment.resolve`, cached by note path and target - see `resolutionCache`'s own
@@ -265,14 +270,6 @@ final class EmbedTable {
             storage.edited(.editedAttributes, range: paragraph, changeInLength: 0)
         }
         storage.endEditing()
-    }
-
-    /// Whether `relativePath`'s extension names a picture or a PDF (D3) - decided from
-    /// the name alone, never by opening the file: this is a question about what the
-    /// editor layer draws, not one `Attachment` (Core) needs an opinion on.
-    private static func isRenderableType(of relativePath: String) -> Bool {
-        guard let type = UTType(filenameExtension: (relativePath as NSString).pathExtension) else { return false }
-        return type.conforms(to: .image) || type.conforms(to: .pdf)
     }
 }
 

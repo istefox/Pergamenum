@@ -264,3 +264,27 @@ private func insertion(of id: String) -> (text: String, back: Int)? {
         #expect(EditorCommand.appEntries.contains { $0.id == "app.\(command.rawValue)" })
     }
 }
+
+// MARK: - Callout (ADR-0087 §D8, plan note-workflow-n5.md Task 6; R-38)
+
+@MainActor
+@Test func theSlashMenuOffersACalloutThatInsertsANoteHeaderRightAfterTheQuote() throws {
+    // R-38. The header is written whole, caret after it, so the person types the title straight away.
+    let all = catalogue
+    let callout = try #require(all.first { $0.id == "callout" }, "nessuna voce callout nel menu")
+    #expect(callout.action == .insert("> [!note] ", cursorBack: 0))
+    let ids = all.map(\.id)
+    let quote = try #require(ids.firstIndex(of: "quote"))
+    #expect(ids.firstIndex(of: "callout") == quote + 1, "la voce deve seguire «Citazione»")
+}
+
+@MainActor
+@Test func aCalloutIsFoundByItsKeywords() {
+    // R-38. `/avviso`, `/nota`, `/warning` all reach it without knowing its title.
+    for query in ["callout", "avviso", "nota", "note", "warning"] {
+        #expect(
+            EditorCommand.matching(query, in: catalogue).contains { $0.id == "callout" },
+            "«\(query)» non trova il callout"
+        )
+    }
+}

@@ -58,8 +58,12 @@ struct MarkdownBlocksView: View {
         case .bulletList, .numberedList, .tasks:
             listView(for: block)
 
+        // Both in `MarkdownBlocksView+Quote.swift` (ADR-0087 §D7, §D8).
         case .quote(let lines):
             quoteView(lines)
+
+        case .callout(let callout):
+            calloutView(callout)
 
         case .code(let language, let lines):
             // A view is a fenced block that something runs (ADR-0009 §D1). Only here, in
@@ -100,17 +104,6 @@ struct MarkdownBlocksView: View {
                 expands: expandsTransclusions
             )
         }
-    }
-
-    private func quoteView(_ lines: [String]) -> some View {
-        HStack(alignment: .top, spacing: theme.spacing(.s)) {
-            Rectangle()
-                .fill(theme.color(.borderStrong))
-                .frame(width: 3)
-            Text(inline(lines.joined(separator: "\n")))
-                .themedText(.body, color: .textSecondary)
-        }
-        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func codeView(language: String?, lines: [String]) -> some View {
@@ -232,11 +225,16 @@ struct MarkdownBlocksView: View {
             if span.styles.contains(.code) {
                 piece.font = theme.font(.mono)
                 piece.foregroundColor = theme.color(.accentPrimary)
+                // The editor's pill colour, so a span reads the same on both surfaces (ADR-0087 §D5).
+                piece.backgroundColor = theme.color(.codeInlineBackground)
             } else {
                 var font = baseFont
                 if span.styles.contains(.strong) { font = font.weight(.semibold) }
                 if span.styles.contains(.emphasis) { font = font.italic() }
                 piece.font = font
+            }
+            if span.styles.contains(.highlight) {
+                piece.backgroundColor = theme.color(.highlight)
             }
             if span.styles.contains(.strikethrough) {
                 piece.strikethroughStyle = .single

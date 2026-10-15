@@ -12,7 +12,8 @@
 - Number: `0087` was reserved for this record by the chain's dispatch and checked free on every
   ref on 2026-10-04 (`git log --all -- 'docs/adr/0087*'` printed nothing). Check again
   immediately before the merge (`docs/adr/README.md` rule 1).
-- Source: the root `SPEC.md` (Approved 2026-10-04), milestone N5, R-35 to R-43; background in
+- Source: `docs/specs/note-workflow-n5.spec.md` (Approved 2026-10-04, restored on 2026-10-14 from the
+  root `SPEC.md` of `f697b363`), milestone N5, R-35 to R-43; background in
   `docs/20261003_Pergamenum_NoteWorkflowRoadmap.md` §2 "N5" and
   `docs/20261002_Pergamenum_NoteWorkflowReport.md` R-3 to R-7 and R-10. Plans:
   `docs/plans/note-workflow-n5-mockup.md` (the mockup PR, first) and
@@ -28,7 +29,9 @@
   constructs that hide their syntax (§D1).
 - Depends on: ADR-0082 (the styler classifies through `MarkdownBlockParser` and
   `MarkdownInlineParser`, so a construct added there reaches the editor), ADR-0081 (the quote
-  content column a revealed `>` hangs left of) and N1's R-07 (Cmd+click on a `#tag` or a `>date`).
+  content column a revealed `>` hangs left of) and N1's R-12 and R-13 (Cmd+click on a `#tag` or a
+  `>date`; "R-07" in this record's first text was a wrong number). All three are on `main`: see
+  "Amendments before implementation (2026-10-14)".
 - No on-disk format change, no frontmatter key, no `IndexCache.schemaVersion` bump, no
   protected-interface change. `CompletingTextView+Pasteboard.swift` (protected as a whole) is not
   edited: every new click and menu hook goes through a closure or a delegate method it already
@@ -357,6 +360,157 @@ through `commitTable`.**
   inline code, a `swift` fence, `> [!avviso]-`, `==highlight==`, a nested quote, an inline
   `![[scheda.pdf]]`, a transclusion and a right-aligned column.
 
+## Amendments before implementation (2026-10-14)
+
+Re-read on `d2be1588` (`origin/main`) with the plan `docs/plans/note-workflow-n5.md`, which carries
+the task-level consequences. Status stays `planned`: nothing here is built. The decisions D1 to D12
+stand; what changed is the code they were written against, and one earlier record they now touch.
+
+1. **The parser seam is the token layer.** ADR-0082 landed (PR #956, `558db01c`) as
+   `MarkdownLineToken` and `MarkdownInlineToken` (`Sources/Core/Markdown/MarkdownTokens.swift`),
+   mapped to `Span` by `MarkdownStyler.blockSpans(of:)` and `spans(of:)`. §D2 and §D3's "the inline
+   parser", "the block parser" and the styler mapping are read as: a new `MarkdownInlineToken.Kind`
+   for `==`, a new line-token kind for a callout header and its body lines, and the styler mapping
+   them. The quote level is the existing `.quote(level:marker:)`'s.
+2. **The quote column is already measured.** ADR-0081 §D3 hangs a quote at
+   `EditorGutter.quoteColumn(level:font:gutter:)`, step `quoteStepInEms` = 0.75 em, for the concealed
+   bars and the revealed `>` run alike. §D7's "the step ADR-0081 fixed; `spacing.m` if it fixed
+   none" resolves to the first: `QuoteGeometry` delegates to `quoteColumn`. Only the `▏` substitution
+   is replaced; the hang, and the raw `>` run when the caret is in the line, stay.
+3. **Amends ADR-0091 §D3.** §D3 states that the blockquote has no row in the restyle widening rule
+   because "nothing joins two quote lines". A callout does: a body line is a body line because of a
+   header above it, and breaking the run changes the lines below. `MarkdownLineSignature` gains an
+   `isQuote` member and `RestyleScope` a row widening an edit that touches or adjoins a quote line
+   to its maximal run of quote lines (the tables row's shape). The property test that a scoped
+   restyle equals a full one gains a callout case, and `Tests/RestyleScopeTests.swift:287`
+   ("Blockquote (line-local)") is rewritten to the new rule.
+4. **ADR-0091 §D6 applies to every new offset-keyed holder** (shift where it lives, extend the hosted
+   twin test, join `shiftDerivedState`): pending embed entries, callout title offsets in the hidden
+   markers, the fold pass's hidden lines. `NoteTab.toggledCallouts` is model state of
+   `foldedEntries`' class: offsets read fresh against the text on each pass, so an edit above a
+   callout can drop its toggle, as it can drop a heading's fold. §Neutral's "a callout's fold is
+   lost when its tab closes" gains that sentence.
+5. **ADR-0096 owns the update path.** `OutlineInputs` carries `toggledCallouts` and
+   `onToggleCallout` in its declared equality, fed from `EditorColumn+Text.swift` beside
+   `onToggleFold`, so a toggle runs a pass and an unrelated keystroke does not.
+6. **ADR-0091 §D7 scopes the embed and transclusion passes to the dirty range.** §D9's `.pending`
+   placeholder and §D10's caption hold on a spliced range, with tests above and below the embed.
+7. **The keystroke budgets exist** (`EditorRestyleBudgetTests`, `EditorUpdatePathBudgetTests`). The
+   code PR runs them after each task and brings any ceiling change to Stefano.
+8. **N1's tag and date clicks** are N1 SPEC R-12 and R-13 (`clickURL(for:source:)`), not R-07.
+
+Facts in "What the code draws today" that are no longer true (measured at `48a2d912`, kept as
+history): `MarkdownBlocks.swift:198-199` is now `:203-205`; the reading view's quote bar is still
+`color.border.strong` (`MarkdownBlocksView.swift:105-108`); `MarkdownInline.swift:9-14` is
+unchanged for `MarkdownSpan.Style`. Every other claim in that section was re-read and holds.
+
+## Implementation notes
+
+Written in the code PR (2026-10-14), before the flip. Each is a departure from, or a detail the text
+above left open, found while building; the decisions themselves stand.
+
+- **D6, the rows the chrome is drawn in.** A line whose every character is collapsed measured
+  0.00014 pt tall, so `CodeFenceFragment` had no row to draw the badge or the rule in. The
+  collapse buys one through the paragraph style's `minimumLineHeight`: the badge font's line plus
+  twice the chip padding on the opening line, three chip paddings on the closing one
+  (`EditorDecorationDelegate+Chips.swift`). Measured after: 21 pt and 12 pt.
+- **D6, which line the click is on.** AppKit's own `charIndex` is not TextKit-2 safe: on macOS 27 it
+  answered the end of the note for a right-click on a fence's body line.
+  `clickedParagraph(of:in:)` reads the line off the laid-out fragments, by row only, with
+  `.ensuresLayout` (an enumeration of what was laid out found nothing once AppKit's handling of
+  the click had invalidated it), and falls back to `charIndex` only when no fragment is under the
+  point. It does not compare the event's window with the view's.
+- **D6, the hosted test's geometry.** `CodeFenceChromeTests.aRightClickInTheBodyReachesTheDelegateThroughTheTextViewsOwnMenu`
+  was red on its first run. Its text view is the window's content view, not in a scroll view, and
+  the first `menu(for:)` resized it from 800 to 285 pt before the delegate was asked, so a point
+  computed against the 800 pt frame landed below the text (AppKit's `charIndex` said the same). The
+  route was never at fault. The test now settles the view first (`sizeToFit()`, then
+  `layoutSubtreeIfNeeded()`) and computes the point against the settled frame; its assertions are
+  unchanged.
+- **D6, the pasteboard the copy writes.** `copyFenceBlock(_:)`, the menu item's action, forwards to
+  `copyFenceBlock(_:to:)` with `NSPasteboard.general`. The hosted test calls the second with a private
+  `NSPasteboard(name:)`, so a run never clears the person's clipboard (it used to, and restored only
+  the string flavour). It is a second method rather than a defaulted parameter because the action
+  selector must keep the single `sender` argument AppKit sends.
+- **D8, where a callout folds.** A callout folds only where the person can open it again: the markup
+  is hidden (the chevron is a fragment of the hidden-markup path) and the editor wires a toggle. The
+  Diario and Oggi editors wire none, and the show-syntax mode hides no markup, so there every callout
+  draws open with no chevron, `-` included. This departs from the «Click» bullet above, which says
+  they draw each callout in its file's default state: a `-` body folded with no chevron to reopen it
+  would be text the person cannot reach in that editor. The file is untouched either way.
+- **D8, a flip follows its callout.** `NoteTab.toggledCallouts` is keyed by title offset, so typing
+  above a flipped callout used to leave the flip on an offset that no longer named it. The fold pass
+  shifts the delegate's copy of the flips with every edit (`FoldController.shift(by:)`), as every
+  offset-keyed holder moves (ADR-0091 §D6), and the editor reports the moved set to the tab through
+  the new `onCalloutsMoved` input (`takeMovedFlips()`, `VaultController.setToggledCallouts`).
+- **D8 under ADR-0096 §D7, a keystroke inside a callout.** The restyle scope widens a dirty range
+  over the whole quote run, header included (`RestyleScope`), and the fold pass used to drop its
+  memo of folded callouts whenever the restyled text held `[!`, so typing in any callout re-read
+  every callout of the note on every key. The incremental restyle now hands the fold pass its
+  fragment and range (`FoldController.restyled(_:replacing:)`): the folds inside the range are read
+  from the fragment and spliced into the memo, and the layout is applied again only when the splice
+  changed them. A folded callout an edit reached waits outside the memo until that splice; a pass
+  that finds the splice still owed reads the note whole, as before. Proved by
+  `EditorUpdatePathBudgetTests.aKeystrokeInsideACalloutReadsNothingWholeNote` (a fixed callout's body
+  and a folded one's title, in a 50 KB note).
+- **D10 and R-43, the caption's note name.** `TransclusionCaption.name(ofReference:)` keeps the last
+  path component of the reference and drops a `.md` suffix, so `![[Cartella/Altra nota.md#Sezione]]`
+  is captioned «da «Altra nota» › Sezione» by the HTML export as by the editor, which names the note
+  by the title it resolves to.
+- **D9, the placeholder's size.** `EmbedPlaceholder.size(written:column:)` resolves through
+  `EmbedResize.resolved` against a natural size of 720×405 (`EmbedTable.renderWidth` at 16:9), so a
+  `|W` and an unsized embed take that ratio; a written `|WxH` is `resolved`'s `.both` answer
+  unaltered (width clamped to the column, height as written, ADR-0019 §D3), so the line does not jump
+  when the picture lands. `rendition(forSyntax:)` answers `.pending(name:)` while the render is in flight, and
+  the tests that read the first pass were updated to expect it.
+- **D9, the chip.** The symbol is chosen by `EmbedPresentation.symbolName(forTarget:)`
+  (`doc.richtext` for a PDF, `photo` for an image, `doc` otherwise) and painted by
+  `InlineChipPainter` on the run's first rect. Its room is `InlineChip.Metrics.symbol` (the caption
+  font's point size), added to the opening `![[`'s `.kern`. A plain click is claimed by
+  `previewChip(at:in:)` in the `onClickInMargin` chain and reaches Quick Look through the vault's
+  `onOpenEmbed`, which resolves through `VaultBoundary`.
+- **D10, the caption's row.** The collapsed source line takes `minimumLineHeight` at least
+  `TranscludedRendition.captionHeight`, so the caption has the row it is drawn in, and
+  `renditionFrame` starts at the top of that row while the caption shows: a click on the caption
+  reaches `openTransclusion(at:in:)` as a click on the old header did.
+- **D11, the entry points.** The column's control pill gains a third button (`ellipsis`, identifier
+  `editor-table-column-menu`) beside the two it had, and the header field carries the same menu
+  for a right-click. The current alignment is ticked; a sort sits after a separator.
+- **D2 and D7, `> > c` has two levels in the reading view and one in the editor.** Two counters read
+  a quote's opening run. `MarkdownBlock.quoteLine` counts CommonMark's levels, each `>` optionally
+  followed by spaces, as D2 says, so the reading view and the HTML export nest `> > c` two deep.
+  The line-token layer (`MarkdownBlockParser.quoteMarker`) counts the unbroken `>` run, as it did
+  before this ADR, so the editor and the Workspace cards draw one bar and leave `> c` as the line's
+  text. D7's «the same nesting» holds for `>> c` and for every run written without spaces, and
+  does not hold for a run with a space between the carets. Aligning the token layer was tried on
+  paper and refused: it would change the styler corpus's S13 (not among the deliberate changes
+  above), `MarkdownLineTokenTests.aSpacedNestedQuoteIsALevelOneQuoteLine`,
+  `CardBlockMarkerTests.aSpacedPairOfQuoteMarksIsOneLevelInACardAsInTheNotePane` (n2-page R-18 and
+  R-19), the marker grammar `stillSpellsABlockquoteMarker` re-checks at layout time (a `>` run and
+  at most one space), and the card path's one-for-one `▏` substitution, which assumes the first
+  `level` characters of the marker are the carets. Aligning the other way would drop the nesting D2
+  decided on. The divergence is therefore kept, pinned on the parser side by
+  `QuoteLevels.aSpacedNestedCaretIsLevelTwoToo`, and is an **accepted deviation from R-39 and
+  R-43 for spaced nesting only**: for `> > c` the editor draws one level where the reading view
+  (R-39) and the HTML export (R-43) draw two, so neither requirement holds for that spelling, and
+  both hold for every unspaced run. The follow-up is a separate decision, not part of N5, that
+  reopens those tests together: a token-layer marker that spans `> > ` with a level of 2, a
+  `stillSpellsABlockquoteMarker` stale check that accepts that marker, and a card `▏`
+  substitution that reads the carets out of it rather than the marker's first `level`
+  characters.
+- **The styler golden corpus.** E16, E20, N02, N03, N06 to N16, N19, S19, S20, S27, S38, S39, S47,
+  S55, W01, W02, X02 and X07 change output and are classed `.deliberate` in
+  `Tests/StylerGoldenChanges.swift`; S38 moves from N2's `.fix` class, since its double-backtick
+  span now follows CommonMark's runs.
+- **The structural property test's generator.** Its non-vacuity floor
+  (`stepsWithSpans * 2 >= restyles`) failed for seeds 2, 3, 13, 34 and 55: with code spans following
+  CommonMark's backtick runs, the generator's lone backticks rarely closed a span. The generator
+  now starts from `EditGenerator.structuralStart`, a text that already holds spans, and
+  `EditGenerator.structuralTokens` gains the closed spans `` `x` ``, `==x==`, `**x**`, `*x*` and
+  `~~x~~` (`Tests/IncrementalStylerModel.swift`). The floor and every assertion are unchanged; the
+  seeds clear the floor with margin (the lowest, seed 1, had a span in 151 of 200 restyles, against a
+  floor of 100).
+
 ## Alternatives considered
 
 - **Italian keywords in the file** (the roadmap's wording, `> [!avviso]` written by the app).
@@ -434,7 +588,8 @@ through `commitTable`.**
 
 ## References
 
-- Root `SPEC.md` (Approved 2026-10-04), milestone N5, R-35 to R-43; R-44 and R-45 chain-wide.
+- `docs/specs/note-workflow-n5.spec.md` (Approved 2026-10-04), milestone N5, R-35 to R-43; R-44 and
+  R-45 chain-wide.
 - `docs/20261003_Pergamenum_NoteWorkflowRoadmap.md` §2 N5 and §3; `docs/20261002_Pergamenum_NoteWorkflowReport.md`
   R-3 to R-7, R-10.
 - ADR-0018 (substitution at identical length), ADR-0019 (embed resize, §D8 handle guard),

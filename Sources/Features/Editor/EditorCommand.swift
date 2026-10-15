@@ -37,11 +37,6 @@ struct EditorCommand: Identifiable, Sendable, Equatable, RankableEntry {
     // MARK: The catalogue
 
     /// The entries that write markdown.
-    ///
-    /// Deliberately absent: callouts. `> [!nota]` is markdown Obsidian renders and this
-    /// app does not yet - the reading view has no callout at all, it is listed in M8's
-    /// later slices - and a menu entry that produces something the reading view shows as
-    /// a plain quote would be the menu making a promise the app does not keep.
     static let editorEntries: [EditorCommand] = [
         EditorCommand(
             id: "heading1", title: "Titolo 1", keywords: ["h1", "titolo", "heading"],
@@ -70,6 +65,11 @@ struct EditorCommand: Identifiable, Sendable, Equatable, RankableEntry {
         EditorCommand(
             id: "quote", title: "Citazione", keywords: ["quote", "blockquote"],
             symbol: "text.quote", action: .insert("> ", cursorBack: 0)
+        ),
+        // The editor and the reading view draw what this writes (ADR-0087 §D8).
+        EditorCommand(
+            id: "callout", title: "Callout", keywords: ["callout", "nota", "avviso", "note", "warning"],
+            symbol: "exclamationmark.bubble", action: .insert("> [!note] ", cursorBack: 0)
         ),
         EditorCommand(
             id: "codeBlock", title: "Blocco di codice", keywords: ["code", "fence", "snippet"],

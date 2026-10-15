@@ -20,6 +20,13 @@ struct NoteTab: Identifiable, Equatable, Sendable {
     /// `foldedOrdinals(ofOffsets:in:)` before reaching `NoteFolding`. Not written to the
     /// file: that would mean extending a frontmatter schema SPEC §4.3 closes.
     var foldedEntries: Set<Int> = []
+    /// The callouts whose fold the person flipped in this tab, each keyed by its title line's UTF-16
+    /// offset (ADR-0087 §D8). Model state of the tab like `foldedEntries`: read fresh against the text
+    /// each pass, an entry that no longer matches a header is ignored, never written to the file. Unlike
+    /// the folds it moves with the text: the editor shifts the offsets by every edit it makes and hands
+    /// them back (`VaultController.setToggledCallouts`, ADR-0091 §D6), so typing above a flipped
+    /// callout leaves it flipped.
+    var toggledCallouts: Set<Int> = []
     /// The frontmatter block is hidden in this tab. Like the folds, a view of the note and not
     /// part of it: never written to the file, and gone when the tab shows another note.
     var hidesFrontmatter = false
