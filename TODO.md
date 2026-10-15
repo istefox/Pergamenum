@@ -1,7 +1,7 @@
-<!-- project-tasks: prefix=PG lastId=422 -->
+<!-- project-tasks: prefix=PG lastId=433 -->
 # PROJECT TASKS
 
-Updated: 2026-10-15 · Open: 54 (P1: 1) · In progress: 0
+Updated: 2026-10-15 · Open: 60 (P1: 1) · In progress: 0
 
 ## GitHub Issues
 - [ ] `PG-421` -> #1023 **P2** [test] Owed for N5 (PR #1009): approve the three mockups (Callout; Code/quotes/chips; Embed/transclusions/tables, light and dark), which may retune the 8 colour tokens (`NoteConstructTokenTests`), and decide the spaced nested quote level (`> > c` is level 1 in the editor, level 2 in reading view and export, ADR-0087) — `docs/adr/0087-the-editor-draws-the-remaining-constructs.md` · `docs/plans/note-workflow-n5.md` (Build result) <!-- src:session kind:fix opened:2026-10-15 runs:3 promote:2026-10-15 -->
@@ -32,6 +32,10 @@ Updated: 2026-10-15 · Open: 54 (P1: 1) · In progress: 0
 - [ ] `#1019` [BUG] [PG-418] G-ceiling-406 and G-hand-405 owed for PR #1006: updateCeilings and the 1 MB Release hand check <!-- src:github state:OPEN labels: -->
 
 ## Open Issues
+- [ ] `PG-426` **P3** [fix] With the gutter reveal, the caret on an empty last line was seen at x 757 while the text starts at x 820 (2026-10-10); not known whether it predates N2: compare with a pre-N2 build — `Sources/Features/Editor/EditorGutter.swift` <!-- src:session kind:fix opened:2026-10-15 runs:0 -->
+- [ ] `PG-425` **P3** [fix] A heading with no title text (a bare `#` run) cannot hang in the gutter (found while building PG-385) — `Sources/Features/Editor/EditorGutter.swift` <!-- src:session kind:fix opened:2026-10-15 runs:0 -->
+- [ ] `PG-424` **P3** [fix] The first save of a note whose text ends in a trailing newline removes it (a test fixture went from 50455 to 50454 bytes after Cmd+S), and the editor showed «Non salvato» after a click until the note was saved; seen once on 2026-10-10, cause not attributed — `Sources/Features/Editor/NoteSaveIndicator.swift` <!-- src:session kind:fix opened:2026-10-15 runs:0 -->
+- [ ] `PG-423` **P3** [test] N2 hand checks owed for PR #956: the gutter reveal at a narrow window width, and the same on Oggi and Diario (parity); G3 (arrow-down through a nested list) passed only on a wide window, by an automated run on 2026-10-10 — `docs/plans/pg-385-n2-page.md` <!-- src:session kind:fix opened:2026-10-15 runs:0 -->
 - [ ] `PG-422` **P3** [docs] CLAUDE.md says seventeen GUI tests remain and caps a feature at two or three, while `UITests/` holds 36 test functions (`grep -c 'func test'`, 2026-10-15) and ADR-0095 §D9 had to say the new test sits over the cap: update the number in CLAUDE.md or retire tests — `CLAUDE.md` (merge gate rule) · `docs/adr/0095-the-board-controller-lives-with-the-vault.md` §D9 <!-- src:session kind:fix opened:2026-10-15 runs:1 -->
 - [ ] `PG-414` **P3** [test] Hand checks R-02 to R-08 owed for PR #1000 (a conflicted board kept across a pane leave and a window close, the vault switch question and its «Salva» reveal, back and forward to a board, a `pergamenum://canvas` route), not run during the build — `docs/archive/specs/pg-392-board-controller-vault-lifetime.SPEC.md` · `docs/plans/pg-392-board-controller-vault-lifetime.md` (Build result) · 2026-10-15 (#1017): R-05 now has a GUI test (`UITests/QuitReviewUITests.swift`, the conflicted board quit with the pane off screen), red on `ee6d345f` at the reveal after «Salva», green after; still owed by hand: R-02 to R-04, R-06, R-07, R-08 <!-- src:session kind:fix opened:2026-10-13 runs:5 -->
 - [ ] `PG-412` **P3** [test] Hand checks still owed for N3 (PR #964, #973 and #980, ADR-0083 and ADR-0084): Cmd+[ on the Italian - Pro layout, the inspector sections in light and dark, the two Vista variants, follow from Oggi and Diario, an ambiguous title in Quick Open, text contrast against the popover's own background; plus `scripts/uitests.sh --affected` for the GUI tests of R-20 and R-21, never seen green; the popover's edge, first-show size and light and dark themes were measured 2026-10-13 by a probe test and recorded in ADR-0083 §D7 (PR #1001) — `docs/adr/0083-links-answer-to-the-pointer-and-the-keyboard.md` · `docs/plans/note-workflow-n3.md` (Build result) <!-- src:session kind:fix opened:2026-10-13 runs:7 -->
@@ -97,6 +101,8 @@ Their GitHub issues were closed 2026-09-12 as "not active work" — kept here as
   - Not yet scoped how the fix should look (inline `NSTextAttachmentViewProvider`-hosted board like ADR-0029's GFM table, or a live-updating panel opened from the "Viste" row) — needs its own interview before implementation, likely through `concept-to-code` given it reopens ADR-0009/ADR-0029 territory.
 
 ## Backlog / To Add
+- [ ] `PG-428` **P3** [feat] Oggi and Diario pass no `queries`, so transclusions and view fences stay raw there; make them render as in a note, follow-up of PG-385 (#887) <!-- src:session kind:roadmap opened:2026-10-15 runs:0 -->
+- [ ] `PG-427` **P3** [feat] `_` emphasis markers stay unconcealed in the editor (decided in the N2 plan, not an oversight): conceal them the way `*` is — `Sources/Features/Editor/MarkdownStyler.swift` · `docs/plans/pg-385-n2-page.md` <!-- src:session kind:roadmap opened:2026-10-15 runs:0 -->
 
 `scripts/uitests.sh` run by hand on 2026-09-10 (114 tests, 88-1400s runs depending on the pass): first
 pass was 113/114 green with one failure in the new `PraticheUITests.testRigeneraShowsADiffPreviewAndAnnullaLeavesTheFileOnDisk`
@@ -485,6 +491,11 @@ Step 7 commit.
 
 ## Not yet specified
 
+- [ ] `PG-433` `scripts/uitests.sh` old pgrep guard (`pgrep -fl 'xcodebuild.*Pergamenum'`, line 1218): what it misses was noted but not recorded <!-- src:session kind:fix opened:2026-10-15 runs:0 -->
+- [ ] `PG-432` A wide table grid runs into the right gutter: what the right edge should do is undecided <!-- src:session kind:fix opened:2026-10-15 runs:0 -->
+- [ ] `PG-431` Task checkboxes on the list column of the gutter: where they sit relative to the list marker is undecided — `Sources/Features/Editor/EditorGutter.swift` <!-- src:session kind:fix opened:2026-10-15 runs:0 -->
+- [ ] `PG-430` A spaced test scene in the gutter tests needs a guard against the spacing drifting; the case and the file were not recorded — `Tests/EditorGutterTests.swift` <!-- src:session kind:fix opened:2026-10-15 runs:0 -->
+- [ ] `PG-429` The fence cursor in `wikilinkSpans` (reviewer MINOR on PR #956, merge `558db01c`), not re-read when noted: confirm it is a defect or drop it — `Sources/Features/Editor/MarkdownStyler.swift:509` <!-- src:session kind:fix opened:2026-10-15 runs:0 -->
 - [ ] `PG-311` During `scripts/uitests.sh` runs on 2026-09-28, macshot's capture overlay (bound to Cmd+Shift+1) opened at about +18 s in two consecutive runs of `GlobalSearchUITests` and took the test's Cmd+Shift+F; with macshot quit the run was clean. Neither the test, `uitests.sh` nor the app sends that chord, and what triggered the overlay is unverified; `uitests.sh` labelled one run `contaminated (external-monitor)` and the other a focus-taken contamination — `scripts/uitests.sh` <!-- src:session kind:fix opened:2026-09-28 pr:662 -->
 - [ ] `PG-197` macOS showed «"Pergamenum.app" è danneggiato e non può essere aperto» (Gatekeeper, «scaricato in data sconosciuta») on 2026-09-21; which copy is unknown: `/Applications/Pergamenum.app` and the three newest DerivedData Debug builds have no `com.apple.quarantine` attribute and pass `codesign --verify --deep --strict` <!-- src:session kind:fix opened:2026-09-21 -->
 - [ ] `PG-182` A copy of `/Applications/Pergamenum.app` (parent `launchd`) appeared mid-run in both full UI runs of 2026-09-19 (PID 40783 at 20:19, PID 54040 at 20:58); who launches it is unknown, and Stefano's own hands are not excluded <!-- src:session kind:fix opened:2026-09-19 -->
