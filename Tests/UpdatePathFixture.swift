@@ -27,6 +27,9 @@ final class UpdatePathFixture {
     private(set) var forcedByRunLoop = 0
     /// Keystrokes after which `restyleLog.skipped` had not advanced by exactly one, so no update ran.
     private(set) var missedUpdates = 0
+    /// How many keystrokes advanced `restyleLog.skipped` by 0, 1, 2...: the window host runs more than
+    /// one update per key, so its proof is "never 0" rather than `missedUpdates` (PG-406 follow-up).
+    private(set) var skippedAdvances: [Int: Int] = [:]
 
     private let hosted: HostedView<AnyView>
     private let defaults: UserDefaults
@@ -40,12 +43,14 @@ final class UpdatePathFixture {
     /// `typingPause` and `find` are the two things plan Task 4 needs to reach: the pause that settles the
     /// unsaved mark, and the find session whose `updates` the column's handlers move. Their defaults keep
     /// every Task 1 call site as it was. `note` replaces the case's synthetic note, for a test that
-    /// wraps it in constructs of its own (plan N5, Realignment 5).
+    /// wraps it in constructs of its own (plan N5, Realignment 5). `host` puts the whole window around
+    /// the column instead (`UpdatePathFullWindowFixture.swift`).
     init(
         _ c: RestyleBudget.Case,
         typingPause: any PauseScheduler = ManualPauseScheduler(),
         find: FindSession = FindSession(),
-        note override: String? = nil
+        note override: String? = nil,
+        host: Host = .editorColumn
     ) async throws {
         let note = override ?? RestyleBudget.syntheticNote(bytes: c.bytes, variant: c.variant)
         let temporaryVault = try TemporaryVault()
@@ -76,21 +81,29 @@ final class UpdatePathFixture {
         let defaults = try #require(UserDefaults(suiteName: defaultsName))
         let shortcuts = ShortcutStore(defaults: defaults, isOverridden: false)
 
-        let hosted = HostedView(
-            AnyView(
-                EditorColumnView(columnIndex: 0, find: find)
-                    .environment(\.theme, .emergency)
-                    .environment(vault)
-                    .environment(navigation)
-                    .environment(actions)
-                    .environment(shortcuts)
-            ),
-            size: CGSize(width: 900, height: 700)
-        )
+        let hosted: HostedView<AnyView>
+        switch host {
+        case .editorColumn:
+            hosted = HostedView(
+                AnyView(
+                    EditorColumnView(columnIndex: 0, find: find)
+                        .environment(\.theme, .emergency)
+                        .environment(vault)
+                        .environment(navigation)
+                        .environment(actions)
+                        .environment(shortcuts)
+                ),
+                size: CGSize(width: 900, height: 700)
+            )
+        case .window:
+            hosted = Self.window(
+                vault: vault, navigation: navigation, actions: actions, shortcuts: shortcuts, defaults: defaults
+            )
+        }
         await hosted.settle()
 
         let textView = try #require(
-            Self.textView(under: hosted.hosting), "no CompletingTextView under the hosted column"
+            Self.textView(under: hosted.hosting), "no CompletingTextView under the hosted \(host)"
         )
         let coordinator = try #require(textView.delegate as? NoteTextView.Coordinator)
 
@@ -139,11 +152,12 @@ final class UpdatePathFixture {
         hosted.hosting.layoutSubtreeIfNeeded()
         if coordinator.restyleLog.skipped == before {
             RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.001))
-            if coordinator.restyleLog.skipped == before + 1 { forcedByRunLoop += 1 }
+            if coordinator.restyleLog.skipped > before { forcedByRunLoop += 1 }
         } else {
             forcedByLayout += 1
         }
         if coordinator.restyleLog.skipped != before + 1 { missedUpdates += 1 }
+        skippedAdvances[coordinator.restyleLog.skipped - before, default: 0] += 1
         // The completion panel is a child window ordered front over the hosted one: a keystroke that
         // opens it puts a panel on the person's screen and makes AppKit send the hosted window events
         // it refuses (R-15), which arrive outside the test and are counted against no test.

@@ -413,7 +413,8 @@ Observed while taking them:
 machine was saturated (load average 47) when plan Task 6 closed, and the person decided on 2026-10-13 to close it
 without them. Not taken:
 
-- the six update rows and their editor-only rows on the new code (the same two bench commands);
+- the six update rows and their editor-only rows on the new code (the same two bench commands); taken after the
+  merge, in Release, see "After, the update rows" below;
 - the counter values `UpdatePathCounterTests` reads at 200 KB and 1 MB;
 - the Release profile of a keystroke and its forced update (`sample` of the test host), with TextKit's terms, each
   app-owned term and its share, and whether any frame under SwiftUI's update still reads the whole note;
@@ -422,6 +423,26 @@ without them. Not taken:
 No number in this record stands for any of them. D10's acceptance therefore rests, in this build, on the tests
 alone: the counters (`UpdatePathCounterTests`, on the default 50 KB cases), the source guards, the property tests
 and the unit suite.
+
+### After, the update rows (2026-10-14)
+
+The first item above, taken after the merge on `main` `9c1c6fdf`: Release, `Mac17,7` (Apple M5 Max), macOS
+27.0.1, Xcode 27.0, milliseconds of main-thread CPU per keystroke through SwiftUI's update, fences / prose. "Editor
+only" is the host of `aKeystrokeThroughSwiftUIsUpdateIsPrinted` (`EditorColumnView` alone, no frontmatter). "Real
+window" is `VaultBrowser` as the person sees it: the top bar, the note list pane with its outline footer, the
+editor and the inspector.
+
+| Size | Editor only | Real window |
+| --- | --- | --- |
+| 50 KB | 4.68 / 4.41 | 11.97 / 11.82 |
+| 200 KB | 11.66 / 11.41 | 38.78 / 41.39 |
+| 1 MB | 74.53 / 61.61 | 223.58 / 215.36 |
+
+The window costs about 7 ms more per key at 50 KB, 27 to 30 ms at 200 KB and 149 to 154 ms at 1 MB, so a gate on
+the editor-only row would pass at 200 KB while the app does not. G-ceiling-406 therefore hosts the window (Gates).
+Two terms in the profiles are outside this record's perimeter, which is the whole-note terms of the update path:
+TextKit's own `NSTextStorage` `processEditing`, about 70% of the 1 MB editor-only sample, and
+`NSHostingView.updateRootView`, about 12% of the window sample. The other items above are still not taken.
 
 ## Restated tests
 
@@ -541,11 +562,21 @@ Raised by this design:
   with a ledger entry for it, would change that code.
 - **G-ceiling-406 (the person, R-01). Not answered yet; a human gate, not performed in this build (plan Task 7
   step 4).** `RestyleBudget.updateCeilings` is not written and `aKeystrokeThroughSwiftUIsUpdateIsPrinted` asserts
-  nothing on time: the ceilings are the person's values, and the "after" rows they would be read from were not
-  taken ("Measured"). Fix the ceilings of the six `restyle-budget-update` rows. R-01's "under 20 ms at every size" cannot hold for the total at 1 MB: the editor-only row alone is 53 ms
+  nothing on time: the ceilings are the person's values. Fix the ceilings of the six `restyle-budget-update` rows. R-01's "under 20 ms at every size" cannot hold for the total at 1 MB: the editor-only row alone is 53 ms
   in Debug and 55 ms in Release, about 94% of it TextKit's (ADR-0094 "Measured after", `PG-404`). The proposal is
   that the 20 ms applies to the share the update path adds (the row minus the editor-only row), and that the
   total gets ceilings like PG-401's rows. The person decides.
+  The gate now runs as `scripts/pg-401-gates.sh --gate update` (`Tests/UpdatePathGateTests.swift`) and hosts the
+  person's window, not the editor column alone: the window costs 27 to 154 ms more per key from 200 KB up ("After,
+  the update rows"), so a row on the column would pass where the app does not. Its six rows are judged against
+  `PG406_CEILING_MS`, 20 ms by default; the same keystroke on the column alone is printed beside them as
+  `G-ceiling-406-editor` and never judged. On the rows of 2026-10-14 it passes at 50 KB and fails at 200 KB and
+  1 MB. The 20 ms default is the SPEC's literal reading, applied to the whole keystroke in the window; it does
+  not replace the proposal above, which judges only the share the update path adds, and it stays a default
+  until the person chooses between the two. The "Editor only" column of that table includes SwiftUI's update of
+  the column, so it is not the 53 / 55 ms editor-only figure of `PG-404`, which stops before that update. The
+  TextKit term and `NSHostingView.updateRootView` named there are outside this record. The status stays
+  `planned` and the ceilings stay the person's.
 - **G-hand-405, repeated (the person, R-11), on a Release build with the 1 MB fences note. Not answered yet; a
   human gate, not performed in this build (plan Task 7 step 6).** The checklist of
   ADR-0094's Gates, plus a `sample` of the typing: no frame in a whole-note compare or parse under SwiftUI's update.
