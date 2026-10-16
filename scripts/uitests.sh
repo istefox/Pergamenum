@@ -377,7 +377,8 @@ main_full_row() {
 # How many GUI tests the tree currently carries - informational only, never a failing check
 # (the UI-suite-replacement plan's stage 3, Task 6 decided the cap by hand, not by enforcing it
 # here). `DragSupport.swift` holds no test class, only the drag helper every other file shares,
-# so it is excluded rather than counted as zero.
+# so it is excluded rather than counted as zero. The 17 `--status` quotes is the baseline the
+# census left on 2026-09-21, not a limit: the brake is the per-feature rule in CLAUDE.md.
 gui_test_count() {
     grep -rhc '^    func test' UITests/*UITests.swift 2>/dev/null \
         | awk '{sum += $1} END {print sum + 0}'
@@ -391,7 +392,7 @@ status_report() {
     head_tree=$(tree_of HEAD)
     printf 'uitests: HEAD %s, albero %s, %s\n' "$(git rev-parse --short HEAD)" "${head_tree:0:7}" \
         "$(is_clean && echo pulito || echo 'con modifiche non committate')"
-    printf 'uitests: %d test GUI (cap deciso 2026-09-21: 17)\n' "$(gui_test_count)"
+    printf 'uitests: %d test GUI (censimento 2026-09-21: 17, al massimo 2 o 3 per feature)\n' "$(gui_test_count)"
     show_verdict HEAD "$head_tree"
     mref=$(main_ref)
     main_tree=""
