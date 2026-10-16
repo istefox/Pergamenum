@@ -350,6 +350,10 @@ gallery's gutter-reveal page, on the Debug build), 2026-10-07:
   for: `MarkdownStyler` registers no heading marker for it (on purpose, so the row does not shrink
   to nothing when the caret leaves it), so §D4's branch has no run to hang and the line shows its
   raw source in both states, as before; the hosted test pins only that it does not trap.
+  Closed by `PG-425` (2026-10-16): the coordinator registers the run of a heading with no title
+  (`# `; `#` with no space is prose to the shared grammar) as a `.heading` marker, §D4's branch
+  hangs it when revealed, and the generic path never collapses it, so concealed it stays raw at
+  the column and the row keeps its height (`aHeadingWithNoTitleHangsItsRunWhenRevealed`).
 - The two fragment sites of §D7 (`HorizontalRuleFragment`, `TranscludedLineFragment`) never add
   `columnSpan`'s leading offset, which has no production reader: TextKit already places a layout
   fragment at `lineFragmentPadding + headIndent` (measured,

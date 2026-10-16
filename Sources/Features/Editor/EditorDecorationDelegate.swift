@@ -587,7 +587,9 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         guard let markers = hiddenMarkers[range.location], !markers.isEmpty else { return nil }
 
         let text = storage.string as NSString
+        // A heading with no title keeps its run on screen when concealed (PG-425, `isTitlelessHeading`).
         let survivors = Self.survivors(among: markers, of: range, in: text)
+            .filter { !Self.isTitlelessHeading($0, of: range, in: text) }
         // A missing key means "no span was revealed in this paragraph", never "the setting
         // is off" - the latter is exactly what `revealsInlineSpans` already tests. Handing
         // the dictionary's own `nil` through unchanged made a caret sitting in the paragraph

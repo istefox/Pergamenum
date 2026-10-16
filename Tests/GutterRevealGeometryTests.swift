@@ -84,6 +84,27 @@ private struct Page {
         return x.map { $0 + textView.textContainerOrigin.x }
     }
 
+    /// The `x` of the caret at the selection, in the text view's coordinates, as the text input
+    /// client reports it (`firstRect`, where the completion panel hangs) and as the layout manager's
+    /// selection segment places it. Either is nil when it has nothing to say.
+    func caretX() -> (inputClient: CGFloat?, segment: CGFloat?) {
+        let selection = textView.selectedRange()
+        let onScreen = textView.firstRect(forCharacterRange: selection, actualRange: nil)
+        let inputClient = onScreen.height > 0
+            ? textView.window.map { textView.convert($0.convertFromScreen(onScreen), from: nil).minX }
+            : nil
+        var segment: CGFloat?
+        if let caret = content.location(content.documentRange.location, offsetBy: selection.location) {
+            let range = NSTextRange(location: caret)
+            layout.ensureLayout(for: range)
+            layout.enumerateTextSegments(in: range, type: .selection, options: []) { _, frame, _, _ in
+                segment = frame.minX + textView.textContainerOrigin.x
+                return false
+            }
+        }
+        return (inputClient, segment)
+    }
+
     /// The offset at which the paragraph's second line begins, or nil if it does not wrap.
     func secondLineStart(ofParagraphAt paragraphOffset: Int) -> Int? {
         guard let range = textRange(paragraphOffset) else { return nil }
@@ -181,6 +202,26 @@ private let widths = [
         let page = Page(Self.note, width: 800)
         let x = page.originX(ofOffset: 0)
         #expect(abs((x ?? -1) - (gutterWidth + 5)) <= tolerance, "x \(x ?? -1)")
+    }
+
+    /// PG-426: the caret on the empty line after a note's final newline sits at the body column,
+    /// not a gutter to its left. That line has no character of its own, so TextKit places it by the
+    /// text view's typing attributes, which carry the base style only because the styling pass
+    /// sets them.
+    @Test func theCaretOnTheEmptyLastLineSitsAtTheBodyColumn() {
+        for note in [Self.note, "- uno\n- due\n", "## Titolo\n"] {
+            for entry in widths {
+                let label = "\(note.debugDescription) a \(entry.label)"
+                let page = Page(note, width: entry.width, readableWidth: entry.readable)
+                page.place(caretAt: (note as NSString).length)
+                let column = page.textView.textContainerOrigin.x + page.padding + gutterWidth
+                let caret = page.caretX()
+                #expect(caret.inputClient != nil && caret.segment != nil, "\(label): nessun cursore")
+                for x in [caret.inputClient, caret.segment].compactMap(\.self) {
+                    #expect(abs(x - column) <= tolerance, "\(label): il cursore a \(x) invece di \(column)")
+                }
+            }
+        }
     }
 
     /// The pass hands the delegate the gutter and the marker face, beside `checkboxFont`
@@ -424,10 +465,8 @@ private let widths = [
 
     /// G0 item 10: a heading with no title (`#`, `######`) must not trap when the caret reaches it at
     /// a gutter, and the file's text and the stored length are untouched. This is all that is pinned.
-    /// The plan's other half, "hangs its run when revealed and draws nothing when concealed", cannot
-    /// be asserted as written: `MarkdownStyler` records no heading marker for a heading with no title
-    /// (`MarkdownStyler.swift:266-271`), so the delegate has no `.heading` entry to conceal or hang,
-    /// and the hook answers `nil` in both states. That is reported as a gap, not pinned here.
+    /// `#` and `######` with no space are prose to the shared grammar, not headings; the heading
+    /// with no title, `# `, hangs its run since PG-425 (`aHeadingWithNoTitleHangsItsRunWhenRevealed`).
     @Test func aHeadingWithNoTitleDoesNotTrapWhenRevealedAtAGutter() { // (n2-page R-14)
         for block in ["#", "######"] {
             let note = Self.note(block)
@@ -445,6 +484,43 @@ private let widths = [
             }
             #expect(page.isRevealed(paragraph), "«\(block)»")
             #expect(page.textView.string == note, "«\(block)»: il testo del file cambia")
+        }
+    }
+
+    /// PG-425: a heading with no title yet (`# `, `###   `: the shared grammar's heading needs the
+    /// space, so `#` alone above is prose) hangs its run in the gutter when revealed, so the caret
+    /// after it sits at the column the title will start at, and stays raw at the column when
+    /// concealed, as before: its run is never collapsed, which would shrink the row to nothing.
+    @Test func aHeadingWithNoTitleHangsItsRunWhenRevealed() {
+        for block in ["# ", "###   "] {
+            let note = Self.note(block)
+            for entry in widths {
+                let label = "«\(block)» a \(entry.label)"
+                let page = Page(note, width: entry.width, readableWidth: entry.readable)
+                let paragraph = page.offset(of: block)
+                let range = (note as NSString).paragraphRange(for: NSRange(location: paragraph, length: 0))
+                let column = page.textView.textContainerOrigin.x + page.padding + gutterWidth
+
+                page.place(caretAt: page.offset(of: "fine"))
+                #expect(
+                    page.decorations.textContentStorage(page.content, textParagraphWith: range) == nil,
+                    "\(label): nascosto, il cancelletto viene sostituito"
+                )
+                let concealed = page.originX(ofOffset: paragraph)
+                #expect(abs((concealed ?? -1) - column) <= tolerance, "\(label): nascosto a \(concealed ?? -1)")
+
+                let afterTheRun = paragraph + (block as NSString).range(of: "#", options: .backwards).location + 2
+                page.place(caretAt: afterTheRun)
+                let displayed = page.decorations.textContentStorage(page.content, textParagraphWith: range)
+                #expect(
+                    displayed?.attributedString.length == range.length, "\(label): rivelato, nessun paragrafo appeso"
+                )
+                let hung = page.originX(ofOffset: paragraph)
+                let caret = page.originX(ofOffset: afterTheRun)
+                #expect((hung ?? .infinity) < column - 1, "\(label): il cancelletto resta a \(hung ?? -1)")
+                #expect(abs((caret ?? -1) - column) <= tolerance, "\(label): il cursore a \(caret ?? -1)")
+                #expect(page.textView.string == note, "\(label): il testo del file cambia")
+            }
         }
     }
 }
