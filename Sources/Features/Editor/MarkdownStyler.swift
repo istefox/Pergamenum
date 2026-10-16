@@ -352,7 +352,7 @@ enum MarkdownStyler {
             // No marker for "# " or "#   " - a heading with no title yet. Hiding the hashes
             // there would shrink the row to nothing the instant the caret leaves it, which is
             // worse than showing four characters that do nothing yet.
-            if line[marker.upperBound...].contains(where: { $0 != " " }) {
+            if !MarkdownBlockParser.headingHasNoTitle(line, marker: marker) {
                 result.append(StyledRange(range: marker, span: .headingMarker))
             }
         case .task(let state, let marker, let level):

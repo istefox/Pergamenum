@@ -381,6 +381,18 @@ extension NoteTextView {
                         )
                     }
                 }
+                // A heading with no title yet has no `.headingMarker` (`MarkdownStyler`), so the
+                // gutter had no run to hang it by (PG-425). Its run is registered here, as a heading
+                // marker the delegate hangs when revealed and never collapses (`isTitlelessHeading`).
+                if case .heading = styled.span,
+                   let run = EditorDecorationDelegate.titlelessHeadingRun(in: nsRange, of: note) {
+                    let paragraphStart = note.paragraphRange(
+                        for: NSRange(location: run.location, length: 0)
+                    ).location
+                    collected.hiddenMarkers[paragraphStart, default: []].append(
+                        Self.hiddenMarker(.heading, at: run, paragraphStart: paragraphStart)
+                    )
+                }
                 if case .embedRun = styled.span { collected.embedRuns.append(nsRange) }
                 if case .tableRun = styled.span { collected.tableRuns.append(nsRange) }
                 if case .viewBlockRun = styled.span { collected.viewBlockRuns.append(nsRange) }
@@ -447,6 +459,11 @@ extension NoteTextView {
             // `applyStyling` runs on every `updateNSView` whose inputs moved.
             decorations.apply(revealsInlineSpans: parent.revealsInlineSpans)
             storage.endEditing()
+            // The line after a note's final newline has no character to carry a style, so TextKit
+            // places it, and the caret on it, by the typing attributes, which a plain-text view never
+            // takes from the storage: without the base style the caret there sat a gutter left of
+            // the column (PG-426).
+            textView.typingAttributes = context.base
             unspellableRanges = OffsetRanges(sorted: MarkdownStyler.merged(collected.unspellable))
             self.embedRuns = OffsetRanges(sorted: collected.embedRuns)
             settleBaseline(storage: storage, textView: textView, text: text, theme: theme)

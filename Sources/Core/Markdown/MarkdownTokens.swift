@@ -266,6 +266,14 @@ extension MarkdownBlockParser {
         character.unicodeScalars.allSatisfy(CharacterSet.whitespaces.contains)
     }
 
+    /// Whether a heading line has no title yet (`# `, `###   `): nothing after its `marker` but
+    /// spaces. `line` is the heading token's line, its terminator excluded. The one test the styler
+    /// and the editor's gutter both ask (PG-425): the styler registers no marker for such a heading,
+    /// so the row does not shrink to nothing, and the gutter hangs its run when revealed.
+    static func headingHasNoTitle(_ line: Substring, marker: Range<String.Index>) -> Bool {
+        !line[marker.upperBound...].contains { $0 != " " }
+    }
+
     /// The `#`s of a heading and the one space after them. `#tag` is a tag, not a heading, and
     /// seven hashes are prose: the hashes have to be followed by a space within six.
     private static func headingMarker(in body: Substring) -> Range<String.Index>? {
