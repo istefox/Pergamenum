@@ -236,4 +236,4 @@ Review: sonnet, safe
 Coverage: not run, the plan's requirement set is not SPEC.md (R-35 covered by NoteConstructTokenTests; R-36 to R-43 belong to note-workflow-n5.md)
 Dropped: 1 (dismissed 0, post-sweep 0, nit 0: the "InheritsThem" rename was judged not a typo and left, matching PraticaRailTokenTests.swift:78)
 Dispatch: Round 1 (sweep): coder — 4 NITs (line length, test name, 0.35 comment, sheetTrailingPadding)
-Human gate pending: Stefano approves the three N5 screens on the Debug build, light and dark, before docs/plans/note-workflow-n5.md starts.
+Human gate passed 2026-10-15 (PG-421, Debug build of 9d0108eb, light and dark, tokens unchanged): Stefano approved the three N5 screens on the Debug build, light and dark, before docs/plans/note-workflow-n5.md starts.
