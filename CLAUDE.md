@@ -266,9 +266,11 @@ Rules keyed to a file type live in `.claude/rules/` and load only when a matchin
   supersedes the rule bought on 2026-08-21 after three of the sixty-seven UI tests had
   been red since before a milestone merge and nothing had said so (`PG-033`) — the fix for
   that gap is now the hosted-view conversions themselves (`docs/plans/ui-suite-replacement.md`),
-  not a mandatory full GUI run on every merge. The seventeen GUI tests that remain run
+  not a mandatory full GUI run on every merge. The GUI tests that remain (seventeen after the
+  2026-09-21 census, 36 on 2026-10-15, each addition justified in its feature's ADR;
+  `scripts/uitests.sh --status` prints the count and fails nothing) run
   through `scripts/uitests.sh --affected` at merge time and do not block it; a full run of
-  all seventeen is required only before a release (`scripts/release.sh`), not before every
+  all of them is required only before a release (`scripts/release.sh`), not before every
   merge. `--status`'s `contaminated` verdict counts as neither green nor red — the run is
   disturbed, not conclusive, and is rerun rather than acted on either way. A new feature
   carries at most two or three GUI tests, and each one is justified in the feature's own
