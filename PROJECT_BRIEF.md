@@ -89,6 +89,14 @@ Binding order, each yielding a usable app (SPEC §13):
 
 ## Status
 
+- 2026-10-30: **Release-readiness audit on `main` @ `57edd30b`.** Last published release is 1.9.3
+  (build 1758, 2026-09-30); about 535 commits have landed since. The unit suite is green apart from
+  one issue recorded outside any test (`PG-434`), CI is green, the ADR index is current. Before the
+  next release: the Release-build gates of `PG-401`/`PG-418` (`RestyleBudget.updateCeilings` and the
+  1 MB hand check, the earlier G-hand-405 having been recorded as not passed), a `marketingVersion`
+  bump (`scripts/release.sh` refuses the already-published 1.9.3), the full GUI suite, and the
+  release notes. The Status entries between 2026-09-22 and this one were not written; the ledger
+  and `docs/adr/INDEX.md` carry that history.
 - 2026-09-22: **UI-suite-replacement, stage 3 (Task 6 and Task 7) — merge gate rule changed.**
   The remaining 62 census-approved GUI tests were retired across 13 per-file groups (one commit
   each), leaving 17 GUI tests, the hand-decided cap from 2026-09-21. The mandated full
