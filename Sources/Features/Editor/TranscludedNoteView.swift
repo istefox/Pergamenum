@@ -3,9 +3,10 @@ import SwiftUI
 /// How a view reaches another note's text.
 ///
 /// A closure rather than a protocol, and `@MainActor` rather than `Sendable`, because the
-/// only implementation reads `VaultSession`, which is main-actor isolated. A caller with no
-/// vault behind it - the Diario's preview, a mockup - passes nil and the transclusion draws
-/// as unresolved, which is the honest thing for a surface that cannot look anything up.
+/// only implementation reads `VaultSession`, which is main-actor isolated. Where expansion is on,
+/// a nil source draws the transclusion as unresolved, which is the honest thing for a surface
+/// that cannot look anything up. The callers that pass nil today - the Pratiche message, entry
+/// and inspector bodies - also turn expansion off, so there a `![[nota]]` draws as a link.
 struct TransclusionSource {
     struct Resolved: Equatable {
         var title: String

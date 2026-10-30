@@ -238,8 +238,9 @@ final class ViewBlockController {
     /// `queries` is what turns "Nessun vault dietro questa vista" into rows, and it is passed
     /// with `notePath`/`vaultRoot`/`thumbnails` because a `render: gallery` block resolves an
     /// embedded file beside the note the same way an embed does. Nil-safe in every one of
-    /// them: `DiaryView`/`TodayView` pass no `queries` (ADR Consequences) and the block says
-    /// so instead of drawing an empty result.
+    /// them: `DiaryView`/`TodayView` pass the live query source (ADR-0082 §D8) without
+    /// `onEditQuery`, so «Modifica query» is not drawn there, and an editor with no vault
+    /// behind it passes no `queries` and the block says so instead of drawing an empty result.
     ///
     /// **`onOpenNote` is `parent.onFollowLink` and deliberately not a second door** (R-09): a
     /// row carries a title, which is the string a `[[wikilink]]` carries, so a click here is

@@ -422,3 +422,4 @@ Every ADR is `docs/adr/NNNN-<slug>.md`; the title below is that file's own headi
 - ADR-0094 — An edit moves a step, not every offset below it
 - ADR-0095 — The Workspace board controller lives with the vault, not with its pane
 - ADR-0096 — What follows a keystroke compares a revision, not the note
+- ADR-0098 — `_` emphasis is concealed as `*` is, and Oggi and Diario draw transclusions

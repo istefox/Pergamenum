@@ -113,6 +113,11 @@ extension NoteTextView {
         var thumbnails: ThumbnailStore?
         /// How a `![[nota]]` reaches the note it names (ADR-0010). Nil where there is no vault
         /// behind the editor, and then the line stays the plain link it was.
+        ///
+        /// Handed in by the three editor hosts - `EditorColumn+Text.swift`'s `vaultInputs(for:)`,
+        /// `TodayView` and `DiaryView` - each as `TransclusionSource.live(for:)`, the one factory
+        /// over a vault (ADR-0098 §D4), and read by `NoteTextView+Transclusion.swift`'s
+        /// `TransclusionController`, which resolves each `![[nota]]` it scans through it.
         var transclusions: TransclusionSource?
         /// Where a `pergamenum-view` fence's rows come from (ADR-0033 §D9, plan
         /// `2026-09-06-pg-099-views-board-renderer-orphaned-by`, Task 7). Nil where there is no

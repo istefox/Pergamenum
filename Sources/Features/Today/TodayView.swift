@@ -235,6 +235,10 @@ struct TodayView: View {
                     vaultRoot: vault.root,
                     notePath: note.relativePath,
                     thumbnails: vault.thumbnails,
+                    // The same source the Note pane draws a `![[nota]]` from (ADR-0010 §D3,
+                    // ADR-0098 §D4); a click on the drawn note follows through this pane's own
+                    // `onFollowLink` above.
+                    transclusions: .live(for: vault),
                     // The same source the Note pane draws a fence from (ADR-0082 §D8). No
                     // query-edit callback, so «Modifica query» is not drawn here.
                     queries: .live(for: vault),

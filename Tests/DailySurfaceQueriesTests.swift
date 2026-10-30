@@ -6,9 +6,7 @@ import Testing
 // ADR-0082 §D8, plan docs/plans/pg-385-n2-page.md, Task 2 (PG-385, R-19).
 //
 // A `pergamenum-view` fence renders in the Oggi and Diario panes: the source `EditorColumnView`
-// builds moves into one factory, `ViewQuerySource.live(for:)`, and the three hosts pass it. Red
-// until Task 4: the stub answers a source with no rows, no `move`, no `undo` and generation 0, and
-// neither `TodayView` nor `DiaryView` passes `queries`.
+// builds moves into one factory, `ViewQuerySource.live(for:)`, and the three hosts pass it.
 
 private let note = "---\ndate: 2026-10-06\ntags:\n  - type-note\n---\n\nCorpo della nota.\n"
 private let fenced = "prima\n```pergamenum-view\nrender: list\n```\ndopo\n"
@@ -67,7 +65,7 @@ private let fenced = "prima\n```pergamenum-view\nrender: list\n```\ndopo\n"
         #expect(fixture.coordinator.parent.vault.queries != nil, "the editor's inputs carry no query source")
         #expect(fixture.coordinator.viewBlocks.drawn[6]?.source == "render: list", "the fence is not drawn")
         _ = fixture.coordinator.viewBlocks.hosts.host(for: 0, in: fixture.textView)
-        // The stub's source has no `move`: the source the host forms around must be the live one.
+        // Only the live source carries `move`: the source the host forms around must be the live one.
         #expect(fixture.coordinator.parent.vault.queries?.move != nil, "the source handed to the host is not the live one")
     }
 

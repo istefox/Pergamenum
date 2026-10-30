@@ -866,12 +866,13 @@ final class EditorDecorationDelegate: NSObject, NSTextContentStorageDelegate,
         return !hashes.isEmpty && hashes.count <= 6 && hashes.allSatisfy { $0 == "#" }
     }
 
-    /// Whether `range` still spells exactly one or two `*`, read from the text as it is
-    /// right now.
+    /// Whether `range` still spells exactly one or two of the same `*` or `_` (ADR-0098 §D2),
+    /// read from the text as it is right now.
     private static func stillSpellsAnEmphasisMarker(_ text: NSString, at range: NSRange) -> Bool {
         guard range.location >= 0, NSMaxRange(range) <= text.length else { return false }
         let candidate = text.substring(with: range)
-        return (candidate.count == 1 || candidate.count == 2) && candidate.allSatisfy { $0 == "*" }
+        guard let first = candidate.first, first == "*" || first == "_" else { return false }
+        return candidate.count <= 2 && candidate.allSatisfy { $0 == first }
     }
 
     /// Whether `range` still spells exactly `~~` - the emphasis re-check's twin, one

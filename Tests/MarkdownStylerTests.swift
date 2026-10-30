@@ -98,11 +98,12 @@ private func emphasisMarkers(_ text: String) -> [String] {
     }
 }
 
-@Test func underscoreEmphasisHasNoMarkerSpan() {
-    // Deliberate narrowing of ADR-0018 §D1: `emphasis(_:at:)` has no word-boundary rule,
-    // so `nome_file_lungo` already parses as italic. Hiding `_` would read as
-    // `nomefilelungo`, so it stays visible - parsed and coloured, never collapsed.
-    #expect(emphasisMarkers("testo _corsivo_ qui").isEmpty)
+@Test func underscoreEmphasisHasTwoMarkerSpans() {
+    // ADR-0098 §D1 reverses ADR-0082 §D2's "`_` emphasis stays unconcealed": the delimiters of a
+    // `_` or `__` run are concealable like a `*` run's. `nome_file_lungo` stays plain text because
+    // the parser's flanking rule (ADR-0077 §D5) never reads it as emphasis, so no marker is emitted.
+    #expect(emphasisMarkers("testo _corsivo_ qui") == ["_", "_"])
+    #expect(emphasisMarkers("testo __forte__ qui") == ["__", "__"])
     #expect(MarkdownStylerFixture.spans("testo _corsivo_ qui").contains(.italic))
 }
 

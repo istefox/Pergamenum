@@ -54,10 +54,23 @@ private let classedChanges: [String: StylerGoldenCase.Change] = [
         """#
     ),
     "E25": .fix(
-        reason: "An intraword `_` opens nothing: `file_name_here` is a file name, as in the exporter (ADR-0077 §D5).",
+        reason: "An intraword `_` opens nothing: `file_name_here` is a file name, as in the exporter (ADR-0077 §D5)."
+            + " The `__`/`_` delimiters of the two runs are concealed like `*` (ADR-0098 §D1).",
         expected: #"""
+        17..<19 emphasisMarker
         17..<26 bold
+        24..<26 emphasisMarker
+        29..<30 emphasisMarker
         29..<36 italic
+        35..<36 emphasisMarker
+        hidden 17..<19 emphasis
+        hidden 24..<26 emphasis
+        hidden 29..<30 emphasis
+        hidden 35..<36 emphasis
+        order 17..<26 bold < 17..<19 emphasisMarker
+        order 17..<26 bold < 24..<26 emphasisMarker
+        order 29..<36 italic < 29..<30 emphasisMarker
+        order 29..<36 italic < 35..<36 emphasisMarker
         """#
     ),
     "E28": .fix(
@@ -150,10 +163,15 @@ private let classedChanges: [String: StylerGoldenCase.Change] = [
         """#
     ),
     "S35": .fix(
-        reason: "`***entrambi***` closes at the end of the run: one bold with an italic inside, every `*` concealed.",
+        reason: "`***entrambi***` closes at the end of the run: one bold with an italic inside, every `*` concealed."
+            + " The `_`/`__` delimiters are concealed like `*` (ADR-0098 §D1).",
         expected: #"""
+        0..<1 emphasisMarker
         0..<9 italic
+        8..<9 emphasisMarker
+        12..<14 emphasisMarker
         12..<21 bold
+        19..<21 emphasisMarker
         24..<25 emphasisMarker
         24..<33 italic
         32..<33 emphasisMarker
@@ -166,6 +184,10 @@ private let classedChanges: [String: StylerGoldenCase.Change] = [
         50..<60 italic
         59..<60 emphasisMarker
         60..<62 emphasisMarker
+        hidden 0..<1 emphasis
+        hidden 8..<9 emphasis
+        hidden 12..<14 emphasis
+        hidden 19..<21 emphasis
         hidden 24..<25 emphasis
         hidden 32..<33 emphasis
         hidden 36..<38 emphasis
@@ -174,6 +196,10 @@ private let classedChanges: [String: StylerGoldenCase.Change] = [
         hidden 50..<51 emphasis
         hidden 59..<60 emphasis
         hidden 60..<62 emphasis
+        order 0..<9 italic < 0..<1 emphasisMarker
+        order 0..<9 italic < 8..<9 emphasisMarker
+        order 12..<21 bold < 12..<14 emphasisMarker
+        order 12..<21 bold < 19..<21 emphasisMarker
         order 24..<33 italic < 24..<25 emphasisMarker
         order 24..<33 italic < 32..<33 emphasisMarker
         order 36..<45 bold < 36..<38 emphasisMarker
