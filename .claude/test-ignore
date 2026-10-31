@@ -1,0 +1,18 @@
+# Paths whose edits never need the unit suite at Stop (stop-gate ADR-0137 path predicate).
+# Mirrors the paths-ignore of .github/workflows/ci.yml, narrowed: CI's '*.md' is root-only in
+# GitHub's glob, but here '*' also matches '/', so root files are named one by one and a new
+# markdown file anywhere else (a test fixture, say) still arms the suite.
+docs/
+.claude/rules/
+.claude/context.md
+BRAINSTORM.md
+CLAUDE.md
+DESIGN-PROMPT.md
+DESIGN.md
+PROJECT.md
+PROJECT_BRIEF.md
+README.md
+ROADMAP.md
+SPEC.md
+TODO.md
+UX-BLUEPRINT.md
