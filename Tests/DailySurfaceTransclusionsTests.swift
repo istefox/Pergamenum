@@ -157,6 +157,38 @@ private let prose = "prima\n![[N]]\ndopo\n"
         #expect(twin.differences().isEmpty, "\(twin.differences())")
     }
 
+    // MARK: A caret crossing a view fence
+
+    // A caret crossing a `pergamenum-view` fence restyles the note from the selection handler, and
+    // that restyle rewrites every paragraph style - the one buying a transclusion's height
+    // included. The reservation is bought back in the same handler, not left for a SwiftUI update
+    // the daily panes never send on a bare caret move (found by hand in Oggi and Diario).
+    @Test func aCaretCrossingAViewFenceKeepsTheTransclusionsHeight() async throws {
+        let vault = try TemporaryVault()
+        let controller = try await opened(vault)
+        defer { controller.close() }
+        let text = "prima\n![[N]]\n\n```pergamenum-view\nrender: list\n```\n\nfine\n"
+
+        let editor = ScrolledEditorFixture(text: text, vault: paneInputs(controller))
+        defer { editor.window.orderOut(nil) }
+        editor.runPasses()
+        let lineStart = (text as NSString).range(of: "![[N]]").location
+        let reserved = try #require(editor.coordinator.transclusion.lastRenditions[lineStart]?.reservedHeight)
+        func spacing() -> CGFloat? {
+            (editor.textView.textStorage?.attribute(.paragraphStyle, at: lineStart, effectiveRange: nil)
+                as? NSParagraphStyle)?.paragraphSpacing
+        }
+        #expect(spacing() == reserved, "no reservation before the caret moved")
+
+        let inside = (text as NSString).range(of: "render: list").location
+        editor.textView.setSelectedRange(NSRange(location: inside, length: 0))
+        #expect(spacing() == reserved, "entering the fence dropped the reservation: \(String(describing: spacing()))")
+
+        let after = (text as NSString).range(of: "fine").location
+        editor.textView.setSelectedRange(NSRange(location: after, length: 0))
+        #expect(spacing() == reserved, "leaving the fence dropped the reservation: \(String(describing: spacing()))")
+    }
+
     // MARK: Source guards
 
     // Each pane passes the factory.
