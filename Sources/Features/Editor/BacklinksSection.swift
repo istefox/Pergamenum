@@ -117,11 +117,10 @@ struct BacklinksSection: View {
     }
 
     /// The line, with every link to this note in the accent, so the eye lands on why the row is
-    /// here.
+    /// here. A link counts by the predicate the row itself counts by (ADR-0097 §D1).
     private func context(_ line: String) -> AttributedString {
         var attributed = AttributedString(line)
-        let wanted = title.lowercased()
-        for link in WikilinkParser.links(in: line) where link.target.lowercased() == wanted {
+        for link in WikilinkParser.links(in: line) where link.names(title) {
             guard let lower = AttributedString.Index(link.range.lowerBound, within: attributed),
                   let upper = AttributedString.Index(link.range.upperBound, within: attributed)
             else { continue }

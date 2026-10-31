@@ -180,6 +180,24 @@ Corpo con [[Altra nota]].
     #expect(cache.load().isEmpty)
 }
 
+/// ADR-0097 §D4 (G-schema): a version 7 row holds an emphasised link's literal interior
+/// (`**Curva**`) where `linkTargets` now holds the title it names, and the scanner would reuse it
+/// until the file changed, so a cache stamped 7 is dropped and rebuilt, never reused.
+@Test func aCacheStampedSevenIsNotReused() throws {
+    let vault = try TemporaryVault()
+    try vault.write(note, to: "Nota.md")
+    let cache = IndexCache(url: vault.cacheURL)
+    #expect(cache.save(VaultScanner(root: vault.root).scan().records))
+    #expect(!cache.load().isEmpty)
+
+    var database: OpaquePointer?
+    sqlite3_open(vault.cacheURL.path(percentEncoded: false), &database)
+    sqlite3_exec(database, "PRAGMA user_version = 7;", nil, nil, nil)
+    sqlite3_close(database)
+
+    #expect(cache.load().isEmpty)
+}
+
 @Test func savingTwiceLeavesOnlyTheSecondSetOfNotes() throws {
     let vault = try TemporaryVault()
     try vault.write(note, to: "Prima.md")
@@ -224,9 +242,10 @@ private let taskMarkerNote = """
     // moved to 4 for an unrelated reason (ADR-0047 §D5, `categorySlug`), to 5 for
     // another (ADR-0065 §D12, CRLF frontmatter and `.canvas` link targets), to 6 for a
     // third (PG-316, CRLF task and link walk) and to 7 for a fourth (ADR-0071 §D2, the
-    // Contenitore scheda facts, gate G1) - this pin is about ADR-0021 spending no bump
-    // of its own, not about the version staying 3 forever.
-    #expect(IndexCache.schemaVersion == 7)
+    // Contenitore scheda facts, gate G1) and to 8 for a fifth (ADR-0097 §D4, `linkTargets`
+    // holds resolved titles) - this pin is about ADR-0021 spending no bump of its own, not
+    // about the version staying 3 forever.
+    #expect(IndexCache.schemaVersion == 8)
 }
 
 @Test func deletingCacheDbAndRescanningReDerivesTheSameRelationships() throws {

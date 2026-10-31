@@ -10,7 +10,8 @@ struct NoteRecord: Identifiable, Equatable, Sendable {
     /// The file stem, which is the note title (naming.md 4.6).
     var title: String
     var frontmatter: Frontmatter
-    /// Wikilink targets found in the body, in source order, duplicates removed.
+    /// The note titles the body links to (each link's `resolvedTitle`), in source order,
+    /// duplicates removed.
     var linkTargets: [String]
     /// Files the body embeds on a line of their own, in source order, duplicates removed
     /// (ADR-0009 §D2). The half `linkTargets` leaves out, and what the gallery renderer

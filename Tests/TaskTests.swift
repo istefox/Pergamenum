@@ -291,3 +291,27 @@ private let today = CalendarDate(iso: "2026-08-11")!
     #expect(TaskTime(text: "sera") == nil)
     #expect(TaskTime(hour: 9, minute: 5).text == "09:05")
 }
+
+// MARK: - An emphasised link is the title it names (ADR-0097 §D3, R-08)
+
+@Test func aTaskReadsAnEmphasisedLinkAsItsTitle() {
+    let task = TaskParser.parse(line: "- [ ] chiamare [[**Curva**]]", sourcePath: "A.md", lineIndex: 0)
+
+    #expect(task?.links == ["Curva"])
+}
+
+@Test func linkingANoteTheTaskAlreadyNamesThroughEmphasisChangesNothing() throws {
+    let task = try #require(
+        TaskParser.parse(line: "- [ ] chiamare [[**Curva**]]", sourcePath: "A.md", lineIndex: 0)
+    )
+
+    #expect(TaskParser.line(for: task, addingLinkTo: "Curva") == task.rawLine)
+}
+
+@Test func linkingANoteTheTaskAlreadyNamesInAnotherCaseChangesNothing() throws {
+    let task = try #require(
+        TaskParser.parse(line: "- [ ] chiamare [[curva]]", sourcePath: "A.md", lineIndex: 0)
+    )
+
+    #expect(TaskParser.line(for: task, addingLinkTo: "Curva") == task.rawLine)
+}

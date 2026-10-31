@@ -46,6 +46,13 @@ Corpo della nota.
     }
 }
 
+@Test(arguments: ["nota", "**Nota**", " Nota "])
+func refusesToLinkANoteToItselfInAnotherCaseOrThroughEmphasis(target: String) {
+    #expect(throws: RelatedLink.Error.self) {
+        try RelatedLink.add(target: target, reason: "motivo", to: note, selfTitle: "Nota")
+    }
+}
+
 @Test func enforcesTheFiveLinkLimit() throws {
     var text = note
     for index in 1...RelatedSection.maximumLinks {
@@ -191,4 +198,109 @@ Corpo della nota.
     ))
     #expect(controller.problems.contains { $0.contains("Inesistente") })
     controller.close()
+}
+
+// MARK: - An emphasised link is the link the badge counted (ADR-0097 §D3, R-07)
+
+/// The fixture shape of this file: frontmatter `related:` plus a `## Note correlate` bullet, both
+/// writing the link with its emphasis, as a person who selected the text and pressed Bold leaves it.
+private func emphasisedNote(entry: String = "[[**Curva**]]") -> String {
+    """
+    ---
+    date: 2026-08-11
+    tags:
+      - type-note
+    related:
+      - "\(entry)"
+    ---
+
+    Corpo della nota.
+
+    ## Note correlate
+
+    - \(entry) — motivo
+
+    """
+}
+
+@Test func removingTheTitleRemovesAnEmphasisedLinkFromBothWritings() {
+    let removed = RelatedLink.remove(target: "Curva", from: emphasisedNote())
+
+    #expect(!removed.contains("Curva"), "né related né la sezione tengono ancora il link")
+    let document = NoteDocument.parse(removed)
+    #expect(document.frontmatter.related.isEmpty)
+    #expect(RelatedSection.parse(from: document.body).isEmpty)
+}
+
+@Test func removingTheTitleIsCaseInsensitive() {
+    let removed = RelatedLink.remove(target: "Curva", from: emphasisedNote(entry: "[[curva]]"))
+
+    #expect(!removed.contains("curva"))
+    let document = NoteDocument.parse(removed)
+    #expect(document.frontmatter.related.isEmpty)
+    #expect(RelatedSection.parse(from: document.body).isEmpty)
+}
+
+@Test func addingAnAlreadyEmphasisedLinkChangesNothing() throws {
+    let text = emphasisedNote()
+
+    let updated = try RelatedLink.add(target: "Curva", reason: "altro motivo", to: text, selfTitle: "Nota")
+
+    #expect(updated == text, "nessun secondo link a una nota che il badge già conta")
+}
+
+// MARK: - (coverage) the two writings matched one by one, mixed spellings (ADR-0097 §D3)
+
+/// `related` and the section spell the same link differently, and a second link sits beside it:
+/// «Scollega» removes every writing that names the title and nothing else.
+@Test func removingTheTitleMatchesEachWritingByTheTitleAndLeavesTheOtherLinks() {
+    let text = """
+    ---
+    date: 2026-08-11
+    tags:
+      - type-note
+    related:
+      - "[[**Curva**]]"
+      - "[[Altra]]"
+    ---
+
+    Corpo della nota.
+
+    ## Note correlate
+
+    - [[curva]] — primo motivo
+    - [[Altra]] — secondo motivo
+
+    """
+
+    let document = NoteDocument.parse(RelatedLink.remove(target: "Curva", from: text))
+
+    #expect(document.frontmatter.related == ["[[Altra]]"])
+    #expect(RelatedSection.parse(from: document.body).map(\.target) == ["Altra"])
+    #expect(!document.body.lowercased().contains("curva"), "nessuna delle due grafie resta nella sezione")
+}
+
+/// Only `related` holds the emphasised writing: `add` still writes the missing bullet, and its
+/// frontmatter check (the second of its two duplicate checks) does not append a second entry for
+/// the title the first one already names.
+@Test func addingWhenOnlyRelatedHoldsTheEmphasisedLinkWritesNoSecondEntry() throws {
+    let text = """
+    ---
+    date: 2026-08-11
+    tags:
+      - type-note
+    related:
+      - "[[**Curva**]]"
+    ---
+
+    Corpo della nota.
+
+    """
+
+    let document = NoteDocument.parse(
+        try RelatedLink.add(target: "Curva", reason: "motivo", to: text, selfTitle: "Nota")
+    )
+
+    #expect(document.frontmatter.related == ["[[**Curva**]]"], "nessun secondo [[Curva]] in related")
+    #expect(RelatedSection.parse(from: document.body).map(\.target) == ["Curva"])
 }

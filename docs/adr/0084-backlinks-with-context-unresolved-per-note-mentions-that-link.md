@@ -71,6 +71,9 @@ index still stores paths only.
 
 **D1. A backlink row says why: the line, a count, a badge, a menu.**
 
+Its comparison is amended by ADR-0097 §D1: a row and the index match a link by its
+`resolvedTitle`, not its literal `target`. The one-predicate principle below stands.
+
 One pure function, `BacklinkContext.lines(linking title: String, in text: String) -> [String]`
 (`Sources/Core/Links/`), returns the trimmed body lines that hold a link to `title`, in order, one
 entry per link. It walks `WikilinkParser.links(in:)` (code skipped by the parser) and keeps a link

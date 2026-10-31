@@ -27,11 +27,15 @@ extension NoteStore {
     ///
     /// Which links count is `Wikilink.isNoteLink`, the predicate a backlink row counts by too
     /// (ADR-0084 §D1): no embed of a file, no `.canvas` target.
+    ///
+    /// The value stored is the title each link names, its `resolvedTitle`, deduplicated on it:
+    /// `[[**Curva**]] e [[Curva]]` gives `["Curva"]` (ADR-0097 §D2).
     static func linkTargets(in document: NoteDocument) -> [String] {
         var seen = Set<String>()
         var ordered: [String] = []
         for link in WikilinkParser.links(in: document.body) where link.isNoteLink {
-            if seen.insert(link.target).inserted { ordered.append(link.target) }
+            let title = link.resolvedTitle
+            if seen.insert(title).inserted { ordered.append(title) }
         }
         return ordered
     }

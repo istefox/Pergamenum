@@ -150,12 +150,12 @@ struct NoteFileOperations {
     /// Notes that would be left pointing at nothing if `relativePath` went to the trash. Read
     /// rather than written: `VaultSession.trashNote`'s own version computes the same thing after
     /// moving the file, which changes nothing here since neither reads `relativePath` itself.
+    /// A link counts when it names the title, emphasis included (ADR-0097 §D3).
     func danglingLinks(for relativePath: String, knownPaths: [String]) -> [String] {
         let title = NoteName.title(fromFileName: (relativePath as NSString).lastPathComponent)
-        let needle = title.lowercased()
         return knownPaths.filter { path in
             guard path != relativePath, let text = try? store.text(path) else { return false }
-            return WikilinkParser.links(in: text).contains { $0.target.lowercased() == needle }
+            return WikilinkParser.links(in: text).contains { $0.names(title) }
         }
     }
 

@@ -35,8 +35,9 @@ enum WorkspaceReferences {
                 guard (path as NSString).pathExtension.lowercased() == "md" else { continue }
                 append(path)
             case .text(let text):
+                // The title each link names: `[[**Curva**]]` is the note `Curva` (ADR-0097 §D3).
                 for link in WikilinkParser.links(in: text) {
-                    append(link.target)
+                    append(link.resolvedTitle)
                 }
             case .link, .group, .unknown:
                 continue

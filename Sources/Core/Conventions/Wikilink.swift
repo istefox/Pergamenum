@@ -26,9 +26,12 @@ struct Wikilink: Equatable, Hashable, Sendable {
     /// property instead of `target`. Longest markers first (`**`/`~~` before `*`), since a lone
     /// leading/trailing `*` of a `**` pair must not be peeled off on its own, which would leave a
     /// stray asterisk in the resolved title instead of removing the whole pair.
+    ///
+    /// The spaces and tabs left inside the pair are trimmed, so `[[** Curva **]]` names `Curva`
+    /// and the index's key, this value lowercased, is what `names(_:)` compares; when trimming
+    /// leaves nothing (`[[** **]]`) the link names its literal interior (ADR-0097 §D1).
     var resolvedTitle: String {
-        guard let marker = emphasisMarker else { return target }
-        return String(target.dropFirst(marker.count).dropLast(marker.count))
+        Self.resolvedTitle(of: target)
     }
 
     /// The link with its title replaced inside the emphasis pair `resolvedTitle` stripped:
@@ -36,16 +39,46 @@ struct Wikilink: Equatable, Hashable, Sendable {
     /// The section and the alias are the reader's and stay (ADR-0065 §D9.4, R-19).
     func retitled(_ newTitle: String) -> Wikilink {
         var link = self
-        let marker = emphasisMarker ?? ""
+        let marker = Self.emphasisMarker(of: target) ?? ""
         link.target = marker + newTitle + marker
         return link
     }
 
+    /// Whether this link names the note titled `title` (ADR-0097 §D1): its `resolvedTitle`
+    /// equals the title, case-insensitively, with surrounding spaces and tabs ignored. The one
+    /// rule the rename, the index and every row match a link by.
+    func names(_ title: String) -> Bool {
+        Self.target(target, names: title)
+    }
+
+    /// The same predicate over a bare bracket interior (ADR-0097 §D1), for a caller holding the
+    /// interior rather than a parsed link (a `StructuralLink.target`). The interior resolves
+    /// exactly as `resolvedTitle` does; the title is only folded, never resolved.
+    static func target(_ target: String, names title: String) -> Bool {
+        fold(resolvedTitle(of: target)) == fold(title)
+    }
+
+    /// `target` with its one emphasis pair stripped and the result trimmed, or `target` itself
+    /// when that leaves nothing. Shared by `resolvedTitle` and `target(_:names:)`, so there is
+    /// one reading of an interior.
+    private static func resolvedTitle(of target: String) -> String {
+        guard let marker = emphasisMarker(of: target) else { return target }
+        let title = target.dropFirst(marker.count).dropLast(marker.count)
+            .trimmingCharacters(in: .whitespaces)
+        return title.isEmpty ? target : title
+    }
+
     /// The one pair of emphasis delimiters wrapping `target`, if any.
-    private var emphasisMarker: String? {
+    private static func emphasisMarker(of target: String) -> String? {
         ["**", "~~", "*"].first { marker in
             target.count > marker.count * 2 && target.hasPrefix(marker) && target.hasSuffix(marker)
         }
+    }
+
+    /// Case- and surrounding-whitespace-insensitive: the one fold every title comparison shares
+    /// (ADR-0097 §D1), the rename's, the index's reverse queries and «Collega nota»'s.
+    static func fold(_ title: String) -> String {
+        title.trimmingCharacters(in: .whitespaces).lowercased()
     }
 
     /// Whether this link is one the index counts as a note link (ADR-0084 §D1): not an embed
@@ -56,9 +89,12 @@ struct Wikilink: Equatable, Hashable, Sendable {
     /// A board is not a note: a `.canvas` target - a task's `^[[Q4.canvas]]` marker, or a plain
     /// `[[Q4.canvas]]` - is never a link target, so it is no backlink, unresolved link, graph
     /// neighbour or `links` value (ADR-0065 §D9.5, R-20).
+    ///
+    /// Both halves judge `resolvedTitle`, the title the index stores (ADR-0097 §D2): an emphasised
+    /// `[[**Q4.canvas**]]` is still a board and `![[**foto.png**]]` still a file.
     var isNoteLink: Bool {
-        (!isEmbed || Transclusion.isNoteReference(target))
-            && (target as NSString).pathExtension.lowercased() != "canvas"
+        (!isEmbed || Transclusion.isNoteReference(resolvedTitle))
+            && (resolvedTitle as NSString).pathExtension.lowercased() != "canvas"
     }
 
     var rendered: String {

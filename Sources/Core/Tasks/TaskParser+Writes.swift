@@ -104,8 +104,14 @@ extension TaskParser {
 
     /// Adds or replaces a wikilink to a note or canvas, which is how "Collega
     /// nota/canvas…" works (SPEC §7.2).
+    ///
+    /// A note the task already names, in any case, changes nothing (ADR-0097 §D3): `[[curva]]`
+    /// does not gain a second `[[Curva]]`. `task.links` already holds resolved titles, so both
+    /// sides are only folded (trim, lowercase), never resolved again through
+    /// `Wikilink.target(_:names:)`, which would turn a title `*T*` into `T`.
     static func line(for task: TaskItem, addingLinkTo target: String) -> String {
-        guard !task.links.contains(target) else { return task.rawLine }
+        let needle = Wikilink.fold(target)
+        guard !task.links.contains(where: { Wikilink.fold($0) == needle }) else { return task.rawLine }
         return task.rawLine.trimmingTrailingWhitespace() + " [[\(target)]]"
     }
 

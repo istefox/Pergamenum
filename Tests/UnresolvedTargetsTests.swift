@@ -96,3 +96,44 @@ func aPlainAnAliasedAndASectionedLinkAreAllFound(line: String) {
     #expect(UnresolvedTargets.firstLine(linking: "Assente", in: sampleNote) == nil)
     #expect(UnresolvedTargets.firstLine(linking: "Fantasma", in: "Niente link.") == nil)
 }
+
+// ADR-0097 §D3 (R-06): the target «Vai al link» receives is a resolved title now (the index
+// stores `resolvedTitle`), so an emphasised link is found by the title it names.
+@Test func anEmphasisedLinkIsFoundByTheTitleItNames() {
+    let text = """
+    ---
+    date: 2026-10-16
+    tags:
+      - type-note
+    ---
+
+    prima
+    Vedi [[**Nuova**]].
+    """
+
+    // Zero-based over the whole text, frontmatter included: the second body line.
+    #expect(UnresolvedTargets.firstLine(linking: "Nuova", in: text) == 7)
+}
+
+// (coverage) ADR-0097 §D3: `firstLine` compares `resolvedTitle` exactly, which holds because the
+// index stores that same trimmed value. Every unresolved target the note's own `linkTargets` yields,
+// spaces inside the emphasis included, is a target «Vai al link» finds, on the line that holds it.
+@Test func everyUnresolvedTargetTheIndexDerivesIsFoundOnItsLine() {
+    let text = """
+    ---
+    date: 2026-10-16
+    tags:
+      - type-note
+    ---
+
+    Vedi [[** Nuova **]].
+    poi [[~~Altra~~|alias]]
+    e [[*Terza*#Sez]].
+    """
+    let targets = UnresolvedTargets.of(
+        NoteStore.linkTargets(in: NoteDocument.parse(text)), resolving: { _ in [] }
+    )
+
+    #expect(targets == ["Nuova", "Altra", "Terza"], "l'indice tiene il titolo risolto, senza spazi")
+    #expect(targets.map { UnresolvedTargets.firstLine(linking: $0, in: text) } == [6, 7, 8])
+}

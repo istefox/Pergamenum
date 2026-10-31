@@ -1,9 +1,7 @@
 # ADR-0098: `_` emphasis is concealed as `*` is, and Oggi and Diario draw transclusions
 
-- Status: **proposed**. Written with its plan, `docs/plans/pg-427-pg-428-underscore-concealment-daily-transclusions.md`.
-  If the plan's docs reach `main` ahead of the code, this record is committed there as `planned`
-  (`docs/adr/README.md` rule 2). It flips to `accepted`, naming the code PR, its merge commit as
-  `git log --first-parent main` shows it and the date, in the first docs change after that merge.
+- Status: **accepted**. Merged to `main` via PR #1036 (`9bc493b4`, 2026-10-31), built from
+  `docs/plans/pg-427-pg-428-underscore-concealment-daily-transclusions.md`.
 - Date: 2026-10-30. Written against `54cf47e7` (`origin/main` at the same commit). Every line number
   below was read there.
 - Number: `0098`. The highest number on `origin/main` is `0096`. `0097` is held by a draft for

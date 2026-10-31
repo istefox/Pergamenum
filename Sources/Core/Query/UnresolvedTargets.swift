@@ -15,13 +15,14 @@ enum UnresolvedTargets {
         targets.filter { resolving($0).isEmpty }
     }
 
-    /// The first line holding a note link whose target is `target` as written (`[[X]]`,
-    /// `[[X|a]]`, `[[X#s]]`), counting from zero over the whole text, frontmatter included -
-    /// the number `NoteJump.lineRange` turns into a caret range. Body links only, code skipped,
-    /// exactly the links `linkTargets` was computed from.
+    /// The first line holding a note link whose resolved title is `target` exactly (`[[X]]`,
+    /// `[[X|a]]`, `[[X#s]]`, `[[**X**]]`), counting from zero over the whole text, frontmatter
+    /// included - the number `NoteJump.lineRange` turns into a caret range. Body links only, code
+    /// skipped, exactly the links `linkTargets` was computed from: `target` is one of its values,
+    /// already a resolved title (ADR-0097 §D3).
     static func firstLine(linking target: String, in text: String) -> Int? {
         let body = NoteDocument.parse(text).body
-        guard let link = WikilinkParser.links(in: body).first(where: { $0.isNoteLink && $0.target == target })
+        guard let link = WikilinkParser.links(in: body).first(where: { $0.isNoteLink && $0.resolvedTitle == target })
         else { return nil }
         // The body is the text's verbatim suffix, so its start is found by UTF-16 length.
         let bodyStart = String.Index(utf16Offset: text.utf16.count - body.utf16.count, in: text)
