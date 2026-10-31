@@ -100,7 +100,13 @@ enum CardTextAttributes {
         for styled in MarkdownStyler.spans(in: text) {
             let range = NSRange(styled.range, in: text)
             guard range.location != NSNotFound, NSMaxRange(range) <= length else { continue }
-            storage.addAttributes(attributes(for: styled.span, theme: theme), range: range)
+            // Bold and italic combine over the run's face (`ProseTypography.addEmphasis`) rather
+            // than replacing each other's `.font`, so `***x***` draws bold-italic.
+            switch styled.span {
+            case .bold: ProseTypography.addEmphasis(.bold, in: storage, range: range, theme: theme)
+            case .italic: ProseTypography.addEmphasis(.italic, in: storage, range: range, theme: theme)
+            default: storage.addAttributes(attributes(for: styled.span, theme: theme), range: range)
+            }
             // A tag's or a date's click (n1-seams R-12, R-13), read off the source because a
             // date span carries no payload: the link only, over the colour above.
             let click = MarkdownAttributedText.clickAttributes(for: styled.span, source: text[styled.range])
