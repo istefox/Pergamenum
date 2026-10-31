@@ -692,12 +692,12 @@ grammar, every UI test class sets the isolation flags.
 - Fix: bound the walk to the frontmatter block (`FrontmatterSource.closingDelimiterIndex(in:)`) and to the continuation lines of the `related:` key; `FrontmatterParser.keyName`/`isContinuation` already group them.
 - Tracked: none (`PG-100`, closed, pinned only the card gate)
 
-### S03-04 — `Wikilink.emphasisMarker` strips `**`, `~~`, `*` but not `_`/`__`, which ADR-0098 now conceals inside a link
+### S03-04 — `Wikilink.emphasisMarker` strips `**`, `~~`, `*` but not `_`/`__`, which PR #1036 now conceals inside a link
 - Where: `Sources/Core/Conventions/Wikilink.swift:45-49`, `docs/adr/0098-underscore-emphasis-is-concealed-and-the-daily-panes-draw-transclusions.md:195`
 - Category: correctness
 - Severity: P3 · Confidence: suspected
 - In flight: yes
-- What: `resolvedTitle`'s marker list (`:46`) is the pre-ADR-0098 set, so `[[_bozza_]]` keeps resolving to `_bozza_`. The in-flight ADR's Consequences (`:195`) record that such a link now *draws* as «bozza» "as `*` already does", but for `*` the navigation side was fixed too (`PG-107`): a link that looks like a link to `bozza` resolves to no note, and `NoteRename` (which matches on `resolvedTitle`) will not rewrite it when `bozza` is renamed. The branch commit `668067eb` touches no `Sources/Core` file.
+- What: `resolvedTitle`'s marker list (`:46`) is the set from before PR #1036, so `[[_bozza_]]` keeps resolving to `_bozza_`. The in-flight ADR's Consequences (`:195`) record that such a link now *draws* as «bozza» "as `*` already does", but for `*` the navigation side was fixed too (`PG-107`): a link that looks like a link to `bozza` resolves to no note, and `NoteRename` (which matches on `resolvedTitle`) will not rewrite it when `bozza` is renamed. The branch commit `668067eb` touches no `Sources/Core` file.
 - Trigger: type `[[_bozza_]]` in a note where `bozza.md` exists → editor shows «bozza» concealed like `[[*bozza*]]` → Cmd+click reports no note; rename `bozza` → the link is left behind.
 - Fix: add `"__"` and `"_"` to the marker list (order: longer first), with the intraword rule the shared grammar applies; one test beside the `**` one from `PG-107`.
 - Tracked: none

@@ -111,7 +111,7 @@ Each step lists: **Scope** (finding ids), **Where**, **Size**, **ADR**, **Depend
 ### 2.2 Phase 0 — prepare (no production code)
 
 **R-00a — Land PR #1036 with its one in-flight finding.**
-- Scope: S03-04 (`Wikilink.emphasisMarker` does not strip `_`/`__`, which ADR-0098 now conceals
+- Scope: S03-04 (`Wikilink.emphasisMarker` does not strip `_`/`__`, which PR #1036 now conceals
   inside a link). The other in-flight findings (S08-05, S08-06, S12-08, S12-09, S07-13, S08-10,
   S08-11, T07-tests-15, T02-10) are pre-existing shapes in touched files and go to their batches.
 - Owner: the `feat/pg-427-pg-428…` lane, not a new session. Hand it the finding id.
