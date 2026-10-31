@@ -8,16 +8,27 @@ import MCP
 /// server's handlers are async, so awaiting the main actor from them costs nothing and
 /// buys the same code path the app uses.
 ///
-/// The vault is rescanned before every call. The person whose vault this is has the app
-/// open on it and is editing while the model reads, so an index built at launch would be
-/// answering about a vault that no longer exists. `IndexCache` compares hashes and reuses
-/// what has not changed, which is what makes that affordable.
+/// The vault is rescanned before every tool call, and before the first page of
+/// `resources/list`. The person whose vault this is has the app open on it and is editing
+/// while the model reads, so an index built at launch would be answering about a vault that
+/// no longer exists. `IndexCache` compares hashes and reuses what has not changed, which is
+/// what makes that affordable. Later pages of the listing add no rescan of their own, so the
+/// offset a cursor carries shifts only if a tool call in between has rescanned; `resources/read` reads
+/// the file from disk and needs no index.
+///
+/// Calls run one at a time, through `gate` (PG-438). The SDK hands every request a task
+/// of its own, and the write guardrails are state on the one session (ADR-0007 §D6): two
+/// calls overlapping at a suspension would arm it for each other.
 @MainActor
 final class VaultHost {
     // Not `private` (ADR-0045 §D2): `VaultHost+PraticheLinks.swift`'s writers read it too,
     // and `private` is file-scoped.
     let session: VaultSession
     let allowsWriting: Bool
+
+    /// Every request that touches the session goes through here: tool calls and both
+    /// resource methods. `tools/list` does not - it reads a constant.
+    private let gate = ConnectorCallGate()
 
     private init(session: VaultSession, allowsWriting: Bool) {
         self.session = session
@@ -49,14 +60,19 @@ final class VaultHost {
     /// `isError` on the result is the difference between "the server broke" and "the
     /// vault said no": the second is something the model can read and act on, and a
     /// JSON-RPC error would only tell it that something went wrong somewhere.
+    ///
+    /// The rescan and the call share one turn of the gate, so the index a write is checked
+    /// against is the one it was rescanned into, and no other call arms the session between.
     func call(_ parameters: CallTool.Parameters) async -> CallTool.Result {
-        await session.rescan()
-        do {
-            return try await perform(parameters.name, ToolArguments(parameters.arguments))
-        } catch let refusal as ConnectorError {
-            return CallTool.Result(content: [.text(refusal.description)], isError: true)
-        } catch {
-            return CallTool.Result(content: [.text("\(error)")], isError: true)
+        await gate.run {
+            await session.rescan()
+            do {
+                return try await perform(parameters.name, ToolArguments(parameters.arguments))
+            } catch let refusal as ConnectorError {
+                return CallTool.Result(content: [.text(refusal.description)], isError: true)
+            } catch {
+                return CallTool.Result(content: [.text("\(error)")], isError: true)
+            }
         }
     }
 
@@ -289,7 +305,18 @@ final class VaultHost {
     /// `-1` or a silent restart at page zero that a client mis-echoing it would loop on.
     /// A cursor past the end is an empty page, answered before any arithmetic, and `end`
     /// is built from what is left so `Int.max` cannot overflow.
-    func resources(after cursor: String?) throws -> ListResources.Result {
+    ///
+    /// The first page rescans, as a tool call does (PG-438): without it the listing named
+    /// the vault as it was at the last tool call, or at launch. A page after it does not,
+    /// so the offset its cursor carries still means the same note.
+    func resources(after cursor: String?) async throws -> ListResources.Result {
+        try await gate.run {
+            if cursor == nil { await session.rescan() }
+            return try resourcePage(after: cursor)
+        }
+    }
+
+    private func resourcePage(after cursor: String?) throws -> ListResources.Result {
         let notes = session.index.allNotes
         var start = 0
         if let cursor {
@@ -315,14 +342,18 @@ final class VaultHost {
         )
     }
 
-    func resource(at uri: String) throws -> ReadResource.Result {
-        guard let url = URL(string: uri), case .note(let path)? = PergamenumRoute(url) else {
-            throw ConnectorError("«\(uri)» non è una nota di questo vault", usage: true)
+    /// Inside the gate though it rescans nothing: the read is of the file on disk, and a
+    /// write in flight on the same note must finish before it is read.
+    func resource(at uri: String) async throws -> ReadResource.Result {
+        try await gate.run {
+            guard let url = URL(string: uri), case .note(let path)? = PergamenumRoute(url) else {
+                throw ConnectorError("«\(uri)» non è una nota di questo vault", usage: true)
+            }
+            let note = try VaultAPI.note(session, at: path)
+            return ReadResource.Result(contents: [
+                .text(note.text, uri: uri, mimeType: "text/markdown"),
+            ])
         }
-        let note = try VaultAPI.note(session, at: path)
-        return ReadResource.Result(contents: [
-            .text(note.text, uri: uri, mimeType: "text/markdown"),
-        ])
     }
 
     /// Enough notes to be useful in one round trip, few enough that a vault of a few

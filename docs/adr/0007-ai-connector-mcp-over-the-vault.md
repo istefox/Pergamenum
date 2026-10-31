@@ -109,6 +109,12 @@ connectors carry the three verbs.
 The journal lives under `.pergamenum/` with the rest of the disposable state. Losing it
 loses nothing that the vault does not still hold.
 
+**Amendment (PG-438).** The three guardrails are armed on the session and hold for one call
+at a time, so since PG-438 the MCP server runs its calls one after another through a FIFO
+gate (`ConnectorCallGate`): a concurrent `dryRun: true` call can no longer re-arm the session
+under a real write still in flight. The same fix makes `resources/list` rescan the vault
+before its first page, as a tool call does, instead of answering from the last call's index.
+
 ## Consequences
 
 - `VaultController` stops being where behaviour lives and becomes where observable state
