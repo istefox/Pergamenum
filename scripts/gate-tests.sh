@@ -63,7 +63,7 @@ fi
 
 # --- Selection ---------------------------------------------------------------------------
 
-# The hook's own matching (stop-gate.sh, ADR-0137): blank and '#' lines skipped, a trailing '/'
+# The hook's own matching (~/.claude/hooks/stop-gate.sh, its path predicate): blank and '#' lines skipped, a trailing '/'
 # is a directory prefix, and '*' matches '/' too.
 ignored() {
     local rel="$1" pat lead
