@@ -3,6 +3,7 @@ paths:
   - "Tests/**/*.swift"
   - "UITests/**/*.swift"
   - "scripts/uitests.sh"
+  - "scripts/gate-tests.sh"
   - ".claude/test-cmd"
 ---
 
@@ -19,6 +20,17 @@ when a file matching `paths:` is read.
   holding the global hot key exclusively - so the next launch was refused. Two hours went
   into hunting an external culprit for something the assistant was doing itself. The UI
   tests still exist and are run deliberately, by hand.
+- **`.claude/test-cmd` is `scripts/gate-tests.sh`, not the whole bundle (2026-10-31).** Every
+  session's Stop ran all of `PergamenumTests` (about 7,100 tests) under a 600 s ceiling with
+  nothing between sessions, so two or three worktrees ending a turn together starved each other
+  into timeouts (exit 124) that were no test's fault. The script takes a machine-wide lock (one
+  xcodebuild at a time; the others wait and say on whom) and runs only the suites and top-level
+  `@Test` functions the branch's changes against `origin/main` can reach; Project.swift, Tuist/,
+  Resources/ or a non-Swift source run everything, and the build always covers the whole target.
+  A top-level function is addressed by its full selector (`name(_:)`): xcodebuild matches the bare
+  name to nothing. `scripts/gate-tests.sh --dry-run` prints the selection and why; `--full` is the
+  whole bundle under the same lock. The full suite runs on every PR in CI. `.claude/test-ignore`
+  skips the Stop run outright when only docs, `TODO.md` or the root markdown files changed.
 - **A UI test that reads the machine's calendar is a test about somebody's diary.** The
   suite passes `-disableCalendar YES`, which keeps `EventKitStore` out of EventKit
   entirely. Every one of the thirteen files passes it, not only the one that needed it:
