@@ -1,0 +1,188 @@
+# Production symbols Periphery reports as unused only when the test targets are excluded
+# (= kept alive solely by tests). Count: 156
+
+## Sources/App (13)
+Sources/App/CommandActions+TaskCommands.swift:33:10  instance  canRun(_:on:)  unused
+Sources/App/NSPasteboard+Volatile.swift:9:17  static  volatile()  unused
+Sources/App/Navigation.swift:335:13  instance  ordinal  assignOnlyProperty
+Sources/App/QuitReview+Conflicts.swift:50:13  instance  prose  assignOnlyProperty
+Sources/App/QuitReview.swift:115:9  instance  saveCandidates  unused
+Sources/App/ShortcutStore.swift:89:10  instance  clear(_:)  unused
+Sources/App/ShortcutStore.swift:73:9  instance  hasConflicts  unused
+Sources/App/SparkleUpdateController.swift:88:9  instance  isTestHost  assignOnlyProperty
+Sources/App/UpdaterConfiguration.swift:13:8  struct  UpdaterConfiguration  unused
+Sources/App/VaultController+Conformance.swift:14:10  instance  violations(for:)  unused
+Sources/App/VaultController+Conformance.swift:9:10  instance  violations(forRecordAt:)  unused
+Sources/App/VaultController+NoteBirth.swift:16:13  instance  tabID  assignOnlyProperty
+Sources/App/VaultController.swift:332:10  instance  close()  unused
+
+## Sources/Calendar (1)
+Sources/Calendar/TimeBlock.swift:85:10  instance  overlaps(_:)  unused
+
+## Sources/Connector (5)
+Sources/Connector/VaultNoteBirth.swift:10:13  instance  path  assignOnlyProperty
+Sources/Connector/VaultPayloads.swift:139:13  instance  categories  assignOnlyProperty
+Sources/Connector/VaultPayloads.swift:280:13  instance  counterparts  assignOnlyProperty
+Sources/Connector/VaultPayloads.swift:137:13  instance  taskMarkers  assignOnlyProperty
+Sources/Connector/VaultPraticheLinks.swift:66:17  static  praticaMessageLink(_:at:)  unused
+
+## Sources/Core (37)
+Sources/Core/AppInfo.swift:6:16  static  name  unused
+Sources/Core/AppInfo.swift:7:16  static  tagline  unused
+Sources/Core/Contenitore/ContenitoreColour.swift:26:5  constructor  init(canvasPreset:)  unused
+Sources/Core/Contenitore/ContenitoreScheda.swift:23:9  instance  rawColour  assignOnlyProperty
+Sources/Core/Contenitore/TextExtracting.swift:47:17  static  displayLabel(_:)  unused
+Sources/Core/Contenitore/TextExtracting.swift:34:9  instance  pageCount  assignOnlyProperty
+Sources/Core/Conventions/NoteExtraction.swift:30:13  instance  link  assignOnlyProperty
+Sources/Core/Conventions/NoteTemplate.swift:58:17  static  substituting(title:date:in:)  unused
+Sources/Core/Conventions/Vocabulary.swift:27:9  instance  note  assignOnlyProperty
+Sources/Core/Conventions/Wikilink.swift:244:9  instance  reason  assignOnlyProperty
+Sources/Core/Diary/DiaryEntry.swift:67:16  static  firstHour  unused
+Sources/Core/Diary/DiaryEntry.swift:237:17  static  parse(from:)  unused
+Sources/Core/Editor/ListContinuation+Window.swift:51:13  instance  linesRead  assignOnlyProperty
+Sources/Core/Editor/ListContinuation+Window.swift:52:13  instance  readRange  assignOnlyProperty
+Sources/Core/Editor/ListNesting.swift:54:17  static  levels(in:)  unused
+Sources/Core/Email/EMLXReader.swift:24:9  instance  plistData  assignOnlyProperty
+Sources/Core/Email/EmailHeaders.swift:38:9  instance  mailURL  unused
+Sources/Core/Email/MailAttachmentRef.swift:12:8  struct  MailAttachmentRef  unused
+Sources/Core/Email/MailStoreReader.swift:225:10  instance  attachments(forMessage:)  unused
+Sources/Core/Email/MailStoreReader.swift:52:5  constructor  init(connection:batchSize:)  unused
+Sources/Core/Markdown/FenceChrome.swift:16:9  instance  language  assignOnlyProperty
+Sources/Core/Markdown/FenceChrome.swift:42:9  instance  lineCountLabel  unused
+Sources/Core/Markdown/GFMTable.swift:28:9  instance  range  assignOnlyProperty
+Sources/Core/Markdown/GFMTable.swift:37:17  static  runs(in:from:outside:)  unused
+Sources/Core/Markdown/NoteFolding.swift:109:17  static  hiddenParagraphs(in:foldedEntries:)  unused
+Sources/Core/Markdown/NoteOutline.swift:29:13  instance  level  assignOnlyProperty
+Sources/Core/Pratiche/PraticaLedger.swift:193:10  instance  memberMessageIDs(forConversation:praticaPath:)  unused
+Sources/Core/Pratiche/PraticaLedger.swift:27:13  instance  pending  assignOnlyProperty
+Sources/Core/Query/Glob.swift:47:17  static  matches(_:_:)  unused
+Sources/Core/Query/Glob.swift:104:17  static  matchesPath(_:_:)  unused
+Sources/Core/Query/Glob.swift:98:17  static  matchesTag(_:_:)  unused
+Sources/Core/Query/ViewFilter.swift:60:9  instance  readsText  unused
+Sources/Core/Search/SearchQuery+Matching.swift:124:10  instance  matches(record:text:)  unused
+Sources/Core/Search/UnlinkedMentions.swift:173:25  static  containsWholeWord(_:in:)  unused
+Sources/Core/Search/UnlinkedMentions.swift:159:17  static  mentions(_:in:)  unused
+Sources/Core/Shortcuts/ShortcutCommand.swift:167:16  static  shipsUnbound  unused
+Sources/Core/Tasks/TaskItem.swift:59:9  instance  recurrence  assignOnlyProperty
+
+## Sources/DesignSystem (1)
+Sources/DesignSystem/Theme.swift:109:10  instance  resolvedFontName(_:)  unused
+
+## Sources/Features/Capture (1)
+Sources/Features/Capture/GlobalHotkey.swift:33:13  instance  isRegistered  unused
+
+## Sources/Features/Contenitore (1)
+Sources/Features/Contenitore/ContenitoreEditor.swift:64:9  instance  baselineText  unused
+
+## Sources/Features/Editor (61)
+Sources/Features/Editor/CalloutFold.swift:17:17  static  hiddenLines(in:toggled:)  unused
+Sources/Features/Editor/CompletingTextView.swift:160:10  instance  shouldOfferCompletion()  unused
+Sources/Features/Editor/CompletingTextView.swift:177:10  instance  shouldOfferEmoji()  unused
+Sources/Features/Editor/CompletingTextView.swift:186:10  instance  shouldOpenSlashMenu()  unused
+Sources/Features/Editor/CompletingTextView.swift:210:18  instance  slashLocation()  unused
+Sources/Features/Editor/CompletionPanel.swift:107:9  instance  noMatch  unused
+Sources/Features/Editor/EditorDecorationDelegate.swift:280:9  instance  hiddenMarkerCount  unused
+Sources/Features/Editor/EditorDecorationDelegate.swift:918:10  instance  offsetKeyedSnapshot()  unused
+Sources/Features/Editor/EditorGutter.swift:71:9  instance  count  unused
+Sources/Features/Editor/FormatBarPanel.swift:41:9  instance  isVisible  unused
+Sources/Features/Editor/LinkPreviewPopover.swift:36:5  constructor  init(windowIsKey:textViewIsFirstResponder:)  unused
+Sources/Features/Editor/ListMarkerRendering.swift:92:17  static  contentColumn(level:font:gutter:)  unused
+Sources/Features/Editor/MarkdownAttributedText.swift:85:17  static  attributes(for:theme:links:)  unused
+Sources/Features/Editor/NoteTextView+Coordinator.swift:45:26  instance  lastRecordedEdit  assignOnlyProperty
+Sources/Features/Editor/NoteTextView+Coordinator.swift:961:10  instance  offsetStoreTallies()  unused
+Sources/Features/Editor/NoteTextView+Coordinator.swift:970:10  instance  resetOffsetStoreTallies()  unused
+Sources/Features/Editor/NoteTextView+DerivedState.swift:7:8  struct  DerivedStateSnapshot  unused
+Sources/Features/Editor/NoteTextView+DerivedState.swift:64:10  instance  derivedStateSnapshot()  unused
+Sources/Features/Editor/NoteTextView+DerivedState.swift:38:9  instance  embedRenditionKeys  assignOnlyProperty
+Sources/Features/Editor/NoteTextView+DerivedState.swift:34:9  instance  foldedHeadings  assignOnlyProperty
+Sources/Features/Editor/NoteTextView+DerivedState.swift:33:9  instance  hiddenLineOffsets  assignOnlyProperty
+Sources/Features/Editor/NoteTextView+DerivedState.swift:32:9  instance  hiddenMarkerKeys  assignOnlyProperty
+Sources/Features/Editor/NoteTextView+DerivedState.swift:37:9  instance  renditionKeys  assignOnlyProperty
+Sources/Features/Editor/NoteTextView+DerivedState.swift:40:9  instance  revealedSpanKeys  assignOnlyProperty
+Sources/Features/Editor/NoteTextView+DerivedState.swift:35:9  instance  tableRowOffsets  assignOnlyProperty
+Sources/Features/Editor/NoteTextView+DerivedState.swift:41:9  instance  tableViewKeys  assignOnlyProperty
+Sources/Features/Editor/NoteTextView+DerivedState.swift:44:9  instance  toggledCallouts  assignOnlyProperty
+Sources/Features/Editor/NoteTextView+DerivedState.swift:42:9  instance  viewBlockHostKeys  assignOnlyProperty
+Sources/Features/Editor/NoteTextView+DerivedState.swift:36:9  instance  viewBlockLineOffsets  assignOnlyProperty
+Sources/Features/Editor/NoteTextView+EmbedResize.swift:106:10  instance  handleRect(forEmbedAt:in:)  unused
+Sources/Features/Editor/NoteTextView+Folding.swift:251:9  instance  calloutFoldKeys  unused
+Sources/Features/Editor/NoteTextView+Layout.swift:17:9  instance  lastWholeReason  assignOnlyProperty
+Sources/Features/Editor/NoteTextView+LinkPreview.swift:67:9  instance  hasEventMonitor  unused
+Sources/Features/Editor/NoteTextView+LinkPreview.swift:68:9  instance  hasTrackingArea  unused
+Sources/Features/Editor/NoteTextView+LinkPreview.swift:69:9  instance  isObservingWindowKey  unused
+Sources/Features/Editor/NoteTextView+StorageEdits.swift:10:9  instance  lastDirtyRange  assignOnlyProperty
+Sources/Features/Editor/NoteTextView+Transclusion.swift:106:22  instance  lastScannedRange  assignOnlyProperty
+Sources/Features/Editor/OffsetRanges.swift:127:17  infix  ==(_:_:)  unused
+Sources/Features/Editor/OffsetRanges.swift:133:19  instance  resetTally()  unused
+Sources/Features/Editor/OffsetRanges.swift:131:9  instance  tally  unused
+Sources/Features/Editor/OffsetTable.swift:29:9  instance  count  unused
+Sources/Features/Editor/OffsetTable.swift:57:10  instance  entries(in:)  unused
+Sources/Features/Editor/OffsetTable.swift:49:10  instance  entry(atOrBefore:)  unused
+Sources/Features/Editor/OffsetTable.swift:30:9  instance  isEmpty  unused
+Sources/Features/Editor/OffsetTable.swift:33:9  instance  keys  unused
+Sources/Features/Editor/OffsetTable.swift:115:19  instance  resetTally()  unused
+Sources/Features/Editor/OffsetTable.swift:113:9  instance  tally  unused
+Sources/Features/Editor/OffsetTable.swift:36:9  instance  values  unused
+Sources/Features/Editor/OutlineMap.swift:54:9  instance  items  unused
+Sources/Features/Editor/OutlineMap.swift:39:13  instance  range  assignOnlyProperty
+Sources/Features/Editor/OutlineMap.swift:41:13  instance  title  assignOnlyProperty
+Sources/Features/Editor/OutlineStore.swift:47:9  instance  tally  unused
+Sources/Features/Editor/RestyleScope.swift:316:19  instance  resetTallies()  unused
+Sources/Features/Editor/StepBuffer.swift:53:16  static  isCounting  unused
+Sources/Features/Editor/StepBuffer.swift:180:19  instance  resetTally()  unused
+Sources/Features/Editor/StepBuffer.swift:172:9  instance  tally  unused
+Sources/Features/Editor/StructureMap.swift:110:19  instance  apply(_:in:)  unused
+Sources/Features/Editor/StructureMap.swift:367:19  instance  resetTallies()  unused
+Sources/Features/Editor/StructureMap.swift:359:9  instance  tallies  unused
+Sources/Features/Editor/TableGridStore.swift:66:10  instance  identities()  unused
+Sources/Features/Editor/TranscludedLineFragment.swift:10:9  instance  title  assignOnlyProperty
+
+## Sources/Features/Pratiche (8)
+Sources/Features/Pratiche/MessageCommand.swift:55:9  instance  symbol  unused
+Sources/Features/Pratiche/PraticaLiveSync.swift:148:9  instance  holdsRegenerationEngine  unused
+Sources/Features/Pratiche/PraticaSyncEngine+Messages.swift:584:13  instance  currentText  assignOnlyProperty
+Sources/Features/Pratiche/PraticaSyncEngine+Messages.swift:582:13  instance  messageID  assignOnlyProperty
+Sources/Features/Pratiche/PraticaSyncEngine+Messages.swift:585:13  instance  replacementText  assignOnlyProperty
+Sources/Features/Pratiche/PraticaSyncEngine+Payloads.swift:60:13  instance  cancelled  assignOnlyProperty
+Sources/Features/Pratiche/PraticaSyncEngine.swift:59:5  constructor  init(mailStoreURL:vaultRoot:write:quarantine:)  unused
+Sources/Features/Pratiche/PraticaTimelineModel+Layout.swift:65:17  static  slotSide(_:)  unused
+
+## Sources/Features/Recordings (1)
+Sources/Features/Recordings/PlaudVaultStore.swift:74:13  instance  status  assignOnlyProperty
+
+## Sources/Features/Tasks (1)
+Sources/Features/Tasks/TaskCommand.swift:54:9  instance  identifier  unused
+
+## Sources/Features/Views (1)
+Sources/Features/Views/RenderedViewBlock.swift:23:9  instance  notePath  assignOnlyProperty
+
+## Sources/Features/Workspace (3)
+Sources/Features/Workspace/BoardHistory.swift:29:9  instance  blockedBy  unused
+Sources/Features/Workspace/CardTextAttributes.swift:74:17  static  attributed(_:theme:)  unused
+Sources/Features/Workspace/CardTextView.swift:226:13  instance  hiddenMarkers  assignOnlyProperty
+
+## Sources/Index (3)
+Sources/Index/IndexCache.swift:105:10  instance  save(_:boardTasks:)  unused
+Sources/Index/IndexSnapshot.swift:242:10  instance  progress(ofProject:)  unused
+Sources/Index/IndexSnapshot.swift:233:10  instance  subtasks(of:)  unused
+
+## Sources/Vault (19)
+Sources/Vault/BoardFileOperations.swift:246:13  instance  newPath  assignOnlyProperty
+Sources/Vault/FolderFileOperations.swift:275:10  instance  repointBoardsPlan(moves:)  unused
+Sources/Vault/NoteStore.swift:254:17  static  linkTargets(in:)  unused
+Sources/Vault/NoteTab.swift:71:13  instance  id  assignOnlyProperty
+Sources/Vault/NoteTree.swift:31:17  static  build(from:)  unused
+Sources/Vault/NoteTree.swift:81:17  static  build(fromPaths:)  unused
+Sources/Vault/OpenTabsStore.swift:48:17  static  volatile()  unused
+Sources/Vault/PinnedTagsStore.swift:17:17  static  volatile()  unused
+Sources/Vault/RecentVaults.swift:36:17  static  volatile()  unused
+Sources/Vault/VaultDisk.swift:70:13  instance  hash  assignOnlyProperty
+Sources/Vault/VaultDisk.swift:89:9  constructor  init(record:hash:sequence:journalProblem:)  unused
+Sources/Vault/VaultDisk.swift:96:13  instance  record  unused
+Sources/Vault/VaultDisk.swift:97:13  instance  sequence  unused
+Sources/Vault/VaultDisk.swift:135:10  instance  write(_:to:precomputedHash:journalEntry:journal:recordsHistory:)  unused
+Sources/Vault/VaultDisk.swift:326:10  instance  writeFile(_:to:expecting:)  unused
+Sources/Vault/VaultSession+EventNotes.swift:20:13  instance  dailyNote  assignOnlyProperty
+Sources/Vault/VaultSession+WriteOrdering.swift:22:10  instance  apply(_:at:)  unused
+Sources/Vault/VaultSettings.swift:167:17  static  resolveInboxFolder(_:root:)  unused
+Sources/Vault/WriteJournal.swift:43:13  instance  hashBefore  assignOnlyProperty
