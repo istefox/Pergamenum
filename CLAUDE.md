@@ -122,8 +122,9 @@ M4 tasks, M5 calendar, M6 URL scheme + conformance linter.
 - Default branch: `main`. Never commit directly to it, never force-push.
 - No branch protection is configured: the discipline above is the only guard.
 - **CI (ADR-0044, `.github/workflows/ci.yml`) builds `Pergamenum`, `perg` and `pergamenum-mcp` from a
-  clean checkout and runs `PergamenumTests`, on every PR and on push to `main`.** It is advisory, not
-  a required check, and it verifies nothing else: the UI suite (`scripts/uitests.sh`, run through
+  clean checkout and runs `PergamenumTests`, on every PR and on push to `main`.** It is not a required
+  check in GitHub's settings, but its green is the merge gate's full unit run (the Stop hook runs only
+  a selection, `scripts/gate-tests.sh`), and it verifies nothing else: the UI suite (`scripts/uitests.sh`, run through
   `--affected` at merge per the rule below), SwiftLint and the release pipeline are not on it. A green
   CI badge means those three targets build and the unit suite passes — nothing about the UI suite.
 
@@ -142,6 +143,7 @@ scripts/appcast.py --self-test                                                  
 scripts/install-cli.sh [dir]                                                                    # build both connectors Release and put them on the PATH
 scripts/mcp-smoke.py [binary]                                                                   # drive the MCP server over stdio and check it
 scripts/uitests.sh                                                                              # the GUI suite: --affected at merge, a full run before a release
+scripts/gate-tests.sh                                                                           # the Stop-hook unit run: changed suites only, one session at a time; --full, --dry-run
 scripts/check-merge-integrity.py --self-test                                                    # ADR-0061's and ADR-0062's own assertions, offline, touches no repository
 scripts/check-merge-integrity.py --landings "$(git rev-list --max-parents=0 origin/main)..origin/main"  # ADR-0062's landing audit over main's history (exits 1 on the six known historical landings)
 scripts/install-git-hooks.sh                                                                    # once per machine: installs the pre-push guard from ADR-0061/0062; rerun with --force after a hook change
@@ -262,7 +264,10 @@ Rules keyed to a file type live in `.claude/rules/` and load only when a matchin
   one before dismissing it - the rule still catches a real key assigned to a variable
   named `token`.
 - **The merge gate is the unit suite (`PergamenumTests`) plus the in-process tests
-  (`Tests/HostedViewPrototypeTests.swift` and siblings), not the GUI suite.** This
+  (`Tests/HostedViewPrototypeTests.swift` and siblings), not the GUI suite, and the full run of
+  it that counts is CI's, green on the PR.** The per-turn Stop run is `scripts/gate-tests.sh`:
+  only the suites a change can reach, one session at a time (see `.claude/rules/ui-tests.md`);
+  `scripts/gate-tests.sh --full` runs the whole bundle locally when CI cannot. This
   supersedes the rule bought on 2026-08-21 after three of the sixty-seven UI tests had
   been red since before a milestone merge and nothing had said so (`PG-033`) — the fix for
   that gap is now the hosted-view conversions themselves (`docs/plans/ui-suite-replacement.md`),
