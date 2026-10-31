@@ -9,7 +9,7 @@ verified here, against a vault this script makes and throws away.
 
     scripts/mcp-smoke.py [percorso del binario]
 
-Without an argument it looks for a Debug build in DerivedData. Exits 0 when everything
+Without an argument it looks for this checkout's Debug build in DerivedData. Exits 0 when everything
 holds, 1 on the first thing that does not, naming it.
 """
 import glob
@@ -120,12 +120,23 @@ def make_check(failures):
 def find_binary(argv):
     if len(argv) > 1:
         return argv[1]
-    pattern = os.path.expanduser(
-        "~/Library/Developer/Xcode/DerivedData/Pergamenum-*/Build/Products/Debug/pergamenum-mcp")
-    found = sorted(glob.glob(pattern), key=os.path.getmtime)
+    # Only the DerivedData folder whose info.plist names this checkout's workspace: every
+    # worktree has its own, and the newest across all of them is often another branch's
+    # server (CLAUDE.md, finding this checkout's latest Debug build).
+    workspace = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Pergamenum.xcworkspace")
+    found = []
+    for folder in glob.glob(os.path.expanduser("~/Library/Developer/Xcode/DerivedData/Pergamenum-*")):
+        named = subprocess.run(
+            ["plutil", "-extract", "WorkspacePath", "raw", os.path.join(folder, "info.plist")],
+            capture_output=True, text=True).stdout.strip()
+        binary = os.path.join(folder, "Build/Products/Debug/pergamenum-mcp")
+        if named == workspace and os.path.exists(binary):
+            found.append(binary)
     if not found:
-        sys.exit("nessun binario: compila lo schema pergamenum-mcp, o passami un percorso")
-    return found[-1]
+        sys.exit("nessun binario di questo checkout: compila lo schema pergamenum-mcp, "
+                 "o passami un percorso")
+    return sorted(found, key=os.path.getmtime)[-1]
 
 
 def drain(stream):
@@ -135,8 +146,15 @@ def drain(stream):
         pass
 
 
+def decoded(result):
+    """A tool result's JSON, or the refusal as `isError` plus its sentence."""
+    if result.get("isError"):
+        return {"isError": True, "text": result["content"][0]["text"]}
+    return json.loads(result["content"][0]["text"])
+
+
 class Server:
-    """One server process, spoken to one request at a time."""
+    """One server process, spoken to one request at a time, or in one burst (`burst`)."""
 
     def __init__(self, binary, vault, allow_write):
         arguments = [binary, "--vault", vault] + (["--allow-write"] if allow_write else [])
@@ -161,6 +179,28 @@ class Server:
             sys.exit("il server non ha risposto a %s: è morto?" % method)
         return json.loads(line)
 
+    def burst(self, requests):
+        """Several requests written before any answer is read, so the server has them all in
+        flight at once (PG-438). `requests` is a list of (method, params); the answers come
+        back in whatever order the server finishes them, so they are matched by id and
+        returned in the order the requests were sent."""
+        identifiers = []
+        for method, params in requests:
+            self.identifier += 1
+            identifiers.append(self.identifier)
+            self.process.stdin.write(json.dumps(
+                {"jsonrpc": "2.0", "id": self.identifier, "method": method, "params": params}) + "\n")
+        self.process.stdin.flush()
+        answers = {}
+        while len(answers) < len(identifiers):
+            line = self.process.stdout.readline()
+            if not line:
+                sys.exit("il server non ha risposto a una raffica di %d richieste: è morto?"
+                         % len(identifiers))
+            answer = json.loads(line)
+            answers[answer.get("id")] = answer
+        return [answers.get(identifier) for identifier in identifiers]
+
     def notify(self, method):
         self.process.stdin.write(json.dumps({"jsonrpc": "2.0", "method": method}) + "\n")
         self.process.stdin.flush()
@@ -170,10 +210,7 @@ class Server:
 
     def payload(self, name, arguments=None):
         """A tool's JSON answer, decoded. Fails loudly when the tool refused."""
-        result = self.call(name, arguments)
-        if result.get("isError"):
-            return {"isError": True, "text": result["content"][0]["text"]}
-        return json.loads(result["content"][0]["text"])
+        return decoded(self.call(name, arguments))
 
     def close(self):
         self.process.stdin.close()
@@ -709,6 +746,63 @@ def resources(binary, vault, check):
 
         broken = server.send("resources/read", {"uri": "pergamenum://canvas?file=X.canvas"})
         check("error" in broken, "una risorsa che non è una nota è rifiutata")
+
+        # PG-438: a note written after the server came up, with no tool call in between,
+        # is in the next listing - the first page rescans rather than answering from the
+        # index of the last call.
+        with open(os.path.join(vault, "Arrivata dopo.md"), "w", encoding="utf-8") as handle:
+            handle.write(NOTE)
+        listing = server.send("resources/list", {})["result"]
+        check(any("Arrivata" in resource["uri"] for resource in listing["resources"]),
+              "una nota scritta dopo l'avvio compare nel nuovo elenco")
+    finally:
+        server.close()
+
+
+def concurrent_writes(binary, vault, check):
+    """PG-438: calls in flight together do not arm the session for each other.
+
+    Real appends and rehearsed tasks sent in one burst, without waiting for an answer in
+    between. Before the gate, a rehearsal arriving while an append was suspended re-armed
+    the session, and the append landed unjournalled or not at all - or the rehearsal was
+    written for real.
+    """
+    print("chiamate concorrenti")
+    server = Server(binary, vault, allow_write=True)
+    path = os.path.join(vault, "Nota.md")
+    rounds = 4
+    try:
+        requests = []
+        for number in range(rounds):
+            requests.append(("tools/call", {"name": "append_to_note", "arguments": {
+                "path": "Nota.md", "text": "Riga concorrente %d" % number, "dryRun": False}}))
+            # No dryRun: the default, a rehearsal.
+            requests.append(("tools/call", {"name": "add_task", "arguments": {
+                "text": "Fantasma %d" % number, "note": "Nota.md"}}))
+        answers = server.burst(requests)
+        check(all(answer is not None and "result" in answer for answer in answers),
+              "ogni richiesta della raffica ha la sua risposta")
+        replies = [decoded(answer["result"]) if answer and "result" in answer else {}
+                   for answer in answers]
+        appends, tasks = replies[0::2], replies[1::2]
+        check(all(reply.get("applied") is True for reply in appends),
+              "ogni append_to_note con dryRun false dice applied true: %r"
+              % [reply.get("applied", reply.get("text")) for reply in appends])
+        check(all(reply.get("applied") is False for reply in tasks),
+              "ogni add_task senza dryRun dice applied false: %r"
+              % [reply.get("applied", reply.get("text")) for reply in tasks])
+
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        check(all("Riga concorrente %d" % number in text for number in range(rounds)),
+              "ogni riga aggiunta è sul file")
+        check("Fantasma" not in text, "nessun task provato è finito sul file")
+
+        log = server.payload("journal_log")
+        commands = [row.get("command") for row in log] if isinstance(log, list) else log
+        check(isinstance(log, list) and len(log) == rounds
+              and all(command == "append_to_note" for command in commands),
+              "il journal ha esattamente le %d aggiunte, nient'altro: %r" % (rounds, commands))
     finally:
         server.close()
 
@@ -809,7 +903,7 @@ def main(argv):
     failures = []
     check = make_check(failures)
     for stage in (read_only, writing, views, pratiche, pratiche_links, note_links, note_birth,
-                  pratiche_anchors, categories, resources, hardening):
+                  pratiche_anchors, categories, resources, concurrent_writes, hardening):
         vault = tempfile.mkdtemp(prefix="pergamenum-smoke-")
         try:
             with open(os.path.join(vault, "Nota.md"), "w", encoding="utf-8") as handle:
