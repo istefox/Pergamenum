@@ -265,14 +265,14 @@ private struct Card {
 }
 
 @MainActor
-private func makeCard(_ text: String, editable: Bool = false) throws -> Card {
+private func makeCard(_ text: String, editable: Bool = false, revealsInlineSpans: Bool = false) throws -> Card {
     let view = CardTextView(
         text: .constant(text),
         theme: .emergency,
         style: CardTextStyle(color: nil, alignment: nil),
         isEditable: editable,
         hidesMarkup: true,
-        revealsInlineSpans: false
+        revealsInlineSpans: revealsInlineSpans
     )
     let coordinator = view.makeCoordinator()
     let scrollView = FormattingTextView.scrollableTextView()
@@ -317,5 +317,54 @@ private func makeCard(_ text: String, editable: Bool = false) throws -> Card {
 
         let entries = (card.coordinator.hiddenMarkers[0] ?? []).filter { $0.kind == .emphasis }
         #expect(entries.isEmpty, "\(entries)")
+    }
+    // MARK: G-hand-427's card half, in process
+
+    // The caret's paragraph shows its `_` source in an editable card, and moving the caret to
+    // another paragraph conceals it again - the paragraph-grained reveal (the setting's default).
+    @Test func anEditableCardRevealsAnUnderscoreParagraphUnderTheCaretOnly() throws {
+        let text = "_corsivo_\naltro\n"
+        let card = try makeCard(text, editable: true)
+
+        card.textView.setSelectedRange(NSRange(location: 3, length: 0))
+        #expect(card.coordinator.applyReveal(to: card.textView) == [0])
+        #expect(card.displayed(paragraphAt: 0) == nil, "the caret's paragraph does not show its source")
+
+        card.textView.setSelectedRange(NSRange(location: 12, length: 0))
+        #expect(card.coordinator.applyReveal(to: card.textView) == [10])
+        let concealed = try #require(card.displayed(paragraphAt: 0), "leaving the paragraph did not conceal it again")
+        #expect(concealed.attributedString.length == ("_corsivo_\n" as NSString).length)
+    }
+
+    // With the word-grained reveal on, a caret inside `_uno_` reveals that run alone, inside
+    // `__due__` that run alone, and in plain prose none.
+    @Test func aCaretInAnUnderscoreRunRevealsOnlyThatRunsSpan() throws {
+        let text = "inizio _uno_ e __due__ fine\n"
+        let card = try makeCard(text, editable: true, revealsInlineSpans: true)
+
+        card.textView.setSelectedRange(NSRange(location: 9, length: 0))
+        card.coordinator.applyReveal(to: card.textView)
+        #expect(card.coordinator.lastRevealedSpans[0] == [range(of: "_uno_", in: text)])
+
+        card.textView.setSelectedRange(NSRange(location: 18, length: 0))
+        card.coordinator.applyReveal(to: card.textView)
+        #expect(card.coordinator.lastRevealedSpans[0] == [range(of: "__due__", in: text)])
+
+        card.textView.setSelectedRange(NSRange(location: 24, length: 0))
+        card.coordinator.applyReveal(to: card.textView)
+        #expect((card.coordinator.lastRevealedSpans[0] ?? []).isEmpty, "\(card.coordinator.lastRevealedSpans)")
+    }
+
+    // S35 on a card: the same twelve hidden emphasis delimiters the corpus pins for the note
+    // editor (`StylerGoldenChanges.swift`, S35), `***entrambi***` included.
+    @Test func theS35LineHidesTheCorpusDelimitersOnACard() throws {
+        let text = "_corsivo_ e __forte__ e *corsivo* e **forte** e ***entrambi***"
+        let card = try makeCard(text)
+
+        let hidden = (card.coordinator.hiddenMarkers[0] ?? []).filter { $0.kind == .emphasis }
+            .map(\.range).sorted { $0.location < $1.location }
+        let expected = [(0, 1), (8, 1), (12, 2), (19, 2), (24, 1), (32, 1), (36, 2), (43, 2), (48, 2), (50, 1), (59, 1), (60, 2)]
+            .map { NSRange(location: $0.0, length: $0.1) }
+        #expect(hidden == expected, "\(hidden)")
     }
 }
