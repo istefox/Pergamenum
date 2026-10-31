@@ -28,10 +28,11 @@ struct IndexSnapshot: Sendable {
     /// notes with the same title in different folders; a wikilink to that title is
     /// ambiguous and the UI has to say so rather than silently picking one.
     private var titleIndex: [String: [String]] = [:]
-    /// Lowercased link target to the paths of the notes that link to it.
+    /// Lowercased resolved title to the paths of the notes that link to it (ADR-0097 §D2).
     private var backlinkIndex: [String: [String]] = [:]
-    /// Lowercased target to the spelling it was first written with, so the unresolved
-    /// links panel shows what the user typed rather than the lookup key.
+    /// Lowercased resolved title to the spelling of the first resolved title seen for it: its
+    /// case as written, without the emphasis pair, so `[[**Curva**]]` shows as `Curva` in the
+    /// unresolved links panel rather than the lookup key (ADR-0097 §D2).
     private var backlinkDisplayForm: [String: String] = [:]
 
     /// Moves once per `replaceAll` and once per `update`, the only two ways the index changes
@@ -77,8 +78,10 @@ struct IndexSnapshot: Sendable {
         backlinkIndex.removeAll(keepingCapacity: true)
         backlinkDisplayForm.removeAll(keepingCapacity: true)
 
+        // Every write and read of `backlinkIndex` folds through `Wikilink.fold` (ADR-0097 §D1).
+        // The parser already trims a plain target, so this changes no key; it keeps one fold.
         func addBacklink(to target: String, from path: String) {
-            let key = target.lowercased()
+            let key = Wikilink.fold(target)
             backlinkIndex[key, default: []].append(path)
             if backlinkDisplayForm[key] == nil { backlinkDisplayForm[key] = target }
         }
@@ -92,7 +95,7 @@ struct IndexSnapshot: Sendable {
             // the backlink panel too (W-03 distinguishes the two, the panel shows both).
             for related in record.frontmatter.related {
                 for link in WikilinkParser.links(in: related) {
-                    addBacklink(to: link.target, from: record.relativePath)
+                    addBacklink(to: link.resolvedTitle, from: record.relativePath)
                 }
             }
         }
@@ -122,8 +125,10 @@ struct IndexSnapshot: Sendable {
         UnresolvedTargets.of(notes[path]?.linkTargets ?? [], resolving: resolve(title:))
     }
 
+    /// The query is folded as `tasks(linkingTo:)` folds it, so both reverse queries agree; the
+    /// keys are resolved titles, already trimmed (ADR-0097 §D1).
     func backlinks(toTitle title: String) -> [NoteRecord] {
-        (backlinkIndex[title.lowercased()] ?? []).compactMap { notes[$0] }
+        (backlinkIndex[Wikilink.fold(title)] ?? []).compactMap { notes[$0] }
             .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
 
@@ -161,7 +166,7 @@ struct IndexSnapshot: Sendable {
             }
             for related in record.frontmatter.related {
                 for link in WikilinkParser.links(in: related) {
-                    paths.formUnion(resolve(title: link.target))
+                    paths.formUnion(resolve(title: link.resolvedTitle))
                 }
             }
         }
@@ -177,7 +182,7 @@ struct IndexSnapshot: Sendable {
         var paths: Set<String> = []
         for record in notes.values {
             guard record.linkTargets.isEmpty,
-                  backlinkIndex[record.title.lowercased()] == nil,
+                  backlinkIndex[Wikilink.fold(record.title)] == nil,
                   record.frontmatter.related.allSatisfy({ WikilinkParser.links(in: $0).isEmpty })
             else { continue }
             paths.insert(record.relativePath)
@@ -208,10 +213,14 @@ struct IndexSnapshot: Sendable {
     /// Tasks whose text links to a title, for the "Task collegati" panel of a note or
     /// a canvas (SPEC §7.2). The link is an ordinary wikilink, so this is the reverse
     /// of the same relation the backlink panel shows.
+    ///
+    /// `task.links` already holds resolved titles (ADR-0097 §D3), so both sides are only folded
+    /// (trim, lowercase), never resolved again through `Wikilink.target(_:names:)`, which would
+    /// turn a title `*T*` into `T`.
     func tasks(linkingTo title: String) -> [TaskItem] {
-        let needle = title.lowercased()
+        let needle = Wikilink.fold(title)
         return allTasks.filter { task in
-            task.links.contains { $0.lowercased() == needle }
+            task.links.contains { Wikilink.fold($0) == needle }
         }
     }
 

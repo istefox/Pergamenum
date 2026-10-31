@@ -246,6 +246,17 @@ tags:
     #expect(dangling == ["Rimasta.md"])
 }
 
+// ADR-0097 §D3 (R-08): the trash warning reads an emphasised link as the title it names.
+@Test func danglingLinksCountsAnEmphasisedLink() throws {
+    let vault = try OpsVault()
+    try vault.write(header, to: "Curva.md")
+    try vault.write(header + "Vedi [[**Curva**]].", to: "Fonte.md")
+
+    let dangling = vault.operations.danglingLinks(for: "Curva.md", knownPaths: ["Curva.md", "Fonte.md"])
+
+    #expect(dangling == ["Fonte.md"])
+}
+
 // MARK: - Boards follow the file (SPEC §6.2)
 
 private let board = """

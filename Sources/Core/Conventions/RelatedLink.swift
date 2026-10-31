@@ -39,17 +39,19 @@ enum RelatedLink {
         // W-04: without a reason it is a citation, not a structural link, and belongs
         // inline in the body rather than in `related`.
         guard !trimmedReason.isEmpty else { throw Error.reasonRequired }
-        guard target != selfTitle else { throw Error.linkingToItself }
+        // Through the same predicate as the duplicate checks below, so `curva` or `**Curva**`
+        // is refused on the note `Curva` as the literal title is (ADR-0097 §D3).
+        guard !Wikilink.target(target, names: selfTitle) else { throw Error.linkingToItself }
 
         var document = NoteDocument.parse(text)
         let existing = RelatedSection.parse(from: document.body)
-        guard !existing.contains(where: { $0.target == target }) else { return text }
+        guard !existing.contains(where: { Wikilink.target($0.target, names: target) }) else { return text }
         guard existing.count < RelatedSection.maximumLinks else {
             throw Error.tooManyLinks(count: existing.count + 1)
         }
 
         let quoted = "[[\(target)]]"
-        if !document.frontmatter.related.contains(where: { normalised($0) == target }) {
+        if !document.frontmatter.related.contains(where: { names($0, target) }) {
             document.frontmatter.related.append(quoted)
             document.frontmatter.related.sort()
         }
@@ -59,10 +61,12 @@ enum RelatedLink {
         return document.serialized()
     }
 
-    /// Removes a structural link from both writings.
+    /// Removes a structural link from both writings: every entry and bullet that names `target`
+    /// by `Wikilink.names(_:)`, so «Scollega» removes the `[[**Curva**]]` or `[[curva]]` the
+    /// backlink badge counted (ADR-0097 §D3).
     static func remove(target: String, from text: String) -> String {
         var document = NoteDocument.parse(text)
-        document.frontmatter.related.removeAll { normalised($0) == target }
+        document.frontmatter.related.removeAll { names($0, target) }
         document.body = removeBullet(target: target, from: document.body, lineBreak: lineBreak(of: document))
         return document.serialized()
     }
@@ -185,7 +189,9 @@ enum RelatedLink {
         var removed = Set<Int>()
         var index = 0
         while index < lines.count {
-            guard roles[index] == .bullet, linkTarget(of: lines[index].text) == target else {
+            guard roles[index] == .bullet,
+                  linkTarget(of: lines[index].text).map({ Wikilink.target($0, names: target) }) == true
+            else {
                 index += 1
                 continue
             }
@@ -206,13 +212,15 @@ enum RelatedLink {
         return removed
     }
 
-    /// `"[[Titolo]]"` and `[[Titolo]]` both reduce to the bare title.
-    private static func normalised(_ value: String) -> String {
-        var text = value.trimmingCharacters(in: .whitespaces)
+    /// Whether a `related` entry names `target`: `"[[Titolo]]"` and `[[Titolo]]` both reduce to
+    /// the bare interior, which is matched by `Wikilink.target(_:names:)`, the predicate the
+    /// backlink badge counts by (ADR-0097 §D3).
+    private static func names(_ entry: String, _ target: String) -> Bool {
+        var text = entry.trimmingCharacters(in: .whitespaces)
         if text.hasPrefix("\""), text.hasSuffix("\""), text.count >= 2 {
             text = String(text.dropFirst().dropLast())
         }
-        return WikilinkParser.links(in: text).first?.target ?? text
+        return Wikilink.target(WikilinkParser.links(in: text).first?.target ?? text, names: target)
     }
 }
 

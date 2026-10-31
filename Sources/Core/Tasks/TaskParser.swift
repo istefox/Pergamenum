@@ -74,8 +74,10 @@ enum TaskParser {
         // The Workspace marker is an assignment, not a mention: it leaves `links`
         // entirely (ADR-0021 D1), so the plain-wikilink mechanism of SPEC §7.2 keeps
         // meaning "notes and boards this task references" and the two never collide.
+        // A link is the title it names, `[[**Curva**]]` is `Curva`; the marker stays literal
+        // (ADR-0097 §D3/§D5).
         task.workspacePath = annotated.first(where: \.isWorkspace)?.link.target
-        task.links = annotated.filter { !$0.isWorkspace && !$0.link.isEmbed }.map(\.link.target)
+        task.links = annotated.filter { !$0.isWorkspace && !$0.link.isEmbed }.map(\.link.resolvedTitle)
         task.localID = caretInteger(in: body, name: "id")
         task.parentLocalID = caretInteger(in: body, name: "parent")
         task.tags = tags(in: body)

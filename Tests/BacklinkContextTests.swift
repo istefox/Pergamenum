@@ -186,6 +186,7 @@ private let agreementCorpus: [String] = [
     "```\n[[NelCodice]] e ![[NelCodice.png]]\n```\nFuori: [[FuoriDalCodice]].",
     "Inline `[[Inline]]` e [[Esterno]].",
     "Doppio [[Ripetuto]] e ancora [[Ripetuto]] con [[ripetuto]].",
+    "Vedi [[**Nota**]] e [[~~Altra~~]].",
     "Niente link qui.",
 ]
 
@@ -193,7 +194,7 @@ private let agreementCorpus: [String] = [
     for text in agreementCorpus {
         let document = NoteDocument.parse(text)
         let indexed = Set(NoteStore.linkTargets(in: document))
-        let counted = Set(WikilinkParser.links(in: document.body).filter(\.isNoteLink).map(\.target))
+        let counted = Set(WikilinkParser.links(in: document.body).filter(\.isNoteLink).map(\.resolvedTitle))
 
         #expect(indexed == counted, "l'indice e la riga contano link diversi in: \(text)")
     }
@@ -201,27 +202,64 @@ private let agreementCorpus: [String] = [
     // Not vacuous: the corpus does hold links the index keeps.
     let all = agreementCorpus.flatMap { NoteStore.linkTargets(in: NoteDocument.parse($0)) }
     #expect(all.contains("Nota"))
+    #expect(all.contains("Altra"), "il titolo risolto di [[~~Altra~~]] è nell'indice")
+    #expect(!all.contains("**Nota**"), "la chiave non è il bordo letterale")
     #expect(all.contains("FuoriDalCodice"))
     #expect(!all.contains("Q4.canvas"))
     #expect(!all.contains("foto.png"))
 }
 
-/// The index keys a link by `target` (`NoteStore.linkTargets`, `IndexSnapshot.backlinkIndex`), so a
-/// bold-wrapped `[[**Curva**]]` is a backlink of `**Curva**` and not of `Curva`: a row counts what
-/// the index counts, with no `resolvedTitle` in between.
-@Test func aRowComparesTheLinkTargetAsTheIndexKeysItNotTheResolvedTitle() {
+/// ADR-0084 §D1 amended by ADR-0097 §D1: the index keys a link by the title it names
+/// (`NoteStore.linkTargets` stores `resolvedTitle`), so a bold-wrapped `[[**Curva**]]` is a
+/// backlink of `Curva`, and a row counts what the index counts, emphasis included. This test
+/// was the pin of the opposite rule (a row compared the literal `target`); it is inverted, not
+/// deleted.
+@Test func aRowReadsTheTitleAnEmphasisedLinkNamesAsTheIndexDoes() {
     let text = "Con enfasi [[**Curva**]] e senza [[Curva]]."
     let document = NoteDocument.parse(text)
 
-    #expect(NoteStore.linkTargets(in: document) == ["**Curva**", "Curva"])
-    #expect(BacklinkContext.lines(linking: "Curva", in: text) == [text], "una sola voce: il link senza enfasi")
-    #expect(BacklinkContext.lines(linking: "**Curva**", in: text) == [text])
+    #expect(NoteStore.linkTargets(in: document) == ["Curva"])
+    #expect(BacklinkContext.lines(linking: "Curva", in: text) == [text, text], "una voce per link")
+    #expect(BacklinkContext.lines(linking: "**Curva**", in: text).isEmpty, "il target letterale non è più la chiave")
 
     let onlyEmphasised = "Solo [[**Curva**]] qui."
-    #expect(BacklinkContext.lines(linking: "Curva", in: onlyEmphasised).isEmpty)
+    #expect(BacklinkContext.lines(linking: "Curva", in: onlyEmphasised) == [onlyEmphasised])
     let row = BacklinkRow.make(
         path: "A.md", title: "A", text: onlyEmphasised, linking: "Curva", related: ["[[**Curva**]]"]
     )
-    #expect(row.count == 0)
-    #expect(!row.isStructural, "anche related si legge per target, come fa IndexSnapshot")
+    #expect(row.count == 1)
+    #expect(row.isStructural, "anche related si legge per titolo, come fa IndexSnapshot")
+}
+
+/// The Task 1 spellings, written out again: `RenameBacklinkAgreementTests`' corpus is private.
+private let rowAgreementCorpus: [String] = [
+    "Vedi [[Curva]].",
+    "Vedi [[curva]].",
+    "Vedi [[**Curva**]].",
+    "Vedi [[~~Curva~~]].",
+    "Vedi [[*Curva*]].",
+    "Vedi [[**Curva**#Sez|alias]].",
+    "Vedi ![[**Curva**]].",
+    "Vedi [[** Curva **]].",
+    "Vedi [[**Curva** vecchio]].",
+    "Vedi [[Curvatura]].",
+    "Vedi [[***Curva***]].",
+    "Vedi `[[**Curva**]]` nel codice.",
+]
+
+@Test func aRowAgreesWithTheIndexOverEverySpelling() {
+    var counted = 0
+    var skipped = 0
+    for body in rowAgreementCorpus {
+        let rowCounts = !BacklinkContext.lines(linking: "Curva", in: body).isEmpty
+        let indexCounts = NoteStore.linkTargets(in: NoteDocument.parse(body)).contains { $0.lowercased() == "curva" }
+
+        #expect(rowCounts == indexCounts, "la riga e l'indice divergono su: \(body)")
+        if rowCounts { counted += 1 } else { skipped += 1 }
+    }
+
+    // Not vacuous: both outcomes occur, and the emphasised spelling is one of the counted.
+    #expect(counted > 0)
+    #expect(skipped > 0)
+    #expect(!BacklinkContext.lines(linking: "Curva", in: "Vedi [[**Curva**]].").isEmpty)
 }

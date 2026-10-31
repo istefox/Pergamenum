@@ -27,10 +27,11 @@ enum NoteRename {
 
         // Collected first, then applied from the end backwards: replacing a range
         // invalidates every range after it.
-        // Matched on the title the link resolves to, as the index does: `[[**Forno tunnel**]]`
-        // names `Forno tunnel`, and matching on the literal interior left it pointing at a note
-        // that no longer exists (ADR-0065 §D9.4, R-19).
-        let matches = WikilinkParser.links(in: text).filter { fold($0.resolvedTitle) == needle }
+        // Matched by `Wikilink.names(_:)`, the one predicate the index keys a backlink by and every
+        // row counts with: `[[**Forno tunnel**]]` names `Forno tunnel`, and matching on the literal
+        // interior left it pointing at a note that no longer exists (ADR-0065 §D9.4, R-19;
+        // ADR-0097 §D1).
+        let matches = WikilinkParser.links(in: text).filter { $0.names(oldTitle) }
         guard !matches.isEmpty else {
             guard includeQuotedRelated else { return nil }
             return rewritingQuotedRelated(in: text, from: oldTitle, to: newTitle)
@@ -76,6 +77,6 @@ enum NoteRename {
     /// with a stray capital still follows the rename; the new title is always written
     /// exactly as the user gave it.
     private static func fold(_ title: String) -> String {
-        title.trimmingCharacters(in: .whitespaces).lowercased()
+        Wikilink.fold(title)
     }
 }

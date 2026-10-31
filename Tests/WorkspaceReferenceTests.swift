@@ -8,10 +8,11 @@ import Testing
 // board dashboard's "Note referenziate" section (R-06), pure - no index, no vault, no
 // SwiftUI, tested against a `CanvasDocument` built in memory.
 //
-// `Sources/Core/Canvas/WorkspaceReferences.swift`'s `notes(in:)` is a signature-only stub
-// as of this commit, returning `[]` unconditionally: every test below is expected to fail
-// red on its assertions, not to fail to compile - the coder's Task 7 work fills in the
-// `.file`/`.text` node walk this file already encodes as assertions.
+// `Sources/Core/Canvas/WorkspaceReferences.swift`'s `notes(in:)` walks the board's nodes in
+// order: a `.file` node whose path ends `.md` (in any case) contributes its path, a `.text`
+// node contributes the `resolvedTitle` of each wikilink it holds (`[[**Curva**]]` is `Curva`,
+// ADR-0097 §D3), and every other kind contributes nothing. Each entry appears once, at its
+// first occurrence.
 //
 // The task half of the dashboard, "Task assegnati", is `IndexSnapshot.tasks(assignedToWorkspace:)`,
 // already implemented and covered by `Tests/TaskMarkerTests.swift` (Task 2); this file does
@@ -137,4 +138,13 @@ private func node(_ id: String, _ kind: CanvasNode.Kind) -> CanvasNode {
 
 @Test func anEmptyCanvasReturnsAnEmptyArray() {
     #expect(WorkspaceReferences.notes(in: .empty) == [])
+}
+
+// ADR-0097 §D3 (R-08): a text card's emphasised link is listed as the title it names.
+@Test func anEmphasisedWikilinkInATextNodeIsListedAsItsTitle() {
+    let document = CanvasDocument(nodes: [
+        node("a", .text("vedi [[**Curva**]]")),
+    ])
+
+    #expect(WorkspaceReferences.notes(in: document) == ["Curva"])
 }

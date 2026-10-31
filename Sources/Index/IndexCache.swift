@@ -214,8 +214,11 @@ struct IndexCache {
     /// note's tasks and links as read by a `"\n"`-Character walk, one line for the whole note
     /// (`VaultScanner` reuses a row whose size and mtime match, so without a bump they would
     /// stay stale until the file changed). 7 (ADR-0071 §D2): adds `StoredRecord.contenitore`,
-    /// the scheda facts a reused record would otherwise lose from the second scan onward.
-    static let schemaVersion: Int32 = 7
+    /// the scheda facts a reused record would otherwise lose from the second scan onward. 8
+    /// (ADR-0097 §D4): meaning only - version 7 rows hold the literal bracket interior of an
+    /// emphasised link (`**Curva**`) where `linkTargets` now holds the title it names, and the
+    /// scanner would reuse them until each file changed.
+    static let schemaVersion: Int32 = 8
 
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 

@@ -5,17 +5,17 @@ import Foundation
 /// The lines of a note that link to a title, in order, one entry per link.
 ///
 /// A link counts by `Wikilink.isNoteLink`, the predicate `NoteStore.linkTargets(in:)` keeps a
-/// link by, so a row never shows a line the index did not count. The title is matched against
-/// the link's `target` as the index keys it (`backlinkIndex`), not `resolvedTitle`: `[[**T**]]`
-/// is a backlink of `**T**`, and a row must not count what the index does not. Code is skipped by the parser;
+/// link by, so a row never shows a line the index did not count. The title is matched by
+/// `Wikilink.names(_:)`, against the title the link names, as the index keys it
+/// (`backlinkIndex`): `[[**T**]]` is a backlink of `T`, and a row counts exactly what the index
+/// counts (ADR-0097 §D1, amending ADR-0084 §D1). Code is skipped by the parser;
 /// the frontmatter is not body. A note that links only through `related` still has its
 /// `## Note correlate` bullet in the body, and that line, reason included, is its context.
 enum BacklinkContext {
     static func lines(linking title: String, in text: String) -> [String] {
         let body = NoteDocument.parse(text).body
-        let wanted = title.lowercased()
         return WikilinkParser.links(in: body)
-            .filter { $0.isNoteLink && $0.target.lowercased() == wanted }
+            .filter { $0.isNoteLink && $0.names(title) }
             .map { line(holding: $0.range, in: body) }
     }
 
@@ -53,9 +53,8 @@ struct BacklinkRow: Equatable, Sendable, Identifiable {
     /// Whether a `related` list names `target`. Also what an unreadable row asks of the index's
     /// copy of that list, so «Rendi strutturale» is not offered for a link that already is.
     static func isStructural(related: [String], linking target: String) -> Bool {
-        let wanted = target.lowercased()
-        return related.contains { entry in
-            WikilinkParser.links(in: entry).contains { $0.target.lowercased() == wanted }
+        related.contains { entry in
+            WikilinkParser.links(in: entry).contains { $0.names(target) }
         }
     }
 }
