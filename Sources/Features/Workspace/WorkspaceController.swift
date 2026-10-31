@@ -258,9 +258,13 @@ final class WorkspaceController {
         // Navigating away confirms every open session - crop, text, title, ink - the same
         // way a click outside the card would (ADR-0020 D5, ADR-0066), then writes what that
         // owes. Both still aimed at the board being left, because `board` below has not
-        // moved yet.
+        // moved yet. Then the guard again, as `settleForVerb()` does: that flush's own write
+        // can be refused and enter `.conflicted`, and replacing the document now would drop
+        // the conflict it just raised (PG-437). Refused, nothing below runs: the board, its
+        // document and its refit stay, and `open(board:)` leaves `current` where it was.
         settleBoardEditing()
         flushPendingSave()
+        guard !refusesToLeaveConflictedBoard() else { return false }
         deferPendingRefit()
 
         board = newBoard
@@ -305,7 +309,8 @@ final class WorkspaceController {
         guard new != current else { return }
         // Before either branch: the `.board` one is also caught inside `load`, but the
         // folder/nil one below never reaches `load` and would wipe `document` and `origin`
-        // under a `.conflicted` state, leaving a conflict nothing can resolve.
+        // under a `.conflicted` state, leaving a conflict nothing can resolve. Both branches
+        // ask again after their flush, which can itself be refused (PG-437).
         guard !refusesToLeaveConflictedBoard() else { return }
         if case .board(let path)? = new {
             open(board: path)
@@ -318,8 +323,13 @@ final class WorkspaceController {
         // showing what was already read (PG-062): `board`/`document`/`contents` are reset
         // the same way `detach()` resets them, so `current == nil`/`.folder` and "a
         // board's data is on screen" can never disagree.
+        // The guard again after the flush, as in `load` and `settleForVerb()`: a flush whose
+        // write is refused enters `.conflicted`, and the reset below would strand it with
+        // `board == ""` (PG-437). Refused, the board stays on screen, conflicted and
+        // resolvable by «Mantieni le mie modifiche» or «Ricarica dal disco».
         settleBoardEditing()
         flushPendingSave()
+        guard !refusesToLeaveConflictedBoard() else { return }
         cancelPendingRefit()
         selection = []
         current = new
@@ -335,7 +345,8 @@ final class WorkspaceController {
     /// A conflicted board is not left (ADR-0057 §D8, #498): `flushPendingSave()` skips it by
     /// design (ADR-0054 §D5), so navigating away replaced its document and dropped the edit
     /// without a word. Refused and reported instead, the diary's rule (ADR-0057 §D5/§D6);
-    /// `detach()` stays the one exit that is not refused, and reports the loss.
+    /// `detach()` stays the one exit that is not refused, and reports the loss. Asked before
+    /// the leave's settle and flush and again after them, since that flush can be refused too.
     private func refusesToLeaveConflictedBoard() -> Bool {
         guard case .conflicted = saveState else { return false }
         recordProblem(
