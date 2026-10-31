@@ -148,6 +148,8 @@ no longer reads `nome_file_lungo` as emphasis), but concealing them is a visible
 criterion asks for. My evaluation: worth doing as a small follow-up once the corpus has landed, low
 risk, recorded as a ledger proposal rather than built here.
 
+*Amended 2026-10-30 by ADR-0098 §D1: `_` and `__` delimiters are concealed as `*` and `**` are.*
+
 ### D3. A golden corpus captured before the rewrite classes every difference
 
 Before a line of the styler changes, a corpus is captured by running today's `MarkdownStyler` on
@@ -380,6 +382,8 @@ it.
 - Named and not fixed: Oggi and Diario pass no `transclusions` either, so `![[nota]]` stays a link
   there. Proposed as a ledger entry; no N2 criterion covers it.
 
+*Closed by ADR-0098 §D4: Oggi and Diario pass `transclusions: .live(for: vault)`.*
+
 ### D9. The measured numbers and the ceiling
 
 Filled during the build, in this order: "before" by plan Task 1 (`docs/plans/pg-385-n2-page.md`),
@@ -611,9 +615,9 @@ cheaper than before, still proportional to the note (table above). The ceilings 
 
 - `_` concealment: `_` emphasis delimiters stay unconcealed (§D2, `delimiterSpan(for:opening:)`); the
   parser now has the flanking rule that made them safe to hide, so concealing them is a decision
-  for its own record.
+  for its own record. Closed by ADR-0098.
 - Transclusions in Oggi and Diario: they pass no `transclusions` (Context), so `![[nota]]` stays a
-  link there; §D8 gave them the view query source only.
+  link there; §D8 gave them the view query source only. Closed by ADR-0098.
 - Tasks on the list column (ADR-0081 Neutral): a task's checkbox keeps its own column.
 - The `runPasses` double pass (§D5, "Outside the measurement"): a keystroke in the app runs the
   pipeline at least twice, and the budget measures `textDidChange` only. Fixing it would change what

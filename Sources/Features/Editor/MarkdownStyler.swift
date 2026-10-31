@@ -4,8 +4,9 @@ import Foundation
 ///
 /// SPEC §5 asks for "source mode improved": the syntax stays visible and gets styled,
 /// rather than being hidden the way a live preview would. ADR-0018 §D1 narrows that for
-/// three cases across its three slices - a heading's `#` marker, a `*`/`**` emphasis
-/// delimiter, and a whole line that is only an image/PDF embed - each of which the
+/// three cases across its three slices - a heading's `#` marker, a `*`/`_` emphasis
+/// delimiter (`_` since ADR-0098 §D1, the parser's flanking rule keeping `nome_file_lungo`
+/// plain), and a whole line that is only an image/PDF embed - each of which the
 /// view may draw differently from the raw source, by a rule of its own (a marker
 /// reveals on caret, a drawn embed does not - D5). This classifier still never removes
 /// or replaces characters - it only says what each range *is*, and it is the view that
@@ -20,10 +21,9 @@ enum MarkdownStyler {
         case headingMarker
         case bold
         case italic
-        /// One `*` or `**` delimiter of a `.bold`/`.italic` run (ADR-0018 §D1, slice 2).
-        /// `_`/`__` are deliberately excluded and stay visible (ADR-0082 §D2): the shared
-        /// grammar's flanking rule keeps `nome_file_lungo` plain, but concealing a `_` run the
-        /// parser accepts is a visible change no criterion has asked for yet.
+        /// One `*`, `**`, `_` or `__` delimiter of a `.bold`/`.italic` run (ADR-0018 §D1,
+        /// slice 2; `_`/`__` since ADR-0098 §D1). The shared grammar's flanking rule keeps
+        /// `nome_file_lungo` plain, so an intraword `_` never carries one.
         case emphasisMarker
         /// `~~testo~~`. Added with the format bar (M8), and it closes a real gap rather than
         /// adding a style: `MarkdownInlineParser` has rendered strikethrough in Lettura since
@@ -389,8 +389,7 @@ enum MarkdownStyler {
     /// are `linkSpans(of:)`'s.
     private static func spans(of token: MarkdownInlineToken, in text: String) -> [StyledRange] {
         let range = token.range
-        // `_` and `__` keep their markers on screen (`underscoreEmphasisHasNoMarkerSpan`).
-        let starMarker: Span? = text[range.lowerBound] == "*" ? .emphasisMarker : nil
+        // `_`/`__` are marked like `*`/`**` (ADR-0098 §D1); the parser keeps `nome_file_lungo` plain.
         switch token.kind {
         // A backtick run's length varies, so each delimiter is the token's own range (ADR-0087 §D5).
         case .code(let delimiters):
@@ -398,9 +397,9 @@ enum MarkdownStyler {
         case .highlight(let delimiters):
             return run(range, .highlight, delimiters: delimiters, markedBy: .highlightMarker)
         case .strong(let delimiters):
-            return run(range, .bold, delimiters: delimiters, markedBy: starMarker)
+            return run(range, .bold, delimiters: delimiters, markedBy: .emphasisMarker)
         case .emphasis(let delimiters):
-            return run(range, .italic, delimiters: delimiters, markedBy: starMarker)
+            return run(range, .italic, delimiters: delimiters, markedBy: .emphasisMarker)
         case .strikethrough(let delimiters):
             return run(range, .strikethrough, delimiters: delimiters, markedBy: .strikethroughMarker)
         // A hashtag is a tag only when the vocabulary says so (T-01): `#varie` has no namespace.
@@ -417,17 +416,16 @@ enum MarkdownStyler {
         }
     }
 
-    /// A run and its two delimiters. `marker` is nil for `_`/`__`, which stay unconcealed
-    /// (ADR-0082 §D2): the shared grammar's flanking rule no longer reads `nome_file_lungo` as
-    /// emphasis, which was ADR-0018 §D1's reason for keeping them, but hiding them is a visible
-    /// change of its own, proposed apart. `~~` has no twin spelling (ADR-0029 §D1).
+    /// A run and its two delimiters. `_`/`__` are marked like `*`/`**` (ADR-0098 §D1): the shared
+    /// grammar's flanking rule keeps `nome_file_lungo` from being a run at all, so nothing
+    /// intraword reaches this. `~~` has no twin spelling (ADR-0029 §D1).
     private static func run(
-        _ range: Range<String.Index>, _ span: Span, delimiters: [Range<String.Index>], markedBy marker: Span?
+        _ range: Range<String.Index>, _ span: Span, delimiters: [Range<String.Index>], markedBy marker: Span
     ) -> [StyledRange] {
         var result = [StyledRange(range: range, span: span)]
         // After the run span, on purpose - later spans win on overlap (ADR-0018 §D1). None when
         // hiding them would collapse the run to nothing.
-        if let marker, let opening = delimiters.first, let closing = delimiters.last,
+        if let opening = delimiters.first, let closing = delimiters.last,
            opening.upperBound < closing.lowerBound {
             result.append(StyledRange(range: opening, span: marker))
             result.append(StyledRange(range: closing, span: marker))

@@ -222,8 +222,16 @@ extension NoteTextView {
             // entered from there would clear the flag on its way out and leave the rest of the
             // outer one unguarded; the answer is recomputed on the next selection change
             // anyway, and the stored one is deliberately left stale so that comparison sees it.
+            //
+            // The styling rewrites every paragraph style, the ones buying an embed's size and a
+            // transclusion's height included, so the two passes that buy them run straight after
+            // it, as on the edit path: nothing else follows a bare caret move in a pane whose
+            // selection publishes nothing, and the daily panes drew their transclusions collapsed
+            // until the next SwiftUI update (ADR-0098 §D4).
             if !isStyling, viewBlocks.selectionCrossedFence(in: textView) {
                 applyStyling(to: textView, theme: parent.theme)
+                applyEmbeds(to: textView)
+                applyTransclusions(to: textView, theme: parent.theme)
             }
             reportLinkAtCaret(in: textView)
             reportSelection(in: textView)

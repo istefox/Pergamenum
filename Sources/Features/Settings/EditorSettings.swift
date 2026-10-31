@@ -93,7 +93,7 @@ struct EditorSettings: View {
             ))
             .accessibilityIdentifier("settings-hides-markup")
 
-            Text("I `#` di un titolo e i `*` di un'enfasi non vengono disegnati, e ricompaiono "
+            Text("I `#` di un titolo e i `*` o `_` di un'enfasi non vengono disegnati, e ricompaiono "
                  + "quando il cursore entra nel paragrafo. Un'immagine o un PDF incorporato viene "
                  + "disegnato al posto della sintassi che lo nomina, anche quando il cursore è "
                  + "sulla stessa riga. Il file non cambia: i caratteri ci sono sempre, anche "

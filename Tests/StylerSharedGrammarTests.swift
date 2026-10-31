@@ -5,9 +5,8 @@ import Testing
 // ADR-0082 §D2, plan docs/plans/pg-385-n2-page.md, Task 2 (PG-385, R-18; closes PG-347, #762).
 //
 // The styler classifies through the same parsers the reading surfaces and the HTML export use,
-// so `file_name_here` is plain in the editor as it already is in the export. Red until Task 3
-// maps the token layer onto `Span`. `_` emphasis stays unconcealed (G0): the styler styles a `_`
-// run the parser accepts and keeps its delimiters visible.
+// so `file_name_here` is plain in the editor as it already is in the export. A `_` run the parser
+// accepts is styled, and since ADR-0098 §D1 its delimiters are concealable like a `*` run's.
 
 private func isEmphasisSpan(_ span: MarkdownStyler.Span) -> Bool {
     span == .italic || span == .emphasisMarker || span == .bold
@@ -34,19 +33,18 @@ private func isEmphasisSpan(_ span: MarkdownStyler.Span) -> Bool {
         #expect(!MarkdownHTML.render(text).contains("<em>"), "\(text)")
     }
 
-    // (n2-page R-18) `_a_` at word boundaries is italic, and its underscores are no marker the
-    // editor would conceal: `_` emphasis stays unconcealed.
-    @Test func anUnderscorePairIsItalicAndItsDelimitersStayVisible() throws {
+    // (n2-page R-18, ADR-0098 §D1) `_a_` at word boundaries is italic, and its underscores are
+    // markers the editor conceals like a `*` pair's.
+    @Test func anUnderscorePairIsItalicAndItsDelimitersAreConcealable() throws {
         let text = "_a_"
         let styled = MarkdownStyler.spans(in: text)
         let italic = try #require(styled.first { $0.span == .italic })
         #expect(String(text[italic.range]) == "_a_")
-        #expect(!styled.contains { $0.span == .emphasisMarker }, "no `.emphasisMarker` over a `_`")
-        for item in styled {
-            #expect(
-                NoteTextView.Coordinator.hiddenKind(for: item.span) == nil,
-                "\(item.span) would be concealed"
-            )
+        let markers = styled.filter { $0.span == .emphasisMarker }
+        #expect(markers.count == 2, "two `.emphasisMarker` spans over the `_`")
+        #expect(markers.allSatisfy { String(text[$0.range]) == "_" })
+        for marker in markers {
+            #expect(NoteTextView.Coordinator.hiddenKind(for: marker.span) == .emphasis)
         }
     }
 

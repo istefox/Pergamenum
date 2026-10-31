@@ -82,8 +82,8 @@ private enum DailyPane: String, CaseIterable, Sendable, CustomTestStringConverti
         #expect(!incremental.coordinator.derivedStateSnapshot().viewBlocksDrawn.isEmpty)
     }
 
-    // (R-11) The editor built the way Oggi and Diario build it: the vault's root, its thumbnails and
-    // the live query source, no transclusion source, and no restyle flag set on the coordinator, which
+    // (R-11) The editor built the way Oggi and Diario build it: the vault's root, its thumbnails,
+    // the live transclusion and query sources, and no restyle flag set on the coordinator, which
     // keeps what `EditorRestyleSwitch` read at `init`. One prose keystroke is one incremental restyle,
     // and the editor ends where a full restyle does.
     @Test(arguments: DailyPane.allCases)
@@ -95,7 +95,8 @@ private enum DailyPane: String, CaseIterable, Sendable, CustomTestStringConverti
         defer { controller.close() }
         let inputs = NoteTextView.VaultInputs(
             vaultRoot: controller.root, notePath: pane.notePath, thumbnails: controller.thumbnails,
-            queries: .live(for: controller), onOpenTag: { _ in }, onOpenDay: { _ in }
+            transclusions: .live(for: controller), queries: .live(for: controller),
+            onOpenTag: { _ in }, onOpenDay: { _ in }
         )
 
         let editor = ScrolledEditorFixture(text: pane.text, vault: inputs, forcesFullRestyle: nil)
