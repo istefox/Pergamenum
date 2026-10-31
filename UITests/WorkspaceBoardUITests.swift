@@ -19,6 +19,12 @@ import XCTest
 /// WorkspaceBoardUITests entry; the arrow tool's `a` key and real drag, and the
 /// group frame's real hit-testing, are left with no cover at all, a loss named
 /// rather than hidden.
+///
+/// The bare-spacebar preview (PG-306, M8 of `docs/plans/pg-298-timeline-backspace-exclude.md`)
+/// is here for the same reason as the grip: the system Quick Look panel finds its controller
+/// through the key window's responder chain, and the host takes that place by its standing claim
+/// (ADR-0070 §D4), neither of which a window that is never key can show. The claim's decisions are
+/// pinned in-process (`Tests/QuickLookFocusTests.swift`); the key reaching the panel only here.
 final class WorkspaceBoardUITests: PergamenumUITestCase {
     private var boardFile: URL!
 
@@ -27,6 +33,9 @@ final class WorkspaceBoardUITests: PergamenumUITestCase {
     private let cardA = CGRect(x: 0, y: 0, width: 240, height: 140)
     /// The fixture card's node id: what the file records and what `canvas-node-<id>` names.
     private static let cardAID = "aaaa000000000001"
+    /// The file card of the spacebar preview, below card A, and the file it shows.
+    private static let fileCardID = "bbbb000000000002"
+    private static let fileName = "allegato.txt"
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -61,6 +70,35 @@ final class WorkspaceBoardUITests: PergamenumUITestCase {
         XCTAssertEqual(node.y, cardA.minY, accuracy: 2)
     }
 
+    // MARK: 2. A bare space previews the selected file card
+
+    /// PG-306, M8 (board). With a file card selected, a bare space opens Quick Look on its file -
+    /// the file's name is a label inside the panel, which tells it from an empty one - and Esc
+    /// closes it.
+    func testABareSpacePreviewsTheSelectedFileCard() throws {
+        let card = try boardCard(Self.fileCardID)
+        card.click()
+
+        // The key must not outrun the selection: the host takes the keyboard in the update that
+        // follows it (`QuickLookTarget.updateNSView`), and the card bar below is drawn by the same
+        // body pass that reads the selection. A space typed before that update goes to the sidebar's
+        // outline instead (measured: the key arrived 170 ms ahead of the update that brought the
+        // file URL in, the outline being first responder).
+        XCTAssertTrue(
+            element("board-card-bar").waitForExistence(timeout: 5),
+            "la card non è stata selezionata: la barra della card non è comparsa"
+        )
+
+        app.typeKey(" ", modifierFlags: [])
+
+        // The panel's AX window title is "Quick Look", never the file's name (`PraticheUITests`).
+        let panel = app.windows["Quick Look"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5), "la barra spaziatrice non ha aperto Quick Look")
+        XCTAssertTrue(panel.staticTexts[Self.fileName].waitForExistence(timeout: 5), "il pannello non mostra il file")
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(panel.waitForNonExistence(timeout: 5), "Esc non ha chiuso il pannello")
+    }
+
     // MARK: Fixture and helpers
 
     private func makeVault() throws {
@@ -72,6 +110,9 @@ final class WorkspaceBoardUITests: PergamenumUITestCase {
         // actually done since ADR-0024 made `attach` load-not-select.
         let board = root.appending(path: "\(root.lastPathComponent).canvas")
         try Self.fixture.write(to: board, atomically: true, encoding: .utf8)
+        try "Contenuto del file.\n".write(
+            to: root.appending(path: Self.fileName), atomically: true, encoding: .utf8
+        )
         boardFile = board
     }
 
@@ -79,7 +120,9 @@ final class WorkspaceBoardUITests: PergamenumUITestCase {
     {
       "nodes": [
         { "id": "aaaa000000000001", "type": "text", "text": "CARD A",
-          "x": 0, "y": 0, "width": 240, "height": 140, "color": "3" }
+          "x": 0, "y": 0, "width": 240, "height": 140, "color": "3" },
+        { "id": "bbbb000000000002", "type": "file", "file": "allegato.txt",
+          "x": 0, "y": 400, "width": 240, "height": 140 }
       ],
       "edges": []
     }

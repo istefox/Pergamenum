@@ -1,14 +1,23 @@
 import XCTest
 
-/// The two hand checks of PG-144's G2 table (`docs/plans/pg-144-editor-coordinator-feature-controllers.md`)
+/// Three hand checks kept as GUI tests. First, the two of PG-144's G2 table (`docs/plans/pg-144-editor-coordinator-feature-controllers.md`)
 /// that only a real, key window can prove, kept as GUI tests on purpose (ADR-0074, implementation
 /// notes). Every other G2 row is pinned in-process.
 ///
 /// - H10: typing in the find field never moves the keyboard into the note (the 2026-08-18
 ///   defect was a SwiftUI update cycle while typing, which only real key focus reproduces).
 /// - H16: the Diario and Oggi panes host the same editor, and nothing else tests their wiring.
+///
+/// And M8's editor half of PG-298's table (`docs/plans/pg-298-timeline-backspace-exclude.md`,
+/// owed as PG-306): an embed's preview reaches the system Quick Look panel and the keyboard comes
+/// back to the note when it closes. The panel finds its controller through the key window's
+/// responder chain, which no in-process host has (`Tests/HostedViewSupport.swift`'s window is
+/// never key); each link of that chain is pinned in-process (`Tests/QuickLookFocusTests.swift`,
+/// `Tests/EmbedChipClickTests.swift`, `Tests/MarkdownAttributedTextTests.swift`), their sum only here.
 final class EditorHandCheckUITests: PergamenumUITestCase {
     private static let noteBody = "alfa beta alfa gamma alfa"
+    /// The embedded file of M8: a text file, which Quick Look shows without a plug-in.
+    private static let embeddedFile = "allegato.txt"
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -23,6 +32,24 @@ final class EditorHandCheckUITests: PergamenumUITestCase {
         \(Self.noteBody)
         """.write(
             to: vault.appending(path: "Nota di prova.md", directoryHint: .notDirectory),
+            atomically: true, encoding: .utf8
+        )
+        try "Contenuto dell'allegato.\n".write(
+            to: vault.appending(path: Self.embeddedFile, directoryHint: .notDirectory),
+            atomically: true, encoding: .utf8
+        )
+        try """
+        ---
+        date: 2026-10-31
+        tags:
+          - type-note
+        ---
+
+        Prima riga.
+
+        ![[\(Self.embeddedFile)]]
+        """.write(
+            to: vault.appending(path: "Con allegato.md", directoryHint: .notDirectory),
             atomically: true, encoding: .utf8
         )
 
@@ -77,6 +104,39 @@ final class EditorHandCheckUITests: PergamenumUITestCase {
         let open = element("today-open-daily-note")
         if open.waitForExistence(timeout: 3) { open.click() }
         assertListContinues(in: editor(identifiedBy: "today-editor"), loadedWhen: { $0.contains("date:") })
+    }
+
+    /// PG-306, M8 (editor). Cmd+click on the embedded file opens Quick Look on it - the file's name
+    /// is a label inside the panel, which is what tells it from the empty panel PR #699 fixed - and
+    /// once Esc closes it, typing reaches the note again (`QuickLookHostView.handBackFocus()`). The
+    /// embed's name is an `AXLink` like a wikilink's (`WikilinkNavigationUITests`), found by the
+    /// fixture's own file name: a link inside the text has no view to carry an identifier.
+    func testCommandClickOnAnEmbedPreviewsItAndGivesTheKeyboardBack() {
+        let note = noteRow("Con allegato.md")
+        XCTAssertTrue(note.waitForExistence(timeout: 10), "la nota non è nell'elenco")
+        note.click()
+        let editor = app.textViews.firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 5), "l'editor non c'è")
+        XCTAssertTrue(waitUntil { self.text(of: editor).contains(Self.embeddedFile) }, "la nota non si è caricata")
+
+        let link = app.links[Self.embeddedFile]
+        XCTAssertTrue(link.waitForExistence(timeout: 5), "l'allegato non è un link nell'editor")
+        XCUIElement.perform(withKeyModifiers: .command) { link.click() }
+
+        // The panel's AX window title is "Quick Look", never the file's name (`PraticheUITests`).
+        let panel = app.windows["Quick Look"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5), "Cmd+clic sull'allegato non ha aperto Quick Look")
+        XCTAssertTrue(
+            panel.staticTexts[Self.embeddedFile].waitForExistence(timeout: 5), "il pannello non mostra l'allegato"
+        )
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(panel.waitForNonExistence(timeout: 5), "Esc non ha chiuso il pannello")
+
+        app.typeText("ritorno")
+        XCTAssertTrue(
+            waitUntil { self.text(of: editor).contains("ritorno") },
+            "la tastiera non è tornata alla nota: \(text(of: editor).debugDescription)"
+        )
     }
 
     // MARK: - Helpers

@@ -426,7 +426,9 @@ nobody may edit.
   (H1) in those panes is not automated, since the editor code is the note editor's own. The Oggi
   editor gains `today-editor` and its open button `today-open-daily-note`, identifiers only
   (ADR-0053's seam rule). `scripts/uitests.sh --affected` selects the class for Diario and Oggi
-  changes; editor changes already select every class.
+  changes; editor changes already select every class. The class gained a third test on
+  2026-10-31 (`PG-306`), justified in ADR-0070 §D5: an embed's Quick Look preview and the
+  keyboard back in the note.
 - **Not reachable by either kind:** the outline's click and drag, the card's fold-badge click and
   a click on a format-bar button are SwiftUI gestures the hosted harness cannot deliver; the logic
   under each is pinned above. `FormatBarPanel` builds its panel inside `show()`, so "never key"

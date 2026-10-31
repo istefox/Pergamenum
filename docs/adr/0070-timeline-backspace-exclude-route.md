@@ -205,6 +205,12 @@ to the panel's own close callback; the GUI witness in §D5 is what shows it eith
 - **By hand.** The beep (R-03), a held key (R-06), the filter field, the inspector and selected
   body text (R-05), and the Workspace and editor previews (R-09). None of these is observable
   from either harness.
+- **Amended 2026-10-31 (`PG-306`).** R-09's two previews left the by-hand list as GUI tests:
+  `WorkspaceBoardUITests.testABareSpacePreviewsTheSelectedFileCard` (a bare space on a selected
+  file card) and `EditorHandCheckUITests.testCommandClickOnAnEmbedPreviewsItAndGivesTheKeyboardBack`
+  (an embed's preview, and the keyboard back in the note after Esc). Each needs the key window's
+  responder chain §D4 relies on, which no in-process host reaches; the claim's decisions stay
+  pinned in `Tests/QuickLookFocusTests.swift`.
 
 ### §D6 — The record
 
