@@ -319,6 +319,60 @@ failures.
 
 ---
 
+## Amendment, 2026-10-31: an attachment name never leaves its part's directory
+
+`PG-436`, from the 2026-10-31 audit's R-02 (SEC-01, SEC-02, S05-10). This section is additive: the
+body above is not rewritten.
+
+The lookup this ADR added joined the part's `filename` to `Attachments/<rowID>/<part>/` verbatim.
+That name is the sender's (RFC 2231 percent-decoding included, so `%2F` is already `/`), so a part
+named `../../../../.ssh/id_ed25519` with an empty inline payload made the sync stat and read that
+file, copy it into the pratica's `allegati/` under the threshold, or record its path as the
+`storePath` over it. The same unchecked join sat in `PraticaSyncEngine.storePath(of:at:rowID:part:)`
+for an inline over-threshold part, and the chip's «Apri», «Mostra nel Finder» and «Copia» turned
+any `storePath` read back from frontmatter into a URL, although the note is an ordinary vault file
+anyone can edit.
+
+The rule:
+
+- **A name from an email reaches Mail's store through one resolver,
+  `EMLXReader.attachmentFile(named:forMessageAt:rowID:part:) -> URL?`**, built on
+  `MailAttachmentPath` (`Sources/Core/Email/MailAttachmentPath.swift`, Foundation only, shared with
+  `perg` and `pergamenum-mcp`). The name is refused if it holds a NUL anywhere; otherwise it is
+  reduced to `lastPathComponent` and refused if what is left is empty, `.`, `..`, still holds `/`,
+  or is longer than 255 UTF-8 bytes (APFS's `NAME_MAX`, read from `getconf NAME_MAX`; a longer
+  name cannot exist on the volume, so it is refused rather than shortened). The joined URL is then
+  accepted only when, standardized and with symbolic links resolved on both sides, its path
+  components sit strictly below the part's directory, and the URL handed back is that resolved one,
+  so the path checked is the path stat'ed, read or opened. The component checks touch no
+  filesystem; the containment check resolves symbolic links, which reads the directory chain on
+  disk but never opens the file, and all of it happens before the file is stat'ed or read. Between
+  that check and the read a symbolic link could still be swapped in (a time-of-check/time-of-use
+  window); this is an accepted limit, since it needs write access inside `~/Library/Mail` as the
+  same user, who could plant the content there directly. A refused name is `.unavailable` in `resolveExternalized` (the part stays pending, as for a
+  missing sibling file) and falls back to the `.emlx` in `storePath`, as a missing extracted copy
+  already did. The inline-image lookup goes through the same door, so `<contentID>.png` is checked
+  too.
+- **A `storePath` is a target only inside Mail's store.** `AttachmentChipModel.targetURL`, the one
+  place a `storePath` becomes a URL, accepts it only when `MailAttachmentPath.contained` finds it
+  under `MailStoreLocation.resolve()`, and refuses it before the file is probed. That root is
+  chosen because both values `storePath` can legitimately hold live under it: the extracted copy in
+  `Attachments/` and the `.emlx` fallback, both derived by `MailStoreReader` from the same resolved
+  root. Under test it is the per-process temporary store, so `AttachmentChipTests` writes its
+  store-reference fixtures there.
+- **The name written into `allegati/` is capped.** `PraticaNaming.attachmentFileName` cuts the name
+  to 255 bytes less 8 reserved for `uniqueAttachmentName`'s `-2`, `-3`, … suffix, one whole
+  character at a time, keeping a short extension. Before this, a long name failed the atomic write
+  with ENAMETOOLONG on every sync.
+
+Tests: `Tests/MailAttachmentPathTests.swift` (`../../x`, `/etc/hosts`, `a\0b`, a 4 kB name, a
+symbolic link out of the root, the name cap, and end to end an empty inline part named
+`../../../secret.pdf` with a real file planted at that location, which is never copied, never
+recorded and stays pending); `Tests/AttachmentChipTests.swift` (a `storePath` outside the store,
+directly and through `..`, has no target and is never probed).
+
+---
+
 ## References
 
 - ADR-0036 - `docs/adr/0036-pratiche.md`

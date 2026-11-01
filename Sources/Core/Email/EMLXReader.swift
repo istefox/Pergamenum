@@ -122,4 +122,15 @@ enum EMLXReader {
             .appending(path: "\(rowID)", directoryHint: .isDirectory)
             .appending(path: part, directoryHint: .notDirectory)
     }
+
+    /// The file Mail extracted for attachment `name` inside
+    /// `attachmentsDirectory(forMessageAt:rowID:part:)`, or `nil` when the email-supplied
+    /// name is not one safe path component or would resolve outside that directory
+    /// (PG-436, ADR-0048's 2026-10-31 amendment). The only way the sync joins a name
+    /// taken from an email to Mail's store.
+    static func attachmentFile(named name: String, forMessageAt emlxURL: URL, rowID: Int, part: String) -> URL? {
+        MailAttachmentPath.file(
+            named: name, in: attachmentsDirectory(forMessageAt: emlxURL, rowID: rowID, part: part)
+        )
+    }
 }
