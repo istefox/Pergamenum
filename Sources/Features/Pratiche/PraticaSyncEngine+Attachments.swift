@@ -34,12 +34,16 @@ extension PraticaSyncEngine {
     /// Not `private`: `PraticaSyncEngine+Messages.swift`'s `prepare(_:request:reader:
     /// folder:)` is an extension of this actor in a separate file, and is this
     /// member's only caller.
+    ///
+    /// PG-436: `name` comes from the email, so the extracted copy is looked for only
+    /// through `EMLXReader.attachmentFile`, which refuses a name that would leave the
+    /// part's directory; a refused name falls back to the `.emlx` like a missing copy.
     static func storePath(of name: String, at emlxURL: URL, rowID: Int, part: String) -> String {
-        let extracted = EMLXReader
-            .attachmentsDirectory(forMessageAt: emlxURL, rowID: rowID, part: part)
-            .appending(path: name, directoryHint: .notDirectory)
+        let emlxPath = emlxURL.path(percentEncoded: false)
+        guard let extracted = EMLXReader.attachmentFile(named: name, forMessageAt: emlxURL, rowID: rowID, part: part)
+        else { return emlxPath }
         let path = extracted.path(percentEncoded: false)
-        return FileManager.default.fileExists(atPath: path) ? path : emlxURL.path(percentEncoded: false)
+        return FileManager.default.fileExists(atPath: path) ? path : emlxPath
     }
 
     /// Not `private`: `PraticaSyncEngine+Messages.swift`'s `place(...)` and

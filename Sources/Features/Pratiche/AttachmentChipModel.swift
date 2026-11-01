@@ -185,7 +185,13 @@ enum AttachmentChipModel {
         case .file(let reference):
             return state(reference.url) == .usable ? reference.url : nil
         case .storeReference(let reference):
-            let url = URL(fileURLWithPath: reference.storePath)
+            // PG-436 (SEC-02): `storePath` is read back from the note's frontmatter, which
+            // any writer of the vault can edit. Only a path inside Mail's own store is a
+            // target - the extracted copy and the `.emlx` fallback both live there - and
+            // anything else is never probed, opened, revealed or copied.
+            guard let url = MailAttachmentPath.contained(
+                URL(fileURLWithPath: reference.storePath), in: MailStoreLocation.resolve()
+            ) else { return nil }
             return state(url) == .usable ? url : nil
         case .pending:
             return nil
