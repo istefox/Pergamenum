@@ -367,7 +367,11 @@ extension NoteTextView {
                 let nsRange = NSRange(location: local.location + offset, length: local.length)
                 // Through the source-aware entry: a tag's or a date's click (n1-seams R-12,
                 // R-13) is read off the characters it covers, not the span alone.
-                storage.addAttributes(context.attributes(for: styled, in: source), range: nsRange)
+                if let trait = MarkdownAttributedText.emphasisTrait(of: styled.span) {
+                    ProseTypography.addEmphasis(trait, in: storage, range: nsRange, theme: context.theme)
+                } else {
+                    storage.addAttributes(context.attributes(for: styled, in: source), range: nsRange)
+                }
                 if let chipPadding { InlineChip.finish(styled.span, nsRange, in: storage, padding: chipPadding) }
                 if let highlight, case .highlight = styled.span {
                     storage.addAttribute(.backgroundColor, value: highlight, range: nsRange)
