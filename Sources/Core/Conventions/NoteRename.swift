@@ -55,22 +55,45 @@ enum NoteRename {
         from oldTitle: String,
         to newTitle: String
     ) -> String? {
-        var changed = false
         // A line split on "\n" carries a trailing "\r" on a CRLF note (ADR-0065 §D3); comparing
         // through the raw split left that "\r" attached, so `hasSuffix("\"")` never matched and a
         // CRLF note's quoted `related:` entry was silently left unrewritten.
         let suffix = LineBreak.detected(in: text).lineSuffix
-        let lines = text.components(separatedBy: "\n").map { line -> String in
-            let interpreted = FrontmatterSource.interpreted(line)
+        var lines = text.components(separatedBy: "\n")
+        // Only the `related:` entry's own lines (R-10): the walk ran over the whole note and
+        // rewrote a body bullet, or a fenced line, that happened to read `- "Old title"`.
+        var changed = false
+        for index in relatedLineIndices(in: lines) {
+            let interpreted = FrontmatterSource.interpreted(lines[index])
             let trimmed = interpreted.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("- \""), trimmed.hasSuffix("\"") else { return line }
+            guard trimmed.hasPrefix("- \""), trimmed.hasSuffix("\"") else { continue }
             let inner = String(trimmed.dropFirst(3).dropLast())
-            guard !inner.contains("[["), fold(inner) == fold(oldTitle) else { return line }
+            guard !inner.contains("[["), fold(inner) == fold(oldTitle) else { continue }
             changed = true
             let indent = interpreted.prefix { $0 == " " || $0 == "\t" }
-            return "\(indent)- \"\(newTitle)\"\(suffix)"
+            lines[index] = "\(indent)- \"\(newTitle)\"\(suffix)"
         }
         return changed ? lines.joined(separator: "\n") : nil
+    }
+
+    /// The continuation lines of the frontmatter's `related:` key, grouped the way the parser
+    /// groups a key's lines (`FrontmatterParser.keyName(of:)`, `isContinuation`); none when the
+    /// note has no block.
+    private static func relatedLineIndices(in lines: [String]) -> [Int] {
+        guard let closing = FrontmatterSource.closingDelimiterIndex(in: lines) else { return [] }
+        var indices: [Int] = []
+        var insideRelated = false
+        for index in 1..<closing {
+            let line = FrontmatterSource.interpreted(lines[index])
+            if let key = FrontmatterParser.keyName(of: line) {
+                insideRelated = key == "related"
+            } else if insideRelated, FrontmatterParser.isContinuation(line) {
+                indices.append(index)
+            } else {
+                insideRelated = false
+            }
+        }
+        return indices
     }
 
     /// Titles are compared case- and whitespace-insensitively so that a link typed

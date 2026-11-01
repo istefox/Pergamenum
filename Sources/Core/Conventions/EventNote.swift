@@ -77,7 +77,10 @@ enum EventNoteSection {
         // and a search for `"\n#"` never matched in a CRLF note (PG-318).
         let lineBreak = LineBreak.detected(in: body).characters
 
-        guard let range = body.range(of: heading) else {
+        // The heading is a line that is exactly `## Note`, outside a code fence (`MarkdownSection`,
+        // R-10): a search for its text took `## Note correlate` or `## Note varie` for this
+        // section and wrote the event link under it.
+        guard let range = MarkdownSection.range(under: heading, in: body) else {
             // Up to one blank line before the new section, as many as the note lacks.
             let closingBreaks = min(body.reversed().prefix(while: LineBreak.isTerminator).count, 2)
             let separator = String(repeating: lineBreak, count: 2 - closingBreaks)
@@ -86,18 +89,15 @@ enum EventNoteSection {
 
         // Insert at the end of the section rather than at the end of the note: the section
         // ends at the next heading, and a link written past it would belong to that one.
-        let afterHeading = body[range.upperBound...]
-        let nextHeading = afterHeading.indices.first { index in
-            LineBreak.isTerminator(body[index]) && body[body.index(after: index)...].first == "#"
-        }
-        let end = nextHeading ?? body.endIndex
+        let headingEnd = MarkdownSection.headingEnd(of: heading, in: body, section: range)
+        let end = MarkdownSection.contentEnd(in: body, section: range)
 
         var result = body
-        let section = String(body[range.upperBound..<end])
+        let section = String(body[headingEnd..<end])
         let trimmed = section.last.map(LineBreak.isTerminator) == true
             ? String(section.dropLast())
             : section
-        result.replaceSubrange(range.upperBound..<end, with: trimmed + lineBreak + link + lineBreak)
+        result.replaceSubrange(headingEnd..<end, with: trimmed + lineBreak + link + lineBreak)
         return result
     }
 }

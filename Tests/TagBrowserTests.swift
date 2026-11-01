@@ -118,7 +118,7 @@ private func tag(_ raw: String) throws -> VaultTag {
 
 @Test func aStoredStringThatIsNotATagIsSkippedRatherThanFailingTheRest() throws {
     let vault = try TemporaryVault()
-    let defaults = try #require(UserDefaults(suiteName: "pergamenum.tests.\(UUID())"))
+    let defaults = ScratchDefaults.make()
     defaults.set(["non un tag", "topic-gomma"], forKey: PinnedTagsStore.key(for: vault.root))
 
     // SPEC §4.4 closes the grammar and this file is not where it is widened.

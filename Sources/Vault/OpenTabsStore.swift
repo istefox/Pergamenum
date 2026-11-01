@@ -42,11 +42,11 @@ struct OpenTabsStore {
 
     private let defaults: UserDefaults
 
-    /// A store backed by a throwaway suite, for tests. Running the suite must not rearrange
-    /// the tabs of the app the person is using - the same reason `RecentVaults.volatile()`
-    /// exists, and the same mistake it was written to stop.
+    /// A store in memory, for tests. Running the suite must not rearrange the tabs of the app
+    /// the person is using, nor leave a plist behind (R-01) - the same reasons
+    /// `RecentVaults.volatile()` exists, and the same mistakes it was written to stop.
     static func volatile() -> OpenTabsStore {
-        OpenTabsStore(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())") ?? .standard)
+        OpenTabsStore(defaults: ScratchDefaults.make())
     }
 
     init(defaults: UserDefaults = .standard) {

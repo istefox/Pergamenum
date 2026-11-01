@@ -170,16 +170,14 @@ import Testing
 
 // MARK: - The store
 
-/// A throwaway suite, so these never touch the real preferences.
-private func makeDefaults() -> (UserDefaults, String) {
-    let name = "pergamenum.tests.\(UUID().uuidString)"
-    return (UserDefaults(suiteName: name)!, name)
+/// An in-memory store (`ScratchDefaults`), so these never touch the real preferences.
+private func makeDefaults() -> UserDefaults {
+    ScratchDefaults.make()
 }
 
 @MainActor
 @Test func aCommandNobodyTouchedKeepsItsDefault() {
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
 
     let store = ShortcutStore(defaults: defaults, isOverridden: false)
     #expect(store.binding(for: .newNote) == ShortcutCommand.newNote.defaultBinding)
@@ -188,8 +186,7 @@ private func makeDefaults() -> (UserDefaults, String) {
 
 @MainActor
 @Test func aChangedShortcutIsReadBackByTheNextLaunch() {
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
 
     ShortcutStore(defaults: defaults, isOverridden: false)
         .set(KeyBinding("j", [.command, .option]), for: .newNote)
@@ -203,8 +200,7 @@ private func makeDefaults() -> (UserDefaults, String) {
 
 @MainActor
 @Test func settingACommandBackToItsDefaultStopsBeingAnOverride() {
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
 
     let store = ShortcutStore(defaults: defaults, isOverridden: false)
     store.set(KeyBinding("j", .command), for: .newNote)
@@ -217,8 +213,7 @@ private func makeDefaults() -> (UserDefaults, String) {
 
 @MainActor
 @Test func aClearedCommandHasNoShortcutAtAllAndDoesNotFallBack() {
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
 
     let store = ShortcutStore(defaults: defaults, isOverridden: false)
     store.clear(.quickLook)
@@ -231,8 +226,7 @@ private func makeDefaults() -> (UserDefaults, String) {
 
 @MainActor
 @Test func resettingPutsTheDefaultBack() {
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
 
     let store = ShortcutStore(defaults: defaults, isOverridden: false)
     store.set(KeyBinding("j", .command), for: .newNote)
@@ -246,8 +240,7 @@ private func makeDefaults() -> (UserDefaults, String) {
 
 @MainActor
 @Test func twoCommandsOnTheSameKeysAreReportedToBothOfThem() {
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
 
     let store = ShortcutStore(defaults: defaults, isOverridden: false)
     store.set(ShortcutCommand.save.defaultBinding, for: .newNote)
@@ -263,8 +256,7 @@ private func makeDefaults() -> (UserDefaults, String) {
 
 @MainActor
 @Test func theShippedCatalogueHasNoConflicts() {
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
 
     #expect(!ShortcutStore(defaults: defaults, isOverridden: false).hasConflicts)
 }
@@ -274,8 +266,7 @@ private func makeDefaults() -> (UserDefaults, String) {
     // Same guard as `RecentVaults`: the argument domain outranks the persistent one,
     // so a UI test that opened the settings pane would otherwise leave its throwaway
     // bindings in the real preferences, where the app reads them every launch after.
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
 
     ShortcutStore(defaults: defaults, isOverridden: true)
         .set(KeyBinding("j", .command), for: .newNote)
@@ -287,8 +278,7 @@ private func makeDefaults() -> (UserDefaults, String) {
 @Test func aMapArrivingAsAParsedDictionaryIsStillRead() {
     // The argument domain runs every value through the property list reader first, so
     // what the app finds under the key is not always the string it wrote.
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
     defaults.set(["newNote": ["key": "j", "modifiers": 1]], forKey: ShortcutStore.defaultsKey)
 
     let store = ShortcutStore(defaults: defaults, isOverridden: true)
@@ -301,8 +291,7 @@ private func makeDefaults() -> (UserDefaults, String) {
     // domain hands back is a string. Read as JSON that fails, and the shortcut a UI
     // test asked for would silently stay at its default - which is a test that passes
     // by testing nothing.
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
     defaults.set(["newNote": ["key": "j", "modifiers": "3"]], forKey: ShortcutStore.defaultsKey)
 
     let store = ShortcutStore(defaults: defaults, isOverridden: true)
@@ -311,8 +300,7 @@ private func makeDefaults() -> (UserDefaults, String) {
 
 @MainActor
 @Test func anEntryForACommandThatNoLongerExistsCostsNothingElse() {
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
     defaults.set(
         #"{"aCommandRemovedInAnEarlierVersion":{"key":"j","modifiers":1},"save":{"key":"y","modifiers":1}}"#,
         forKey: ShortcutStore.defaultsKey

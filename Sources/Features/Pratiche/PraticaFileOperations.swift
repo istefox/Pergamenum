@@ -61,9 +61,7 @@ struct PraticaFileOperations {
                 if Self.isNote(relativePath) {
                     inTrash = try await session.trashFile(at: relativePath, forgettingNoteID: false)
                 } else {
-                    var landed: NSURL?
-                    try FileManager.default.trashItem(at: url, resultingItemURL: &landed)
-                    inTrash = landed as URL?
+                    inTrash = try VaultState.trashItem(at: url)
                 }
             } catch {
                 pratiche.report("«\(relativePath)» non è stato eliminato: \(Self.reason(error))")

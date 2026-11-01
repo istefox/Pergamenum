@@ -226,7 +226,7 @@ private func controller(
     // has to read back as nothing rather than throw at launch: this costs one arrangement,
     // and the notes are on disk either way.
     let vault = try TemporaryVault()
-    let defaults = try #require(UserDefaults(suiteName: "pergamenum.tests.\(UUID())"))
+    let defaults = ScratchDefaults.make()
     let old = #"{"entries":[{"path":"Nexion.md","isPreview":false}],"activePath":"Nexion.md"}"#
     defaults.set(Data(old.utf8), forKey: OpenTabsStore.key(for: vault.root))
 

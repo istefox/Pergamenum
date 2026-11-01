@@ -110,7 +110,15 @@ extension VaultSession {
         frontmatter.date = day
         frontmatter.tags = TagRules.initialTags(for: .daily)
         let text = FrontmatterSerializer.render(frontmatter) + "\n"
-        try await write(text, to: relativePath)
+        // A creation over a read that found nothing (ADR-0057 §D3, R-10): a daily note born
+        // meanwhile by another writer is refused, never replaced by this skeleton, and read
+        // instead.
+        do {
+            try await write(text, to: relativePath, expectingAbsent: true)
+        } catch WriteRefusal.movedOn {
+            let existing = try read(relativePath)
+            return (existing.text, existing.record.contentHash)
+        }
         return (text, NoteStore.hash(Data(text.utf8)))
     }
 }

@@ -12,10 +12,11 @@ import Foundation
 struct PinnedTagsStore {
     private let defaults: UserDefaults
 
-    /// A store backed by a throwaway suite, for tests: running the suite must not rearrange the
-    /// browser of the app the person is using. The same reason `OpenTabsStore.volatile` exists.
+    /// A store in memory, for tests: running the suite must not rearrange the browser of the
+    /// app the person is using, nor leave a plist behind (R-01). The same reasons
+    /// `OpenTabsStore.volatile` exists.
     static func volatile() -> PinnedTagsStore {
-        PinnedTagsStore(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())") ?? .standard)
+        PinnedTagsStore(defaults: ScratchDefaults.make())
     }
 
     init(defaults: UserDefaults = .standard) {

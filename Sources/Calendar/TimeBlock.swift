@@ -131,81 +131,121 @@ struct TimeBlock: Equatable, Sendable, Identifiable {
 ///
 /// The format is a markdown list, so the note stays readable in Obsidian and the plan
 /// is not lost the day this app is not around.
+///
+/// The section is the line that is exactly `## Timeline`, outside a code fence
+/// (`MarkdownSection`, R-10): a search for the heading's text took `### Timeline` or
+/// `## Timeline riunione` for the plan, read its list as the day's blocks and overwrote it.
 enum TimeBlockSection {
     static let heading = "## Timeline"
 
     /// `- 09:00-10:00 Sopralluogo pressa 4` with an optional `[published]` marker.
+    ///
+    /// A line inside a code fence is not a block (`MarkdownSection.lines(below:in:)`): a note that
+    /// shows the format in an example under `## Timeline` does not get the example as its plan.
+    /// No `#` stops the walk either: `section` already ends at the next heading outside a fence,
+    /// so a `#` line inside it is a fenced one (`# comment` in a shell block), and stopping at it
+    /// dropped every block listed after the fence - which `write` then deleted.
     static func parse(from body: String, day: CalendarDate) -> [TimeBlock] {
-        guard let sectionRange = body.range(of: heading) else { return [] }
-        var blocks: [TimeBlock] = []
-
-        for line in body[sectionRange.upperBound...].components(separatedBy: "\n") {
-            // A CRLF line keeps its `\r` through a `"\n"` split, and `.whitespaces` does not
-            // take it: the title would carry it, and `write` would put it back before its own
-            // line break (PG-318).
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.hasPrefix("#") { break }
-            guard trimmed.hasPrefix("-") else { continue }
-
-            let content = String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
-            guard let separator = content.firstIndex(of: " ") else { continue }
-            let times = String(content[content.startIndex..<separator])
-            let rest = String(content[content.index(after: separator)...])
-
-            let parts = times.split(separator: "-")
-            guard parts.count == 2,
-                  let start = minutes(from: String(parts[0])),
-                  let read = minutes(from: String(parts[1])),
-                  let end = end(reading: read, after: start)
-            else { continue }
-
-            let isPublished = rest.contains("[published]")
-            let title = rest
-                .replacingOccurrences(of: "[published]", with: "")
-                .trimmingCharacters(in: .whitespaces)
-
-            blocks.append(TimeBlock(
-                day: day,
-                startMinutes: start,
-                durationMinutes: end - start,
-                title: title,
-                sourceTaskID: nil,
-                isPublished: isPublished
-            ))
-        }
-        return blocks.sorted { $0.startMinutes < $1.startMinutes }
+        guard let section = MarkdownSection.range(under: heading, in: body) else { return [] }
+        return MarkdownSection.lines(below: section, in: body)
+            .compactMap { line -> TimeBlock? in
+                guard !line.isCode, let entry = entry(from: line.text(in: body)) else { return nil }
+                return TimeBlock(
+                    day: day,
+                    startMinutes: entry.start,
+                    durationMinutes: entry.end - entry.start,
+                    title: entry.title,
+                    sourceTaskID: nil,
+                    isPublished: entry.isPublished
+                )
+            }
+            .sorted { $0.startMinutes < $1.startMinutes }
     }
 
-    /// Rewrites the section, creating it at the end of the note when absent and taking
-    /// it away entirely when the last block goes.
+    /// One block line, read.
+    private struct Entry {
+        let start: Int
+        let end: Int
+        let title: String
+        let isPublished: Bool
+    }
+
+    /// One block line read, or nil for any other line.
+    private static func entry(from line: String) -> Entry? {
+        // A CRLF line keeps its `\r` through a `"\n"` split, and `.whitespaces` does not
+        // take it: the title would carry it, and `write` would put it back before its own
+        // line break (PG-318).
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("-") else { return nil }
+
+        let content = String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
+        guard let separator = content.firstIndex(of: " ") else { return nil }
+        let times = String(content[content.startIndex..<separator])
+        let rest = String(content[content.index(after: separator)...])
+
+        let parts = times.split(separator: "-")
+        guard parts.count == 2,
+              let start = minutes(from: String(parts[0])),
+              let read = minutes(from: String(parts[1])),
+              let end = end(reading: read, after: start)
+        else { return nil }
+
+        let title = rest
+            .replacingOccurrences(of: "[published]", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        return Entry(start: start, end: end, title: title, isPublished: rest.contains("[published]"))
+    }
+
+    /// Rewrites the block lines of the section, creating it at the end of the note when
+    /// absent and taking it away entirely when the last block goes and nothing else is in it.
+    ///
+    /// Anything else the section holds - a line of prose, a fenced example, a list line that is
+    /// not a block - is the person's and stays: the blocks are written where the first one
+    /// was, what stood above it stays above, and what stood below or between blocks follows
+    /// the list. Rewriting the whole section dropped all of it on every time-block write.
     static func write(_ blocks: [TimeBlock], into body: String) -> String {
         // The section takes the note's own line break, and every test for one is made with
         // `LineBreak.isTerminator`: a `"\r\n"` pair is one `Character`, so `hasSuffix("\n")`
         // and a search for `"\n#"` never matched in a CRLF note, where the section then ran to
         // the end of the note and a rewrite replaced every heading after it (PG-318).
         let lineBreak = LineBreak.detected(in: body).characters
-        guard let sectionRange = body.range(of: heading) else {
+        guard let section = MarkdownSection.range(under: heading, in: body) else {
             let separator = body.last.map(LineBreak.isTerminator) == true ? lineBreak : lineBreak + lineBreak
             return blocks.isEmpty ? body : body + separator + render(blocks, lineBreak: lineBreak)
         }
 
-        // The section ends at the next heading, or at the end of the note.
-        let afterHeading = body[sectionRange.upperBound...]
-        let nextHeading = afterHeading.indices.first { index in
-            LineBreak.isTerminator(body[index]) && body[body.index(after: index)...].first == "#"
-        }
-        let end = nextHeading ?? body.endIndex
+        // The section ends at the line break before the next heading, or at the end of the note.
+        let end = MarkdownSection.contentEnd(in: body, section: section)
+        let kept = otherLines(in: body, section: section)
 
         var result = body
-        guard blocks.isEmpty else {
-            result.replaceSubrange(sectionRange.lowerBound..<end, with: render(blocks, lineBreak: lineBreak))
+        guard blocks.isEmpty, kept.above.isEmpty, kept.below.isEmpty else {
+            // The writer's own lines (heading, blocks, the blank between groups) take the note's
+            // break; a line the person wrote keeps the ending it had, so a mixed note stays mixed
+            // (ADR-0065 §D3). The whole section is replaced, the break before the next heading
+            // included, so the last line's ending is not counted twice.
+            var text = heading + lineBreak
+            for group in [kept.above, blockLines(blocks).map { Kept(text: $0, terminator: lineBreak) }, kept.below]
+            where !group.isEmpty {
+                text += lineBreak
+                for line in group { text += line.text + line.terminator }
+            }
+            if section.upperBound < body.endIndex {
+                // A heading follows: one blank line stays between the section and it.
+                text += lineBreak
+            } else if blocks.isEmpty == false, kept.below.isEmpty {
+                // The section ran to the end of the note and ended with a block line: as before,
+                // the writer adds no trailing break of its own.
+                text.removeLast(lineBreak.count)
+            }
+            result.replaceSubrange(section.lowerBound..<section.upperBound, with: text)
             return result
         }
 
         // Deleting the last block deletes the section: a bare `## Timeline` heading is
         // not something the user wrote, and leaving it behind means the note keeps a
         // trace of a plan that no longer exists.
-        var start = sectionRange.lowerBound
+        var start = section.lowerBound
         while start > body.startIndex, body[body.index(before: start)].isWhitespace {
             start = body.index(before: start)
         }
@@ -215,15 +255,64 @@ enum TimeBlockSection {
         return result
     }
 
-    private static func render(_ blocks: [TimeBlock], lineBreak: String) -> String {
-        guard !blocks.isEmpty else { return heading }
-        let lines = blocks
+    /// A line of the section that `write` keeps: its text without a CRLF line's `\r`, and the
+    /// ending it had, `\r` and `\n` as they stood, so a kept line is written back byte for byte.
+    private struct Kept {
+        let text: String
+        let terminator: String
+    }
+
+    /// The section's lines that are not blocks, split at its first block line, with the blank lines
+    /// at either end of a group dropped: `write` puts one blank line between groups itself.
+    private static func otherLines(
+        in body: String, section: Range<String.Index>
+    ) -> (above: [Kept], below: [Kept]) {
+        let scalars = body.unicodeScalars
+        var above: [Kept] = []
+        var below: [Kept] = []
+        var seenBlock = false
+        for line in MarkdownSection.lines(below: section, in: body) {
+            var text = line.text(in: body)
+            var terminator = ""
+            if text.hasSuffix("\r") {
+                text.removeLast()
+                terminator = "\r"
+            }
+            if line.range.upperBound < scalars.endIndex, scalars[line.range.upperBound] == "\n" {
+                terminator += "\n"
+            }
+            let kept = Kept(text: text, terminator: terminator)
+            if !line.isCode, entry(from: text) != nil {
+                seenBlock = true
+            } else if seenBlock {
+                below.append(kept)
+            } else {
+                above.append(kept)
+            }
+        }
+        return (withoutBlankEnds(above), withoutBlankEnds(below))
+    }
+
+    private static func withoutBlankEnds(_ lines: [Kept]) -> [Kept] {
+        let isBlank: (Kept) -> Bool = { $0.text.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard let first = lines.firstIndex(where: { !isBlank($0) }),
+              let last = lines.lastIndex(where: { !isBlank($0) })
+        else { return [] }
+        return Array(lines[first...last])
+    }
+
+    private static func blockLines(_ blocks: [TimeBlock]) -> [String] {
+        blocks
             .sorted { $0.startMinutes < $1.startMinutes }
             .map { block in
                 "- \(block.startText)-\(block.endText) \(block.title)"
                     + (block.isPublished ? " [published]" : "")
             }
-        return ([heading, ""] + lines).joined(separator: lineBreak)
+    }
+
+    private static func render(_ blocks: [TimeBlock], lineBreak: String) -> String {
+        guard !blocks.isEmpty else { return heading }
+        return ([heading, ""] + blockLines(blocks)).joined(separator: lineBreak)
     }
 
     /// `HH:MM`, with `24:00` as the end of the day - the diary's own reader, shared

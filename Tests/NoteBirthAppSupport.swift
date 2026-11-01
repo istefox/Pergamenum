@@ -32,8 +32,7 @@ struct NoteBirthApp {
 
     static func make(_ vault: borrowing TemporaryVault) async throws -> NoteBirthApp {
         let harness = try await ContenitoreHarness.make(root: vault.root, home: vault.stateBase)
-        let name = "NoteBirthApp-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: name))
+        let defaults = ScratchDefaults.make()
         return NoteBirthApp(
             harness: harness,
             actions: harness.commandActions(),

@@ -61,8 +61,7 @@ private func controller(
 
 @MainActor
 @Test func openingAVaultBeyondTheRecentsCapForgetsTheEvictedVaultsTabSession() async throws {
-    let (defaults, defaultsName) = makeUserDefaults()
-    defer { defaults.removePersistentDomain(forName: defaultsName) }
+    let defaults = makeUserDefaults()
     let recents = RecentVaults(defaults: defaults, isOverridden: false)
     let openTabs = OpenTabsStore(defaults: defaults)
 
@@ -91,7 +90,7 @@ private func controller(
     #expect(openTabs.session(for: oldest) == OpenTabsStore.Session())
 }
 
-private func makeUserDefaults() -> (UserDefaults, String) {
-    let name = "pergamenum.tests.\(UUID().uuidString)"
-    return (UserDefaults(suiteName: name)!, name)
+/// An in-memory store (`ScratchDefaults`), so this never touches the real preferences.
+private func makeUserDefaults() -> UserDefaults {
+    ScratchDefaults.make()
 }

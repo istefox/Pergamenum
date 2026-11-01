@@ -6,9 +6,9 @@ import Testing
 /// A window AppKit can never hand focus to and that refuses to be shown (R-15). It cannot become
 /// key or main, and each call that would put it on screen (`orderFront`, `orderFrontRegardless`,
 /// `makeKeyAndOrderFront`, `order(_:relativeTo:)` to anywhere but out) or hand it an event
-/// (`sendEvent`, other than AppKit's own bookkeeping) records an issue naming the call and does
-/// nothing, so a test that reaches for one fails loudly and takes nothing from the person at the
-/// keyboard.
+/// (`sendEvent`, other than AppKit's own bookkeeping and a hover AppKit delivers once
+/// `HostedView.tearDown` has run) records an issue naming the call and does nothing, so a test
+/// that reaches for one fails loudly and takes nothing from the person at the keyboard.
 private final class NeverKeyWindow: NSWindow {
     /// Every refused call, by name. `Issue.record` below is called from AppKit's own run-loop
     /// callbacks, outside the test's task context (PG-201): Swift Testing attributes that issue
@@ -17,6 +17,14 @@ private final class NeverKeyWindow: NSWindow {
     /// through `HostedView.neverShown`, so a refusal fails the test through an ordinary `#expect`
     /// instead of depending on `Issue.record`'s attribution.
     private(set) var refusals: [String] = []
+    /// The test that built this window, read when it was built (PG-434): a refusal AppKit delivers
+    /// after the test's body has returned is attributed by Swift Testing to no test at all
+    /// («Issues recorded without an associated test or suite»), and `Test.current` is nil inside
+    /// that callback, so the message names the owner from here instead.
+    var owner = "a test that is not known"
+    /// Set by `HostedView.tearDown`: from then on the test that owned this window is over, and the
+    /// only hover still arriving is a tracking area AppKit has not yet let go of (PG-434).
+    var isTornDown = false
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
@@ -27,10 +35,21 @@ private final class NeverKeyWindow: NSWindow {
 
     /// AppKit hands every window its own bookkeeping events: a window-moved `.appKitDefined`
     /// arrives on the run loop, outside any test, while a hosted view settles (measured on macOS
-    /// 27, twice per window). Those go through. Anything else is an event a test sent.
+    /// 27, twice per window). Those go through. Anything else is an event a test sent, with one
+    /// exception: the `.mouseEntered`/`.mouseExited` pair a hosted editor's tracking areas deliver
+    /// after its test has torn the window down (PG-434, measured 2026-10-31: types 8 and 9, on the
+    /// window built by
+    /// `EditorUpdatePathBudgetTests.removingTheLastCalloutHeaderFromAFoldedCalloutUnhidesItsBody`,
+    /// recorded during the next test and attributed to no test, so the run read `Failed` under
+    /// `** TEST SUCCEEDED **`). Those are dropped without an issue rather than passed on: the
+    /// tracking area's owner may already be gone with the detached content view, and no test is
+    /// left to answer for them. Before `tearDown` a hover is refused like any other event, so a
+    /// test that sends one itself fails rather than getting a silent no-op.
     override func sendEvent(_ event: NSEvent) {
-        guard event.type != .appKitDefined else { return super.sendEvent(event) }
-        refuse("sendEvent")
+        if event.type == .appKitDefined { return super.sendEvent(event) }
+        let hover = event.type == .mouseEntered || event.type == .mouseExited
+        if hover && isTornDown { return }
+        refuse("sendEvent", detail: "event type \(event.type.rawValue)")
     }
 
     /// Taking the window out is the one placement that goes through: `HostedView.tearDown`
@@ -40,10 +59,11 @@ private final class NeverKeyWindow: NSWindow {
         refuse("order(_:relativeTo:)")
     }
 
-    private func refuse(_ call: String) {
+    private func refuse(_ call: String, detail: String? = nil) {
         let why = "was called on a hosted-view window, which is never shown or sent events"
         refusals.append(call)
-        Issue.record("R-15: `NSWindow.\(call)` \(why). Nothing was done.")
+        let context = [detail, "window built by \(owner)"].compactMap { $0 }.joined(separator: ", ")
+        Issue.record("R-15: `NSWindow.\(call)` \(why) (\(context)). Nothing was done.")
     }
 }
 
@@ -57,9 +77,10 @@ private final class NeverKeyWindow: NSWindow {
 /// running this target at the end of every turn must never do (CLAUDE.md, working agreements).
 /// The window is a `NeverKeyWindow`: it refuses key and main, and a test that reaches through
 /// `window` for `orderFront`, `orderFrontRegardless`, `makeKeyAndOrderFront`, `order(_:relativeTo:)`
-/// or `sendEvent` (bar AppKit's own bookkeeping events) gets a recorded issue naming the call and
-/// no effect. `window` is still an `NSWindow` a test can hold, `NSApp.activate` is not
-/// intercepted, and `NSApp.sendEvent` is refused only for an event it routes to this window, so
+/// or `sendEvent` (bar AppKit's own bookkeeping events, and a `.mouseEntered`/`.mouseExited` that
+/// arrives after `tearDown`, PG-434) gets a recorded issue naming the call and no effect.
+/// `window` is still an `NSWindow` a test can hold, `NSApp.activate` is not intercepted,
+/// and `NSApp.sendEvent` is refused only for an event it routes to this window, so
 /// keeping those out stays a matter of review. `neverShown` is the check afterwards, of the
 /// effects rather than of the calls.
 ///
@@ -73,8 +94,10 @@ private final class NeverKeyWindow: NSWindow {
 ///   `.keyboardShortcut` button, bare letters and Esc included (`key(_:keyCode:)`).
 /// - What SwiftUI drew can be read back offscreen through `cacheDisplay` (`snapshot()`).
 /// - A mouse event does **not** reach a SwiftUI tap, double tap, drag or `Button`: the hosting
-///   view holds no gesture recognizer and no tracking area, and a board's hosting view has no
-///   subviews, so `hitTest` can only answer with the hosting view itself. There is deliberately
+///   view itself holds no gesture recognizer and no tracking area, and a board's hosting view has
+///   no subviews, so `hitTest` can only answer with the hosting view itself. An AppKit view a
+///   representable puts inside it can hold one (the editor's text view does), and that is where
+///   the late hover `tearDown` lets through comes from. There is deliberately
 ///   no `click` or `drag` here, and no way to add one without `sendEvent`, which R-15 forbids.
 ///   A test whose subject is a SwiftUI pointer gesture stays a GUI test.
 /// - SwiftUI's accessibility tree is a single childless group in-process, so a label "as read
@@ -113,9 +136,13 @@ final class HostedView<Content: View> {
         foreground.startListening()
         hosting = NSHostingView(rootView: content)
         hosting.frame = CGRect(origin: .zero, size: size)
-        window = NeverKeyWindow(
+        let neverKey = NeverKeyWindow(
             contentRect: hosting.frame, styleMask: [.titled], backing: .buffered, defer: false
         )
+        if let test = Test.current {
+            neverKey.owner = "\(test.name) (\(test.sourceLocation.fileID):\(test.sourceLocation.line))"
+        }
+        window = neverKey
         window.contentView = hosting
         window.layoutIfNeeded()
         hosting.layoutSubtreeIfNeeded()
@@ -217,6 +244,7 @@ final class HostedView<Content: View> {
     /// The end of the test: the window taken down the way `EditorHeightTests` takes its own
     /// down, and the hosting view let go so a representable inside it is dismantled.
     func tearDown() {
+        (window as? NeverKeyWindow)?.isTornDown = true
         window.orderOut(nil)
         window.contentView = nil
         foreground.stopListening()

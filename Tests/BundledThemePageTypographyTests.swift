@@ -18,7 +18,7 @@ private let pageTypographyBundledIDs = ["pergamenum-light", "pergamenum-dark"]
     private static let text = "# Titolo\n\nUna riga di prosa.\n\n##### Sezione\n\n###### Nota\n\n- voce di elenco\n"
 
     private func bundled(_ id: String) throws -> Theme {
-        let defaults = try #require(UserDefaults(suiteName: "pergamenum.tests.\(UUID().uuidString)"))
+        let defaults = ScratchDefaults.make()
         let engine = ThemeEngine(defaults: defaults)
         #expect(engine.problems.isEmpty, "\(engine.problems)")
         return try #require(engine.themes.first { $0.id == id }, "\(id) is not loaded")

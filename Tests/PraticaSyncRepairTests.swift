@@ -67,6 +67,7 @@ import Testing
             )]
         )
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
         let request = PraticaSyncEngine.SyncRequest(
             praticaFolder: Fixtures.praticaFolder, dossier: Fixtures.sampleDossier(),
@@ -102,6 +103,7 @@ import Testing
             )]
         )
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
         let request = PraticaSyncEngine.SyncRequest(
             praticaFolder: Fixtures.praticaFolder, dossier: Fixtures.sampleDossier(),
@@ -144,6 +146,7 @@ import Testing
 
     @Test func aZeroByteFileAlreadyInAllegatiIsRepairedWhileAValidFileStaysUntouched() async throws {
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let noteURL = try Self.seedExistingMessage(
             under: vaultRoot, messageID: "repair1@rossi-spa.it",
             linkedAttachmentNames: ["20260610_buono.pdf", "20260610_cattivo.pdf"]
@@ -181,6 +184,7 @@ import Testing
 
     @Test func aCorruptFileInOneFoldersAllegatiDoesNotAffectAnIdenticallyNamedValidFileInAnother() async throws {
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let noteA = try Self.seedExistingMessage(
             under: vaultRoot, folder: Fixtures.praticaFolder, messageID: "isoA@rossi-spa.it",
             linkedAttachmentNames: ["20260610_comune.pdf"], fileName: "20260610_1406_seed_a.md"
@@ -221,6 +225,7 @@ import Testing
 
     @Test func theTrashedFilesDigestIsExcludedFromDedupSoANewEmptyAttachmentIsNeverLinkedToTheTrashedName() async throws {
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let noteA = try Self.seedExistingMessage(
             under: vaultRoot, messageID: "dedupA@rossi-spa.it",
             linkedAttachmentNames: ["20260610_offerta.pdf"]
@@ -271,6 +276,7 @@ import Testing
 
     @Test func aCorruptFileIsRepairedAndResolvedInOneSyncWhenMailAlreadyHasTheRealBytes() async throws {
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let noteURL = try Self.seedExistingMessage(
             under: vaultRoot, messageID: "resolveinone@rossi-spa.it",
             linkedAttachmentNames: ["20260610_offerta.pdf"]
@@ -316,6 +322,7 @@ import Testing
 
     @Test func aSecondSyncAfterACompletedRepairFindsNothingLeftToRepair() async throws {
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let noteURL = try Self.seedExistingMessage(
             under: vaultRoot, messageID: "noop@rossi-spa.it",
             linkedAttachmentNames: ["20260610_buono.pdf", "20260610_cattivo.pdf"]
@@ -356,6 +363,7 @@ import Testing
     // relies on), no coder-added seam needed.
     @Test func aTrashFailureLeavesTheFileAloneAndReportsTheProblemWithoutDowngradingTheLink() async throws {
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let noteURL = try Self.seedExistingMessage(
             under: vaultRoot, messageID: "trashfail@rossi-spa.it",
             linkedAttachmentNames: ["20260610_cattivo.pdf"]

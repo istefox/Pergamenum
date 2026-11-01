@@ -120,7 +120,7 @@ private struct TemporaryDirectory: ~Copyable {
       "color": { "accent": { "primary": { "$type": "color", "$value": "#00FF00" } } } }
     """.write(to: themes.appending(path: "notte.json"), atomically: true, encoding: .utf8)
 
-    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    let engine = ThemeEngine(defaults: ScratchDefaults.make())
     #expect(engine.selectableThemes.count == 2)
 
     engine.attach(vaultRoot: vault.url)
@@ -141,7 +141,7 @@ private struct TemporaryDirectory: ~Copyable {
 @MainActor
 @Test func choosingAColourWritesItIntoTheVaultAndSelectsIt() throws {
     let vault = try TemporaryDirectory()
-    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    let engine = ThemeEngine(defaults: ScratchDefaults.make())
     engine.attach(vaultRoot: vault.url)
 
     engine.setCustomColor(.accentPrimary, to: RGBA(hex: "#FF0000")!)
@@ -167,7 +167,7 @@ private struct TemporaryDirectory: ~Copyable {
 @MainActor
 @Test func resetCustomizationRemovesTheFileClearsTheProblemDropsTheSelectionAndReloads() throws {
     let vault = try TemporaryDirectory()
-    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    let engine = ThemeEngine(defaults: ScratchDefaults.make())
     engine.attach(vaultRoot: vault.url)
     engine.setCustomColor(.accentPrimary, to: RGBA(hex: "#FF0000")!)
 
@@ -216,7 +216,7 @@ private struct TemporaryDirectory: ~Copyable {
 
 @MainActor
 @Test func withoutAVaultAColourCannotBeSavedAndSaysSo() {
-    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    let engine = ThemeEngine(defaults: ScratchDefaults.make())
     engine.setCustomColor(.accentPrimary, to: RGBA(hex: "#FF0000")!)
     // Silently doing nothing would look like a colour picker that ignores the user.
     #expect(engine.customizationProblem != nil)
@@ -304,7 +304,7 @@ private struct TemporaryDirectory: ~Copyable {
 @MainActor
 @Test func clearingFontsRemovesTheFileWhenNoColourOverrideIsLeft() throws {
     let vault = try TemporaryDirectory()
-    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    let engine = ThemeEngine(defaults: ScratchDefaults.make())
     engine.attach(vaultRoot: vault.url)
     let directory = try #require(engine.userThemesDirectory)
 
@@ -329,7 +329,7 @@ private struct TemporaryDirectory: ~Copyable {
 
 @MainActor
 @Test func withoutAVaultAFontCannotBeSavedAndSaysSo() {
-    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    let engine = ThemeEngine(defaults: ScratchDefaults.make())
     engine.setCustomFont(.prose, to: TypographyValue(family: .named("Georgia"), size: 20, weight: 400, lineHeight: 1.4))
     // The same guard `setCustomColor` has: silently doing nothing would look like a
     // picker that ignores the user.
@@ -340,7 +340,7 @@ private struct TemporaryDirectory: ~Copyable {
 @MainActor
 @Test func aWrittenFontOverrideReachesTheEngineAfterLoadUserThemes() throws {
     let vault = try TemporaryDirectory()
-    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    let engine = ThemeEngine(defaults: ScratchDefaults.make())
     engine.attach(vaultRoot: vault.url)
 
     engine.setCustomFont(.prose, to: TypographyValue(family: .named("Georgia"), size: 20, weight: 400, lineHeight: 1.4))
@@ -373,7 +373,7 @@ private struct TemporaryDirectory: ~Copyable {
         to: themes
     )
 
-    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    let engine = ThemeEngine(defaults: ScratchDefaults.make())
     engine.attach(vaultRoot: vault.url)
     // The explicit selection the person is actually looking at: dark, not the stale
     // file's light.
@@ -405,7 +405,7 @@ private struct TemporaryDirectory: ~Copyable {
         to: themes
     )
 
-    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    let engine = ThemeEngine(defaults: ScratchDefaults.make())
     engine.attach(vaultRoot: vault.url)
     engine.selection = .dark
 
@@ -427,7 +427,7 @@ private struct TemporaryDirectory: ~Copyable {
         to: themes
     )
 
-    let engine = ThemeEngine(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!)
+    let engine = ThemeEngine(defaults: ScratchDefaults.make())
     engine.attach(vaultRoot: vault.url)
     // `.followSystem` is the default selection; the system itself is in dark mode.
     engine.systemAppearance = .dark
@@ -442,7 +442,7 @@ private struct TemporaryDirectory: ~Copyable {
 @MainActor
 @Test func aRememberedThemeThatThisVaultDoesNotHaveIsDropped() throws {
     let vault = try TemporaryDirectory()
-    let defaults = UserDefaults(suiteName: "pergamenum.tests.\(UUID())")!
+    let defaults = ScratchDefaults.make()
     defaults.set("named:tema-di-un-altro-vault", forKey: "theme.selection")
 
     let engine = ThemeEngine(defaults: defaults)

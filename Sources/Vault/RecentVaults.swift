@@ -28,13 +28,15 @@ struct RecentVaults {
     /// perform was writing to a file the app never reads.
     private let isOverridden: Bool
 
-    /// A list backed by a throwaway suite, for tests.
+    /// A list backed by a store in memory, for tests.
     ///
     /// Not a convenience: with the real `UserDefaults`, running the suite left the
     /// user's own recents list full of temporary vaults and the app reopened one of
-    /// them at launch. Running the tests must not change the app.
+    /// them at launch. Running the tests must not change the app - nor the machine: a
+    /// throwaway suite left a plist in `~/Library/Preferences` per call (R-01), which is why
+    /// this is a `ScratchDefaults`.
     static func volatile() -> RecentVaults {
-        RecentVaults(defaults: UserDefaults(suiteName: "pergamenum.tests.\(UUID())") ?? .standard)
+        RecentVaults(defaults: ScratchDefaults.make())
     }
 
     init(defaults: UserDefaults = .standard, isOverridden: Bool? = nil) {

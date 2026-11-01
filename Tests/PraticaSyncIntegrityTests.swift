@@ -31,6 +31,7 @@ import Testing
             )]
         )
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
         let firstRequest = PraticaSyncEngine.SyncRequest(
             praticaFolder: Fixtures.praticaFolder, dossier: Fixtures.sampleDossier(),
@@ -109,6 +110,7 @@ import Testing
     /// algorithm end-to-end is Task 5's own integration concern.
     @Test func folderContextReservesAnUnreadableNotesNameAndLeavesItsBytesAlone() async throws {
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let emailDir = vaultRoot.appending(path: "\(Fixtures.praticaFolder)/email", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: emailDir, withIntermediateDirectories: true)
         let unreadable = emailDir.appending(path: "2026-01-01_msg.md", directoryHint: .notDirectory)
@@ -165,6 +167,7 @@ import Testing
             )]
         )
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         struct QuarantineFailure: Error {}
         let engine = PraticaSyncEngine(
             mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot,

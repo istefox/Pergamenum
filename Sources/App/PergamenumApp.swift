@@ -5,14 +5,20 @@ import UserNotifications
 
 /// Handles `pergamenum://` links at the application level.
 ///
-/// SwiftUI's `onOpenURL` is attached to a window, and on macOS a link with no window
-/// willing to claim it opens a NEW one - six links produced six windows, each with a
-/// vault still opening, so every route failed silently. `application(_:open:)` is
-/// called once, on the app, before any of that.
+/// Two entry points reach a link, and both go through `handle(urls:)` (R-09): this delegate's
+/// `application(_:open:)`, and the scene's `.onOpenURL`. Which of the two AppKit calls on
+/// macOS 27 for a `Window` scene is not verified by hand yet (S01-04), so neither is removed;
+/// one door means the batching, the order, the log of a refused link and the hand-back of
+/// PG-132 hold whichever one fires. Before this, `.onOpenURL` performed each link on its own
+/// task and never handed the foreground back, so a capture from another app could leave
+/// Pergamenum in front.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    /// Set by the App at launch; the delegate is created before it exists.
-    weak var vault: VaultController?
+    /// Set by the App at launch; the delegate is created before it exists. Setting it replays
+    /// the links that arrived before it was (`parkedRoutes`).
+    weak var vault: VaultController? {
+        didSet { replayParkedRoutes() }
+    }
     /// Set beside `vault`, for the same reason: the quit path below waits on it.
     weak var diary: DiaryController?
     weak var contenitore: ContenitoreController?
@@ -104,9 +110,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// foreground back (PG-132, SPEC §9). Created with the delegate, before any link.
     private let foreground = ForegroundHandBack()
 
+    /// Links parsed before the window handed this delegate its vault, in arrival order: a link
+    /// that launched the app can arrive before `onAppear` runs, and `vault?.handle` on a nil
+    /// vault dropped it.
+    private var parkedRoutes: [PergamenumRoute] = []
+    /// The batch being routed, so the next one waits for it: two entry points and one task
+    /// per call would otherwise race each other into the same window, out of order.
+    private var routing: Task<Void, Never>?
+
+    private static let urlLog = Logger(subsystem: AppInfo.bundleIdentifier, category: "url-scheme")
+
     func application(_ application: NSApplication, open urls: [URL]) {
-        let routes = urls.compactMap(PergamenumRoute.init)
+        handle(urls: urls)
+    }
+
+    /// The one door for `pergamenum://` links (R-09): parses, logs what it refuses, and performs
+    /// the batch in order on one task chained behind the previous one, then hands the
+    /// foreground back when every route says so.
+    func handle(urls: [URL]) {
+        let routes = urls.compactMap { url -> PergamenumRoute? in
+            guard let route = PergamenumRoute(url) else {
+                // A link with a typo in the host or a missing `file=` looked exactly like
+                // success (S01-09). The host is public, the rest carries note text.
+                Self.urlLog.notice(
+                    "route rifiutata: \(url.host() ?? "", privacy: .public) \(url.absoluteString, privacy: .private)"
+                )
+                return nil
+            }
+            return route
+        }
         guard !routes.isEmpty else { return }
+        guard vault != nil else {
+            parkedRoutes += routes
+            Self.urlLog.notice("route in attesa della finestra: \(self.parkedRoutes.count, privacy: .public)")
+            return
+        }
+        perform(routes)
+    }
+
+    private func replayParkedRoutes() {
+        guard vault != nil, !parkedRoutes.isEmpty else { return }
+        let routes = parkedRoutes
+        parkedRoutes = []
+        perform(routes)
+    }
+
+    private func perform(_ routes: [PergamenumRoute]) {
         // One task for the whole batch rather than one per link (ADR-0043 §D2): the
         // delegate method is synchronous and routing is not any more, and six links
         // handed to six tasks would race each other into the same window.
@@ -118,7 +167,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // (`PergamenumRoute.raisesApp`), so once every route has landed the foreground
         // goes back to the app it was taken from.
         let handsBack = ForegroundHandBack.handsBackActivation(after: routes)
-        Task { @MainActor [vault, foreground] in
+        let previous = routing
+        routing = Task { @MainActor [vault, foreground] in
+            await previous?.value
             for route in routes { await vault?.handle(route) }
             if handsBack { foreground.handBack() }
         }
@@ -412,13 +463,11 @@ struct PergamenumApp: App {
                     guard vault.root == nil, let recent = RecentVaults().mostRecent else { return }
                     await vault.switchVault(to: recent)
                 }
-                // Kept alongside the delegate: SwiftUI consumes the Apple Event
-                // itself, so `application(_:open:)` is never called in a SwiftUI app
-                // that has a WindowGroup. The delegate stays as the path for a link
-                // that arrives before any window exists.
+                // The second entry point, through the delegate's one door (R-09): batching,
+                // order, the refused-link log and the PG-132 hand-back are the same whichever
+                // of the two AppKit calls (see `AppDelegate`).
                 .onOpenURL { url in
-                    guard let route = PergamenumRoute(url) else { return }
-                    Task { @MainActor in await vault.handle(route) }
+                    appDelegate.handle(urls: [url])
                 }
         }
         .windowResizability(.contentMinSize)

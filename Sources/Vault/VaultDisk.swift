@@ -436,10 +436,9 @@ extension VaultDisk {
     /// did not say.
     func trashFile(at relativePath: String) async throws -> (mutation: IndexMutation, trashURL: URL?) {
         let url = try store.url(for: relativePath)
-        var landed: NSURL?
-        try FileManager.default.trashItem(at: url, resultingItemURL: &landed)
+        let landed = try VaultState.trashItem(at: url)
         let mutation = IndexMutation(path: relativePath, record: nil, sequence: nextSequence(for: relativePath))
-        return (mutation, landed as URL?)
+        return (mutation, landed)
     }
 
     /// Restores a file from outside the vault to a path inside it (ADR-0068 §D3).

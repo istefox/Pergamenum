@@ -339,7 +339,7 @@ private func card(_ color: RGBA, opacity: Double) -> String {
 /// leave the export behind unnoticed.
 @MainActor
 @Test func theExportStylesheetColoursAreTheLightThemesApprovedValues() throws { // R-43
-    let engine = ThemeEngine(defaults: try #require(UserDefaults(suiteName: "pergamenum.tests.\(UUID().uuidString)")))
+    let engine = ThemeEngine(defaults: ScratchDefaults.make())
     let light = try #require(engine.themes.first { $0.id == "pergamenum-light" }, "pergamenum-light is not loaded")
     let css = stylesheet(of: NoteExport.html(from: "x", title: "t"))
 

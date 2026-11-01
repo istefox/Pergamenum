@@ -323,8 +323,12 @@ final class VaultController {
         pinnedTags = pinnedTagsStore.tags(for: url)
         routeState.isOpeningVault = false
 
-        if let route = routeState.pending {
-            routeState.pending = nil
+        // Taken whole before the first `await`: a route that arrives while these replay finds the
+        // vault open and runs at once, and one parked by a vault switch started meanwhile waits
+        // for that open rather than looping here.
+        let pending = routeState.pending
+        routeState.pending = []
+        for route in pending {
             await handle(route)
         }
     }

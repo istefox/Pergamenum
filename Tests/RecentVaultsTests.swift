@@ -4,10 +4,9 @@ import Testing
 
 // MARK: - Recent vaults
 
-/// A throwaway suite, so these two never touch the real preferences.
-private func makeDefaults() -> (UserDefaults, String) {
-    let name = "pergamenum.tests.\(UUID().uuidString)"
-    return (UserDefaults(suiteName: name)!, name)
+/// An in-memory store (`ScratchDefaults`), so these two never touch the real preferences.
+private func makeDefaults() -> UserDefaults {
+    ScratchDefaults.make()
 }
 
 /// A directory to stand in for a vault. It only has to exist: `remember` stores a
@@ -24,8 +23,7 @@ private func makeVaultDirectory() throws -> URL {
 /// vaults the tests deleted a moment later.
 @Test func aVaultListHandedInOnTheCommandLineIsNeverPersisted() throws {
     let vault = try makeVaultDirectory()
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
 
     RecentVaults(defaults: defaults, isOverridden: true).remember(vault)
 
@@ -38,8 +36,7 @@ private func makeVaultDirectory() throws -> URL {
     // The positive control: the guard above must not turn `remember` into a no-op for
     // the ordinary case, which is the whole feature.
     let vault = try makeVaultDirectory()
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
 
     RecentVaults(defaults: defaults, isOverridden: false).remember(vault)
 
@@ -52,8 +49,7 @@ private func makeVaultDirectory() throws -> URL {
 /// react, which is exactly what orphaned an `OpenTabsStore` session forever. `remember`
 /// now hands the evicted path back instead of discarding it silently.
 @Test func rememberReportsThePathTheMaximumCapEvicts() throws {
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
     let recents = RecentVaults(defaults: defaults, isOverridden: false)
 
     var vaults: [URL] = []

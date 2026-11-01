@@ -165,6 +165,34 @@ func omitsSourceMeetingForAnyOtherKind(_ kind: PlaudRecordingKind) {
     #expect(temaB.lowerBound < trascrizione.lowerBound)
 }
 
+/// S12-02: a theme named like the transcript section kept its tasks in the section the transcript
+/// then replaced wholesale, so the accepted task never reached the note.
+@Test func aThemeNamedTrascrizioneKeepsItsTasksOutOfTheTranscriptSection() throws {
+    let proposal = makeProposal(themes: [
+        PlaudTheme(name: "Trascrizione", tasks: [makeTask(id: "t1", title: "Uno", quote: "quote uno")]),
+        PlaudTheme(name: "Riga\n## Altro", tasks: [makeTask(id: "t2", title: "Due", quote: "quote due")]),
+    ])
+    let text = TranscriptNote.render(
+        proposal: proposal, acceptedTaskIDs: ["t1", "t2"], speakerRenames: [:],
+        ledgerFingerprints: [], existingNoteText: nil
+    )
+
+    let lines = text.components(separatedBy: "\n")
+    #expect(lines.filter { $0.hasPrefix("## ") } == ["## Trascrizione (tema)", "## Riga ## Altro", "## Trascrizione"])
+    #expect(text.contains("- [ ] Uno"), "the accepted task is in the note")
+    #expect(text.contains("- [ ] Due"))
+    let transcript = try #require(text.range(of: "\n## Trascrizione\n"))
+    #expect(text[transcript.upperBound...].contains("Speaker 1: Prova di trascrizione."))
+    #expect(!text[transcript.upperBound...].contains("- [ ]"), "the transcript section holds no task")
+
+    // A re-import finds both sections again rather than adding a second copy of either.
+    let again = TranscriptNote.render(
+        proposal: proposal, acceptedTaskIDs: ["t1", "t2"], speakerRenames: [:],
+        ledgerFingerprints: [], existingNoteText: text
+    )
+    #expect(again == text)
+}
+
 // MARK: - Task line shape (C7, D9, D10)
 
 @Test func writesTheDueMarkerOnlyWhenDueHintIsPresent() throws {

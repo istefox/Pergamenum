@@ -26,8 +26,11 @@ extension VaultSession {
                 continue
             }
             do {
-                try await write(sample.text, to: sample.relativePath)
+                // A file that appeared after the read above is somebody's, and stays (R-10).
+                try await write(sample.text, to: sample.relativePath, expectingAbsent: true)
                 outcome.created.append(sample.relativePath)
+            } catch WriteRefusal.movedOn {
+                outcome.alreadyThere.append(sample.relativePath)
             } catch {
                 outcome.failures.append("\(sample.relativePath): \(error.localizedDescription)")
             }

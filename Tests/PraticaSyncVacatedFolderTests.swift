@@ -60,6 +60,7 @@ import Testing
     @Test func aSyncIntoAVacatedFolderIsRefusedAndRecreatesNothing() async throws {
         let fixture = try Self.fixture()
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
         try FileManager.default.removeItem(at: vaultRoot.appending(path: Fixtures.praticaFolder))
 
@@ -77,6 +78,7 @@ import Testing
     @Test func aFolderThatSurvivedWithoutItsDossierIsRefused() async throws {
         let fixture = try Self.fixture()
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
         try FileManager.default.removeItem(at: vaultRoot.appending(path: "\(Fixtures.praticaFolder)/pratica.md"))
 
@@ -94,6 +96,7 @@ import Testing
     @Test func anAttachmentIsNeverWrittenUnderAVacatedFolder() async throws {
         let fixture = try Self.fixture(withAttachment: true)
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
         try FileManager.default.removeItem(at: vaultRoot.appending(path: Fixtures.praticaFolder))
 
@@ -114,6 +117,7 @@ import Testing
     @Test func aFirstSyncStillCreatesEmailAndAllegati() async throws {
         let fixture = try Self.fixture(withAttachment: true)
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
         #expect(!Self.exists("\(Fixtures.praticaFolder)/email", under: vaultRoot), "fixture precondition")
 
@@ -128,6 +132,7 @@ import Testing
     @Test func aMessageWithNoAttachmentsCreatesNoAllegatiDirectory() async throws {
         let fixture = try Self.fixture()
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
 
         _ = try await engine.sync(Self.request())
@@ -152,6 +157,7 @@ import Testing
     @Test func aRelocationBetweenTwoMessagesStopsTheRunInsteadOfWritingUnderTheVacatedPath() async throws {
         let fixture = try Self.fixture(messages: 2)
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let moved = "Calendar/\(Fixtures.praticaFolder)"
         let counter = WriteCounter()
         let engine = PraticaSyncEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot) { text, relativePath in

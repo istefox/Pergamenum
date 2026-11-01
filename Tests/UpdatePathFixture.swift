@@ -32,8 +32,6 @@ final class UpdatePathFixture {
     private(set) var skippedAdvances: [Int: Int] = [:]
 
     private let hosted: HostedView<AnyView>
-    private let defaults: UserDefaults
-    private let defaultsName: String
     private let temporaryVault: TemporaryVault
     /// Where the next keystroke types, in the note as it is now.
     private(set) var location: Int
@@ -77,8 +75,7 @@ final class UpdatePathFixture {
             history: NavigationHistory(),
             pasteboard: .volatile()
         )
-        let defaultsName = "UpdatePathFixture-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: defaultsName))
+        let defaults = ScratchDefaults.make()
         let shortcuts = ShortcutStore(defaults: defaults, isOverridden: false)
 
         let hosted: HostedView<AnyView>
@@ -113,8 +110,6 @@ final class UpdatePathFixture {
         self.typingPause = typingPause
         self.find = find
         self.hosted = hosted
-        self.defaults = defaults
-        self.defaultsName = defaultsName
         self.temporaryVault = temporaryVault
         location = RestyleBudget.insertionPoint(in: note)
     }
@@ -169,6 +164,5 @@ final class UpdatePathFixture {
         #expect(hosted.refusals.isEmpty, "the hosted window refused \(hosted.refusals)")
         hosted.tearDown()
         vault.close()
-        defaults.removePersistentDomain(forName: defaultsName)
     }
 }
