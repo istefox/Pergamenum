@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import Pergamenum
@@ -204,4 +205,27 @@ private func seedNote(_ text: String, in actions: CommandActions) {
     #expect(actions.vault.focusedTab?.hidesFrontmatter == true)
     actions.run(.toggleFrontmatter)
     #expect(actions.vault.focusedTab?.hidesFrontmatter == false)
+}
+
+// PG-443 (S01-01): «Incolla come testo puro» over a clipboard with no text used to clear it and
+// leave an empty string. A private pasteboard: the general one is the person's clipboard.
+@MainActor
+@Test func plainPasteLeavesAPasteboardWithoutTextAsItWas() {
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("it.stefer.pergamenum.tests.paste-plain"))
+    defer { pasteboard.releaseGlobally() }
+    let file = URL(fileURLWithPath: "/tmp/immagine.png") as NSURL
+    pasteboard.clearContents()
+    pasteboard.writeObjects([file])
+    let before = pasteboard.changeCount
+
+    #expect(!CommandActions.reduceToPlainText(pasteboard))
+    #expect(pasteboard.changeCount == before)
+    #expect(pasteboard.string(forType: .fileURL) == file.absoluteString)
+
+    pasteboard.clearContents()
+    pasteboard.setString("testo", forType: .string)
+    pasteboard.setString("<b>testo</b>", forType: .html)
+    #expect(CommandActions.reduceToPlainText(pasteboard))
+    #expect(pasteboard.data(forType: .html) == nil)
+    #expect(pasteboard.string(forType: .string) == "testo")
 }

@@ -32,8 +32,11 @@ extension UNUserNotificationCenter: ReminderRequestQueue {}
 @Observable
 final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     private(set) var access: CalendarAccess = .notDetermined
-    /// Identifiers currently scheduled, so a rescan replaces rather than duplicates.
+    /// Identifiers this launch scheduled, so a rescan replaces rather than duplicates. Not
+    /// the whole picture after a relaunch: `reschedule` also asks the centre (PG-443).
     private(set) var scheduledIDs: Set<String> = []
+    /// Bumped by every `reschedule`, so a run can tell it has been superseded by a newer one.
+    @ObservationIgnored private var rescheduleGeneration = 0
 
     private let center = UNUserNotificationCenter.current()
     /// Where requests are added, removed and counted: `center` in the app, a double in
@@ -49,6 +52,10 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
 
     /// The `userInfo` key a scheduled notification carries its route under.
     nonisolated static let routeKey = "route"
+
+    /// The identifier prefix of `sendTestNotification`'s request, the one pending request
+    /// `reschedule` does not own and so never removes.
+    nonisolated static let testIdentifierPrefix = "pergamenum.test."
 
     private static let log = Logger(subsystem: AppInfo.bundleIdentifier, category: "reminders")
 
@@ -192,6 +199,19 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     /// tasks on disk, and a diff that drifted would leave a notification firing for a
     /// task the user deleted.
     ///
+    /// What is replaced is read from the centre, not from `scheduledIDs` alone (PG-443,
+    /// S06-02): that set lives only as long as the process, so the first run after a
+    /// relaunch removed nothing, and a task deleted or retimed since the previous launch kept
+    /// that launch's notification. Every pending request is this scheduler's except the test
+    /// notification's (`testIdentifierPrefix`), which is left to fire. The read is a
+    /// suspension, so the cancellation guard is asked again after it: a run cancelled while
+    /// reading must not remove what the newer run is adding.
+    ///
+    /// A run superseded by a newer call stops at the same guards as a cancelled one, because
+    /// not every caller's run is cancellable (the Settings button's is not): each call bumps
+    /// `rescheduleGeneration`, and a run whose generation is no longer the latest behaves as
+    /// cancelled. The class is `@MainActor`, so the counter needs no lock.
+    ///
     /// `session` mints a stable note id for each task's source note (ADR-0059 §D2)
     /// before the route is built, the same id-first-then-path pattern
     /// `VaultController.pergamenumLink(toNoteAt:)` already uses - so a note renamed
@@ -205,9 +225,16 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     /// has accepted that request, so a run stopped halfway leaves the set naming exactly what
     /// it added, and the next run removes those.
     func reschedule(for tasks: [TaskItem], session: VaultSession?, now: Date = Date()) async {
-        guard access.isGranted, !Task.isCancelled else { return }
+        rescheduleGeneration &+= 1
+        let generation = rescheduleGeneration
+        let isCurrent = { !Task.isCancelled && generation == self.rescheduleGeneration }
 
-        queue.removePendingNotificationRequests(withIdentifiers: Array(scheduledIDs))
+        guard access.isGranted, isCurrent() else { return }
+        let pending = await queue.pendingNotificationRequests().map(\.identifier)
+        guard access.isGranted, isCurrent() else { return }
+
+        let owned = Set(pending.filter { !$0.hasPrefix(Self.testIdentifierPrefix) }).union(scheduledIDs)
+        queue.removePendingNotificationRequests(withIdentifiers: Array(owned))
         scheduledIDs.removeAll()
 
         var noteIDs: [String: String] = [:]
@@ -218,7 +245,7 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
         }
 
         for request in Self.requests(for: tasks, after: now, noteIDs: noteIDs) {
-            guard !Task.isCancelled else { break }
+            guard isCurrent() else { break }
             do {
                 try await queue.add(request)
                 scheduledIDs.insert(request.identifier)
@@ -257,7 +284,7 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
         content.sound = .default
 
         let request = UNNotificationRequest(
-            identifier: "pergamenum.test.\(UUID().uuidString)",
+            identifier: "\(Self.testIdentifierPrefix)\(UUID().uuidString)",
             content: content,
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)
         )
