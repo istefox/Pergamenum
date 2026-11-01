@@ -425,14 +425,14 @@ struct FolderFileOperations {
         // The guard above has already confirmed `folder` exists, so `walk` returning
         // nil here is unreachable in practice (PG-048).
         let trashedNotePaths = walk(folder)?.notePaths ?? []
-        var resulting: NSURL?
+        let resulting: URL?
         do {
             // Through the boundary (ADR-0063 §D7), defence in depth behind `isDirectory`.
-            try FileManager.default.trashItem(at: try store.url(for: folder), resultingItemURL: &resulting)
+            resulting = try VaultState.trashItem(at: try store.url(for: folder))
         } catch {
             throw FileOperationError.failed("eliminazione: \(error.localizedDescription)")
         }
-        return (resulting as URL?, trashedNotePaths)
+        return (resulting, trashedNotePaths)
     }
 
     // MARK: - ADR-0026: Move (§D1, §D7)

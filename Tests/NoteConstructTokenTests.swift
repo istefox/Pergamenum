@@ -23,7 +23,7 @@ private let noteConstructBundledIDs = ["pergamenum-light", "pergamenum-dark"]
     private static let cardOpacity = 0.08
 
     private func isolatedDefaults() -> UserDefaults {
-        UserDefaults(suiteName: "pergamenum.tests.\(UUID().uuidString)")!
+        ScratchDefaults.make()
     }
 
     private func bundled(_ id: String, in engine: ThemeEngine) throws -> Theme {

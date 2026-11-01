@@ -174,7 +174,6 @@ private func exists(_ path: String, in root: URL) -> Bool {
     let harness = try await ContenitoreHarness.make(root: vault.root, home: vault.stateBase)
     let session = try #require(harness.vault.session)
     harness.contenitore.scope = .container("Contenitore/\(name)")
-    defer { try? FileManager.default.removeItem(at: FileManager.default.homeDirectoryForCurrentUser.appending(path: ".Trash/\(name)")) }
 
     await harness.actions.trashContainer("Contenitore/\(name)")
     await harness.vault.rescan()
@@ -358,7 +357,6 @@ private func wireRelocationHook(_ harness: ContenitoreHarness) {
     harness.contenitore.openEditor(for: path)
     let editor = try #require(harness.contenitore.editor)
     editor.draft.description = "Destinata al Cestino"
-    defer { try? FileManager.default.removeItem(at: FileManager.default.homeDirectoryForCurrentUser.appending(path: ".Trash/\(name)")) }
 
     await harness.actions.trashContainer("Contenitore/\(name)")
 

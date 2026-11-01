@@ -81,7 +81,7 @@ enum TranscriptNote {
 
         for theme in proposal.themes {
             let newLines = lines(for: theme, acceptedTaskIDs: acceptedTaskIDs, suppressing: &suppressed)
-            merge(newLines, underHeading: headingPrefix + theme.name, into: &body)
+            merge(newLines, underHeading: headingPrefix + sectionName(for: theme), into: &body)
         }
         replaceTranscript(
             with: transcriptLines(of: proposal, speakerRenames: speakerRenames), in: &body
@@ -273,10 +273,18 @@ enum TranscriptNote {
         var lines: [String] { preamble + sections.flatMap { [$0.heading] + $0.lines } }
     }
 
+    /// A `## ` line inside a code fence is not a section (R-10, the `MarkdownSection` rule): the
+    /// fences are `WikilinkParser.codeRanges(in:)`'s, walked on unicode scalars like the split.
     private static func parseBody(_ body: String) -> Body {
         var parsed = Body(preamble: [], sections: [])
+        let scalars = body.unicodeScalars
+        let code = WikilinkParser.codeRanges(in: body)
+        var lineStart = scalars.startIndex
         for line in body.components(separatedBy: "\n") {
-            if line.hasPrefix(headingPrefix) {
+            let isCode = code.contains { $0.contains(lineStart) }
+            lineStart = scalars.index(lineStart, offsetBy: line.unicodeScalars.count + 1, limitedBy: scalars.endIndex)
+                ?? scalars.endIndex
+            if !isCode, line.hasPrefix(headingPrefix) {
                 parsed.sections.append(Section(heading: line, lines: []))
             } else if parsed.sections.isEmpty {
                 parsed.preamble.append(line)
@@ -288,7 +296,7 @@ enum TranscriptNote {
     }
 
     private static func merge(_ newLines: [String], underHeading heading: String, into body: inout Body) {
-        if let index = body.sections.firstIndex(where: { $0.heading == heading }) {
+        if let index = body.sections.firstIndex(where: { names($0, heading) }) {
             guard !newLines.isEmpty else { return }
             body.sections[index].lines = appending(newLines, to: body.sections[index].lines)
             return
@@ -296,7 +304,7 @@ enum TranscriptNote {
         let section = Section(heading: heading, lines: content(newLines))
         // Ahead of the transcript, which stays last (D11); on a fresh note there is no
         // transcript section yet, so proposal order is simply append order.
-        if let transcript = body.sections.firstIndex(where: { $0.heading == transcriptSectionHeading }) {
+        if let transcript = body.sections.firstIndex(where: { names($0, transcriptSectionHeading) }) {
             body.sections.insert(section, at: transcript)
         } else {
             body.sections.append(section)
@@ -304,7 +312,7 @@ enum TranscriptNote {
     }
 
     private static func replaceTranscript(with transcript: [String], in body: inout Body) {
-        if let index = body.sections.firstIndex(where: { $0.heading == transcriptSectionHeading }) {
+        if let index = body.sections.firstIndex(where: { names($0, transcriptSectionHeading) }) {
             body.sections[index].lines = content(transcript)
         } else {
             body.sections.append(Section(heading: transcriptSectionHeading, lines: content(transcript)))
@@ -312,6 +320,28 @@ enum TranscriptNote {
     }
 
     private static var transcriptSectionHeading: String { headingPrefix + transcriptHeading }
+
+    /// The heading text a theme's section takes (S12-02): the service's name on one line, with
+    /// no leading `#`, and never the transcript's own. A theme named «Trascrizione» merged its
+    /// tasks into the section `replaceTranscript` then overwrote wholesale, so they vanished from
+    /// the note; a line break or a leading `#` in a name made a heading that is not this one.
+    private static func sectionName(for theme: PlaudTheme) -> String {
+        let name = theme.name
+            .components(separatedBy: .newlines)
+            .joined(separator: " ")
+            .drop { $0 == "#" || $0.isWhitespace }
+            .trimmingCharacters(in: .whitespaces)
+        if name.isEmpty { return "Tema" }
+        return name == transcriptHeading ? "\(transcriptHeading) (tema)" : name
+    }
+
+    /// Whether `section` is the one under `heading`: its heading line equals it once one trailing
+    /// `\r` and any trailing spaces or tabs are removed (the `MarkdownSection` rule, R-10). A CRLF
+    /// note's `## Trascrizione\r` failed the exact comparison, and a re-import appended a second
+    /// transcript instead of replacing the first.
+    private static func names(_ section: Section, _ heading: String) -> Bool {
+        MarkdownSection.isHeading(section.heading, heading)
+    }
 
     /// A section's own lines: one blank line under the heading, the content, one blank line
     /// before whatever comes next (or the file's final newline).

@@ -89,6 +89,7 @@ import Testing
             )]
         )
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
         let firstRequest = PraticaSyncEngine.SyncRequest(
             praticaFolder: Fixtures.praticaFolder, dossier: Fixtures.sampleDossier(),
@@ -143,6 +144,7 @@ import Testing
             )]
         )
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
         let firstRequest = PraticaSyncEngine.SyncRequest(
             praticaFolder: Fixtures.praticaFolder, dossier: Fixtures.sampleDossier(),
@@ -189,6 +191,7 @@ import Testing
             )]
         )
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
         let firstRequest = PraticaSyncEngine.SyncRequest(
             praticaFolder: Fixtures.praticaFolder, dossier: Fixtures.sampleDossier(),
@@ -252,6 +255,7 @@ import Testing
             )]
         )
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
         let request = PraticaSyncEngine.SyncRequest(
             praticaFolder: Fixtures.praticaFolder, dossier: Fixtures.sampleDossier(),
@@ -318,6 +322,7 @@ import Testing
             )]
         )
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
         let request = PraticaSyncEngine.SyncRequest(
             praticaFolder: Fixtures.praticaFolder, dossier: Fixtures.sampleDossier(),

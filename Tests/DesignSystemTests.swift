@@ -441,5 +441,5 @@ func weightThresholdsRoundDownToTheLighterStop(weight: Int, stop: FontWeightStop
 /// Each test gets its own defaults suite so persisted selections cannot leak between
 /// tests running in parallel.
 private func isolatedDefaults() -> UserDefaults {
-    UserDefaults(suiteName: "pergamenum.tests.\(UUID().uuidString)")!
+    ScratchDefaults.make()
 }

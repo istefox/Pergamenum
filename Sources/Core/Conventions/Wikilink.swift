@@ -290,37 +290,13 @@ enum RelatedSection {
     /// with `#`, or to the end of the body (ADR-0065 §D9.3, R-18).
     ///
     /// The heading is a line that is exactly `## Note correlate` once one trailing `\r` and any
-    /// trailing spaces or tabs are removed. A search for the heading's text matched it anywhere -
-    /// inside `### Note correlate operative`, or mid-sentence - so the linter read bullets from a
-    /// section that was not there, and «Collega» wrote under it. Lines are walked on unicode
-    /// scalars, because a CRLF pair is one `Character` and a `Character` search for `\n` finds no
-    /// line end in a CRLF note at all (ADR-0065 §D3).
-    ///
-    /// A line inside a backtick or tilde fence is neither the heading nor the line that ends the
-    /// section (PG-278): a note quoting the convention in a code block has no section there, and
-    /// a `# comment` in a shell block under the section does not cut it short. The fences come
-    /// from `WikilinkParser.codeRanges(in:)`, the rule that already keeps a `[[link]]` in a fence
-    /// from being a link, CRLF included. Its inline code spans can contain a line start, when a
-    /// span opens at column 0, but such a line begins with a backtick and is never the heading or
-    /// a `#` line, so only the fences change the answer here.
+    /// trailing spaces or tabs are removed, outside any code fence (PG-278). A search for the
+    /// heading's text matched it anywhere - inside `### Note correlate operative`, or
+    /// mid-sentence - so the linter read bullets from a section that was not there, and «Collega»
+    /// wrote under it. The walk is `MarkdownSection`'s, shared with the timeline and the event
+    /// notes since R-10.
     static func sectionRange(in body: String) -> Range<String.Index>? {
-        let scalars = body.unicodeScalars
-        let code = WikilinkParser.codeRanges(in: body)
-        var start: String.Index?
-        var lineStart = scalars.startIndex
-        while lineStart < scalars.endIndex {
-            let lineEnd = scalars[lineStart...].firstIndex(of: "\n") ?? scalars.endIndex
-            let line = String(scalars[lineStart..<lineEnd])
-            let isCode = code.contains { $0.contains(lineStart) }
-            if let start {
-                if !isCode, line.hasPrefix("#") { return start..<lineStart }
-            } else if !isCode, isHeading(line) {
-                start = lineStart
-            }
-            guard lineEnd < scalars.endIndex else { break }
-            lineStart = scalars.index(after: lineEnd)
-        }
-        return start.map { $0..<body.endIndex }
+        MarkdownSection.range(under: heading, in: body)
     }
 
     /// Where the section's bullets begin: just past the heading line's own line break, or nil
@@ -328,13 +304,6 @@ enum RelatedSection {
     static func bulletsStart(in body: String, section: Range<String.Index>) -> String.Index? {
         let scalars = body.unicodeScalars
         return scalars[section].firstIndex(of: "\n").map { scalars.index(after: $0) }
-    }
-
-    private static func isHeading(_ line: String) -> Bool {
-        var scalars = Substring(line).unicodeScalars
-        if scalars.last == "\r" { scalars.removeLast() }
-        while let last = scalars.last, last == " " || last == "\t" { scalars.removeLast() }
-        return String(scalars) == heading
     }
 
     /// Reads the bullets under `## Note correlate`.

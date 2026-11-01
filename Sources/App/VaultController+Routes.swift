@@ -39,8 +39,13 @@ extension VaultController {
         // the app happened to be running. "Not open" includes "still opening": a route
         // acted on during the rescan would open a tab, `rememberTabs()` would overwrite
         // the saved tab session, and `restoreTabs()` would then find tabs and bail out.
+        //
+        // Queued in arrival order, never one slot: a batch of links that launched the app (two
+        // captures from a Raycast script) kept only its last route, and the others were lost
+        // with nothing logged (R-09).
         guard let store, !routeState.isOpeningVault else {
-            routeState.pending = route
+            routeState.pending.append(route)
+            Self.routeLog.notice("route in attesa dell'apertura: \(self.routeState.pending.count, privacy: .public)")
             return false
         }
 
@@ -199,8 +204,9 @@ extension VaultController {
 /// instead of reaching into it.
 extension VaultController {
     struct RouteState {
-        /// A route that arrived before the vault was open, replayed once it is.
-        var pending: PergamenumRoute?
+        /// The routes that arrived before the vault was open, in arrival order, replayed in that
+        /// order once it is.
+        var pending: [PergamenumRoute] = []
         /// A canvas the Workspace should open when it next appears.
         var pendingCanvas: (path: String, nodeID: String?)?
         /// A query the quick switcher should start from.

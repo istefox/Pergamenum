@@ -46,7 +46,7 @@ private func viewMenuSource() throws -> Substring {
 @MainActor
 @Test func onAFreshInstallOnlyFollowLinkShowsAKey() throws {
     let name = "LinkFollowMenuTests-\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: name))
+    let defaults = ScratchDefaults.make()
     defer { defaults.removePersistentDomain(forName: name) }
     let store = ShortcutStore(defaults: defaults, isOverridden: false)
 

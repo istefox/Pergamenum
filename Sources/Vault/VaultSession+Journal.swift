@@ -370,9 +370,11 @@ extension VaultSession {
 
     /// Reverses every entry `preflightUndo` has already cleared, newest first.
     ///
-    /// The individual writes can still fail here - the disk between the check and the write is
-    /// the same narrow window D4 already accepts for a gesture going forward - so a failure is
-    /// reported rather than assumed impossible.
+    /// The preflight ran on the main actor before the first `await`, so it is a filter and not a
+    /// guard (ADR-0043 §D7): each write carries the precondition the preflight checked, decided
+    /// inside the disk actor. A text replacement is written over `hashAfter` only, a removal
+    /// lands only where nothing is (R-10). A save that landed between the check and the write is
+    /// refused and named in `failures`, never overwritten with the journal's older text.
     func performUndo(_ entries: [WriteJournal.Entry]) async -> (changed: [String], failures: [String]) {
         var changed: [String] = []
         var failures: [String] = []
@@ -388,9 +390,9 @@ extension VaultSession {
                     // move originally repointed it: reversing it through `write` would read the
                     // JSON back as a note and leave a bogus record in the index.
                     if entry.path.hasSuffix(".\(CanvasStore.fileExtension)") {
-                        try await writeFile(textBefore, to: entry.path)
+                        try await writeFile(textBefore, to: entry.path, expecting: entry.hashAfter)
                     } else {
-                        try await write(textBefore, to: entry.path)
+                        try await write(textBefore, to: entry.path, expecting: entry.hashAfter)
                     }
                     changed.append(entry.path)
                 case .removal:
@@ -398,7 +400,7 @@ extension VaultSession {
                         failures.append("\(entry.path): il journal non ha il testo da ripristinare")
                         continue
                     }
-                    try await write(textBefore, to: entry.path)
+                    try await write(textBefore, to: entry.path, expectingAbsent: true)
                     if let idBefore = entry.idBefore {
                         restoreNoteID(idBefore, to: entry.path)
                     }
@@ -411,6 +413,10 @@ extension VaultSession {
                     try await moveFile(from: entry.path, to: pathBefore)
                     changed.append(pathBefore)
                 }
+            } catch let refusal as VaultWriteRefusal {
+                // Its own sentence, which `localizedDescription` would replace with Foundation's
+                // generic one, and which already names the file: no path prefix in front of it.
+                failures.append(refusal.description)
             } catch {
                 failures.append("\(entry.path): \(error.localizedDescription)")
             }

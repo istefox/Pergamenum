@@ -187,15 +187,11 @@ struct BoardFileOperations {
         let board = Self.normalized(relativePath)
         guard isFile(board) else { throw FileOperationError.missing(relativePath) }
 
-        var resulting: NSURL?
         do {
-            try FileManager.default.trashItem(
-                at: try store.url(for: board), resultingItemURL: &resulting
-            )
+            return try VaultState.trashItem(at: try store.url(for: board))
         } catch {
             throw FileOperationError.failed("eliminazione board: \(error)")
         }
-        return resulting as URL?
     }
 
     // MARK: - ADR-0026: Move (§D1, §D7)

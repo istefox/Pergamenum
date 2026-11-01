@@ -90,13 +90,11 @@ import Testing
     @Test func aPersistentMailStoreRootIsIgnored() throws {
         // PG-250: a value in the persistent domain - a stray `defaults write`, or an older
         // test run on another branch - must not redirect the Mail read; only the launch
-        // argument may. A throwaway suite shares the process-wide argument domain but not
-        // the app's persistent one, so this touches no other process. The check is against
-        // this test's own unique path, so a concurrent `MailStoreOverride` holder cannot
-        // make it pass or fail.
-        let suiteName = "pergamenum.tests.pg250.\(UUID())"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        // argument may. The store is in memory (`ScratchDefaults`), so this writes no
+        // preferences file and touches no other process. The check is against this test's
+        // own unique path, so a concurrent `MailStoreOverride` holder cannot make it pass or
+        // fail.
+        let defaults = ScratchDefaults.make()
         let persistentPath = "/tmp/pergamenum-pg250-\(UUID())"
         defaults.set(persistentPath, forKey: MailStoreLocation.overrideKey)
 

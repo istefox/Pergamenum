@@ -85,9 +85,8 @@ extension PraticaSyncEngine {
             // ordering `prepare`'s own attachment loop already uses.
             let verdict = AttachmentIntegrity.verdict(of: data, named: name, contentType: nil)
             guard verdict == .usable else {
-                var trashedURL: NSURL?
                 do {
-                    try FileManager.default.trashItem(at: url, resultingItemURL: &trashedURL)
+                    try VaultState.trashItem(at: url)
                     // Free for the retry to reuse - never taken, never digested.
                     context.corruptAttachmentNames.insert(name)
                 } catch {

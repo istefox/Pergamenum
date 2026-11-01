@@ -58,6 +58,7 @@ import Testing
 
     @Test func regenerationPreviewReplacementTextMatchesTheOriginalImportAndDiffIsNilUntilEdited() async throws {
         let synced = try await Self.syncedFixtureAndVault()
+        defer { try? FileManager.default.removeItem(at: synced.vaultRoot) }
         let (notePath, originalText) = try Self.writtenNote(under: synced.vaultRoot)
 
         // Unmodified: the file on disk already matches what a fresh import would
@@ -85,6 +86,7 @@ import Testing
 
     @Test func commitRegenerationWritesExactlyThePlansReplacementTextToItsNotePath() async throws {
         let synced = try await Self.syncedFixtureAndVault()
+        defer { try? FileManager.default.removeItem(at: synced.vaultRoot) }
         let (notePath, originalText) = try Self.writtenNote(under: synced.vaultRoot)
         let noteURL = synced.vaultRoot.appending(path: notePath, directoryHint: .notDirectory)
         try Data((originalText + "\n\nAggiunto a mano.\n").utf8).write(to: noteURL, options: .atomic)
@@ -112,6 +114,7 @@ import Testing
 
     @Test @MainActor func dismissRegenerationFromTheReadyStateLeavesTheNoteFileByteIdenticalOnDisk() async throws {
         let synced = try await Self.syncedFixtureAndVault()
+        defer { try? FileManager.default.removeItem(at: synced.vaultRoot) }
         let (notePath, originalText) = try Self.writtenNote(under: synced.vaultRoot)
         let noteURL = synced.vaultRoot.appending(path: notePath, directoryHint: .notDirectory)
         let handEdited = originalText + "\n\nAggiunto a mano.\n"
@@ -142,6 +145,7 @@ import Testing
     /// guarantee has to hold there as well, with nothing yet acquired to write.
     @Test @MainActor func dismissRegenerationFromThePreparingStateReleasesTheClaimWithoutTouchingAnyFile() async throws {
         let synced = try await Self.syncedFixtureAndVault()
+        defer { try? FileManager.default.removeItem(at: synced.vaultRoot) }
         let (notePath, originalText) = try Self.writtenNote(under: synced.vaultRoot)
         let noteURL = synced.vaultRoot.appending(path: notePath, directoryHint: .notDirectory)
 
@@ -166,6 +170,7 @@ import Testing
     // from "row found, no .emlx".
     @Test func regenerationPreviewFailsWithNotInStoreWhenTheEmlxIsGoneAndTheFileOnDiskIsUntouched() async throws {
         let synced = try await Self.syncedFixtureAndVault()
+        defer { try? FileManager.default.removeItem(at: synced.vaultRoot) }
         let (notePath, originalText) = try Self.writtenNote(under: synced.vaultRoot)
 
         // The row still resolves from the index; only the underlying `.emlx` file is
@@ -203,6 +208,7 @@ import Testing
 
     @Test func aMessageCarryingALinkRegeneratedStillCarriesIt() async throws {
         let synced = try await Self.syncedFixtureAndVault()
+        defer { try? FileManager.default.removeItem(at: synced.vaultRoot) }
         let (notePath, originalText) = try Self.writtenNote(under: synced.vaultRoot)
         let noteURL = synced.vaultRoot.appending(path: notePath, directoryHint: .notDirectory)
 
@@ -225,6 +231,7 @@ import Testing
 
     @Test func aHandEditAlongsideALinkStillCarriesTheLinkIntoTheReplacement() async throws {
         let synced = try await Self.syncedFixtureAndVault()
+        defer { try? FileManager.default.removeItem(at: synced.vaultRoot) }
         let (notePath, originalText) = try Self.writtenNote(under: synced.vaultRoot)
         let noteURL = synced.vaultRoot.appending(path: notePath, directoryHint: .notDirectory)
 
@@ -241,6 +248,7 @@ import Testing
 
     @Test func anOrdinarySyncOverAnUnchangedCompleteMessageCarryingALinkWritesNothing() async throws {
         let synced = try await Self.syncedFixtureAndVault()
+        defer { try? FileManager.default.removeItem(at: synced.vaultRoot) }
         let (notePath, originalText) = try Self.writtenNote(under: synced.vaultRoot)
         let noteURL = synced.vaultRoot.appending(path: notePath, directoryHint: .notDirectory)
 

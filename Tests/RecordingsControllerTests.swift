@@ -30,8 +30,7 @@ private func openVaultController(_ root: URL) async -> VaultController {
 /// make one test's `disablePlaud` value leak into another's, and `.claude/test-cmd` gives
 /// no guarantee about test ordering.
 private func isolatedDefaults(disablePlaud: Bool = false) -> UserDefaults {
-    let suiteName = "RecordingsControllerTests.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
+    let defaults = ScratchDefaults.make()
     defaults.set(disablePlaud, forKey: "disablePlaud")
     return defaults
 }

@@ -35,6 +35,7 @@ import Testing
             try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path(percentEncoded: false))
         }
         let vaultRoot = try Fixtures.makeVaultRoot()
+        defer { try? FileManager.default.removeItem(at: vaultRoot) }
         let engine = Fixtures.makeEngine(mailStoreURL: fixture.indexURL, vaultRoot: vaultRoot)
         let request = PraticaSyncEngine.SyncRequest(
             praticaFolder: Fixtures.praticaFolder, dossier: Fixtures.sampleDossier(),

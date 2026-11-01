@@ -56,7 +56,7 @@ private func tappedRoute(_ request: UNNotificationRequest) -> PergamenumRoute? {
 
     let outcomeBeforeOpen = await b.handle(route)
     #expect(!outcomeBeforeOpen)
-    #expect(b.routeState.pending == route)
+    #expect(b.routeState.pending == [route])
 
     await b.open(vault.root)
 

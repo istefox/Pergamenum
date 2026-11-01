@@ -124,6 +124,38 @@ struct VaultState: Sendable {
     private static let testProcessBase: URL = FileManager.default.temporaryDirectory
         .appending(path: "pergamenum-test-state-\(UUID().uuidString)", directoryHint: .isDirectory)
 
+    /// Moves an item to the Finder's Trash and returns where it landed, `nil` when
+    /// `FileManager` did not say - or, inside the unit-test host, moves it into this
+    /// process's throwaway base instead (R-01).
+    ///
+    /// The one door every vault trash goes through, so no call site can forget the branch:
+    /// `FileManager.trashItem` has no seam, and with a test vault under the per-user temp
+    /// directory every trash in the unit suite landed in the person's own `~/.Trash`, nine
+    /// sites deep and run at the end of every turn, beside the files they trashed themselves.
+    /// The returned URL is real either way, so a restore from it (ADR-0068 §D3) still works.
+    ///
+    /// The test branch asks for XCTest's own class as well as the environment variable: this file
+    /// compiles into `perg` and `pergamenum-mcp` too, and a variable leaked into a shell would
+    /// otherwise send a connector's trash to a temp directory, where nothing ever finds it again.
+    /// A loaded `XCTestCase` is what a stray variable cannot forge. `isRunningUnderTest` itself
+    /// stays the variable alone, so its other readers (the `applicationSupportBase` precondition,
+    /// the test-host flags of the app delegate, Sparkle, Recordings, Contenitore) are unchanged.
+    @discardableResult
+    static func trashItem(at url: URL) throws -> URL? {
+        guard isRunningUnderTest, NSClassFromString("XCTestCase") != nil else {
+            var landed: NSURL?
+            try FileManager.default.trashItem(at: url, resultingItemURL: &landed)
+            return landed as URL?
+        }
+        // A folder of its own per call: two trashed items with one name do not collide, as the
+        // Finder's Trash would rename one of them.
+        let bin = testProcessBase.appending(path: "Trash/\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        let landed = bin.appending(path: url.lastPathComponent)
+        try FileManager.default.moveItem(at: url, to: landed)
+        return landed
+    }
+
     /// Reads `settings.json` for the id without minting one and without opening a
     /// session. Nil for a vault that has never been opened, or one whose settings
     /// carry no id yet.

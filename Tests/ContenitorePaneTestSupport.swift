@@ -94,7 +94,7 @@ struct ContenitoreHarness {
     static func make(root: URL, home: URL) async throws -> ContenitoreHarness {
         let vault = VaultController(recents: .volatile(), openTabs: .volatile())
         await vault.open(root)
-        let defaults = try #require(UserDefaults(suiteName: "pergamenum-contenitore-tests-\(UUID().uuidString)"))
+        let defaults = ScratchDefaults.make()
         let day = try #require(CalendarDate(year: 2026, month: 9, day: 29))
         let contenitore = ContenitoreController(
             vault: vault, home: home, today: { day }, extractor: ContenitoreNoTextExtractor(),

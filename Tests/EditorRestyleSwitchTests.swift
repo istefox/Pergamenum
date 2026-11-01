@@ -16,7 +16,7 @@ import Testing
     /// A defaults domain of its own, removed when the test is done.
     private func scratchDefaults() throws -> (UserDefaults, name: String) {
         let name = "pergamenum.tests.restyle-switch.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: name))
+        let defaults = ScratchDefaults.make()
         return (defaults, name)
     }
 

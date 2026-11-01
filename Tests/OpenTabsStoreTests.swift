@@ -4,14 +4,12 @@ import Testing
 
 /// `forget(_:)` had zero callers before PG-131 wired it into `RecentVaults`' eviction and
 /// "Svuota elenco" - these pin the method itself, isolated from that wiring.
-private func makeDefaults() -> (UserDefaults, String) {
-    let name = "pergamenum.tests.\(UUID().uuidString)"
-    return (UserDefaults(suiteName: name)!, name)
+private func makeDefaults() -> UserDefaults {
+    ScratchDefaults.make()
 }
 
 @Test func forgetRemovesASessionRememberedForThatVault() throws {
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
     let store = OpenTabsStore(defaults: defaults)
     let root = FileManager.default.temporaryDirectory
         .appending(path: "pergamenum-tabs-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -27,8 +25,7 @@ private func makeDefaults() -> (UserDefaults, String) {
 }
 
 @Test func forgetLeavesOtherVaultsSessionsUntouched() throws {
-    let (defaults, name) = makeDefaults()
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = makeDefaults()
     let store = OpenTabsStore(defaults: defaults)
     let forgotten = FileManager.default.temporaryDirectory
         .appending(path: "pergamenum-tabs-\(UUID().uuidString)", directoryHint: .isDirectory)

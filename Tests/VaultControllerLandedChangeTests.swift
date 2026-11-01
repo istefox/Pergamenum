@@ -472,8 +472,7 @@ Buongiorno,
     await controller.open(vault.root)
     defer { controller.close() }
     let fake = FakePlaudService()
-    let suiteName = "VaultControllerLandedChangeTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    let defaults = ScratchDefaults.make()
     let sut = RecordingsController(service: fake, vault: controller, defaults: defaults, isTestHost: false)
     func proposal(_ transcript: String) -> PlaudProposal {
         PlaudProposal(

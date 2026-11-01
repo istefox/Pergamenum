@@ -31,8 +31,7 @@ import Testing
     /// test's `disableUpdater` value leak into another's, and `.claude/test-cmd` gives no
     /// guarantee about test ordering.
     private static func isolatedDefaults(disableUpdater: Bool) -> UserDefaults {
-        let suiteName = "SparkleUpdateControllerTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.make()
         defaults.set(disableUpdater, forKey: "disableUpdater")
         return defaults
     }
@@ -48,8 +47,7 @@ import Testing
         // matching `UserDefaults.bool(forKey:)`'s own documented behavior for a missing key.
         // `isTestHost: false` explicitly: this test asserts the defaults-only branch, in
         // isolation from the fact that this very suite genuinely is a test host.
-        let suiteName = "SparkleUpdateControllerTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.make()
         let sut = SparkleUpdateController(defaults: defaults, isTestHost: false)
         #expect(sut.isIsolated == false)
     }
@@ -66,8 +64,7 @@ import Testing
     /// explicit override - and once the coder ORs it into `isIsolated`, an instance built with
     /// only an unset `disableUpdater` default must still come out isolated.
     @Test @MainActor func isIsolatedReadsTrueByDefaultInsideTheUnitTestHost() {
-        let suiteName = "SparkleUpdateControllerTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.make()
         let sut = SparkleUpdateController(defaults: defaults)
         #expect(sut.isTestHost == true)
         #expect(sut.isIsolated == true)
@@ -79,8 +76,7 @@ import Testing
     /// is the actual fix for the hang: the unit-test host must never reach
     /// `controller.startUpdater()` regardless of what `-disableUpdater` says.
     @Test @MainActor func isIsolatedViaTestHostAloneAlsoKeepsStartANoOp() {
-        let suiteName = "SparkleUpdateControllerTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.make()
         let sut = SparkleUpdateController(defaults: defaults, isTestHost: true)
         #expect(sut.isIsolated == true)
         sut.start()
