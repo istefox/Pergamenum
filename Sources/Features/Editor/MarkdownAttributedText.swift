@@ -68,9 +68,24 @@ enum MarkdownAttributedText {
         for styled in MarkdownStyler.spans(in: text) {
             let range = NSRange(styled.range, in: text)
             guard range.location != NSNotFound, NSMaxRange(range) <= length else { continue }
-            result.addAttributes(context.attributes(for: styled, in: text), range: range)
+            if let trait = emphasisTrait(of: styled.span) {
+                ProseTypography.addEmphasis(trait, in: result, range: range, theme: theme)
+            } else {
+                result.addAttributes(context.attributes(for: styled, in: text), range: range)
+            }
         }
         return result
+    }
+
+    /// The trait a `.bold` or `.italic` span lays over its run's face, `nil` for every other span.
+    /// The styling loops route these two through `ProseTypography.addEmphasis` so they combine
+    /// rather than overwrite each other's `.font`; `attributes(for:)` still answers for one span.
+    static func emphasisTrait(of span: MarkdownStyler.Span) -> NSFontDescriptor.SymbolicTraits? {
+        switch span {
+        case .bold: .bold
+        case .italic: .italic
+        default: nil
+        }
     }
 
     /// The spans that need more than a colour: a font, a background, a link.

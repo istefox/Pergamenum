@@ -39,6 +39,37 @@ enum ProseTypography {
         return [.font: italic]
     }
 
+    /// Lays `.bold` or `.italic` over the face each run of `range` already has, instead of
+    /// replacing it: the styling loops used to `addAttributes` `proseBold`'s and
+    /// `proseItalicAttributes`' `.font` in turn, so in `***x***` or `**a *b* c**` whichever span
+    /// came second took the run, and bold-italic never drew. Each run keeps its own size and
+    /// family; a run with no font yet is the prose face.
+    ///
+    /// The traits are a union, not `withSymbolicTraits(_:)` alone, which replaces them and would
+    /// drop the italic a bold lands on. The fallbacks are the single-span rules': a family with
+    /// no bold keeps the run's face (`bolded`), one with no italic takes `.obliqueness: 0.2` on it.
+    /// Callers reset the range to its base attributes before their span loop, so no trait here
+    /// can be left over from an earlier pass.
+    static func addEmphasis(
+        _ trait: NSFontDescriptor.SymbolicTraits, in storage: NSMutableAttributedString, range: NSRange, theme: Theme
+    ) {
+        let prose = prose(theme)
+        storage.enumerateAttribute(.font, in: range) { value, run, _ in
+            let font = value as? NSFont ?? prose
+            let traits = font.fontDescriptor.symbolicTraits.union(trait)
+            let descriptor = font.fontDescriptor.withSymbolicTraits(traits)
+            if let emphasised = NSFont(descriptor: descriptor, size: font.pointSize),
+               emphasised.fontDescriptor.symbolicTraits.isSuperset(of: traits),
+               emphasised.familyName == font.familyName {
+                storage.addAttribute(.font, value: emphasised, range: run)
+            } else if trait.contains(.italic) {
+                storage.addAttributes([.font: font, .obliqueness: 0.2], range: run)
+            } else {
+                storage.addAttribute(.font, value: font, range: run)
+            }
+        }
+    }
+
     /// A heading level's size (R-03): `max(prose + 1, proseTitle − (level − 1) × 2)`, clamped to
     /// levels 1...6 so an out-of-range level is clamped rather than crashing.
     ///
