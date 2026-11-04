@@ -94,13 +94,49 @@ enum PraticaNaming {
     /// The name keeps its capitals, its spaces and its extension: this is the file a
     /// person will look for in Finder, and slugging it would make it unrecognisable.
     /// Only what a file name cannot legally hold is replaced.
+    ///
+    /// PG-436 (S05-10): capped at `MailAttachmentPath.maximumNameBytes` UTF-8 bytes less
+    /// `attachmentSuffixReserve`, shortening the stem and keeping the extension, so a long
+    /// name is written rather than failing with ENAMETOOLONG on every sync.
+    ///
+    /// Control and format characters (Cc, Cf) become `-`, the bidi controls above all: a
+    /// right-to-left override makes `fdp.exe` read as `exe.pdf`. U+200D (ZWJ) is the one
+    /// exception, so a composed emoji keeps its joiners. The variation selectors
+    /// U+FE0E/U+FE0F need none: they are Mn, outside `controlCharacters` already.
     static func attachmentFileName(date: CalendarDate, name: String) -> String {
         let bare = (name as NSString).lastPathComponent
-        let illegal = CharacterSet(charactersIn: "/\\:*?\"<>|").union(.controlCharacters)
+        let illegal = CharacterSet(charactersIn: "/\\:*?\"<>|")
+            .union(.controlCharacters)
+            .subtracting(CharacterSet(charactersIn: "\u{200D}"))
         let cleaned = String(String.UnicodeScalarView(
             bare.unicodeScalars.map { illegal.contains($0) ? "-" : $0 }
         )).trimmingCharacters(in: .whitespaces)
-        return cleaned.isEmpty ? "\(date.compactForm)_allegato" : "\(date.compactForm)_\(cleaned)"
+        let full = cleaned.isEmpty ? "\(date.compactForm)_allegato" : "\(date.compactForm)_\(cleaned)"
+        return cappedFileName(full, toBytes: MailAttachmentPath.maximumNameBytes - attachmentSuffixReserve)
+    }
+
+    /// Bytes `attachmentFileName` leaves free for `PraticaSyncEngine.uniqueAttachmentName`'s
+    /// `-2`, `-3`, … suffix, so a capped name still fits on the volume once it gets one.
+    static let attachmentSuffixReserve = 8
+
+    /// `name` cut to at most `limit` UTF-8 bytes, a whole character at a time so no
+    /// character is split. The extension is kept when it is a short one (under half the
+    /// budget); a name whose "extension" is itself the long part is cut as a whole.
+    private static func cappedFileName(_ name: String, toBytes limit: Int) -> String {
+        guard name.utf8.count > limit else { return name }
+        let ext = (name as NSString).pathExtension
+        let keepsExtension = !ext.isEmpty && ext.utf8.count + 1 < limit / 2
+        let tail = keepsExtension ? ".\(ext)" : ""
+        let stem = keepsExtension ? (name as NSString).deletingPathExtension : name
+        var budget = limit - tail.utf8.count
+        var kept = ""
+        for character in stem {
+            let size = character.utf8.count
+            guard size <= budget else { break }
+            budget -= size
+            kept.append(character)
+        }
+        return kept.trimmingCharacters(in: .whitespaces) + tail
     }
 
     /// R-01: the client is the pratica folder's own parent directory, relative to the

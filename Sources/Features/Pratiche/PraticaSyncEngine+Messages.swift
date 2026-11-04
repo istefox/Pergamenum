@@ -112,9 +112,13 @@ extension PraticaSyncEngine {
         partNumber: String,
         settings: PraticheSettings
     ) -> ExternalizedResolution {
-        let url = EMLXReader
-            .attachmentsDirectory(forMessageAt: context.emlxURL, rowID: rowID, part: partNumber)
-            .appending(path: name, directoryHint: .notDirectory)
+        // PG-436: the name is the email's own, so it may say `../../.ssh/id_ed25519`. A
+        // name that is not one path component inside the part's directory is never
+        // opened or read (the containment check resolves the directory chain's symlinks,
+        // nothing more); it stays pending like any other part with no sibling file.
+        guard let url = EMLXReader.attachmentFile(
+            named: name, forMessageAt: context.emlxURL, rowID: rowID, part: partNumber
+        ) else { return .unavailable }
         // `try?`, matching the "no permission prompt, no crash on a missing file"
         // idiom `storePath` already uses: a sibling file that simply is not there is
         // the common, expected case, not a diagnostic.

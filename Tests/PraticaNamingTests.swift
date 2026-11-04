@@ -95,6 +95,50 @@ import Testing
         #expect(resynced == base)
     }
 
+    // MARK: - Attachment file name: format characters
+
+    private static let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"
+
+    @Test func aComposedEmojiKeepsItsJoinersInAnAttachmentName() {
+        let name = PraticaNaming.attachmentFileName(
+            date: CalendarDate(iso: "2026-06-10")!, name: "\(Self.family) foto.jpg"
+        )
+        #expect(name == "20260610_\(Self.family) foto.jpg")
+        #expect(name.unicodeScalars.filter { $0 == "\u{200D}" }.count == 2)
+    }
+
+    @Test func aVariationSelectorSurvivesInAnAttachmentName() {
+        let name = PraticaNaming.attachmentFileName(
+            date: CalendarDate(iso: "2026-06-10")!, name: "\u{2764}\u{FE0F}.pdf"
+        )
+        #expect(name == "20260610_\u{2764}\u{FE0F}.pdf")
+    }
+
+    /// A right-to-left override, an isolate and a mark: each is a way to make the name
+    /// read differently from what it is, and each is still replaced.
+    @Test(arguments: ["\u{202E}", "\u{2066}", "\u{200F}"])
+    func aBidiControlInAnAttachmentNameIsReplaced(_ control: String) {
+        let name = PraticaNaming.attachmentFileName(
+            date: CalendarDate(iso: "2026-06-10")!, name: "fattura\(control)fdp.exe"
+        )
+        #expect(name == "20260610_fattura-fdp.exe")
+    }
+
+    @Test func aCutNeverSplitsAZWJSequence() {
+        let cap = MailAttachmentPath.maximumNameBytes - PraticaNaming.attachmentSuffixReserve
+        let familyBytes = Self.family.utf8.count
+        let name = PraticaNaming.attachmentFileName(
+            date: CalendarDate(iso: "2026-06-10")!,
+            name: String(repeating: Self.family, count: 20) + ".png"
+        )
+        let middle = String(name.dropFirst("20260610_".count).dropLast(".png".count))
+
+        #expect(name.utf8.count <= cap)
+        #expect(!middle.isEmpty)
+        #expect(middle.allSatisfy { String($0) == Self.family }, "no partial family at the cut")
+        #expect(name.utf8.count + familyBytes > cap, "the cut keeps as many whole sequences as fit")
+    }
+
     // MARK: - R-01: the client is the parent folder under the configured root
 
     @Test func theClientIsTheParentFolderUnderTheConfiguredRoot() {

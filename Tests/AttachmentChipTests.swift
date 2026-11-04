@@ -24,6 +24,27 @@ import Testing
         try body(root)
     }
 
+    /// A directory inside `MailStoreLocation.resolve()` - under test the per-process
+    /// temporary Mail store, never `~/Library/Mail`. A store reference's target must lie
+    /// inside Mail's store (PG-436, SEC-02), so a fixture that expects one to resolve
+    /// writes its file here rather than under `withTemporaryFile`'s root.
+    private static func withMailStoreDirectory(_ body: (URL) throws -> Void) rethrows {
+        let root = MailStoreLocation.resolve()
+            .appending(path: "pergamenum-attachment-chip-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try body(root)
+    }
+
+    /// A store path inside `MailStoreLocation.resolve()` that names no file, so the probe
+    /// is still asked about it and answers for itself (`.missing`, or whatever a test's
+    /// constant probe says) rather than the PG-436 containment check refusing it first.
+    private static var absentStorePath: String {
+        MailStoreLocation.resolve()
+            .appending(path: "gone-\(UUID().uuidString)/allegato-grande.zip", directoryHint: .notDirectory)
+            .path(percentEncoded: false)
+    }
+
     /// Stands in for the production probe (`FileManager.fileExists` gated by
     /// `AttachmentIntegrity.verdict(ofFileAt:named:)`): present on disk is `.usable`,
     /// absent is `.missing`. No test in this file exercises `.unusable` through the
@@ -87,7 +108,7 @@ import Testing
     }
 
     @Test func aStoreReferenceToARefusedTypeHasNoOpenTargetEither() throws {
-        try Self.withTemporaryFile { root in
+        try Self.withMailStoreDirectory { root in
             let url = root.appending(path: "grande.dmg", directoryHint: .notDirectory)
             try Data("x".utf8).write(to: url)
             let content = AttachmentChip.Content.storeReference(
@@ -132,7 +153,7 @@ import Testing
     // MARK: - R-10/R-27: a store reference whose store path still resolves and is usable
 
     @Test func aStoreReferenceWithAnExistingUsableStorePathGetsTheCloudSlashSymbolButNoPreview() throws {
-        try Self.withTemporaryFile { root in
+        try Self.withMailStoreDirectory { root in
             let storeURL = root.appending(path: "allegato-grande.zip", directoryHint: .notDirectory)
             try Data("x".utf8).write(to: storeURL)
             let reference = MessageDocument.StoreReference(
@@ -153,7 +174,7 @@ import Testing
     // MARK: - R-10/R-27: a store reference whose store path is gone
 
     @Test func aStoreReferenceWithAnAbsentStorePathResolvesToNothing() {
-        let storePath = "/Volumes/gone/allegato-grande.zip"
+        let storePath = Self.absentStorePath
         let reference = MessageDocument.StoreReference(
             name: "allegato-grande.zip", size: 400_000_000, storePath: storePath
         )
@@ -164,6 +185,33 @@ import Testing
         #expect(AttachmentChipModel.openURL(for: content, state: Self.state) == nil)
         #expect(AttachmentChipModel.revealURL(for: content, state: Self.state) == nil)
         #expect(AttachmentChipModel.copyItems(for: content, state: Self.state).isEmpty)
+    }
+
+    // MARK: - PG-436 (SEC-02): a store path outside Mail's store is never a target
+
+    /// A note's frontmatter is an ordinary vault file, so its `storePath` can name any
+    /// file on disk. A real, present file outside `MailStoreLocation.resolve()` - and one
+    /// that walks out of it through `..` - is neither opened, revealed nor copied, and
+    /// the probe is never even asked about it.
+    @Test(arguments: [false, true])
+    func aStoreReferenceOutsideTheMailStoreHasNoTargetAndIsNeverProbed(walksOutWithDotDot: Bool) throws {
+        try Self.withTemporaryFile { root in
+            let outside = root.appending(path: "id_ed25519", directoryHint: .notDirectory)
+            try Data("x".utf8).write(to: outside)
+            let storePath = walksOutWithDotDot
+                ? MailStoreLocation.resolve().path(percentEncoded: false)
+                    + "/../" + root.lastPathComponent + "/id_ed25519"
+                : outside.path(percentEncoded: false)
+            let content = AttachmentChip.Content.storeReference(MessageDocument.StoreReference(
+                name: "id_ed25519", size: 400_000_000, storePath: storePath
+            ))
+            let probe = RecordingProbe()
+
+            #expect(AttachmentChipModel.openURL(for: content, state: probe.state) == nil)
+            #expect(AttachmentChipModel.revealURL(for: content, state: probe.state) == nil)
+            #expect(AttachmentChipModel.copyItems(for: content, state: probe.state).isEmpty)
+            #expect(probe.calls.isEmpty, "a path outside Mail's store is refused before it is probed")
+        }
     }
 
     // MARK: - R-27: the context menu's exact wording and order
@@ -196,7 +244,7 @@ import Testing
 
     @Test func aStoreReferenceWhoseProbeAnswersUnusableHasNoOpenOrRevealTarget() {
         let reference = MessageDocument.StoreReference(
-            name: "allegato-grande.zip", size: 400_000_000, storePath: "/tmp/allegato-grande.zip"
+            name: "allegato-grande.zip", size: 400_000_000, storePath: Self.absentStorePath
         )
         let content = AttachmentChip.Content.storeReference(reference)
         let unusable: (URL) -> AttachmentChipModel.FileState = { _ in .unusable }
@@ -297,7 +345,7 @@ import Testing
     /// A store reference is unaffected by quarantine entirely (ADR-0036: never a file
     /// this app wrote itself) - opens exactly as `openURL` says, guard.
     @Test func openDecisionForAStoreReferenceIsUnchangedByQuarantine() throws {
-        try Self.withTemporaryFile { root in
+        try Self.withMailStoreDirectory { root in
             let storeURL = root.appending(path: "allegato-grande.zip", directoryHint: .notDirectory)
             try Data("x".utf8).write(to: storeURL)
             let reference = MessageDocument.StoreReference(
@@ -366,7 +414,7 @@ import Testing
     }
 
     @Test func aUsableStoreReferenceEnablesApriRevealAndCopiaButNotAnteprima() throws {
-        try Self.withTemporaryFile { root in
+        try Self.withMailStoreDirectory { root in
             let storeURL = root.appending(path: "allegato-grande.zip", directoryHint: .notDirectory)
             try Data("x".utf8).write(to: storeURL)
             let content = AttachmentChip.Content.storeReference(MessageDocument.StoreReference(
@@ -380,7 +428,7 @@ import Testing
 
     @Test func aStoreReferenceWhoseStorePathIsGoneEnablesOnlyCopia() {
         let content = AttachmentChip.Content.storeReference(MessageDocument.StoreReference(
-            name: "allegato-grande.zip", size: 400_000_000, storePath: "/Volumes/gone/allegato-grande.zip"
+            name: "allegato-grande.zip", size: 400_000_000, storePath: Self.absentStorePath
         ))
 
         #expect(Self.enabled(AttachmentChipModel.menuEntries(for: content, state: Self.state)) == [.copy])
