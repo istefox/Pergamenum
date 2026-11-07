@@ -396,10 +396,25 @@ final class CommandActions {
     /// pasteboard, never `self.pasteboard` - the paste responder chain reads from
     /// `.general` by construction, so rewriting any other pasteboard would be a silent
     /// no-op.
+    ///
+    /// A pasteboard with no text (an image, a file) is left as it was and the command beeps,
+    /// as a refused Backspace does in the pratica timeline (PG-306): rewriting it to an empty
+    /// string threw away what the person had copied (PG-443, S01-01).
     private func pastePlain() {
-        let plain = NSPasteboard.general.string(forType: .string) ?? ""
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(plain, forType: .string)
+        guard Self.reduceToPlainText(.general) else {
+            NSSound.beep()
+            return
+        }
         NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
+    }
+
+    /// Rewrites `pasteboard` to its plain text alone and answers `true`, or answers `false`
+    /// and touches nothing when it holds no text. Static and handed the pasteboard so a test
+    /// can use a private named one rather than the person's clipboard.
+    static func reduceToPlainText(_ pasteboard: NSPasteboard) -> Bool {
+        guard let plain = pasteboard.string(forType: .string) else { return false }
+        pasteboard.clearContents()
+        pasteboard.setString(plain, forType: .string)
+        return true
     }
 }
